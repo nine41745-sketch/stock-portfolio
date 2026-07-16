@@ -18,19 +18,21 @@ export interface HoldingWithPrice extends Holding {
 }
 
 export interface FinnhubQuote {
-  c: number   // current price
-  h: number   // high
-  l: number   // low
-  o: number   // open
-  pc: number  // previous close
-  t: number   // timestamp
+  c: number
+  h: number
+  l: number
+  o: number
+  pc: number
+  t: number
 }
 
 export interface AnalysisResult {
   symbol: string
-  signal: 'BUY' | 'HOLD' | 'SELL'
+  signal: 'BUY' | 'HOLD' | 'SELL_PARTIAL' | 'SELL_ALL'
   summary: string
   reasons: string[]
+  detail: string
+  action: string
 }
 
 export interface HoldingFormData {

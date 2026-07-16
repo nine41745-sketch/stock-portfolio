@@ -20,17 +20,20 @@ interface NewsItem {
 }
 
 const SIGNAL_STYLE: Record<string, string> = {
-  BUY:  'bg-green-500/15 text-green-400 border-green-500/30',
-  HOLD: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
-  SELL: 'bg-red-500/15 text-red-400 border-red-500/30',
+  BUY:          'bg-green-500/15 text-green-400 border-green-500/30',
+  HOLD:         'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
+  SELL_PARTIAL: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
+  SELL_ALL:     'bg-red-500/15 text-red-400 border-red-500/30',
 }
 const SIGNAL_LABEL: Record<string, string> = {
-  BUY: '🟢 ซื้อเพิ่ม', HOLD: '🟡 ถือ', SELL: '🔴 ขาย',
+  BUY:          '🟢 ซื้อเพิ่ม',
+  HOLD:         '🟡 ถือต่อ',
+  SELL_PARTIAL: '🟠 ขายบางส่วน',
+  SELL_ALL:     '🔴 ขายทั้งหมด',
 }
 
 function fmtDate(iso: string) {
-  const d = new Date(iso)
-  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+  return new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
 }
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
@@ -89,7 +92,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
 
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }
 
   function fmtAmt(n: number | null, decimals = 2): string {
@@ -111,9 +114,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     return sign + sym + abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
-  const totalCost  = holdings.reduce((s, h) => s + (h.total_cost   ?? 0), 0)
-  const totalValue = holdings.reduce((s, h) => s + (h.market_value ?? 0), 0)
-  const totalPnl   = totalValue - totalCost
+  const totalCost   = holdings.reduce((s, h) => s + (h.total_cost   ?? 0), 0)
+  const totalValue  = holdings.reduce((s, h) => s + (h.market_value ?? 0), 0)
+  const totalPnl    = totalValue - totalCost
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0
   const winners = holdings.filter(h => (h.pnl ?? 0) > 0).length
   const losers  = holdings.filter(h => (h.pnl ?? 0) < 0).length
@@ -147,7 +150,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(holding),
+        body: JSON.stringify({ ...holding, cashBalance }),
       })
       const result: AnalysisResult = await res.json()
       setAnalyses(prev => ({ ...prev, [holding.symbol]: result }))
@@ -195,7 +198,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       const { prices } = await priceRes.json()
       const cp = prices[payload.symbol] ?? null
       const mv = cp !== null ? cp * payload.shares : null
-      const tc = payload.cost_basis !== null && payload.cost_basis !== undefined ? payload.cost_basis * payload.shares : null
+      const tc = payload.cost_basis != null ? payload.cost_basis * payload.shares : null
       const pnl = mv !== null && tc !== null ? mv - tc : null
       const pnl_pct = pnl !== null && tc !== null && tc > 0 ? (pnl / tc) * 100 : null
       setHoldings(prev => {
@@ -206,7 +209,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     } else {
       setHoldings(prev => prev.map(h => {
         if (h.id !== id) return h
-        const tc = payload.cost_basis !== null && payload.cost_basis !== undefined ? payload.cost_basis * payload.shares : null
+        const tc = payload.cost_basis != null ? payload.cost_basis * payload.shares : null
         const pnl = h.market_value !== null && tc !== null ? h.market_value - tc : null
         const pnl_pct = pnl !== null && tc !== null && tc > 0 ? (pnl / tc) * 100 : null
         return { ...h, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, total_cost: tc, pnl, pnl_pct }
@@ -227,10 +230,46 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     router.refresh()
   }
 
+  function AnalysisCard({ analysis }: { analysis: AnalysisResult }) {
+    return (
+      <div className={`rounded-lg border p-4 ${SIGNAL_STYLE[analysis.signal]}`}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="font-bold text-base">{SIGNAL_LABEL[analysis.signal]}</span>
+          <button
+            onClick={() => setAnalyses(prev => { const n = { ...prev }; delete n[analysis.symbol]; return n })}
+            className="opacity-50 hover:opacity-100 text-sm">✕</button>
+        </div>
+        <p className="text-sm font-medium mb-3">{analysis.summary}</p>
+        {analysis.detail && (
+          <p className="text-xs opacity-80 mb-3 leading-relaxed border-t border-current/20 pt-3">{analysis.detail}</p>
+        )}
+        {analysis.reasons.length > 0 && (
+          <ul className="space-y-1 mb-3">
+            {analysis.reasons.map((r, i) => (
+              <li key={i} className="text-xs opacity-75 flex gap-2">
+                <span className="shrink-0">•</span><span>{r}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {analysis.action && (
+          <div className="border-t border-current/20 pt-3">
+            <p className="text-xs font-semibold mb-1">📌 คำแนะนำ</p>
+            <p className="text-xs opacity-90 leading-relaxed">{analysis.action}</p>
+          </div>
+        )}
+        {cashBalance > 0 && analysis.signal === 'BUY' && (
+          <div className="border-t border-current/20 pt-3 mt-1">
+            <p className="text-xs opacity-75">💰 เงินในธนาคาร ${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-6xl mx-auto space-y-5">
 
-      {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
           {toast.msg}
@@ -273,7 +312,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           sub={fmtPct(totalPnlPct)}
           color={totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}
         />
-        {/* Winners/Losers */}
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
           <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">สัดส่วน {holdings.length} ตัว</p>
           <div className="flex items-center gap-2 mb-2">
@@ -285,7 +323,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
             <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${winPct}%` }} />
           </div>
         </div>
-        {/* Cash Balance */}
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
           <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินในธนาคาร</p>
           {editingCash ? (
@@ -350,11 +387,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
               </thead>
               <tbody>
                 {holdings.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="text-center py-12 text-gray-600">
-                      ยังไม่มีหุ้นในพอร์ต — กด &quot;+ เพิ่มหุ้น&quot; เพื่อเริ่มต้น
-                    </td>
-                  </tr>
+                  <tr><td colSpan={9} className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต — กด &quot;+ เพิ่มหุ้น&quot; เพื่อเริ่มต้น</td></tr>
                 )}
                 {holdings.map((h) => {
                   const analysis = analyses[h.symbol]
@@ -388,18 +421,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                       {analysis && (
                         <tr key={`${h.id}-ai`} className="border-t border-gray-800 bg-gray-950">
                           <td colSpan={9} className="px-4 py-3">
-                            <div className={`rounded-lg border p-3 ${SIGNAL_STYLE[analysis.signal]}`}>
-                              <div className="flex items-start gap-3">
-                                <span className="font-bold whitespace-nowrap">{SIGNAL_LABEL[analysis.signal]}</span>
-                                <div className="flex-1">
-                                  <p className="text-sm mb-1">{analysis.summary}</p>
-                                  <ul className="space-y-0.5">
-                                    {analysis.reasons.map((r, i) => <li key={i} className="text-xs opacity-75">• {r}</li>)}
-                                  </ul>
-                                </div>
-                                <button onClick={() => setAnalyses(prev => { const n = { ...prev }; delete n[analysis.symbol]; return n })} className="text-xs opacity-50 hover:opacity-100">✕</button>
-                              </div>
-                            </div>
+                            <AnalysisCard analysis={analysis} />
                           </td>
                         </tr>
                       )}
@@ -445,15 +467,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                   <button onClick={() => setModalHolding(h)}
                     className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-gray-400 text-xs hover:text-white transition-colors">✏️ แก้ไข</button>
                 </div>
-                {analysis && (
-                  <div className={`mt-3 rounded-lg border p-3 ${SIGNAL_STYLE[analysis.signal]}`}>
-                    <div className="flex items-start gap-2">
-                      <span className="font-bold text-xs whitespace-nowrap">{SIGNAL_LABEL[analysis.signal]}</span>
-                      <p className="text-xs flex-1">{analysis.summary}</p>
-                      <button onClick={() => setAnalyses(prev => { const n = { ...prev }; delete n[analysis.symbol]; return n })} className="text-xs opacity-50 hover:opacity-100">✕</button>
-                    </div>
-                  </div>
-                )}
+                {analysis && <div className="mt-3"><AnalysisCard analysis={analysis} /></div>}
               </div>
             )
           })}
