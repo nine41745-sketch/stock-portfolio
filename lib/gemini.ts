@@ -15,7 +15,6 @@ async function callGemini(prompt: string, maxTokens = 1024): Promise<string> {
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
 }
 
-// ===== วิเคราะห์หุ้น =====
 export async function analyzeHolding(
   holding: HoldingWithPrice,
   cashBalance = 0,
@@ -39,44 +38,44 @@ export async function analyzeHolding(
 
   const newsSnippet = recentNews.length > 0
     ? recentNews.slice(0, 3).map((n, i) => `${i + 1}. ${n.headline}`).join('\n')
-    : 'ไม่มีข่าวล่าสุด'
+    : 'no recent news'
 
-  const prompt = `คุณเป็นนักวิเคราะห์หุ้น US มืออาชีพ วิเคราะห์หุ้น ${symbol} อย่างละเอียด
+  const prompt = `You are a professional US stock analyst. Analyze ${symbol} and respond in Thai language only.
 
-ข้อมูลพอร์ต:
-- หุ้น: ${symbol}
-- ราคาปัจจุบัน: $${current_price?.toFixed(2) ?? 'N/A'}
-- ต้นทุนเฉลี่ย: ${cost_basis ? `$${cost_basis.toFixed(2)}` : 'ไม่ระบุ'}
-- จำนวนหุ้น: ${shares}
-- มูลค่าตลาด: ${market_value ? `$${market_value.toFixed(2)}` : 'N/A'}
-- กำไร/ขาดทุน: ${pnl_pct != null ? `${pnl_pct > 0 ? '+' : ''}${pnl_pct.toFixed(1)}%` : 'N/A'}
+Portfolio data:
+- Symbol: ${symbol}
+- Current price: $${current_price?.toFixed(2) ?? 'N/A'}
+- Cost basis: ${cost_basis ? `$${cost_basis.toFixed(2)}` : 'N/A'}
+- Shares: ${shares}
+- Market value: ${market_value ? `$${market_value.toFixed(2)}` : 'N/A'}
+- P&L: ${pnl_pct != null ? `${pnl_pct > 0 ? '+' : ''}${pnl_pct.toFixed(1)}%` : 'N/A'}
 
-ข้อมูล Technical / Fundamental:
-- ${metricsInfo || 'ไม่มีข้อมูล metrics'}
+Technical/Fundamental:
+- ${metricsInfo || 'no metrics'}
 
-เงินสด:
-- เงินในธนาคาร: $${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })} (ซื้อ ${symbol} เพิ่มได้ ~${canBuyShares} หุ้น)
-- สัดส่วนเงินสดต่อพอร์ตรวม: ${cashRatioPct}%
+Cash:
+- Bank balance: $${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })} (can buy ~${canBuyShares} more shares)
+- Cash ratio: ${cashRatioPct}%
 
-ข่าวล่าสุด:
+Recent news:
 ${newsSnippet}
 
-คำแนะนำ: เลือก 1 สัญญาณที่เหมาะที่สุด
-- BUY: พื้นฐานดี ราคาน่าสนใจ RSI ไม่ Overbought มีเงินพอซื้อ
-- HOLD: สมดุลดี ไม่มีเหตุเร่งด่วน
-- SELL_PARTIAL: กำไรสูง/Overbought/Valuation แพง ควร lock in บางส่วน
-- SELL_ALL: พื้นฐานเปลี่ยนแปลงในเชิงลบ หรือ cut loss
+Choose the best signal:
+- BUY: strong fundamentals, good price, RSI not overbought, enough cash
+- HOLD: balanced, no urgent action needed
+- SELL_PARTIAL: high profit/overbought/expensive valuation, lock in some gains
+- SELL_ALL: fundamentals deteriorated or cut loss
 
-ตอบเป็น JSON เท่านั้น ใช้ภาษาไทยทั้งหมด:
+Respond in JSON only, all text in Thai:
 {
   "signal": "BUY"|"HOLD"|"SELL_PARTIAL"|"SELL_ALL",
-  "summary": "สรุป 1-2 ประโยค",
-  "reasons": ["เหตุผล 1", "เหตุผล 2", "เหตุผล 3"],
-  "detail": "อธิบายละเอียด 2-4 ประโยค รวมปัจจัยพื้นฐาน แนวโน้ม ความเสี่ยง",
-  "action": "คำแนะนำปฏิบัติที่ชัดเจน เช่น ซื้อเพิ่ม X หุ้นด้วยเงิน $Y / ขาย Z% / ถือรอดู earnings",
-  "sector": "อุตสาหกรรมหลัก เช่น Healthcare / AI & Cloud / Fintech",
-  "business": "ลักษณะธุรกิจของ ${symbol} 1-2 ประโยค",
-  "targetCustomers": "กลุ่มลูกค้าหลัก"
+  "summary": "1-2 sentence summary",
+  "reasons": ["reason 1", "reason 2", "reason 3"],
+  "detail": "2-4 sentence detail including fundamentals, trend, risks",
+  "action": "specific action recommendation",
+  "sector": "main industry e.g. Healthcare / AI & Cloud / Fintech",
+  "business": "what ${symbol} does in 1-2 sentences",
+  "targetCustomers": "main customer groups"
 }`
 
   try {
@@ -86,7 +85,7 @@ ${newsSnippet}
     const validSignals = ['BUY', 'HOLD', 'SELL_PARTIAL', 'SELL_ALL']
     return {
       symbol,
-      signal: validSignals.includes(parsed.signal) ? parsed.signal : 'HOLD',
+      signal: (validSignals.includes(parsed.signal) ? parsed.signal : 'HOLD') as 'BUY' | 'HOLD' | 'SELL_PARTIAL' | 'SELL_ALL',
       summary: parsed.summary ?? '',
       reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
       detail: parsed.detail ?? '',
@@ -96,31 +95,31 @@ ${newsSnippet}
       targetCustomers: parsed.targetCustomers ?? '',
     }
   } catch {
-    return { symbol, signal: 'HOLD', summary: 'ไม่สามารถวิเคราะห์ได้', reasons: [], detail: '', action: '' }
+    return { symbol, signal: 'HOLD', summary: 'Analysis unavailable', reasons: [], detail: '', action: '' }
   }
 }
 
-// ===== แปลข่าวและประเมิน impact =====
 export async function translateAndClassifyNews(
   items: Array<{ symbol: string; headline: string; source: string; datetime: number; url: string }>
-): Promise<Array<{ headlineTh: string; impact: 'HIGH' | 'MEDIUM' | 'LOW' }>> {
+): Promise<Array<{ headlineTh: string; impact: 'NEGATIVE' | 'POSITIVE' | 'NEUTRAL' | 'LOW' }>> {
   if (!items.length) return []
 
   const list = items.map((it, i) => `${i + 1}. [${it.symbol}] ${it.headline}`).join('\n')
 
-  const prompt = `แปลหัวข้อข่าวหุ้น US ต่อไปนี้เป็นภาษาไทย และประเมิน Impact Level
+  const prompt = `Translate these US stock news headlines to Thai and classify their impact on stock price.
 
-กฎ Impact:
-- HIGH = ข่าวสำคัญมาก กระทบราคาหุ้นอย่างมีนัยสำคัญ เช่น ผลประกอบการ earnings, การซื้อกิจการ, FDA approval/rejection, ปรับลด/เพิ่มคาดการณ์
-- MEDIUM = ข่าวทั่วไป มีผลกระทบปานกลาง
-- LOW = ข่าวเบา ไม่กระทบราคามากนัก
+Impact rules:
+- NEGATIVE: bad news that pushes price down (losses, FDA rejection, lawsuit, downgrade)
+- POSITIVE: good news that pushes price up (earnings beat, FDA approval, new contract, upgrade)
+- NEUTRAL: mixed or unclear impact (new product, partnership expansion)
+- LOW: minor news with little price impact (events, general interviews)
 
-ข่าว:
+News:
 ${list}
 
-ตอบเป็น JSON array เท่านั้น (ไม่ต้องมีอะไรนอก array):
+Respond with JSON array only:
 [
-  {"headlineTh": "หัวข้อภาษาไทย", "impact": "HIGH"|"MEDIUM"|"LOW"},
+  {"headlineTh": "Thai headline", "impact": "NEGATIVE"|"POSITIVE"|"NEUTRAL"|"LOW"},
   ...
 ]`
 
@@ -128,9 +127,10 @@ ${list}
     const text = await callGemini(prompt, 1500)
     const match = text.match(/\[[\s\S]*\]/)
     const parsed = JSON.parse(match?.[0] ?? '[]')
+    const valid = ['NEGATIVE', 'POSITIVE', 'NEUTRAL', 'LOW']
     return parsed.map((p: { headlineTh?: string; impact?: string }) => ({
       headlineTh: p.headlineTh ?? '',
-      impact: (['HIGH', 'MEDIUM', 'LOW'].includes(p.impact ?? '') ? p.impact : 'LOW') as 'HIGH' | 'MEDIUM' | 'LOW',
+      impact: (valid.includes(p.impact ?? '') ? p.impact : 'LOW') as 'NEGATIVE' | 'POSITIVE' | 'NEUTRAL' | 'LOW',
     }))
   } catch {
     return items.map(() => ({ headlineTh: '', impact: 'LOW' as const }))

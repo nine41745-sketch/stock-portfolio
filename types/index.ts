@@ -15,6 +15,7 @@ export interface HoldingWithPrice extends Holding {
   total_cost: number | null
   pnl: number | null
   pnl_pct: number | null
+  dayChange?: number | null
   pe?: number | null
   rsi?: number | null
   week52High?: number | null
@@ -22,12 +23,13 @@ export interface HoldingWithPrice extends Holding {
 }
 
 export interface FinnhubQuote {
-  c: number   // current price
-  h: number   // high
-  l: number   // low
-  o: number   // open
-  pc: number  // previous close
-  t: number   // timestamp
+  c: number
+  h: number
+  l: number
+  o: number
+  pc: number
+  dp: number
+  t: number
 }
 
 export interface NewsItem {
@@ -37,7 +39,7 @@ export interface NewsItem {
   source: string
   datetime: number
   url: string
-  impact: 'HIGH' | 'MEDIUM' | 'LOW'
+  impact: 'NEGATIVE' | 'POSITIVE' | 'NEUTRAL' | 'LOW'
 }
 
 export interface AnalysisResult {

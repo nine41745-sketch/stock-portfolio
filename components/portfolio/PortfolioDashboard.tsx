@@ -21,9 +21,22 @@ const SIGNAL_LABEL: Record<string, string> = {
   BUY: '🟢 ซื้อเพิ่ม', HOLD: '🟡 ถือต่อ', SELL_PARTIAL: '🟠 ขายบางส่วน', SELL_ALL: '🔴 ขายทั้งหมด',
 }
 const IMPACT_BADGE: Record<string, string> = {
-  HIGH:   'bg-red-500/20 text-red-400 border border-red-500/30',
-  MEDIUM: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
-  LOW:    'bg-gray-500/20 text-gray-400 border border-gray-700',
+  NEGATIVE: 'bg-red-500/20 text-red-400 border border-red-500/30',
+  POSITIVE: 'bg-green-500/20 text-green-400 border border-green-500/30',
+  NEUTRAL:  'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
+  LOW:      'bg-gray-500/20 text-gray-400 border border-gray-700',
+}
+const IMPACT_BG: Record<string, string> = {
+  NEGATIVE: 'bg-red-500/8 hover:bg-red-500/12',
+  POSITIVE: 'bg-green-500/8 hover:bg-green-500/12',
+  NEUTRAL:  'hover:bg-gray-900/40',
+  LOW:      'hover:bg-gray-900/40',
+}
+const IMPACT_LABEL: Record<string, string> = {
+  NEGATIVE: '🔴 ข่าวร้าย',
+  POSITIVE: '🟢 ข่าวดี',
+  NEUTRAL:  '🟡 ทั่วไป',
+  LOW:      '⬜ เบา',
 }
 
 function fmtDate(iso: string) {
@@ -166,6 +179,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         const pnl_pct = pnl !== null && tc !== null && tc > 0 ? (pnl / tc) * 100 : null
         const m = metrics?.[h.symbol] ?? {}
         return { ...h, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct,
+          dayChange: m.dayChange ?? h.dayChange,
           pe: m.pe ?? h.pe, rsi: m.rsi ?? h.rsi,
           week52High: m.week52High ?? h.week52High, week52Low: m.week52Low ?? h.week52Low }
       }))
@@ -432,6 +446,11 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                   <th className="px-4 py-3 text-right">กำไร/ขาดทุน</th>
                   <th className="px-4 py-3 text-right">%</th>
                   <th className="px-4 py-3 text-right">
+                    <Tooltip text="% เปลี่ยนแปลงราคาเทียบกับวันปิดตลาดก่อนหน้า">
+                      วันนี้ <span className="text-gray-600">ℹ</span>
+                    </Tooltip>
+                  </th>
+                  <th className="px-4 py-3 text-right">
                     <Tooltip text="ใช้ประเมินความถูกหรือแพงของหุ้น เมื่อเทียบกับกำไรต่อหุ้น ค่าสูง = แพง">
                       P/E <span className="text-gray-600">ℹ</span>
                     </Tooltip>
@@ -457,7 +476,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
               </thead>
               <tbody>
                 {holdings.length === 0 && (
-                  <tr><td colSpan={13} className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต — กด &quot;+ เพิ่มหุ้น&quot;</td></tr>
+                  <tr><td colSpan={14} className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต — กด &quot;+ เพิ่มหุ้น&quot;</td></tr>
                 )}
                 {holdings.map(h => {
                   const analysis = analyses[h.symbol]
@@ -477,6 +496,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                         <td className="px-4 py-3 text-right text-gray-300 font-mono">{fmtAmt(h.market_value)}</td>
                         <td className={`px-4 py-3 text-right font-mono font-medium ${pnlColor}`}>{fmtPnl(h.pnl)}</td>
                         <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>{fmtPct(h.pnl_pct)}</td>
+                        <td className={`px-4 py-3 text-right font-mono font-medium ${h.dayChange == null ? 'text-gray-600' : h.dayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {h.dayChange != null ? `${h.dayChange >= 0 ? '+' : ''}${h.dayChange.toFixed(2)}%` : <span className="text-gray-600">N/A</span>}
+                        </td>
                         <td className="px-4 py-3 text-right text-gray-300 font-mono">{h.pe != null ? h.pe.toFixed(1) : <span className="text-gray-600">N/A</span>}</td>
                         <td className={`px-4 py-3 text-right font-mono ${rsiColor(h.rsi)}`}>{rsiLabel(h.rsi)}</td>
                         <td className="px-4 py-3 text-right text-gray-400 font-mono text-xs">{h.week52High != null ? `$${h.week52High.toFixed(2)}` : <span className="text-gray-600">N/A</span>}</td>
@@ -560,11 +582,11 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         ) : (
           <div className="divide-y divide-gray-800">
             {news.map((item, i) => (
-              <div key={i} className={`px-4 py-3 flex items-start gap-3 transition-colors ${item.impact === 'HIGH' ? 'bg-red-500/5 hover:bg-red-500/10' : 'hover:bg-gray-900/40'}`}>
+              <div key={i} className={`px-4 py-3 flex items-start gap-3 transition-colors ${IMPACT_BG[item.impact] ?? 'hover:bg-gray-900/40'}`}>
                 <div className="flex flex-col items-start gap-1 shrink-0 mt-0.5">
                   <span className="text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/20 rounded px-2 py-0.5">{item.symbol}</span>
-                  <span className={`text-xs rounded px-1.5 py-0.5 ${IMPACT_BADGE[item.impact]}`}>
-                    {item.impact === 'HIGH' ? '🚨 สำคัญ' : item.impact === 'MEDIUM' ? '🟡 ทั่วไป' : '⬜ เบา'}
+                  <span className={`text-xs rounded px-1.5 py-0.5 ${IMPACT_BADGE[item.impact] ?? IMPACT_BADGE.LOW}`}>
+                    {IMPACT_LABEL[item.impact] ?? '⬜ เบา'}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">

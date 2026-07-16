@@ -27,7 +27,6 @@ async function getBasicMetrics(symbol: string): Promise<{ pe: number | null; wee
     const d = await res.json()
     const m = d?.metric ?? {}
     return {
-      // ลอง field หลายชื่อ Finnhub ใช้ต่างกันตาม plan
       pe: m.peNormalizedAnnual ?? m.peTTM ?? m.peBasicExclExtraTTM ?? m.peExclExtraTTM ?? null,
       week52High: m['52WeekHigh'] ?? null,
       week52Low:  m['52WeekLow']  ?? null,
@@ -35,7 +34,6 @@ async function getBasicMetrics(symbol: string): Promise<{ pe: number | null; wee
   } catch { return { pe: null, week52High: null, week52Low: null } }
 }
 
-// RSI ต้องการ Finnhub premium plan — return null บน free tier
 async function getRSI(_symbol: string): Promise<number | null> {
   return null
 }
@@ -60,21 +58,23 @@ export async function getMultipleQuotes(symbols: string[]): Promise<Record<strin
 
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-// ดึง sequential + delay เพื่อไม่ให้ rate limit (Finnhub free = 30 calls/min)
 export async function getMultipleQuotesWithMetrics(
   symbols: string[]
-): Promise<Record<string, { price: number | null } & StockMetrics>> {
-  const result: Record<string, { price: number | null } & StockMetrics> = {}
+): Promise<Record<string, { price: number | null; dayChange: number | null } & StockMetrics>> {
+  const result: Record<string, { price: number | null; dayChange: number | null } & StockMetrics> = {}
 
   for (let i = 0; i < symbols.length; i++) {
     const sym = symbols[i]
     try {
       const [q, m] = await Promise.all([getQuote(sym), getStockMetrics(sym)])
-      result[sym] = { price: q?.c ?? null, ...m }
+      result[sym] = {
+        price: q?.c ?? null,
+        dayChange: q?.dp ?? null,
+        ...m,
+      }
     } catch {
-      result[sym] = { price: null, pe: null, rsi: null, week52High: null, week52Low: null }
+      result[sym] = { price: null, dayChange: null, pe: null, rsi: null, week52High: null, week52Low: null }
     }
-    // หน่วงเวลาระหว่างหุ้นแต่ละตัว ยกเว้นตัวสุดท้าย
     if (i < symbols.length - 1) await delay(200)
   }
 

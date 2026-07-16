@@ -18,7 +18,6 @@ export async function GET(request: NextRequest) {
 
   const rawItems: Array<{ symbol: string; headline: string; source: string; datetime: number; url: string }> = []
 
-  // ดึงข่าวทุก symbol พร้อมกัน
   await Promise.allSettled(
     symbols.slice(0, 9).map(async sym => {
       try {
@@ -37,7 +36,6 @@ export async function GET(request: NextRequest) {
 
   if (!rawItems.length) return NextResponse.json({ news: [] })
 
-  // แปลและจัดระดับ impact ด้วย Gemini (1 call)
   const translations = await translateAndClassifyNews(rawItems)
 
   const newsItems: NewsItem[] = rawItems.map((item, i) => ({
@@ -46,10 +44,9 @@ export async function GET(request: NextRequest) {
     impact: translations[i]?.impact ?? 'LOW',
   }))
 
-  // เรียง: HIGH ก่อน, แล้วตามเวลา
-  const impactOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 }
+  const impactOrder: Record<string, number> = { NEGATIVE: 0, POSITIVE: 0, NEUTRAL: 1, LOW: 2 }
   newsItems.sort((a, b) => {
-    const diff = impactOrder[a.impact] - impactOrder[b.impact]
+    const diff = (impactOrder[a.impact] ?? 2) - (impactOrder[b.impact] ?? 2)
     return diff !== 0 ? diff : b.datetime - a.datetime
   })
 
