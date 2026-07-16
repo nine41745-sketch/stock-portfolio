@@ -5,13 +5,23 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemi
 async function callGemini(prompt: string, maxTokens = 1024): Promise<string> {
   const res = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
     method: 'POST',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { maxOutputTokens: maxTokens, temperature: 0.6 },
     }),
   })
+  if (!res.ok) {
+    const err = await res.text()
+    console.error('[Gemini] HTTP', res.status, err.slice(0, 200))
+    return ''
+  }
   const data = await res.json()
+  if (data.error) {
+    console.error('[Gemini] API error:', JSON.stringify(data.error))
+    return ''
+  }
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
 }
 
