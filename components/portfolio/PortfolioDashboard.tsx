@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { HoldingWithPrice, AnalysisResult, HoldingFormData } from '@/types'
+import { HoldingWithPrice, AnalysisResult, HoldingFormData, NewsItem } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import HoldingModal from './HoldingModal'
@@ -11,14 +11,6 @@ interface Props {
   userName: string
 }
 
-interface NewsItem {
-  symbol: string
-  headline: string
-  source: string
-  datetime: number
-  url: string
-}
-
 const SIGNAL_STYLE: Record<string, string> = {
   BUY:          'bg-green-500/15 text-green-400 border-green-500/30',
   HOLD:         'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
@@ -26,27 +18,43 @@ const SIGNAL_STYLE: Record<string, string> = {
   SELL_ALL:     'bg-red-500/15 text-red-400 border-red-500/30',
 }
 const SIGNAL_LABEL: Record<string, string> = {
-  BUY:          '🟢 ซื้อเพิ่ม',
-  HOLD:         '🟡 ถือต่อ',
-  SELL_PARTIAL: '🟠 ขายบางส่วน',
-  SELL_ALL:     '🔴 ขายทั้งหมด',
+  BUY: '🟢 ซื้อเพิ่ม', HOLD: '🟡 ถือต่อ', SELL_PARTIAL: '🟠 ขายบางส่วน', SELL_ALL: '🔴 ขายทั้งหมด',
+}
+const IMPACT_BADGE: Record<string, string> = {
+  HIGH:   'bg-red-500/20 text-red-400 border border-red-500/30',
+  MEDIUM: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
+  LOW:    'bg-gray-500/20 text-gray-400 border border-gray-700',
 }
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
 }
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+function fmtDateTime(iso: string) {
+  const d = new Date(iso)
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'numeric', year: '2-digit' }) +
+    ' เวลา ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' ICT'
 }
 function fmtNewsTime(ts: number) {
   const diffH = Math.floor((Date.now() - ts * 1000) / 3600000)
   if (diffH < 1) return 'เมื่อกี้'
-  if (diffH < 24) return `${diffH} ชั่วโมงที่แล้ว`
+  if (diffH < 24) return `${diffH} ชม.ที่แล้ว`
   return `${Math.floor(diffH / 24)} วันที่แล้ว`
 }
 function fmtPct(n: number | null) {
   if (n === null) return '—'
   return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
+}
+
+// Tooltip component
+function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <span className="relative group cursor-help">
+      {children}
+      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded-lg px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 leading-relaxed normal-case font-normal tracking-normal whitespace-pre-wrap">
+        {text}
+      </span>
+    </span>
+  )
 }
 
 export default function PortfolioDashboard({ holdings: initialHoldings, userName }: Props) {
@@ -58,8 +66,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [currency, setCurrency] = useState<'usd' | 'thb'>('usd')
   const [exchangeRate, setExchangeRate] = useState(36.2)
+  const [rateUpdatedAt, setRateUpdatedAt] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop')
-  const [cashBalance, setCashBalance] = useState(0)
+  const [cashBalanceUSD, setCashBalanceUSD] = useState(0)   // เก็บ USD เสมอ
   const [editingCash, setEditingCash] = useState(false)
   const [cashInput, setCashInput] = useState('0')
   const [news, setNews] = useState<NewsItem[]>([])
@@ -68,52 +77,67 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const router = useRouter()
   const supabase = createClient()
 
-  useEffect(() => {
-    fetch('/api/exchange-rate').then(r => r.json()).then(d => { if (d.rate) setExchangeRate(d.rate) }).catch(() => {})
-  }, [])
+  // โหลด exchange rate
+  async function fetchExchangeRate() {
+    try {
+      const d = await fetch('/api/exchange-rate').then(r => r.json())
+      if (d.rate) { setExchangeRate(d.rate); setRateUpdatedAt(d.updatedAt ?? null) }
+    } catch { /* keep default */ }
+  }
+
+  useEffect(() => { fetchExchangeRate() }, [])
 
   useEffect(() => {
     fetch('/api/user-settings').then(r => r.json()).then(d => {
-      setCashBalance(d.cash_balance ?? 0)
-      setCashInput(String(d.cash_balance ?? 0))
+      const usd = d.cash_balance ?? 0
+      setCashBalanceUSD(usd)
+      setCashInput(currency === 'thb' ? String(Math.round(usd * exchangeRate)) : String(usd))
     }).catch(() => {})
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!holdings.length) return
     setNewsLoading(true)
-    const symbols = holdings.map(h => h.symbol).join(',')
-    fetch(`/api/news?symbols=${symbols}`)
-      .then(r => r.json())
-      .then(d => setNews(d.news ?? []))
-      .catch(() => {})
+    fetch(`/api/news?symbols=${holdings.map(h => h.symbol).join(',')}`)
+      .then(r => r.json()).then(d => setNews(d.news ?? [])).catch(() => {})
       .finally(() => setNewsLoading(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // sync cashInput เมื่อเปลี่ยน currency
+  useEffect(() => {
+    if (!editingCash) {
+      setCashInput(currency === 'thb'
+        ? String(Math.round(cashBalanceUSD * exchangeRate))
+        : String(cashBalanceUSD))
+    }
+  }, [currency, exchangeRate]) // eslint-disable-line react-hooks/exhaustive-deps
+
   function showToast(msg: string, ok = true) {
-    setToast({ msg, ok })
-    setTimeout(() => setToast(null), 3500)
+    setToast({ msg, ok }); setTimeout(() => setToast(null), 3500)
   }
 
-  function fmtAmt(n: number | null, decimals = 2): string {
+  // format ตามสกุลเงิน
+  function fmtAmt(n: number | null, dec = 2): string {
     if (n === null || n === undefined) return '—'
     const val = currency === 'thb' ? n * exchangeRate : n
     const sym = currency === 'thb' ? '฿' : '$'
     const abs = Math.abs(val)
-    if (currency === 'thb') return sym + Math.round(abs).toLocaleString('th-TH')
-    return sym + abs.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+    return currency === 'thb'
+      ? sym + Math.round(abs).toLocaleString('th-TH')
+      : sym + abs.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
   }
-
   function fmtPnl(n: number | null): string {
     if (n === null) return '—'
     const val = currency === 'thb' ? n * exchangeRate : n
     const sym = currency === 'thb' ? '฿' : '$'
     const abs = Math.abs(val)
     const sign = val >= 0 ? '+' : '-'
-    if (currency === 'thb') return sign + sym + Math.round(abs).toLocaleString('th-TH')
-    return sign + sym + abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return currency === 'thb'
+      ? sign + sym + Math.round(abs).toLocaleString('th-TH')
+      : sign + sym + abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
+  // Summary
   const totalCost   = holdings.reduce((s, h) => s + (h.total_cost   ?? 0), 0)
   const totalValue  = holdings.reduce((s, h) => s + (h.market_value ?? 0), 0)
   const totalPnl    = totalValue - totalCost
@@ -121,20 +145,29 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const winners = holdings.filter(h => (h.pnl ?? 0) > 0).length
   const losers  = holdings.filter(h => (h.pnl ?? 0) < 0).length
   const winPct  = holdings.length > 0 ? (winners / holdings.length) * 100 : 0
+  const cashRatioPct = (totalValue + cashBalanceUSD) > 0
+    ? ((cashBalanceUSD / (totalValue + cashBalanceUSD)) * 100).toFixed(1)
+    : '0'
 
+  // Refresh prices + metrics + exchange rate
   async function handleRefresh() {
     setRefreshing(true)
     try {
+      await fetchExchangeRate()
       const symbols = holdings.map(h => h.symbol).join(',')
       const res = await fetch(`/api/prices?symbols=${symbols}`)
-      const { prices } = await res.json()
+      const { prices, metrics } = await res.json()
+
       setHoldings(prev => prev.map(h => {
         const cp = prices[h.symbol] ?? h.current_price
         const mv = cp !== null ? cp * h.shares : null
         const tc = h.cost_basis !== null ? h.cost_basis * h.shares : null
         const pnl = mv !== null && tc !== null ? mv - tc : null
         const pnl_pct = pnl !== null && tc !== null && tc > 0 ? (pnl / tc) * 100 : null
-        return { ...h, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct }
+        const m = metrics?.[h.symbol] ?? {}
+        return { ...h, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct,
+          pe: m.pe ?? h.pe, rsi: m.rsi ?? h.rsi,
+          week52High: m.week52High ?? h.week52High, week52Low: m.week52Low ?? h.week52Low }
       }))
       setLastUpdate(new Date().toISOString())
     } catch {
@@ -144,13 +177,20 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     }
   }
 
+  // Analyze — ส่ง metrics + news + cash info
   async function handleAnalyze(holding: HoldingWithPrice) {
     setLoadingSymbol(holding.symbol)
     try {
+      const recentNews = news.filter(n => n.symbol === holding.symbol).slice(0, 3)
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...holding, cashBalance }),
+        body: JSON.stringify({
+          ...holding,
+          cashBalance: cashBalanceUSD,
+          totalPortfolioValue: totalValue,
+          recentNews,
+        }),
       })
       const result: AnalysisResult = await res.json()
       setAnalyses(prev => ({ ...prev, [holding.symbol]: result }))
@@ -161,15 +201,17 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     }
   }
 
+  // Save cash — แปลง input → USD ก่อนบันทึก
   async function handleSaveCash() {
-    const val = parseFloat(cashInput) || 0
+    const inputVal = parseFloat(cashInput) || 0
+    const usdVal = currency === 'thb' ? inputVal / exchangeRate : inputVal
     try {
       await fetch('/api/user-settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cash_balance: val }),
+        body: JSON.stringify({ cash_balance: usdVal }),
       })
-      setCashBalance(val)
+      setCashBalanceUSD(usdVal)
       setEditingCash(false)
       showToast('บันทึกเงินในธนาคารแล้ว')
     } catch {
@@ -225,31 +267,42 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   }, [])
 
   async function handleLogout() {
-    await supabase.auth.signOut()
-    router.push('/login')
-    router.refresh()
+    await supabase.auth.signOut(); router.push('/login'); router.refresh()
   }
 
+  // RSI color
+  function rsiColor(rsi: number | null | undefined) {
+    if (rsi === null || rsi === undefined) return 'text-gray-500'
+    if (rsi < 30) return 'text-green-400 font-bold'
+    if (rsi > 70) return 'text-red-400 font-bold'
+    return 'text-gray-300'
+  }
+  function rsiLabel(rsi: number | null | undefined) {
+    if (rsi === null || rsi === undefined) return 'N/A'
+    const tag = rsi < 30 ? ' ▲' : rsi > 70 ? ' ▼' : ''
+    return rsi.toFixed(1) + tag
+  }
+
+  // Analysis card
   function AnalysisCard({ analysis }: { analysis: AnalysisResult }) {
     return (
       <div className={`rounded-lg border p-4 ${SIGNAL_STYLE[analysis.signal]}`}>
         <div className="flex items-center justify-between mb-3">
           <span className="font-bold text-base">{SIGNAL_LABEL[analysis.signal]}</span>
-          <button
-            onClick={() => setAnalyses(prev => { const n = { ...prev }; delete n[analysis.symbol]; return n })}
-            className="opacity-50 hover:opacity-100 text-sm">✕</button>
+          <button onClick={() => setAnalyses(prev => { const n = { ...prev }; delete n[analysis.symbol]; return n })} className="opacity-50 hover:opacity-100 text-sm">✕</button>
         </div>
-        <p className="text-sm font-medium mb-3">{analysis.summary}</p>
-        {analysis.detail && (
-          <p className="text-xs opacity-80 mb-3 leading-relaxed border-t border-current/20 pt-3">{analysis.detail}</p>
+        {(analysis.sector || analysis.business) && (
+          <div className="mb-3 p-3 bg-black/20 rounded-lg text-xs space-y-1 border border-current/10">
+            {analysis.sector && <p><span className="opacity-60">Sector: </span><span className="font-medium">{analysis.sector}</span></p>}
+            {analysis.business && <p><span className="opacity-60">Business: </span>{analysis.business}</p>}
+            {analysis.targetCustomers && <p><span className="opacity-60">Target: </span>{analysis.targetCustomers}</p>}
+          </div>
         )}
+        <p className="text-sm font-medium mb-3">{analysis.summary}</p>
+        {analysis.detail && <p className="text-xs opacity-80 mb-3 leading-relaxed border-t border-current/20 pt-3">{analysis.detail}</p>}
         {analysis.reasons.length > 0 && (
           <ul className="space-y-1 mb-3">
-            {analysis.reasons.map((r, i) => (
-              <li key={i} className="text-xs opacity-75 flex gap-2">
-                <span className="shrink-0">•</span><span>{r}</span>
-              </li>
-            ))}
+            {analysis.reasons.map((r, i) => <li key={i} className="text-xs opacity-75 flex gap-2"><span className="shrink-0">•</span><span>{r}</span></li>)}
           </ul>
         )}
         {analysis.action && (
@@ -258,17 +311,17 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
             <p className="text-xs opacity-90 leading-relaxed">{analysis.action}</p>
           </div>
         )}
-        {cashBalance > 0 && analysis.signal === 'BUY' && (
-          <div className="border-t border-current/20 pt-3 mt-1">
-            <p className="text-xs opacity-75">💰 เงินในธนาคาร ${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-          </div>
+        {cashBalanceUSD > 0 && analysis.signal === 'BUY' && (
+          <p className="text-xs opacity-60 mt-2 border-t border-current/20 pt-2">
+            💰 เงินในธนาคาร {fmtAmt(cashBalanceUSD)} · สัดส่วนเงินสด {cashRatioPct}%
+          </p>
         )}
       </div>
     )
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="max-w-7xl mx-auto space-y-5">
 
       {toast && (
         <div className={`fixed top-4 right-4 z-50 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
@@ -281,10 +334,13 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         <div>
           <h1 className="text-2xl font-bold text-white">📈 พอร์ตน้องเจน</h1>
           <p className="text-gray-500 text-xs mt-1">
-            {lastUpdate
-              ? `🔄 อัปเดตราคาล่าสุด: ${fmtDate(lastUpdate)} · ${fmtTime(lastUpdate)} น.`
-              : `สวัสดี, ${userName} · กด "รีเฟรชราคา" เพื่ออัปเดตราคา`}
+            {lastUpdate ? `🔄 อัปเดตราคาล่าสุด: ${fmtDateTime(lastUpdate)}` : `สวัสดี, ${userName} · กด "รีเฟรชราคา" เพื่ออัปเดต`}
           </p>
+          {rateUpdatedAt && (
+            <p className="text-gray-600 text-xs mt-0.5">
+              1 USD = {exchangeRate.toFixed(2)} THB (ข้อมูล ณ วันที่ {fmtDateTime(rateUpdatedAt)})
+            </p>
+          )}
         </div>
         <div className="flex gap-2 flex-wrap">
           <button onClick={handleRefresh} disabled={refreshing}
@@ -306,12 +362,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <SummaryCard label="มูลค่าพอร์ต" value={fmtAmt(totalValue)} />
         <SummaryCard label="ต้นทุนรวม" value={fmtAmt(totalCost)} />
-        <SummaryCard
-          label="กำไร/ขาดทุนรวม"
-          value={fmtPnl(totalPnl)}
-          sub={fmtPct(totalPnlPct)}
-          color={totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}
-        />
+        <SummaryCard label="กำไร/ขาดทุนรวม" value={fmtPnl(totalPnl)} sub={fmtPct(totalPnlPct)} color={totalPnl >= 0 ? 'text-green-400' : 'text-red-400'} />
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
           <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">สัดส่วน {holdings.length} ตัว</p>
           <div className="flex items-center gap-2 mb-2">
@@ -320,22 +371,30 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
             <span className="text-red-400 text-sm font-bold">{losers} ขาดทุน</span>
           </div>
           <div className="h-1.5 rounded-full bg-gray-800 overflow-hidden">
-            <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${winPct}%` }} />
+            <div className="h-full bg-green-500 rounded-full" style={{ width: `${winPct}%` }} />
           </div>
         </div>
+        {/* Cash — แสดงและรับค่าตาม currency */}
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
           <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินในธนาคาร</p>
           {editingCash ? (
-            <div className="flex items-center gap-1 mt-1">
-              <input type="number" value={cashInput} onChange={e => setCashInput(e.target.value)}
-                className="flex-1 w-0 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500" />
-              <button onClick={handleSaveCash} className="text-xs bg-green-600 text-white rounded px-2 py-1 hover:bg-green-500">✓</button>
-              <button onClick={() => setEditingCash(false)} className="text-xs bg-gray-700 text-gray-300 rounded px-2 py-1">✕</button>
+            <div className="space-y-1">
+              <div className="flex items-center gap-1">
+                <span className="text-gray-500 text-sm">{currency === 'thb' ? '฿' : '$'}</span>
+                <input type="number" value={cashInput} onChange={e => setCashInput(e.target.value)}
+                  className="flex-1 w-0 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500" />
+                <button onClick={handleSaveCash} className="text-xs bg-green-600 text-white rounded px-2 py-1 hover:bg-green-500">✓</button>
+                <button onClick={() => setEditingCash(false)} className="text-xs bg-gray-700 text-gray-300 rounded px-2 py-1">✕</button>
+              </div>
+              <p className="text-gray-600 text-xs">กรอกเป็น {currency === 'thb' ? 'บาท (฿)' : 'ดอลลาร์ ($)'}</p>
             </div>
           ) : (
             <div className="flex items-center justify-between">
-              <p className="text-lg font-bold text-white">{fmtAmt(cashBalance)}</p>
-              <button onClick={() => { setEditingCash(true); setCashInput(String(cashBalance)) }}
+              <div>
+                <p className="text-lg font-bold text-white">{fmtAmt(cashBalanceUSD)}</p>
+                <p className="text-gray-600 text-xs">สัดส่วน {cashRatioPct}% ของพอร์ตรวม</p>
+              </div>
+              <button onClick={() => { setEditingCash(true); setCashInput(currency === 'thb' ? String(Math.round(cashBalanceUSD * exchangeRate)) : String(cashBalanceUSD)) }}
                 className="text-gray-600 hover:text-white text-xs transition-colors">✏️</button>
             </div>
           )}
@@ -346,24 +405,15 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative">
           <select value={currency} onChange={e => setCurrency(e.target.value as 'usd' | 'thb')}
-            className="appearance-none bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 pr-8 text-sm text-gray-300 cursor-pointer focus:outline-none focus:border-gray-500">
+            className="appearance-none bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 pr-8 text-sm text-gray-300 cursor-pointer focus:outline-none">
             <option value="usd">$ ดอลลาร์ (USD)</option>
             <option value="thb">฿ บาท (THB)</option>
           </select>
           <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none text-xs">▼</span>
         </div>
-        {currency === 'thb' && (
-          <span className="text-gray-600 text-xs">1 USD = {exchangeRate.toFixed(2)} ฿</span>
-        )}
         <div className="flex bg-gray-900 border border-gray-800 rounded-lg p-1 gap-1">
-          <button onClick={() => setViewMode('desktop')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'desktop' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-            💻 คอม
-          </button>
-          <button onClick={() => setViewMode('mobile')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'mobile' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-            📱 มือถือ
-          </button>
+          <button onClick={() => setViewMode('desktop')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'desktop' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>💻 คอม</button>
+          <button onClick={() => setViewMode('mobile')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'mobile' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>📱 มือถือ</button>
         </div>
       </div>
 
@@ -381,15 +431,35 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                   <th className="px-4 py-3 text-right">มูลค่า</th>
                   <th className="px-4 py-3 text-right">กำไร/ขาดทุน</th>
                   <th className="px-4 py-3 text-right">%</th>
+                  <th className="px-4 py-3 text-right">
+                    <Tooltip text="ใช้ประเมินความถูกหรือแพงของหุ้น เมื่อเทียบกับกำไรต่อหุ้น ค่าสูง = แพง">
+                      P/E <span className="text-gray-600">ℹ</span>
+                    </Tooltip>
+                  </th>
+                  <th className="px-4 py-3 text-right">
+                    <Tooltip text={"ค่า Momentum ของราคา\n• ต่ำกว่า 30 = Oversold 🟢\n• มากกว่า 70 = Overbought 🔴"}>
+                      RSI(14) <span className="text-gray-600">ℹ</span>
+                    </Tooltip>
+                  </th>
+                  <th className="px-4 py-3 text-right">
+                    <Tooltip text="ราคาสูงสุดในรอบ 52 สัปดาห์ที่ผ่านมา">
+                      52W High <span className="text-gray-600">ℹ</span>
+                    </Tooltip>
+                  </th>
+                  <th className="px-4 py-3 text-right">
+                    <Tooltip text="ราคาต่ำสุดในรอบ 52 สัปดาห์ที่ผ่านมา">
+                      52W Low <span className="text-gray-600">ℹ</span>
+                    </Tooltip>
+                  </th>
                   <th className="px-4 py-3 text-right">แก้ไขล่าสุด</th>
                   <th className="px-4 py-3 text-center">วิเคราะห์ / แก้ไข</th>
                 </tr>
               </thead>
               <tbody>
                 {holdings.length === 0 && (
-                  <tr><td colSpan={9} className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต — กด &quot;+ เพิ่มหุ้น&quot; เพื่อเริ่มต้น</td></tr>
+                  <tr><td colSpan={13} className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต — กด &quot;+ เพิ่มหุ้น&quot;</td></tr>
                 )}
-                {holdings.map((h) => {
+                {holdings.map(h => {
                   const analysis = analyses[h.symbol]
                   const isLoading = loadingSymbol === h.symbol
                   const pnlPos = (h.pnl ?? 0) >= 0
@@ -403,16 +473,18 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                         </td>
                         <td className="px-4 py-3 text-right text-white font-mono">{fmtAmt(h.current_price)}</td>
                         <td className="px-4 py-3 text-right text-gray-300 font-mono">{fmtAmt(h.cost_basis)}</td>
-                        <td className="px-4 py-3 text-right text-gray-300">
-                          {h.shares > 0 ? h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—'}
-                        </td>
+                        <td className="px-4 py-3 text-right text-gray-300">{h.shares > 0 ? h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—'}</td>
                         <td className="px-4 py-3 text-right text-gray-300 font-mono">{fmtAmt(h.market_value)}</td>
                         <td className={`px-4 py-3 text-right font-mono font-medium ${pnlColor}`}>{fmtPnl(h.pnl)}</td>
                         <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>{fmtPct(h.pnl_pct)}</td>
+                        <td className="px-4 py-3 text-right text-gray-300 font-mono">{h.pe != null ? h.pe.toFixed(1) : <span className="text-gray-600">N/A</span>}</td>
+                        <td className={`px-4 py-3 text-right font-mono ${rsiColor(h.rsi)}`}>{rsiLabel(h.rsi)}</td>
+                        <td className="px-4 py-3 text-right text-gray-400 font-mono text-xs">{h.week52High != null ? `$${h.week52High.toFixed(2)}` : <span className="text-gray-600">N/A</span>}</td>
+                        <td className="px-4 py-3 text-right text-gray-400 font-mono text-xs">{h.week52Low  != null ? `$${h.week52Low.toFixed(2)}`  : <span className="text-gray-600">N/A</span>}</td>
                         <td className="px-4 py-3 text-right text-gray-600 text-xs">{fmtDate(h.updated_at)}</td>
                         <td className="px-4 py-3 text-center whitespace-nowrap">
                           <button onClick={() => handleAnalyze(h)} disabled={isLoading}
-                            className="rounded-lg bg-purple-600/20 border border-purple-500/30 px-3 py-1 text-purple-400 text-xs hover:bg-purple-600/40 disabled:opacity-50 transition-colors mr-2 whitespace-nowrap">
+                            className="rounded-lg bg-purple-600/20 border border-purple-500/30 px-3 py-1 text-purple-400 text-xs hover:bg-purple-600/40 disabled:opacity-50 transition-colors mr-2">
                             {isLoading ? '⏳...' : '✨ วิเคราะห์ AI'}
                           </button>
                           <button onClick={() => setModalHolding(h)} className="text-gray-500 hover:text-white text-xs transition-colors">✏️</button>
@@ -420,9 +492,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                       </tr>
                       {analysis && (
                         <tr key={`${h.id}-ai`} className="border-t border-gray-800 bg-gray-950">
-                          <td colSpan={9} className="px-4 py-3">
-                            <AnalysisCard analysis={analysis} />
-                          </td>
+                          <td colSpan={13} className="px-4 py-3"><AnalysisCard analysis={analysis} /></td>
                         </tr>
                       )}
                     </>
@@ -454,18 +524,22 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                   </div>
                   <span className={`text-xs font-medium rounded-full border px-2 py-0.5 ${pctBadge}`}>{fmtPct(h.pnl_pct)}</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3 mb-3">
+                <div className="grid grid-cols-3 gap-3 mb-2">
                   <div><p className="text-gray-600 text-xs mb-0.5">ราคา</p><p className="text-white text-sm font-medium font-mono">{fmtAmt(h.current_price)}</p></div>
                   <div><p className="text-gray-600 text-xs mb-0.5">มูลค่า</p><p className="text-gray-300 text-sm font-medium font-mono">{fmtAmt(h.market_value)}</p></div>
                   <div><p className="text-gray-600 text-xs mb-0.5">{pnlPos ? 'กำไร' : 'ขาดทุน'}</p><p className={`text-sm font-medium font-mono ${pnlColor}`}>{fmtPnl(h.pnl)}</p></div>
+                </div>
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div><p className="text-gray-600 text-xs mb-0.5">P/E</p><p className="text-gray-300 text-xs font-mono">{h.pe != null ? h.pe.toFixed(1) : 'N/A'}</p></div>
+                  <div><p className="text-gray-600 text-xs mb-0.5">RSI(14)</p><p className={`text-xs font-mono ${rsiColor(h.rsi)}`}>{rsiLabel(h.rsi)}</p></div>
+                  <div><p className="text-gray-600 text-xs mb-0.5">52W</p><p className="text-gray-500 text-xs font-mono">{h.week52Low != null ? `$${h.week52Low.toFixed(0)}` : '—'}–{h.week52High != null ? `$${h.week52High.toFixed(0)}` : '—'}</p></div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => handleAnalyze(h)} disabled={isLoading}
                     className="flex-1 rounded-lg bg-purple-600/20 border border-purple-500/30 py-2 text-purple-400 text-xs font-medium hover:bg-purple-600/40 disabled:opacity-50 transition-colors">
                     {isLoading ? '⏳ กำลังวิเคราะห์...' : '✨ วิเคราะห์ AI'}
                   </button>
-                  <button onClick={() => setModalHolding(h)}
-                    className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-gray-400 text-xs hover:text-white transition-colors">✏️ แก้ไข</button>
+                  <button onClick={() => setModalHolding(h)} className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-gray-400 text-xs hover:text-white transition-colors">✏️ แก้ไข</button>
                 </div>
                 {analysis && <div className="mt-3"><AnalysisCard analysis={analysis} /></div>}
               </div>
@@ -486,13 +560,20 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         ) : (
           <div className="divide-y divide-gray-800">
             {news.map((item, i) => (
-              <div key={i} className="px-4 py-3 flex items-start gap-3 hover:bg-gray-900/40 transition-colors">
-                <span className="text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/20 rounded px-2 py-0.5 mt-0.5 shrink-0">{item.symbol}</span>
+              <div key={i} className={`px-4 py-3 flex items-start gap-3 transition-colors ${item.impact === 'HIGH' ? 'bg-red-500/5 hover:bg-red-500/10' : 'hover:bg-gray-900/40'}`}>
+                <div className="flex flex-col items-start gap-1 shrink-0 mt-0.5">
+                  <span className="text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/20 rounded px-2 py-0.5">{item.symbol}</span>
+                  <span className={`text-xs rounded px-1.5 py-0.5 ${IMPACT_BADGE[item.impact]}`}>
+                    {item.impact === 'HIGH' ? '🚨 สำคัญ' : item.impact === 'MEDIUM' ? '🟡 ทั่วไป' : '⬜ เบา'}
+                  </span>
+                </div>
                 <div className="flex-1 min-w-0">
-                  <a href={item.url} target="_blank" rel="noopener noreferrer"
-                    className="text-sm text-gray-300 hover:text-white line-clamp-2 leading-snug block">
-                    {item.headline}
+                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-sm text-white hover:text-blue-400 font-medium line-clamp-2 leading-snug block">
+                    {item.headlineTh || item.headline}
                   </a>
+                  {item.headlineTh && item.headlineTh !== item.headline && (
+                    <p className="text-gray-600 text-xs mt-0.5 line-clamp-1">{item.headline}</p>
+                  )}
                   <p className="text-gray-600 text-xs mt-1">{item.source} · {fmtNewsTime(item.datetime)}</p>
                 </div>
               </div>
@@ -506,12 +587,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       </p>
 
       {modalHolding !== undefined && (
-        <HoldingModal
-          holding={modalHolding}
-          onClose={() => setModalHolding(undefined)}
-          onSave={handleSave}
-          onDelete={modalHolding ? handleDelete : undefined}
-        />
+        <HoldingModal holding={modalHolding} onClose={() => setModalHolding(undefined)} onSave={handleSave} onDelete={modalHolding ? handleDelete : undefined} />
       )}
     </div>
   )

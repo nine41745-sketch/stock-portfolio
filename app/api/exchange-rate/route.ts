@@ -9,12 +9,13 @@ export async function GET() {
   try {
     const res = await fetch(
       `https://finnhub.io/api/v1/quote?symbol=OANDA:USD_THB&token=${process.env.FINNHUB_API_KEY}`,
-      { next: { revalidate: 3600 } }
+      { cache: 'no-store' }
     )
     const data = await res.json()
-    const rate = typeof data.c === 'number' && data.c > 0 ? data.c : 36.2
-    return NextResponse.json({ rate })
+    const rate = typeof data.c === 'number' && data.c > 30 ? data.c : 36.2
+    const updatedAt = new Date().toISOString()
+    return NextResponse.json({ rate, updatedAt })
   } catch {
-    return NextResponse.json({ rate: 36.2 })
+    return NextResponse.json({ rate: 36.2, updatedAt: new Date().toISOString() })
   }
 }

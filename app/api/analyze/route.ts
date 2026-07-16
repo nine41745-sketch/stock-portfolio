@@ -9,7 +9,14 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { cashBalance, ...holding }: HoldingWithPrice & { cashBalance?: number } = body
-  const result = await analyzeHolding(holding, cashBalance ?? 0)
+  const { cashBalance, totalPortfolioValue, recentNews, ...holding }:
+    HoldingWithPrice & { cashBalance?: number; totalPortfolioValue?: number; recentNews?: Array<{ headline: string }> } = body
+
+  const result = await analyzeHolding(
+    holding,
+    cashBalance ?? 0,
+    totalPortfolioValue ?? 0,
+    recentNews ?? []
+  )
   return NextResponse.json(result)
 }
