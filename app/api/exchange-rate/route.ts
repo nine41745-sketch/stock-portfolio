@@ -7,15 +7,12 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    const res = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=OANDA:USD_THB&token=${process.env.FINNHUB_API_KEY}`,
-      { cache: 'no-store' }
-    )
+    const res = await fetch('https://open.er-api.com/v6/latest/USD', { next: { revalidate: 3600 } })
     const data = await res.json()
-    const rate = typeof data.c === 'number' && data.c > 30 ? data.c : 36.2
+    const rate = typeof data?.rates?.THB === 'number' && data.rates.THB > 25 ? data.rates.THB : 33.5
     const updatedAt = new Date().toISOString()
     return NextResponse.json({ rate, updatedAt })
   } catch {
-    return NextResponse.json({ rate: 36.2, updatedAt: new Date().toISOString() })
+    return NextResponse.json({ rate: 33.5, updatedAt: new Date().toISOString() })
   }
 }
