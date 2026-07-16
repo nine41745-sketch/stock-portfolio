@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { HoldingWithPrice, AnalysisResult, HoldingFormData, NewsItem } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -179,8 +179,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         const pnl_pct = pnl !== null && tc !== null && tc > 0 ? (pnl / tc) * 100 : null
         const m = metrics?.[h.symbol] ?? {}
         return { ...h, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct,
-          dayChange: m.dayChange ?? h.dayChange,
-          pe: m.pe ?? h.pe, week52High: m.week52High ?? h.week52High, week52Low: m.week52Low ?? h.week52Low }
+          dayChange: m.dayChange !== undefined ? m.dayChange : h.dayChange,
+          pe: m.pe !== undefined ? m.pe : h.pe, week52High: m.week52High !== undefined ? m.week52High : h.week52High, week52Low: m.week52Low !== undefined ? m.week52Low : h.week52Low }
       }))
       setLastUpdate(new Date().toISOString())
     } catch {
@@ -281,19 +281,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
 
   async function handleLogout() {
     await supabase.auth.signOut(); router.push('/login'); router.refresh()
-  }
-
-  // RSI color
-  function rsiColor(rsi: number | null | undefined) {
-    if (rsi === null || rsi === undefined) return 'text-gray-500'
-    if (rsi < 30) return 'text-green-400 font-bold'
-    if (rsi > 70) return 'text-red-400 font-bold'
-    return 'text-gray-300'
-  }
-  function rsiLabel(rsi: number | null | undefined) {
-    if (rsi === null || rsi === undefined) return 'N/A'
-    const tag = rsi < 30 ? ' ▲' : rsi > 70 ? ' ▼' : ''
-    return rsi.toFixed(1) + tag
   }
 
   // Analysis card
@@ -470,7 +457,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
               </thead>
               <tbody>
                 {holdings.length === 0 && (
-                  <tr><td colSpan={12} className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต — กด &quot;+ เพิ่มหุ้น&quot;</td></tr>
+                  <tr><td colSpan={13} className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต — กด &quot;+ เพิ่มหุ้น&quot;</td></tr>
                 )}
                 {holdings.map(h => {
                   const analysis = analyses[h.symbol]
@@ -478,8 +465,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                   const pnlPos = (h.pnl ?? 0) >= 0
                   const pnlColor = h.pnl === null ? 'text-gray-500' : pnlPos ? 'text-green-400' : 'text-red-400'
                   return (
-                    <>
-                      <tr key={h.id} className="border-t border-gray-800 bg-gray-900/40 hover:bg-gray-900/80 transition-colors">
+                    <React.Fragment key={h.id}>
+                      <tr className="border-t border-gray-800 bg-gray-900/40 hover:bg-gray-900/80 transition-colors">
                         <td className="px-4 py-3">
                           <span className="font-bold text-white tracking-wide">{h.symbol}</span>
                           {h.notes && <p className="text-gray-500 text-xs mt-0.5">{h.notes}</p>}
@@ -507,10 +494,10 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                       </tr>
                       {analysis && (
                         <tr key={`${h.id}-ai`} className="border-t border-gray-800 bg-gray-950">
-                          <td colSpan={12} className="px-4 py-3"><AnalysisCard analysis={analysis} /></td>
+                          <td colSpan={13} className="px-4 py-3"><AnalysisCard analysis={analysis} /></td>
                         </tr>
                       )}
-                    </>
+                    </React.Fragment>
                   )
                 })}
               </tbody>
@@ -597,7 +584,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       </div>
 
       <p className="text-center text-gray-700 text-xs pb-4">
-        ข้อมูลราคาจาก Finnhub · วิเคราะห์โดย Gemini AI · ไม่ใช่คำแนะนำการลงทุน
+        ข้อมูลราคาจาก Finnhub · วิเคราะห์โดย Groq AI · ไม่ใช่คำแนะนำการลงทุน
       </p>
 
       {modalHolding !== undefined && (

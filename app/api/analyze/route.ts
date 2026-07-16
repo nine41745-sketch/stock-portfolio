@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { analyzeHolding } from '@/lib/gemini'
+import { analyzeHolding } from '@/lib/groq'
 import { cacheGet, cacheSet } from '@/lib/cache'
 import { HoldingWithPrice, AnalysisResult } from '@/types'
 

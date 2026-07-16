@@ -1,8 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { translateAndClassifyNews } from '@/lib/gemini'
+import { translateAndClassifyNews } from '@/lib/groq'
 import { cacheGet, cacheSet } from '@/lib/cache'
 import { NewsItem } from '@/types'
+
+// ชื่อบริษัทที่ใช้ตรวจสอบใน headline (lowercase)
+const COMPANY_NAMES: Record<string, string[]> = {
+  AAPL:  ['apple'],
+  MSFT:  ['microsoft'],
+  GOOGL: ['google', 'alphabet'],
+  GOOG:  ['google', 'alphabet'],
+  AMZN:  ['amazon'],
+  META:  ['meta', 'facebook'],
+  NVDA:  ['nvidia'],
+  TSLA:  ['tesla'],
+  ORCL:  ['oracle'],
+  NFLX:  ['netflix'],
+  AMD:   ['amd'],
+  INTC:  ['intel'],
+  AVGO:  ['broadcom'],
+  TSM:   ['tsmc', 'taiwan semiconductor'],
+  NVO:   ['novo nordisk', 'novonordisk'],
+  LLY:   ['eli lilly', 'lilly'],
+  JNJ:   ['johnson & johnson', 'johnson and johnson'],
+  PFE:   ['pfizer'],
+  PLTR:  ['palantir'],
+  NET:   ['cloudflare'],
+  CRM:   ['salesforce'],
+  QCOM:  ['qualcomm'],
+  UBER:  ['uber'],
+  ABNB:  ['airbnb'],
+  SPOT:  ['spotify'],
+  PYPL:  ['paypal'],
+  SQ:    ['block', 'square'],
+  SHOP:  ['shopify'],
+  SNOW:  ['snowflake'],
+  COIN:  ['coinbase'],
+  ARM:   ['arm holdings'],
+  SMCI:  ['supermicro', 'super micro'],
+  MU:    ['micron'],
+  AMAT:  ['applied materials'],
+  ASML:  ['asml'],
+}
+
+// ตรวจว่า headline นี้พูดถึงหุ้นอื่นในพอร์ตชัดเจนไหม
+function isAboutOtherSymbol(headline: string, ownSymbol: string, allSymbols: string[]): boolean {
+  const hl = headline.toLowerCase()
+  return allSymbols
+    .filter(s => s !== ownSymbol)
+    .some(s => {
+      if (hl.includes(s.toLowerCase())) return true
+      const names = COMPANY_NAMES[s] ?? []
+      return names.some(name => hl.includes(name))
+    })
+}
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
@@ -32,9 +83,21 @@ export async function GET(request: NextRequest) {
         )
         const news = await res.json()
         if (!Array.isArray(news)) return
-        news.slice(0, 2).forEach((item: { headline?: string; source?: string; datetime?: number; url?: string }) => {
-          if (item.headline) rawItems.push({ symbol: sym, headline: item.headline, source: item.source ?? '', datetime: item.datetime ?? 0, url: item.url ?? '' })
-        })
+        // scan สูงสุด 8 บทความ เก็บ 2 ที่ผ่านการกรอง
+        let added = 0
+        for (const item of news.slice(0, 8)) {
+          if (added >= 2) break
+          if (!item.headline) continue
+          if (isAboutOtherSymbol(item.headline, sym, symbols)) continue
+          rawItems.push({
+            symbol: sym,
+            headline: item.headline,
+            source: item.source ?? '',
+            datetime: item.datetime ?? 0,
+            url: item.url ?? '',
+          })
+          added++
+        }
       } catch { /* skip */ }
     })
   )
@@ -49,15 +112,16 @@ export async function GET(request: NextRequest) {
     impact: translations[i]?.impact ?? 'LOW',
   }))
 
-  const impactOrder: Record<string, number> = { NEGATIVE: 0, POSITIVE: 0, NEUTRAL: 1, LOW: 2 }
+  // NEGATIVE ก่อน POSITIVE ก่อน NEUTRAL ก่อน LOW
+  const impactOrder: Record<string, number> = { NEGATIVE: 0, POSITIVE: 1, NEUTRAL: 2, LOW: 3 }
   newsItems.sort((a, b) => {
-    const diff = (impactOrder[a.impact] ?? 2) - (impactOrder[b.impact] ?? 2)
+    const diff = (impactOrder[a.impact] ?? 3) - (impactOrder[b.impact] ?? 3)
     return diff !== 0 ? diff : b.datetime - a.datetime
   })
 
   const result = newsItems.slice(0, 15)
 
-  // cache เฉพาะถ้า Gemini แปลสำเร็จ (headlineTh ต่างจาก headline เดิม)
+  // cache เฉพาะถ้า Groq แปลสำเร็จ
   const translated = result.some(n => n.headlineTh && n.headlineTh !== n.headline)
   if (translated) cacheSet(cacheKey, result, 3600)
 
