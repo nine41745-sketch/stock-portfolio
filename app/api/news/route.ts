@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { translateAndClassifyNews } from '@/lib/gemini'
+import { cacheGet, cacheSet } from '@/lib/cache'
 import { NewsItem } from '@/types'
 
 export async function GET(request: NextRequest) {
@@ -10,6 +11,11 @@ export async function GET(request: NextRequest) {
 
   const symbols = request.nextUrl.searchParams.get('symbols')?.split(',').filter(Boolean) ?? []
   if (!symbols.length) return NextResponse.json({ news: [] })
+
+  // Cache key: symbols เรียงลำดับ
+  const cacheKey = `news:${[...symbols].sort().join(',')}`
+  const cached = cacheGet<NewsItem[]>(cacheKey)
+  if (cached) return NextResponse.json({ news: cached })
 
   const today = new Date()
   const from  = new Date(today); from.setDate(from.getDate() - 3)
@@ -50,5 +56,9 @@ export async function GET(request: NextRequest) {
     return diff !== 0 ? diff : b.datetime - a.datetime
   })
 
-  return NextResponse.json({ news: newsItems.slice(0, 15) })
+  const result = newsItems.slice(0, 15)
+  // Cache 1 ชั่วโมง
+  cacheSet(cacheKey, result, 3600)
+
+  return NextResponse.json({ news: result })
 }
