@@ -81,13 +81,38 @@ function DonutChart({ holdings }: { holdings: HoldingWithPrice[] }) {
     .filter(h => (h.market_value ?? 0) > 0)
     .map((h, i) => ({ symbol: h.symbol, pct: (h.market_value ?? 0) / total, color: DONUT_COLORS[i % DONUT_COLORS.length] }))
   const cx = 65, cy = 65, R = 57, r = 35
+  const legend = (
+    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 flex-1 min-w-0">
+      {items.map(p => (
+        <div key={p.symbol} className="flex items-center gap-1.5 min-w-0">
+          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+          <span className="text-gray-300 text-xs font-medium">{p.symbol}</span>
+          <span className="text-gray-500 text-xs ml-auto">{(p.pct * 100).toFixed(1)}%</span>
+        </div>
+      ))}
+    </div>
+  )
+  // กรณีหุ้นตัวเดียว → วาด circle แทน arc (arc start=end จะ degenerate)
+  if (items.length === 1) {
+    return (
+      <div className="flex items-center gap-5">
+        <svg width="130" height="130" className="shrink-0">
+          <circle cx={cx} cy={cy} r={R} fill={items[0].color} opacity={0.9} />
+          <circle cx={cx} cy={cy} r={r} fill="#030712" />
+        </svg>
+        {legend}
+      </div>
+    )
+  }
   let angle = 0
   const paths = items.map(item => {
-    const s = angle, e = angle + item.pct * 2 * Math.PI
+    // ป้องกัน arc degenerate: ถ้า pct ≥ 1 ให้ clamp ไว้ที่ 0.9999
+    const safePct = Math.min(item.pct, 0.9999)
+    const s = angle, e = angle + safePct * 2 * Math.PI
     angle = e
     const px = (a: number, rad: number) => cx + rad * Math.cos(a - Math.PI / 2)
     const py = (a: number, rad: number) => cy + rad * Math.sin(a - Math.PI / 2)
-    const lg = item.pct > 0.5 ? 1 : 0
+    const lg = safePct > 0.5 ? 1 : 0
     const d = `M${px(s,R)},${py(s,R)} A${R},${R} 0 ${lg},1 ${px(e,R)},${py(e,R)} L${px(e,r)},${py(e,r)} A${r},${r} 0 ${lg},0 ${px(s,r)},${py(s,r)} Z`
     return { ...item, d }
   })
@@ -96,15 +121,7 @@ function DonutChart({ holdings }: { holdings: HoldingWithPrice[] }) {
       <svg width="130" height="130" className="shrink-0">
         {paths.map(p => <path key={p.symbol} d={p.d} fill={p.color} opacity={0.9} />)}
       </svg>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 flex-1 min-w-0">
-        {paths.map(p => (
-          <div key={p.symbol} className="flex items-center gap-1.5 min-w-0">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-            <span className="text-gray-300 text-xs font-medium">{p.symbol}</span>
-            <span className="text-gray-500 text-xs ml-auto">{(p.pct * 100).toFixed(1)}%</span>
-          </div>
-        ))}
-      </div>
+      {legend}
     </div>
   )
 }
