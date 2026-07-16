@@ -5,7 +5,6 @@ const KEY  = process.env.FINNHUB_API_KEY!
 
 export interface StockMetrics {
   pe: number | null
-  rsi: number | null
   week52High: number | null
   week52Low: number | null
 }
@@ -34,13 +33,9 @@ async function getBasicMetrics(symbol: string): Promise<{ pe: number | null; wee
   } catch { return { pe: null, week52High: null, week52Low: null } }
 }
 
-async function getRSI(_symbol: string): Promise<number | null> {
-  return null
-}
-
 export async function getStockMetrics(symbol: string): Promise<StockMetrics> {
-  const [basic, rsi] = await Promise.all([getBasicMetrics(symbol), getRSI(symbol)])
-  return { ...basic, rsi }
+  const basic = await getBasicMetrics(symbol)
+  return basic
 }
 
 export async function getMultipleQuotes(symbols: string[]): Promise<Record<string, number>> {
@@ -67,13 +62,26 @@ export async function getMultipleQuotesWithMetrics(
     const sym = symbols[i]
     try {
       const [q, m] = await Promise.all([getQuote(sym), getStockMetrics(sym)])
+      const currentPrice = q?.c ?? null
+
+      // validate 52W: ถ้าค่าห่างจากราคาปัจจุบันเกิน 5 เท่า = ผิด currency
+      let week52High = m.week52High
+      let week52Low  = m.week52Low
+      if (currentPrice && currentPrice > 0) {
+        if (week52High && week52High > currentPrice * 5) week52High = null
+        if (week52Low  && week52Low  < currentPrice * 0.05) week52Low = null
+        if (week52Low  && week52Low  > currentPrice * 5) week52Low = null
+      }
+
       result[sym] = {
-        price: q?.c ?? null,
+        price: currentPrice,
         dayChange: q?.dp ?? null,
-        ...m,
+        pe: m.pe,
+        week52High,
+        week52Low,
       }
     } catch {
-      result[sym] = { price: null, dayChange: null, pe: null, rsi: null, week52High: null, week52Low: null }
+      result[sym] = { price: null, dayChange: null, pe: null, week52High: null, week52Low: null }
     }
     if (i < symbols.length - 1) await delay(200)
   }

@@ -17,7 +17,6 @@ export interface HoldingWithPrice extends Holding {
   pnl_pct: number | null
   dayChange?: number | null
   pe?: number | null
-  rsi?: number | null
   week52High?: number | null
   week52Low?: number | null
 }

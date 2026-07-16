@@ -13,11 +13,11 @@ export async function GET(request: NextRequest) {
   const data = await getMultipleQuotesWithMetrics(symbols)
 
   const prices: Record<string, number> = {}
-  const metrics: Record<string, { pe: number | null; rsi: number | null; week52High: number | null; week52Low: number | null; dayChange: number | null }> = {}
+  const metrics: Record<string, { pe: number | null; week52High: number | null; week52Low: number | null; dayChange: number | null }> = {}
 
   for (const [sym, d] of Object.entries(data)) {
     if (d.price !== null) prices[sym] = d.price
-    metrics[sym] = { pe: d.pe, rsi: d.rsi, week52High: d.week52High, week52Low: d.week52Low, dayChange: d.dayChange }
+    metrics[sym] = { pe: d.pe, week52High: d.week52High, week52Low: d.week52Low, dayChange: d.dayChange }
   }
 
   return NextResponse.json({ prices, metrics })

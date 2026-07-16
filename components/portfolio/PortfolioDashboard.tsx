@@ -180,8 +180,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         const m = metrics?.[h.symbol] ?? {}
         return { ...h, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct,
           dayChange: m.dayChange ?? h.dayChange,
-          pe: m.pe ?? h.pe, rsi: m.rsi ?? h.rsi,
-          week52High: m.week52High ?? h.week52High, week52Low: m.week52Low ?? h.week52Low }
+          pe: m.pe ?? h.pe, week52High: m.week52High ?? h.week52High, week52Low: m.week52Low ?? h.week52Low }
       }))
       setLastUpdate(new Date().toISOString())
     } catch {
@@ -456,11 +455,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                     </Tooltip>
                   </th>
                   <th className="px-4 py-3 text-right">
-                    <Tooltip text={"ค่า Momentum ของราคา\n• ต่ำกว่า 30 = Oversold 🟢\n• มากกว่า 70 = Overbought 🔴"}>
-                      RSI(14) <span className="text-gray-600">ℹ</span>
-                    </Tooltip>
-                  </th>
-                  <th className="px-4 py-3 text-right">
                     <Tooltip text="ราคาสูงสุดในรอบ 52 สัปดาห์ที่ผ่านมา">
                       52W High <span className="text-gray-600">ℹ</span>
                     </Tooltip>
@@ -476,7 +470,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
               </thead>
               <tbody>
                 {holdings.length === 0 && (
-                  <tr><td colSpan={14} className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต — กด &quot;+ เพิ่มหุ้น&quot;</td></tr>
+                  <tr><td colSpan={12} className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต — กด &quot;+ เพิ่มหุ้น&quot;</td></tr>
                 )}
                 {holdings.map(h => {
                   const analysis = analyses[h.symbol]
@@ -500,7 +494,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                           {h.dayChange != null ? `${h.dayChange >= 0 ? '+' : ''}${h.dayChange.toFixed(2)}%` : <span className="text-gray-600">N/A</span>}
                         </td>
                         <td className="px-4 py-3 text-right text-gray-300 font-mono">{h.pe != null ? h.pe.toFixed(1) : <span className="text-gray-600">N/A</span>}</td>
-                        <td className={`px-4 py-3 text-right font-mono ${rsiColor(h.rsi)}`}>{rsiLabel(h.rsi)}</td>
                         <td className="px-4 py-3 text-right text-gray-400 font-mono text-xs">{h.week52High != null ? `$${h.week52High.toFixed(2)}` : <span className="text-gray-600">N/A</span>}</td>
                         <td className="px-4 py-3 text-right text-gray-400 font-mono text-xs">{h.week52Low  != null ? `$${h.week52Low.toFixed(2)}`  : <span className="text-gray-600">N/A</span>}</td>
                         <td className="px-4 py-3 text-right text-gray-600 text-xs">{fmtDate(h.updated_at)}</td>
@@ -514,7 +507,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                       </tr>
                       {analysis && (
                         <tr key={`${h.id}-ai`} className="border-t border-gray-800 bg-gray-950">
-                          <td colSpan={13} className="px-4 py-3"><AnalysisCard analysis={analysis} /></td>
+                          <td colSpan={12} className="px-4 py-3"><AnalysisCard analysis={analysis} /></td>
                         </tr>
                       )}
                     </>
@@ -553,7 +546,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                 </div>
                 <div className="grid grid-cols-3 gap-3 mb-3">
                   <div><p className="text-gray-600 text-xs mb-0.5">P/E</p><p className="text-gray-300 text-xs font-mono">{h.pe != null ? h.pe.toFixed(1) : 'N/A'}</p></div>
-                  <div><p className="text-gray-600 text-xs mb-0.5">RSI(14)</p><p className={`text-xs font-mono ${rsiColor(h.rsi)}`}>{rsiLabel(h.rsi)}</p></div>
                   <div><p className="text-gray-600 text-xs mb-0.5">52W</p><p className="text-gray-500 text-xs font-mono">{h.week52Low != null ? `$${h.week52Low.toFixed(0)}` : '—'}–{h.week52High != null ? `$${h.week52High.toFixed(0)}` : '—'}</p></div>
                 </div>
                 <div className="flex gap-2">
