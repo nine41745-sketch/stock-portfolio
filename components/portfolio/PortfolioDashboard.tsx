@@ -598,4 +598,7 @@ function SummaryCard({ label, value, sub, color = 'text-white' }: { label: strin
     <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
       <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">{label}</p>
       <p className={`text-lg font-bold ${color}`}>{value}</p>
-      {sub && <p className="text-gray-500 text-xs
+      {sub && <p className="text-gray-500 text-xs mt-0.5">{sub}</p>}
+    </div>
+  )
+}
