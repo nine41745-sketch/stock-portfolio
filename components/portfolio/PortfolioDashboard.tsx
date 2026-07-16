@@ -223,10 +223,40 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [newsLoading, setNewsLoading] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null)
+  const [inactiveWarn, setInactiveWarn] = useState(false)
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const router = useRouter()
   const supabase = createClient()
+
+  // Auto-logout หลัง 30 นาที ไม่มีการใช้งาน
+  useEffect(() => {
+    const TIMEOUT = 30 * 60 * 1000   // 30 นาที
+    const WARN    = 29 * 60 * 1000   // เตือน 1 นาทีก่อน
+    let logoutTimer: ReturnType<typeof setTimeout>
+    let warnTimer:   ReturnType<typeof setTimeout>
+
+    function reset() {
+      setInactiveWarn(false)
+      clearTimeout(logoutTimer)
+      clearTimeout(warnTimer)
+      warnTimer   = setTimeout(() => setInactiveWarn(true), WARN)
+      logoutTimer = setTimeout(async () => {
+        await supabase.auth.signOut()
+        router.push('/login')
+      }, TIMEOUT)
+    }
+
+    const events = ['mousemove','keydown','mousedown','touchstart','scroll']
+    events.forEach(e => window.addEventListener(e, reset, { passive: true }))
+    reset()
+
+    return () => {
+      clearTimeout(logoutTimer)
+      clearTimeout(warnTimer)
+      events.forEach(e => window.removeEventListener(e, reset))
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // โหลด exchange rate
   async function fetchExchangeRate() {
@@ -542,6 +572,14 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       {toast && (
         <div className={`fixed top-4 right-4 z-50 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
           {toast.msg}
+        </div>
+      )}
+
+      {/* Inactivity warning */}
+      {inactiveWarn && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-yellow-500 text-black rounded-lg px-5 py-3 text-sm font-medium shadow-xl flex items-center gap-3">
+          ⚠️ จะออกจากระบบใน 1 นาที เนื่องจากไม่มีการใช้งาน
+          <button onClick={() => setInactiveWarn(false)} className="underline text-xs">ยังอยู่นะ</button>
         </div>
       )}
 
