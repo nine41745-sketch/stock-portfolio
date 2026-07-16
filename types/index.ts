@@ -51,6 +51,11 @@ export interface AnalysisResult {
   sector?: string
   business?: string
   targetCustomers?: string
+  // metadata
+  analysedAt?: string
+  usedPrice?: number | null
+  usedPE?: number | null
+  usedNews?: Array<{ headline: string; headlineTh?: string; impact: string }>
 }
 
 export interface HoldingFormData {

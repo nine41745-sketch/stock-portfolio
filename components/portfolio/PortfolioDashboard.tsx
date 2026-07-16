@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { HoldingWithPrice, AnalysisResult, HoldingFormData, NewsItem } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -74,22 +74,44 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
 
 const DONUT_COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16','#ec4899','#6b7280']
 
-function DonutChart({ holdings }: { holdings: HoldingWithPrice[] }) {
+function DonutChart({ holdings, analyses }: { holdings: HoldingWithPrice[], analyses: Record<string, AnalysisResult> }) {
+  const [donutView, setDonutView] = useState<'stock' | 'sector'>('stock')
   const total = holdings.reduce((s, h) => s + (h.market_value ?? 0), 0)
   if (total <= 0) return null
-  const items = holdings
-    .filter(h => (h.market_value ?? 0) > 0)
-    .map((h, i) => ({ symbol: h.symbol, pct: (h.market_value ?? 0) / total, color: DONUT_COLORS[i % DONUT_COLORS.length] }))
+
+  // group by sector if toggled
+  let items: { symbol: string; pct: number; color: string }[]
+  if (donutView === 'sector') {
+    const sectorMap: Record<string, number> = {}
+    holdings.filter(h => (h.market_value ?? 0) > 0).forEach(h => {
+      const sec = analyses[h.symbol]?.sector ?? 'ไม่ระบุ'
+      sectorMap[sec] = (sectorMap[sec] ?? 0) + (h.market_value ?? 0)
+    })
+    items = Object.entries(sectorMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([sec, val], i) => ({ symbol: sec, pct: val / total, color: DONUT_COLORS[i % DONUT_COLORS.length] }))
+  } else {
+    items = holdings
+      .filter(h => (h.market_value ?? 0) > 0)
+      .sort((a, b) => (b.market_value ?? 0) - (a.market_value ?? 0))
+      .map((h, i) => ({ symbol: h.symbol, pct: (h.market_value ?? 0) / total, color: DONUT_COLORS[i % DONUT_COLORS.length] }))
+  }
   const cx = 65, cy = 65, R = 57, r = 35
   const legend = (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 flex-1 min-w-0">
-      {items.map(p => (
-        <div key={p.symbol} className="flex items-center gap-1.5 min-w-0">
-          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-          <span className="text-gray-300 text-xs font-medium">{p.symbol}</span>
-          <span className="text-gray-500 text-xs ml-auto">{(p.pct * 100).toFixed(1)}%</span>
-        </div>
-      ))}
+    <div className="flex-1 min-w-0">
+      <div className="flex gap-1 mb-2">
+        <button onClick={() => setDonutView('stock')} className={`text-xs px-2.5 py-1 rounded-md transition-colors ${donutView === 'stock' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>แยกตามหุ้น</button>
+        <button onClick={() => setDonutView('sector')} className={`text-xs px-2.5 py-1 rounded-md transition-colors ${donutView === 'sector' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>แยกตาม sector</button>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+        {items.map(p => (
+          <div key={p.symbol} className="flex items-center gap-1.5 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+            <span className="text-gray-300 text-xs font-medium truncate">{p.symbol}</span>
+            <span className="text-gray-500 text-xs ml-auto shrink-0">{(p.pct * 100).toFixed(1)}%</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
   // กรณีหุ้นตัวเดียว → วาด circle แทน arc (arc start=end จะ degenerate)
@@ -189,6 +211,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [newsLoading, setNewsLoading] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const router = useRouter()
   const supabase = createClient()
 
@@ -308,7 +332,14 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         }),
       })
       const result: AnalysisResult = await res.json()
-      setAnalyses(prev => ({ ...prev, [holding.symbol]: result }))
+      const enriched: AnalysisResult = {
+        ...result,
+        analysedAt: new Date().toISOString(),
+        usedPrice: holding.current_price,
+        usedPE: holding.pe ?? null,
+        usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact })),
+      }
+      setAnalyses(prev => ({ ...prev, [holding.symbol]: enriched }))
     } catch {
       showToast('วิเคราะห์ไม่สำเร็จ', false)
     } finally {
@@ -419,7 +450,77 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
             💰 เงินในธนาคาร {fmtAmt(cashBalanceUSD)} · สัดส่วนเงินสด {cashRatioPct}%
           </p>
         )}
+        {/* Data source section */}
+        <div className="border-t border-current/20 pt-3 mt-2 space-y-2">
+          <p className="text-xs opacity-40 font-medium uppercase tracking-wide">📊 ข้อมูลที่ใช้วิเคราะห์</p>
+          <div className="flex flex-wrap gap-1.5">
+            <span className="text-xs opacity-60 bg-black/20 rounded px-2 py-0.5">
+              💹 ราคา ${analysis.usedPrice?.toFixed(2) ?? '—'}{analysis.usedPE ? ` · P/E ${analysis.usedPE.toFixed(1)}` : ''} — Finnhub
+            </span>
+            <span className="text-xs opacity-60 bg-black/20 rounded px-2 py-0.5">
+              🤖 Groq AI · llama-3.3-70b
+            </span>
+          </div>
+          {analysis.usedNews && analysis.usedNews.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs opacity-40">ข่าวที่ AI อ่านก่อนวิเคราะห์</p>
+              {analysis.usedNews.map((n, i) => (
+                <div key={i} className="flex items-start gap-2 bg-black/15 rounded p-2">
+                  <span className="text-xs shrink-0">{n.impact === 'NEGATIVE' ? '🔴' : n.impact === 'POSITIVE' ? '🟢' : n.impact === 'NEUTRAL' ? '🟡' : '⬜'}</span>
+                  <span className="text-xs opacity-70 leading-relaxed">{n.headlineTh || n.headline}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {analysis.analysedAt && (
+            <p className="text-xs opacity-35">🕐 วิเคราะห์เมื่อ {fmtDateTime(analysis.analysedAt)}</p>
+          )}
+        </div>
       </div>
+    )
+  }
+
+  const sortedHoldings = useMemo(() => {
+    if (!sortField) return holdings
+    return [...holdings].sort((a, b) => {
+      let av: number | string, bv: number | string
+      switch (sortField) {
+        case 'symbol': av = a.symbol; bv = b.symbol; break
+        case 'current_price': av = a.current_price ?? -Infinity; bv = b.current_price ?? -Infinity; break
+        case 'cost_basis': av = a.cost_basis ?? -Infinity; bv = b.cost_basis ?? -Infinity; break
+        case 'shares': av = a.shares; bv = b.shares; break
+        case 'market_value': av = a.market_value ?? -Infinity; bv = b.market_value ?? -Infinity; break
+        case 'pnl': av = a.pnl ?? -Infinity; bv = b.pnl ?? -Infinity; break
+        case 'pnl_pct': av = a.pnl_pct ?? -Infinity; bv = b.pnl_pct ?? -Infinity; break
+        case 'dayChange': av = a.dayChange ?? -Infinity; bv = b.dayChange ?? -Infinity; break
+        case 'pe': av = a.pe ?? -Infinity; bv = b.pe ?? -Infinity; break
+        case 'week52High': av = a.week52High ?? -Infinity; bv = b.week52High ?? -Infinity; break
+        case 'week52Low': av = a.week52Low ?? -Infinity; bv = b.week52Low ?? -Infinity; break
+        default: return 0
+      }
+      if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv as string) : (bv as string).localeCompare(av)
+      return sortDir === 'asc' ? (av as number) - (bv as number) : (bv as number) - (av as number)
+    })
+  }, [holdings, sortField, sortDir])
+
+  function SortTh({ field, label, tooltip, align = 'right' }: { field: string; label: string; tooltip?: string; align?: 'left' | 'right' }) {
+    const active = sortField === field
+    const icon = active ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+    const btn = (
+      <button
+        onClick={() => {
+          if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+          else { setSortField(field); setSortDir('desc') }
+        }}
+        className={`flex items-center gap-0.5 hover:text-white transition-colors ${align === 'right' ? 'ml-auto' : ''}`}
+      >
+        {label}<span className={`text-xs ${active ? 'text-blue-400' : 'text-gray-600'}`}>{icon}</span>
+      </button>
+    )
+    return (
+      <th className={`px-4 py-3 ${align === 'right' ? 'text-right' : ''}`}>
+        {tooltip ? <Tooltip text={tooltip}>{btn}</Tooltip> : btn}
+      </th>
     )
   }
 
@@ -437,13 +538,10 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         <div>
           <h1 className="text-2xl font-bold text-white">📈 พอร์ตน้องเจน</h1>
           <p className="text-gray-500 text-xs mt-1">
-            {lastUpdate ? `🔄 อัปเดตราคาล่าสุด: ${fmtDateTime(lastUpdate)}` : `สวัสดี, ${userName} · กด "รีเฟรชราคา" เพื่ออัปเดต`}
+            {lastUpdate
+              ? `🔄 อัปเดต ${fmtDateTime(lastUpdate)} · 1 USD = ${exchangeRate.toFixed(2)} THB`
+              : `สวัสดี, ${userName} · กด "รีเฟรชราคา" เพื่ออัปเดต`}
           </p>
-          {rateUpdatedAt && (
-            <p className="text-gray-600 text-xs mt-0.5">
-              1 USD = {exchangeRate.toFixed(2)} THB (ข้อมูล ณ วันที่ {fmtDateTime(rateUpdatedAt)})
-            </p>
-          )}
         </div>
         <div className="flex gap-2 flex-wrap">
           <button onClick={handleRefresh} disabled={refreshing}
@@ -508,7 +606,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       {holdings.some(h => h.market_value != null && h.market_value > 0) && (
         <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
           <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-3">📊 สัดส่วนพอร์ต</p>
-          <DonutChart holdings={holdings} />
+          <DonutChart holdings={holdings} analyses={analyses} />
         </div>
       )}
 
@@ -535,42 +633,26 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-900 text-gray-400 text-left text-xs uppercase tracking-wider">
-                  <th className="px-4 py-3">หุ้น</th>
-                  <th className="px-4 py-3 text-right">ราคาปัจจุบัน</th>
-                  <th className="px-4 py-3 text-right">ต้นทุน/หุ้น</th>
-                  <th className="px-4 py-3 text-right">จำนวนหุ้น</th>
-                  <th className="px-4 py-3 text-right">มูลค่า</th>
-                  <th className="px-4 py-3 text-right">กำไร/ขาดทุน</th>
-                  <th className="px-4 py-3 text-right">%</th>
-                  <th className="px-4 py-3 text-right">
-                    <Tooltip text="% เปลี่ยนแปลงราคาเทียบกับวันปิดตลาดก่อนหน้า">
-                      วันนี้ <span className="text-gray-600">ℹ</span>
-                    </Tooltip>
-                  </th>
-                  <th className="px-4 py-3 text-right">
-                    <Tooltip text="ใช้ประเมินความถูกหรือแพงของหุ้น เมื่อเทียบกับกำไรต่อหุ้น ค่าสูง = แพง">
-                      P/E <span className="text-gray-600">ℹ</span>
-                    </Tooltip>
-                  </th>
-                  <th className="px-4 py-3 text-right">
-                    <Tooltip text="ราคาสูงสุดในรอบ 52 สัปดาห์ที่ผ่านมา">
-                      52W High <span className="text-gray-600">ℹ</span>
-                    </Tooltip>
-                  </th>
-                  <th className="px-4 py-3 text-right">
-                    <Tooltip text="ราคาต่ำสุดในรอบ 52 สัปดาห์ที่ผ่านมา">
-                      52W Low <span className="text-gray-600">ℹ</span>
-                    </Tooltip>
-                  </th>
+                  <SortTh field="symbol" label="หุ้น" align="left" />
+                  <SortTh field="current_price" label="ราคาปัจจุบัน" />
+                  <SortTh field="cost_basis" label="ต้นทุน/หุ้น" />
+                  <SortTh field="shares" label="จำนวนหุ้น" />
+                  <SortTh field="market_value" label="มูลค่า" />
+                  <SortTh field="pnl" label="กำไร/ขาดทุน" />
+                  <SortTh field="pnl_pct" label="%กำไร/ขาดทุน" />
+                  <SortTh field="dayChange" label="%เปลี่ยนแปลงวันนี้" tooltip="% เปลี่ยนแปลงราคาเทียบกับวันปิดตลาดก่อนหน้า" />
+                  <SortTh field="pe" label="P/E" tooltip="ใช้ประเมินความถูกหรือแพงของหุ้น เมื่อเทียบกับกำไรต่อหุ้น ค่าสูง = แพง" />
+                  <SortTh field="week52High" label="52W High" tooltip="ราคาสูงสุดในรอบ 52 สัปดาห์ที่ผ่านมา" />
+                  <SortTh field="week52Low" label="52W Low" tooltip="ราคาต่ำสุดในรอบ 52 สัปดาห์ที่ผ่านมา" />
                   <th className="px-4 py-3 text-right">แก้ไขล่าสุด</th>
                   <th className="px-4 py-3 text-center">วิเคราะห์ / แก้ไข</th>
                 </tr>
               </thead>
               <tbody>
-                {holdings.length === 0 && (
+                {sortedHoldings.length === 0 && (
                   <tr><td colSpan={13} className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต — กด &quot;+ เพิ่มหุ้น&quot;</td></tr>
                 )}
-                {holdings.map(h => {
+                {sortedHoldings.map(h => {
                   const analysis = analyses[h.symbol]
                   const isLoading = loadingSymbol === h.symbol
                   const pnlPos = (h.pnl ?? 0) >= 0
