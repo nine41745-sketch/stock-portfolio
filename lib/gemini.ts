@@ -1,28 +1,38 @@
-import { HoldingWithPrice, AnalysisResult, NewsItem } from '@/types'
+import { HoldingWithPrice, AnalysisResult } from '@/types'
 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent`
 
+const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+// retry อัตโนมัติถ้า 503 (server busy)
 async function callGemini(prompt: string, maxTokens = 1024): Promise<string> {
-  const res = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
-    method: 'POST',
-    cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: maxTokens, temperature: 0.6 },
-    }),
-  })
-  if (!res.ok) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const res = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: maxTokens, temperature: 0.6 },
+      }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      if (data.error) {
+        console.error('[Gemini] API error:', JSON.stringify(data.error))
+        return ''
+      }
+      return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+    }
     const err = await res.text()
-    console.error('[Gemini] HTTP', res.status, err.slice(0, 200))
+    console.error(`[Gemini] HTTP ${res.status} attempt ${attempt}:`, err.slice(0, 200))
+    if (res.status === 503 && attempt < 3) {
+      await delay(2000 * attempt) // 2s, 4s
+      continue
+    }
     return ''
   }
-  const data = await res.json()
-  if (data.error) {
-    console.error('[Gemini] API error:', JSON.stringify(data.error))
-    return ''
-  }
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  return ''
 }
 
 export async function analyzeHolding(
@@ -40,10 +50,10 @@ export async function analyzeHolding(
   const canBuyShares = current_price && current_price > 0 ? Math.floor(cashBalance / current_price) : 0
 
   const metricsInfo = [
-    pe     != null ? `P/E Ratio: ${pe.toFixed(1)}` : null,
-    rsi    != null ? `RSI(14): ${rsi.toFixed(1)} (${rsi < 30 ? 'Oversold' : rsi > 70 ? 'Overbought' : 'Neutral'})` : null,
+    pe         != null ? `P/E Ratio: ${pe.toFixed(1)}` : null,
+    rsi        != null ? `RSI(14): ${rsi.toFixed(1)} (${rsi < 30 ? 'Oversold' : rsi > 70 ? 'Overbought' : 'Neutral'})` : null,
     week52High != null ? `52W High: $${week52High.toFixed(2)}` : null,
-    week52Low  != null ? `52W Low: $${week52Low.toFixed(2)}`  : null,
+    week52Low  != null ? `52W Low: $${week52Low.toFixed(2)}`   : null,
   ].filter(Boolean).join('\n- ')
 
   const newsSnippet = recentNews.length > 0
@@ -105,7 +115,7 @@ Respond in JSON only, all text in Thai:
       targetCustomers: parsed.targetCustomers ?? '',
     }
   } catch {
-    return { symbol, signal: 'HOLD', summary: 'Analysis unavailable', reasons: [], detail: '', action: '' }
+    return { symbol, signal: 'HOLD', summary: '', reasons: [], detail: '', action: '' }
   }
 }
 

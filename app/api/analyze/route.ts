@@ -13,7 +13,6 @@ export async function POST(request: NextRequest) {
   const { cashBalance, totalPortfolioValue, recentNews, ...holding }:
     HoldingWithPrice & { cashBalance?: number; totalPortfolioValue?: number; recentNews?: Array<{ headline: string }> } = body
 
-  // Cache key: symbol + current_price (ไม่ cache ถ้าราคาเปลี่ยน)
   const priceKey = holding.current_price?.toFixed(2) ?? 'null'
   const cacheKey = `analyze:${holding.symbol}:${priceKey}`
   const cached = cacheGet<AnalysisResult>(cacheKey)
@@ -26,8 +25,8 @@ export async function POST(request: NextRequest) {
     recentNews ?? []
   )
 
-  // Cache 30 นาที
-  if (result.signal !== 'HOLD' || result.summary) {
+  // cache เฉพาะผลที่สำเร็จ (มี reasons และ detail)
+  if (result.reasons.length > 0 && result.detail) {
     cacheSet(cacheKey, result, 1800)
   }
 

@@ -12,7 +12,6 @@ export async function GET(request: NextRequest) {
   const symbols = request.nextUrl.searchParams.get('symbols')?.split(',').filter(Boolean) ?? []
   if (!symbols.length) return NextResponse.json({ news: [] })
 
-  // Cache key: symbols เรียงลำดับ
   const cacheKey = `news:${[...symbols].sort().join(',')}`
   const cached = cacheGet<NewsItem[]>(cacheKey)
   if (cached) return NextResponse.json({ news: cached })
@@ -57,8 +56,10 @@ export async function GET(request: NextRequest) {
   })
 
   const result = newsItems.slice(0, 15)
-  // Cache 1 ชั่วโมง
-  cacheSet(cacheKey, result, 3600)
+
+  // cache เฉพาะถ้า Gemini แปลสำเร็จ (headlineTh ต่างจาก headline เดิม)
+  const translated = result.some(n => n.headlineTh && n.headlineTh !== n.headline)
+  if (translated) cacheSet(cacheKey, result, 3600)
 
   return NextResponse.json({ news: result })
 }
