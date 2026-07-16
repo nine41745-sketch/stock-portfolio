@@ -99,10 +99,22 @@ function DonutChart({ holdings, analyses }: { holdings: HoldingWithPrice[], anal
   const cx = 65, cy = 65, R = 57, r = 35
   const legend = (
     <div className="flex-1 min-w-0">
-      <div className="flex gap-1 mb-2">
-        <button onClick={() => setDonutView('stock')} className={`text-xs px-2.5 py-1 rounded-md transition-colors ${donutView === 'stock' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>แยกตามหุ้น</button>
-        <button onClick={() => setDonutView('sector')} className={`text-xs px-2.5 py-1 rounded-md transition-colors ${donutView === 'sector' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>แยกตาม sector</button>
-      </div>
+      {(() => {
+        const hasSector = Object.values(analyses).some(a => a.sector)
+        return (
+          <div className="flex gap-1 mb-2 items-center">
+            <button onClick={() => setDonutView('stock')} className={`text-xs px-2.5 py-1 rounded-md transition-colors ${donutView === 'stock' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>แยกตามหุ้น</button>
+            <button
+              onClick={() => hasSector && setDonutView('sector')}
+              className={`text-xs px-2.5 py-1 rounded-md transition-colors ${donutView === 'sector' ? 'bg-gray-700 text-white' : hasSector ? 'text-gray-500 hover:text-gray-300' : 'text-gray-700 cursor-not-allowed'}`}
+              title={hasSector ? '' : 'กด ✨ วิเคราะห์ AI ที่หุ้นแต่ละตัวก่อน'}
+            >แยกตาม sector{!hasSector && ' 🔒'}</button>
+          </div>
+        )
+      })()}
+      {donutView === 'sector' && items.every(i => i.symbol === 'ไม่ระบุ') && (
+        <p className="text-gray-600 text-xs mb-2">กด ✨ วิเคราะห์ AI ที่หุ้นแต่ละตัวก่อน เพื่อแสดง sector</p>
+      )}
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
         {items.map(p => (
           <div key={p.symbol} className="flex items-center gap-1.5 min-w-0">
