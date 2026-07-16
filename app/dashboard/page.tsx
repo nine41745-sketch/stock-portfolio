@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { getMultipleQuotes } from '@/lib/finnhub'
+import { getMultipleQuotesWithMetrics } from '@/lib/finnhub'
 import PortfolioDashboard from '@/components/portfolio/PortfolioDashboard'
 import { HoldingWithPrice } from '@/types'
 
@@ -23,11 +23,12 @@ export default async function DashboardPage() {
   const holdings = rows ?? []
   const symbols: string[] = holdings.map((h: any) => h.symbol)
 
-  // ราคา realtime จาก Finnhub
-  const prices = symbols.length > 0 ? await getMultipleQuotes(symbols) : {}
+  // ราคา + metrics จาก Finnhub (sequential เพื่อไม่ rate limit)
+  const priceData = symbols.length > 0 ? await getMultipleQuotesWithMetrics(symbols) : {}
 
   const holdingsWithPrices: HoldingWithPrice[] = holdings.map((h: any) => {
-    const cp = prices[h.symbol] ?? null
+    const d = priceData[h.symbol]
+    const cp = d?.price ?? null
     const mv = cp !== null && h.shares > 0 ? cp * h.shares : null
     const tc = h.cost_basis !== null && h.shares > 0 ? h.cost_basis * h.shares : null
     const pnl = mv !== null && tc !== null ? mv - tc : null
@@ -47,6 +48,10 @@ export default async function DashboardPage() {
       total_cost: tc,
       pnl,
       pnl_pct,
+      dayChange: d?.dayChange ?? null,
+      pe: d?.pe ?? null,
+      week52High: d?.week52High ?? null,
+      week52Low: d?.week52Low ?? null,
     }
   })
 

@@ -5,6 +5,7 @@ import { HoldingWithPrice, AnalysisResult, HoldingFormData, NewsItem } from '@/t
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import HoldingModal from './HoldingModal'
+import TradingViewChart from './TradingViewChart'
 
 interface Props {
   holdings: HoldingWithPrice[]
@@ -70,6 +71,89 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
   )
 }
 
+
+const DONUT_COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16','#ec4899','#6b7280']
+
+function DonutChart({ holdings }: { holdings: HoldingWithPrice[] }) {
+  const total = holdings.reduce((s, h) => s + (h.market_value ?? 0), 0)
+  if (total <= 0) return null
+  const items = holdings
+    .filter(h => (h.market_value ?? 0) > 0)
+    .map((h, i) => ({ symbol: h.symbol, pct: (h.market_value ?? 0) / total, color: DONUT_COLORS[i % DONUT_COLORS.length] }))
+  const cx = 65, cy = 65, R = 57, r = 35
+  let angle = 0
+  const paths = items.map(item => {
+    const s = angle, e = angle + item.pct * 2 * Math.PI
+    angle = e
+    const px = (a: number, rad: number) => cx + rad * Math.cos(a - Math.PI / 2)
+    const py = (a: number, rad: number) => cy + rad * Math.sin(a - Math.PI / 2)
+    const lg = item.pct > 0.5 ? 1 : 0
+    const d = `M${px(s,R)},${py(s,R)} A${R},${R} 0 ${lg},1 ${px(e,R)},${py(e,R)} L${px(e,r)},${py(e,r)} A${r},${r} 0 ${lg},0 ${px(s,r)},${py(s,r)} Z`
+    return { ...item, d }
+  })
+  return (
+    <div className="flex items-center gap-5">
+      <svg width="130" height="130" className="shrink-0">
+        {paths.map(p => <path key={p.symbol} d={p.d} fill={p.color} opacity={0.9} />)}
+      </svg>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 flex-1 min-w-0">
+        {paths.map(p => (
+          <div key={p.symbol} className="flex items-center gap-1.5 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+            <span className="text-gray-300 text-xs font-medium">{p.symbol}</span>
+            <span className="text-gray-500 text-xs ml-auto">{(p.pct * 100).toFixed(1)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function DCACalculator({ holding }: { holding: HoldingWithPrice }) {
+  const [addAmt, setAddAmt] = useState('')
+  const add = parseFloat(addAmt) || 0
+  const price = holding.current_price ?? 0
+  const addShares = add > 0 && price > 0 ? add / price : 0
+  const newTotal = holding.shares + addShares
+  const oldCost = holding.cost_basis ?? 0
+  const newCost = newTotal > 0 ? (holding.shares * oldCost + add) / newTotal : oldCost
+  const diff = oldCost > 0 ? ((newCost - oldCost) / oldCost * 100) : 0
+  return (
+    <div className="rounded-lg border border-gray-700 bg-gray-950/60 p-3">
+      <p className="text-xs font-semibold text-gray-300 mb-2">🧮 คำนวณ DCA — ถ้าซื้อเพิ่ม</p>
+      <div className="flex gap-2 mb-3">
+        <span className="text-gray-500 text-sm self-center">$</span>
+        <input type="number" value={addAmt} onChange={e => setAddAmt(e.target.value)}
+          placeholder="จำนวนเงินที่จะซื้อเพิ่ม" min="0"
+          className="flex-1 bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500" />
+      </div>
+      {add > 0 && price > 0 ? (
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="bg-gray-800/60 rounded-lg p-2.5 text-center">
+            <p className="text-gray-500 mb-1">ต้นทุนใหม่/หุ้น</p>
+            <p className="text-white font-bold text-sm">${newCost.toFixed(2)}</p>
+            <p className={`mt-0.5 text-xs ${diff < 0 ? 'text-green-400' : diff > 0 ? 'text-red-400' : 'text-gray-500'}`}>
+              {diff < 0 ? `↓${Math.abs(diff).toFixed(1)}%` : diff > 0 ? `↑${diff.toFixed(1)}%` : '±0%'}
+            </p>
+          </div>
+          <div className="bg-gray-800/60 rounded-lg p-2.5 text-center">
+            <p className="text-gray-500 mb-1">หุ้นทั้งหมด</p>
+            <p className="text-white font-bold text-sm">{newTotal.toFixed(3)}</p>
+            <p className="text-gray-500 mt-0.5 text-xs">+{addShares.toFixed(3)}</p>
+          </div>
+          <div className="bg-gray-800/60 rounded-lg p-2.5 text-center">
+            <p className="text-gray-500 mb-1">ต้นทุนรวม</p>
+            <p className="text-white font-bold text-sm">${(holding.shares * oldCost + add).toFixed(0)}</p>
+            <p className="text-gray-500 mt-0.5 text-xs">+${add.toFixed(0)}</p>
+          </div>
+        </div>
+      ) : (
+        <p className="text-gray-600 text-xs text-center py-1">ใส่จำนวนเงินเพื่อดูผลการคำนวณ</p>
+      )}
+    </div>
+  )
+}
+
 export default function PortfolioDashboard({ holdings: initialHoldings, userName }: Props) {
   const [holdings, setHoldings] = useState<HoldingWithPrice[]>(initialHoldings)
   const [analyses, setAnalyses] = useState<Record<string, AnalysisResult>>({})
@@ -87,6 +171,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [news, setNews] = useState<NewsItem[]>([])
   const [newsLoading, setNewsLoading] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
+  const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -250,7 +335,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     router.refresh()
     if (!id) {
       const priceRes = await fetch(`/api/prices?symbols=${payload.symbol}`)
-      const { prices } = await priceRes.json()
+      const { prices, metrics } = await priceRes.json()
       const cp = prices[payload.symbol] ?? null
       const mv = cp !== null ? cp * payload.shares : null
       const tc = payload.cost_basis != null ? payload.cost_basis * payload.shares : null
@@ -258,8 +343,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       const pnl_pct = pnl !== null && tc !== null && tc > 0 ? (pnl / tc) * 100 : null
       setHoldings(prev => {
         const exists = prev.find(h => h.symbol === payload.symbol)
-        if (exists) return prev.map(h => h.symbol === payload.symbol ? { ...h, ...payload, cost_basis: payload.cost_basis ?? null, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct } : h)
-        return [...prev, { id: Date.now().toString(), user_id: '', symbol: payload.symbol, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct }]
+        const nm = metrics?.[payload.symbol] ?? {}
+        if (exists) return prev.map(h => h.symbol === payload.symbol ? { ...h, ...payload, cost_basis: payload.cost_basis ?? null, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null } : h)
+        return [...prev, { id: Date.now().toString(), user_id: '', symbol: payload.symbol, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null }]
       })
     } else {
       setHoldings(prev => prev.map(h => {
@@ -401,6 +487,14 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         </div>
       </div>
 
+      {/* Portfolio Donut Chart */}
+      {holdings.some(h => h.market_value != null && h.market_value > 0) && (
+        <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
+          <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-3">📊 สัดส่วนพอร์ต</p>
+          <DonutChart holdings={holdings} />
+        </div>
+      )}
+
       {/* Controls */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative">
@@ -485,6 +579,10 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                         <td className="px-4 py-3 text-right text-gray-400 font-mono text-xs">{h.week52Low  != null ? `$${h.week52Low.toFixed(2)}`  : <span className="text-gray-600">N/A</span>}</td>
                         <td className="px-4 py-3 text-right text-gray-600 text-xs">{fmtDate(h.updated_at)}</td>
                         <td className="px-4 py-3 text-center whitespace-nowrap">
+                          <button onClick={() => setExpandedSymbol(prev => prev === h.symbol ? null : h.symbol)}
+                            className={`rounded-lg px-3 py-1 text-xs transition-colors mr-1 ${expandedSymbol === h.symbol ? 'bg-blue-600/40 border border-blue-500/50 text-blue-300' : 'bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/40'}`}>
+                            📊 กราฟ
+                          </button>
                           <button onClick={() => handleAnalyze(h)} disabled={isLoading}
                             className="rounded-lg bg-purple-600/20 border border-purple-500/30 px-3 py-1 text-purple-400 text-xs hover:bg-purple-600/40 disabled:opacity-50 transition-colors mr-2">
                             {isLoading ? '⏳...' : '✨ วิเคราะห์ AI'}
@@ -492,6 +590,14 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                           <button onClick={() => setModalHolding(h)} className="text-gray-500 hover:text-white text-xs transition-colors">✏️</button>
                         </td>
                       </tr>
+                      {expandedSymbol === h.symbol && (
+                        <tr key={`${h.id}-chart`} className="border-t border-gray-800 bg-gray-950/80">
+                          <td colSpan={13} className="px-4 py-4 space-y-3">
+                            <TradingViewChart symbol={h.symbol} />
+                            {h.cost_basis != null && <DCACalculator holding={h} />}
+                          </td>
+                        </tr>
+                      )}
                       {analysis && (
                         <tr key={`${h.id}-ai`} className="border-t border-gray-800 bg-gray-950">
                           <td colSpan={13} className="px-4 py-3"><AnalysisCard analysis={analysis} /></td>
@@ -536,12 +642,22 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                   <div><p className="text-gray-600 text-xs mb-0.5">52W</p><p className="text-gray-500 text-xs font-mono">{h.week52Low != null ? `$${h.week52Low.toFixed(0)}` : '—'}–{h.week52High != null ? `$${h.week52High.toFixed(0)}` : '—'}</p></div>
                 </div>
                 <div className="flex gap-2">
+                  <button onClick={() => setExpandedSymbol(prev => prev === h.symbol ? null : h.symbol)}
+                    className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${expandedSymbol === h.symbol ? 'bg-blue-600/40 border border-blue-500/50 text-blue-300' : 'bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/40'}`}>
+                    📊
+                  </button>
                   <button onClick={() => handleAnalyze(h)} disabled={isLoading}
                     className="flex-1 rounded-lg bg-purple-600/20 border border-purple-500/30 py-2 text-purple-400 text-xs font-medium hover:bg-purple-600/40 disabled:opacity-50 transition-colors">
                     {isLoading ? '⏳ กำลังวิเคราะห์...' : '✨ วิเคราะห์ AI'}
                   </button>
                   <button onClick={() => setModalHolding(h)} className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-gray-400 text-xs hover:text-white transition-colors">✏️ แก้ไข</button>
                 </div>
+                {expandedSymbol === h.symbol && (
+                  <div className="mt-3 space-y-3">
+                    <TradingViewChart symbol={h.symbol} />
+                    {h.cost_basis != null && <DCACalculator holding={h} />}
+                  </div>
+                )}
                 {analysis && <div className="mt-3"><AnalysisCard analysis={analysis} /></div>}
               </div>
             )

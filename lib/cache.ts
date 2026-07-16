@@ -1,4 +1,4 @@
-// Simple in-memory cache สำหรับลด Gemini API calls
+// Simple in-memory cache สำหรับลด Groq API calls
 interface CacheEntry<T> {
   data: T
   expiresAt: number

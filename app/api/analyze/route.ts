@@ -9,7 +9,8 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await request.json()
+  let body: Record<string, unknown>
+  try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid request' }, { status: 400 }) }
   const { cashBalance, totalPortfolioValue, recentNews, ...holding }:
     HoldingWithPrice & { cashBalance?: number; totalPortfolioValue?: number; recentNews?: Array<{ headline: string }> } = body
 

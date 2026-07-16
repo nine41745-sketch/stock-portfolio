@@ -49,27 +49,26 @@ export async function GET() {
     results.finnhub = `❌ ${e.message}`
   }
 
-  // 4. Anthropic
+  // 4. Groq AI
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8,
+        model: 'llama-3.3-70b-versatile',
         messages: [{ role: 'user', content: 'Say OK' }],
+        max_tokens: 4,
       }),
     })
     const data = await res.json()
-    results.claude = data.content?.[0]?.text
-      ? `✅ ${data.content[0].text.trim()}`
+    results.groq = data.choices?.[0]?.message?.content
+      ? `✅ ${data.choices[0].message.content.trim()}`
       : `❌ ${data.error?.message ?? JSON.stringify(data)}`
   } catch (e: any) {
-    results.claude = `❌ ${e.message}`
+    results.groq = `❌ ${e.message}`
   }
 
   const allOk = Object.values(results).every(v => v.startsWith('✅'))
