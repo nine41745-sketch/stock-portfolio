@@ -1,6 +1,6 @@
 import { HoldingWithPrice, AnalysisResult } from '@/types'
 
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent`
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`
 
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
 
@@ -27,7 +27,7 @@ async function callGemini(prompt: string, maxTokens = 1024): Promise<string> {
     const err = await res.text()
     console.error(`[Gemini] HTTP ${res.status} attempt ${attempt}:`, err.slice(0, 200))
     if (res.status === 503 && attempt < 3) {
-      await delay(2000 * attempt) // 2s, 4s
+      await delay(1000 * attempt) // 2s, 4s
       continue
     }
     return ''
