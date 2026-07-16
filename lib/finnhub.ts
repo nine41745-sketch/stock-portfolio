@@ -27,25 +27,17 @@ async function getBasicMetrics(symbol: string): Promise<{ pe: number | null; wee
     const d = await res.json()
     const m = d?.metric ?? {}
     return {
-      pe: m.peNormalizedAnnual ?? m.peBasicExclExtraTTM ?? null,
+      // ลอง field หลายชื่อ Finnhub ใช้ต่างกันตาม plan
+      pe: m.peNormalizedAnnual ?? m.peTTM ?? m.peBasicExclExtraTTM ?? m.peExclExtraTTM ?? null,
       week52High: m['52WeekHigh'] ?? null,
       week52Low:  m['52WeekLow']  ?? null,
     }
   } catch { return { pe: null, week52High: null, week52Low: null } }
 }
 
-async function getRSI(symbol: string): Promise<number | null> {
-  try {
-    const to   = Math.floor(Date.now() / 1000)
-    const from = to - 120 * 24 * 3600   // 120 วัน เพื่อให้ RSI(14) มีข้อมูลเพียงพอ
-    const url  = `${BASE}/indicator?symbol=${symbol}&resolution=D&from=${from}&to=${to}&indicator=rsi&timeperiod=14&token=${KEY}`
-    const res  = await fetch(url, { next: { revalidate: 3600 } })
-    if (!res.ok) return null
-    const d = await res.json()
-    if (d.s !== 'ok' || !Array.isArray(d.rsi) || d.rsi.length === 0) return null
-    const last = d.rsi[d.rsi.length - 1]
-    return typeof last === 'number' ? Math.round(last * 100) / 100 : null
-  } catch { return null }
+// RSI ต้องการ Finnhub premium plan — return null บน free tier
+async function getRSI(_symbol: string): Promise<number | null> {
+  return null
 }
 
 export async function getStockMetrics(symbol: string): Promise<StockMetrics> {
@@ -53,7 +45,6 @@ export async function getStockMetrics(symbol: string): Promise<StockMetrics> {
   return { ...basic, rsi }
 }
 
-// ดึงราคา + metrics ทุก symbol พร้อมกัน (rate-limit-safe)
 export async function getMultipleQuotes(symbols: string[]): Promise<Record<string, number>> {
   const results = await Promise.allSettled(
     symbols.map(async sym => {
@@ -67,21 +58,25 @@ export async function getMultipleQuotes(symbols: string[]): Promise<Record<strin
   }, {} as Record<string, number>)
 }
 
+const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+// ดึง sequential + delay เพื่อไม่ให้ rate limit (Finnhub free = 30 calls/min)
 export async function getMultipleQuotesWithMetrics(
   symbols: string[]
 ): Promise<Record<string, { price: number | null } & StockMetrics>> {
-  // ดึง quotes และ metrics พร้อมกัน แต่ metrics ใช้ cache 30 นาที
-  const entries = await Promise.allSettled(
-    symbols.map(async sym => {
+  const result: Record<string, { price: number | null } & StockMetrics> = {}
+
+  for (let i = 0; i < symbols.length; i++) {
+    const sym = symbols[i]
+    try {
       const [q, m] = await Promise.all([getQuote(sym), getStockMetrics(sym)])
-      return { sym, price: q?.c ?? null, ...m }
-    })
-  )
-  return entries.reduce((acc, r) => {
-    if (r.status === 'fulfilled') {
-      const { sym, ...rest } = r.value
-      acc[sym] = rest
+      result[sym] = { price: q?.c ?? null, ...m }
+    } catch {
+      result[sym] = { price: null, pe: null, rsi: null, week52High: null, week52Low: null }
     }
-    return acc
-  }, {} as Record<string, { price: number | null } & StockMetrics>)
+    // หน่วงเวลาระหว่างหุ้นแต่ละตัว ยกเว้นตัวสุดท้าย
+    if (i < symbols.length - 1) await delay(200)
+  }
+
+  return result
 }
