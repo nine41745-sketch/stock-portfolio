@@ -19,7 +19,7 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             )
           } catch {
-            // Server Component — ignore
+            // Server Component ignore
           }
         },
       },
@@ -27,8 +27,10 @@ export async function createClient() {
   )
 }
 
-// Service role client สำหรับ decrypt cost_basis (bypass RLS, server-side only)
 export function createServiceClient() {
   return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPA
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  )
+}
