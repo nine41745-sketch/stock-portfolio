@@ -38,7 +38,7 @@ export async function analyzeHolding(
   totalPortfolioValue = 0,
   recentNews: Array<{ headline: string }> = []
 ): Promise<AnalysisResult> {
-  const { symbol, shares, cost_basis, current_price, pnl_pct, market_value, pe, rsi, week52High, week52Low } = holding
+  const { symbol, shares, cost_basis, current_price, pnl_pct, market_value, pe, week52High, week52Low } = holding
 
   const cashRatioPct = totalPortfolioValue > 0
     ? ((cashBalance / (totalPortfolioValue + cashBalance)) * 100).toFixed(1)
@@ -47,7 +47,6 @@ export async function analyzeHolding(
 
   const metricsInfo = [
     pe         != null ? `P/E: ${pe.toFixed(1)}` : null,
-    rsi        != null ? `RSI: ${rsi.toFixed(1)}` : null,
     week52High != null ? `52W High: $${week52High.toFixed(2)}` : null,
     week52Low  != null ? `52W Low: $${week52Low.toFixed(2)}`   : null,
   ].filter(Boolean).join(', ')
