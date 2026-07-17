@@ -216,9 +216,15 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [exchangeRate, setExchangeRate] = useState(36.2)
   const [rateUpdatedAt, setRateUpdatedAt] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop')
-  const [cashBalanceUSD, setCashBalanceUSD] = useState(0)   // เก็บ USD เสมอ
+  const [cashBalanceUSD, setCashBalanceUSD] = useState(0)
+  const [dimeBalanceUSD, setDimeBalanceUSD] = useState(0)
+  const [initialCapital, setInitialCapital] = useState(0)
   const [editingCash, setEditingCash] = useState(false)
+  const [editingDime, setEditingDime] = useState(false)
+  const [editingCapital, setEditingCapital] = useState(false)
   const [cashInput, setCashInput] = useState('0')
+  const [dimeInput, setDimeInput] = useState('0')
+  const [capitalInput, setCapitalInput] = useState('0')
   const [news, setNews] = useState<NewsItem[]>([])
   const [newsLoading, setNewsLoading] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
@@ -405,6 +411,24 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     } catch {
       showToast('บันทึกไม่สำเร็จ', false)
     }
+  }
+
+  async function handleSaveDime() {
+    const inputVal = parseFloat(dimeInput) || 0
+    const usdVal = currency === 'thb' ? inputVal / exchangeRate : inputVal
+    try {
+      await fetch('/api/user-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dime_balance: usdVal }) })
+      setDimeBalanceUSD(usdVal); setEditingDime(false); showToast('บันทึกเงินใน Dime แล้ว')
+    } catch { showToast('บันทึกไม่สำเร็จ', false) }
+  }
+
+  async function handleSaveCapital() {
+    const inputVal = parseFloat(capitalInput) || 0
+    const usdVal = currency === 'thb' ? inputVal / exchangeRate : inputVal
+    try {
+      await fetch('/api/user-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initial_capital: usdVal }) })
+      setInitialCapital(usdVal); setEditingCapital(false); showToast('บันทึกเงินต้นจริงแล้ว')
+    } catch { showToast('บันทึกไม่สำเร็จ', false) }
   }
 
   const handleSave = useCallback(async (data: HoldingFormData, id?: string) => {
@@ -625,7 +649,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
             <div className="h-full bg-green-500 rounded-full" style={{ width: `${winPct}%` }} />
           </div>
         </div>
-        {/* Cash — แสดงและรับค่าตาม currency */}
+        {/* Cash Cards */}
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
           <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินในธนาคาร</p>
           {editingCash ? (
@@ -650,6 +674,77 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
             </div>
           )}
         </div>
+      </div>
+
+      {/* Dime + Capital Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* เงินใน Dime */}
+        <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
+          <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินใน Dime (USD)</p>
+          {editingDime ? (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1">
+                <span className="text-gray-500 text-sm">{currency === 'thb' ? '฿' : '$'}</span>
+                <input type="number" value={dimeInput} onChange={e => setDimeInput(e.target.value)}
+                  className="flex-1 w-0 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500" />
+                <button onClick={handleSaveDime} className="text-xs bg-green-600 text-white rounded px-2 py-1 hover:bg-green-500">✓</button>
+                <button onClick={() => setEditingDime(false)} className="text-xs bg-gray-700 text-gray-300 rounded px-2 py-1">✕</button>
+              </div>
+              <p className="text-gray-600 text-xs">กรอกเป็น {currency === 'thb' ? 'บาท (฿)' : 'ดอลลาร์ ($)'}</p>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-lg font-bold text-white">{fmtAmt(dimeBalanceUSD)}</p>
+                <p className="text-gray-600 text-xs">เงินจากขายหุ้น ยังไม่โอน</p>
+              </div>
+              <button onClick={() => { setEditingDime(true); setDimeInput(currency === 'thb' ? String(Math.round(dimeBalanceUSD * exchangeRate)) : String(dimeBalanceUSD)) }}
+                className="text-gray-600 hover:text-white text-xs transition-colors">✏️</button>
+            </div>
+          )}
+        </div>
+
+        {/* เงินต้นจริง */}
+        <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
+          <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินต้นจริงที่ลงทุน</p>
+          {editingCapital ? (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1">
+                <span className="text-gray-500 text-sm">{currency === 'thb' ? '฿' : '$'}</span>
+                <input type="number" value={capitalInput} onChange={e => setCapitalInput(e.target.value)}
+                  className="flex-1 w-0 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500" />
+                <button onClick={handleSaveCapital} className="text-xs bg-green-600 text-white rounded px-2 py-1 hover:bg-green-500">✓</button>
+                <button onClick={() => setEditingCapital(false)} className="text-xs bg-gray-700 text-gray-300 rounded px-2 py-1">✕</button>
+              </div>
+              <p className="text-gray-600 text-xs">กรอกเป็น {currency === 'thb' ? 'บาท (฿)' : 'ดอลลาร์ ($)'}</p>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-lg font-bold text-white">{fmtAmt(initialCapital)}</p>
+                <p className="text-gray-600 text-xs">ใส่ครั้งเดียว ไม่เปลี่ยนตาม DCA</p>
+              </div>
+              <button onClick={() => { setEditingCapital(true); setCapitalInput(currency === 'thb' ? String(Math.round(initialCapital * exchangeRate)) : String(initialCapital)) }}
+                className="text-gray-600 hover:text-white text-xs transition-colors">✏️</button>
+            </div>
+          )}
+        </div>
+
+        {/* กำไรจากเงินต้นจริง */}
+        {initialCapital > 0 && (() => {
+          const totalAll = (totalValue ?? 0) + cashBalanceUSD + dimeBalanceUSD
+          const realPnl = totalAll - initialCapital
+          const realPct = (realPnl / initialCapital) * 100
+          const pos = realPnl >= 0
+          return (
+            <div className={`rounded-xl border p-4 ${pos ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
+              <p className="text-gray-400 text-xs mb-1 uppercase tracking-wide">กำไรจากเงินต้นจริง</p>
+              <p className={`text-lg font-bold ${pos ? 'text-green-400' : 'text-red-400'}`}>{pos ? '+' : ''}{fmtAmt(realPnl)}</p>
+              <p className={`text-sm font-medium ${pos ? 'text-green-400' : 'text-red-400'}`}>{pos ? '+' : ''}{realPct.toFixed(2)}%</p>
+              <p className="text-gray-600 text-xs mt-1">หุ้น + Dime + ธนาคาร</p>
+            </div>
+          )
+        })()}
       </div>
 
       {/* Portfolio Donut Chart */}
