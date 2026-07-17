@@ -8,14 +8,16 @@ export async function GET() {
 
   const { data } = await supabase
     .from('user_settings')
-    .select('cash_balance, dime_balance, initial_capital')
+    .select('cash_balance, dime_balance, initial_capital, dime_updated_at, capital_updated_at')
     .eq('user_id', user.id)
     .single()
 
   return NextResponse.json({
-    cash_balance:    data?.cash_balance    ?? 0,
-    dime_balance:    data?.dime_balance    ?? 0,
-    initial_capital: data?.initial_capital ?? 0,
+    cash_balance:      data?.cash_balance      ?? 0,
+    dime_balance:      data?.dime_balance      ?? 0,
+    initial_capital:   data?.initial_capital   ?? 0,
+    dime_updated_at:   data?.dime_updated_at   ?? null,
+    capital_updated_at: data?.capital_updated_at ?? null,
   })
 }
 
@@ -27,8 +29,8 @@ export async function PUT(request: NextRequest) {
   const body = await request.json()
   const update: Record<string, number> = { user_id: user.id as unknown as number }
   if (body.cash_balance    !== undefined) update.cash_balance    = Number(body.cash_balance)
-  if (body.dime_balance    !== undefined) update.dime_balance    = Number(body.dime_balance)
-  if (body.initial_capital !== undefined) update.initial_capital = Number(body.initial_capital)
+  if (body.dime_balance    !== undefined) { update.dime_balance = Number(body.dime_balance); (update as any).dime_updated_at = new Date().toISOString() }
+  if (body.initial_capital !== undefined) { update.initial_capital = Number(body.initial_capital); (update as any).capital_updated_at = new Date().toISOString() }
 
   const { error } = await supabase
     .from('user_settings')

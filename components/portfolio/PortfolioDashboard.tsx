@@ -219,6 +219,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [cashBalanceUSD, setCashBalanceUSD] = useState(0)
   const [dimeBalanceUSD, setDimeBalanceUSD] = useState(0)
   const [initialCapital, setInitialCapital] = useState(0)
+  const [darkMode, setDarkMode] = useState(true)
+  const [dimeUpdatedAt, setDimeUpdatedAt] = useState<string | null>(null)
+  const [capitalUpdatedAt, setCapitalUpdatedAt] = useState<string | null>(null)
   const [editingCash, setEditingCash] = useState(false)
   const [editingDime, setEditingDime] = useState(false)
   const [editingCapital, setEditingCapital] = useState(false)
@@ -418,7 +421,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     const usdVal = currency === 'thb' ? inputVal / exchangeRate : inputVal
     try {
       await fetch('/api/user-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dime_balance: usdVal }) })
-      setDimeBalanceUSD(usdVal); setEditingDime(false); showToast('บันทึกเงินใน Dime แล้ว')
+      setDimeBalanceUSD(usdVal); setDimeUpdatedAt(new Date().toISOString()); setEditingDime(false); showToast('บันทึกเงินใน Dime แล้ว')
     } catch { showToast('บันทึกไม่สำเร็จ', false) }
   }
 
@@ -427,7 +430,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     const usdVal = currency === 'thb' ? inputVal / exchangeRate : inputVal
     try {
       await fetch('/api/user-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initial_capital: usdVal }) })
-      setInitialCapital(usdVal); setEditingCapital(false); showToast('บันทึกเงินต้นจริงแล้ว')
+      setInitialCapital(usdVal); setCapitalUpdatedAt(new Date().toISOString()); setEditingCapital(false); showToast('บันทึกเงินต้นจริงแล้ว')
     } catch { showToast('บันทึกไม่สำเร็จ', false) }
   }
 
@@ -591,7 +594,29 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-5">
+    <div data-theme={darkMode ? 'dark' : 'light'} className="max-w-7xl mx-auto space-y-5">
+      <style>{`
+        [data-theme="light"] { background: transparent; }
+        [data-theme="light"] .bg-gray-950 { background-color: #f8fafc !important; }
+        [data-theme="light"] .bg-gray-900\/40 { background-color: #f1f5f9 !important; }
+        [data-theme="light"] .bg-gray-900\/80 { background-color: #e2e8f0 !important; }
+        [data-theme="light"] .bg-gray-900 { background-color: #f1f5f9 !important; }
+        [data-theme="light"] .bg-gray-800 { background-color: #e2e8f0 !important; }
+        [data-theme="light"] .bg-gray-800\/60 { background-color: #e9eef5 !important; }
+        [data-theme="light"] .bg-gray-950\/60 { background-color: #f8fafc !important; }
+        [data-theme="light"] .bg-gray-950\/80 { background-color: #f1f5f9 !important; }
+        [data-theme="light"] .text-white { color: #0f172a !important; }
+        [data-theme="light"] .text-gray-100 { color: #1e293b !important; }
+        [data-theme="light"] .text-gray-300 { color: #334155 !important; }
+        [data-theme="light"] .text-gray-400 { color: #475569 !important; }
+        [data-theme="light"] .text-gray-500 { color: #64748b !important; }
+        [data-theme="light"] .text-gray-600 { color: #94a3b8 !important; }
+        [data-theme="light"] .text-gray-700 { color: #cbd5e1 !important; }
+        [data-theme="light"] .border-gray-800 { border-color: #cbd5e1 !important; }
+        [data-theme="light"] .border-gray-700 { border-color: #e2e8f0 !important; }
+        [data-theme="light"] .border-gray-600 { border-color: #94a3b8 !important; }
+        [data-theme="light"] .divide-gray-800 > * + * { border-color: #e2e8f0 !important; }
+      `}</style>
 
       {toast && (
         <div className={`fixed top-4 right-4 z-50 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
@@ -625,6 +650,10 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           <button onClick={() => setModalHolding(null)}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition-colors">
             + เพิ่มหุ้น
+          </button>
+          <button onClick={() => setDarkMode(d => !d)}
+            className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
+            {darkMode ? '☀️ สว่าง' : '🌙 มืด'}
           </button>
           <button onClick={handleLogout}
             className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
@@ -697,6 +726,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
               <div>
                 <p className="text-lg font-bold text-white">{fmtAmt(dimeBalanceUSD)}</p>
                 <p className="text-gray-600 text-xs">เงินจากขายหุ้น ยังไม่โอน</p>
+                {dimeUpdatedAt && <p className="text-gray-700 text-xs mt-1">🕐 แก้ไขล่าสุด {fmtDateTime(dimeUpdatedAt)}</p>}
               </div>
               <button onClick={() => { setEditingDime(true); setDimeInput(currency === 'thb' ? String(Math.round(dimeBalanceUSD * exchangeRate)) : String(dimeBalanceUSD)) }}
                 className="text-gray-600 hover:text-white text-xs transition-colors">✏️</button>
@@ -723,6 +753,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
               <div>
                 <p className="text-lg font-bold text-white">{fmtAmt(initialCapital)}</p>
                 <p className="text-gray-600 text-xs">ใส่ครั้งเดียว ไม่เปลี่ยนตาม DCA</p>
+                {capitalUpdatedAt && <p className="text-gray-700 text-xs mt-1">🕐 แก้ไขล่าสุด {fmtDateTime(capitalUpdatedAt)}</p>}
               </div>
               <button onClick={() => { setEditingCapital(true); setCapitalInput(currency === 'thb' ? String(Math.round(initialCapital * exchangeRate)) : String(initialCapital)) }}
                 className="text-gray-600 hover:text-white text-xs transition-colors">✏️</button>
@@ -732,7 +763,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
 
         {/* กำไรจากเงินต้นจริง */}
         {initialCapital > 0 && (() => {
-          const totalAll = (totalValue ?? 0) + cashBalanceUSD + dimeBalanceUSD
+          const totalAll = (totalValue ?? 0) + dimeBalanceUSD
           const realPnl = totalAll - initialCapital
           const realPct = (realPnl / initialCapital) * 100
           const pos = realPnl >= 0
@@ -741,7 +772,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
               <p className="text-gray-400 text-xs mb-1 uppercase tracking-wide">กำไรจากเงินต้นจริง</p>
               <p className={`text-lg font-bold ${pos ? 'text-green-400' : 'text-red-400'}`}>{pos ? '+' : ''}{fmtAmt(realPnl)}</p>
               <p className={`text-sm font-medium ${pos ? 'text-green-400' : 'text-red-400'}`}>{pos ? '+' : ''}{realPct.toFixed(2)}%</p>
-              <p className="text-gray-600 text-xs mt-1">หุ้น + Dime + ธนาคาร</p>
+              <p className="text-gray-600 text-xs mt-1">หุ้น + Dime เท่านั้น</p>
             </div>
           )
         })()}
