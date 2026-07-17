@@ -289,6 +289,17 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       const usd = d.cash_balance ?? 0
       setCashBalanceUSD(usd)
       setCashInput(currency === 'thb' ? String(Math.round(usd * exchangeRate)) : String(usd))
+
+      const dime = d.dime_balance ?? 0
+      setDimeBalanceUSD(dime)
+      setDimeInput(currency === 'thb' ? String(Math.round(dime * exchangeRate)) : String(dime))
+
+      const cap = d.initial_capital ?? 0
+      setInitialCapital(cap)
+      setCapitalInput(currency === 'thb' ? String(Math.round(cap * exchangeRate)) : String(cap))
+
+      setDimeUpdatedAt(d.dime_updated_at ?? null)
+      setCapitalUpdatedAt(d.capital_updated_at ?? null)
     }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
