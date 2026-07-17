@@ -220,6 +220,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [dimeBalanceUSD, setDimeBalanceUSD] = useState(0)
   const [initialCapital, setInitialCapital] = useState(0)
   const [darkMode, setDarkMode] = useState(true)
+
   const [dimeUpdatedAt, setDimeUpdatedAt] = useState<string | null>(null)
   const [capitalUpdatedAt, setCapitalUpdatedAt] = useState<string | null>(null)
   const [editingCash, setEditingCash] = useState(false)
@@ -276,6 +277,12 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   }
 
   useEffect(() => { fetchExchangeRate() }, [])
+
+  // apply theme ที่ <html> ให้ครอบทั้งหน้า
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
+  }, [darkMode])
+
 
   useEffect(() => {
     fetch('/api/user-settings').then(r => r.json()).then(d => {
@@ -594,29 +601,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   }
 
   return (
-    <div data-theme={darkMode ? 'dark' : 'light'} className="max-w-7xl mx-auto space-y-5">
-      <style>{`
-        [data-theme="light"] { background: transparent; }
-        [data-theme="light"] .bg-gray-950 { background-color: #f8fafc !important; }
-        [data-theme="light"] .bg-gray-900\/40 { background-color: #f1f5f9 !important; }
-        [data-theme="light"] .bg-gray-900\/80 { background-color: #e2e8f0 !important; }
-        [data-theme="light"] .bg-gray-900 { background-color: #f1f5f9 !important; }
-        [data-theme="light"] .bg-gray-800 { background-color: #e2e8f0 !important; }
-        [data-theme="light"] .bg-gray-800\/60 { background-color: #e9eef5 !important; }
-        [data-theme="light"] .bg-gray-950\/60 { background-color: #f8fafc !important; }
-        [data-theme="light"] .bg-gray-950\/80 { background-color: #f1f5f9 !important; }
-        [data-theme="light"] .text-white { color: #0f172a !important; }
-        [data-theme="light"] .text-gray-100 { color: #1e293b !important; }
-        [data-theme="light"] .text-gray-300 { color: #334155 !important; }
-        [data-theme="light"] .text-gray-400 { color: #475569 !important; }
-        [data-theme="light"] .text-gray-500 { color: #64748b !important; }
-        [data-theme="light"] .text-gray-600 { color: #94a3b8 !important; }
-        [data-theme="light"] .text-gray-700 { color: #cbd5e1 !important; }
-        [data-theme="light"] .border-gray-800 { border-color: #cbd5e1 !important; }
-        [data-theme="light"] .border-gray-700 { border-color: #e2e8f0 !important; }
-        [data-theme="light"] .border-gray-600 { border-color: #94a3b8 !important; }
-        [data-theme="light"] .divide-gray-800 > * + * { border-color: #e2e8f0 !important; }
-      `}</style>
+    <div className="max-w-7xl mx-auto space-y-5">
 
       {toast && (
         <div className={`fixed top-4 right-4 z-50 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
