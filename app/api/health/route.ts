@@ -1,58 +1,50 @@
 /**
  * GET /api/health
- * ทดสอบการเชื่อมต่อบน production
- * ต้อง login ก่อนถึงจะเรียกได้ (middleware guard)
+ * ทดสอบการเชื่อมต่อบน production — ต้อง login ก่อนเสมอ
+ * (route นี้ไม่ผ่าน middleware เพราะ /api/* ถูกยกเว้นใน matcher จึงต้อง guard เองตรงนี้)
  */
 import { NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 
 export async function GET() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // guard: ต้อง login ก่อนถึงจะเรียก health check ได้
+  // ป้องกันไม่ให้คนนอกใช้ route นี้เป็น proxy ยิง Finnhub/Groq ฟรีๆ หรือเห็น error message ภายใน
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const results: Record<string, string> = {}
+  results.auth = `✅ logged in as ${user.email}`
 
-  // 1. Auth check
+  // 1. Supabase DB — เช็คแค่ connectivity ด้วย RLS-scoped client (ไม่ decrypt ข้อมูลจริง)
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    results.auth = user ? `✅ logged in as ${user.email}` : '❌ not authenticated'
+    const { error } = await supabase
+      .from('holdings')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+    results.supabase_db = error ? `❌ ${error.message}` : '✅ connected'
   } catch (e: any) {
-    results.auth = `❌ ${e.message}`
+    results.supabase_db = `❌ ${e.message}`
   }
 
-  // 2. Supabase DB + pgcrypto
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      const svc = createServiceClient()
-      const { data, error } = await svc.rpc('get_decrypted_holdings', {
-        p_user_id: user.id,
-        p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-      })
-      results.supabase_pgcrypto = error
-        ? `❌ ${error.message}`
-        : `✅ ${data?.length ?? 0} holdings (pgcrypto ok)`
-    }
-  } catch (e: any) {
-    results.supabase_pgcrypto = `❌ ${e.message}`
-  }
-
-  // 3. Finnhub
+  // 2. Finnhub
   try {
     const res = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=AAPL&token=${process.env.FINNHUB_API_KEY}`
+      `https://finnhub.io/api/v1/quote?symbol=AAPL&token=${process.env.FINNHUB_API_KEY}`,
+      { cache: 'no-store' }
     )
     const data = await res.json()
-    results.finnhub = data.c > 0
-      ? `✅ AAPL = $${data.c}`
-      : `❌ ${JSON.stringify(data)}`
+    results.finnhub = data.c > 0 ? '✅ ok' : `❌ ${JSON.stringify(data)}`
   } catch (e: any) {
     results.finnhub = `❌ ${e.message}`
   }
 
-  // 4. Groq AI
+  // 3. Groq AI
   try {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
+      cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
@@ -64,9 +56,7 @@ export async function GET() {
       }),
     })
     const data = await res.json()
-    results.groq = data.choices?.[0]?.message?.content
-      ? `✅ ${data.choices[0].message.content.trim()}`
-      : `❌ ${data.error?.message ?? JSON.stringify(data)}`
+    results.groq = data.choices?.[0]?.message?.content ? '✅ ok' : `❌ ${data.error?.message ?? 'unknown'}`
   } catch (e: any) {
     results.groq = `❌ ${e.message}`
   }

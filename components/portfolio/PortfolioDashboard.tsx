@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import HoldingModal from './HoldingModal'
 import TradingViewChart from './TradingViewChart'
+import { AUTO_LOGOUT_MS, AUTO_LOGOUT_WARN_MS } from '@/lib/constants'
 
 interface Props {
   holdings: HoldingWithPrice[]
@@ -241,8 +242,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
 
   // Auto-logout หลัง 30 นาที ไม่มีการใช้งาน
   useEffect(() => {
-    const TIMEOUT = 30 * 60 * 1000   // 30 นาที
-    const WARN    = 29 * 60 * 1000   // เตือน 1 นาทีก่อน
+    const TIMEOUT = AUTO_LOGOUT_MS
+    const WARN    = AUTO_LOGOUT_WARN_MS
     let logoutTimer: ReturnType<typeof setTimeout>
     let warnTimer:   ReturnType<typeof setTimeout>
 
@@ -467,7 +468,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     }
     if (!res.ok) { const err = await res.json(); throw new Error(err.error ?? 'บันทึกไม่สำเร็จ') }
     showToast(id ? `อัปเดต ${payload.symbol} แล้ว` : `เพิ่ม ${payload.symbol} แล้ว`)
-    router.refresh()
+    // ไม่เรียก router.refresh() ซ้ำ — อัปเดต local state ด้านล่างเป็น optimistic UI ที่สมบูรณ์แล้ว
+    // (เดิมเรียกทั้งคู่ซึ่งซ้ำซ้อน ทำให้ fetch ข้อมูลจาก server สองรอบโดยไม่จำเป็น)
     if (!id) {
       const priceRes = await fetch(`/api/prices?symbols=${payload.symbol}`)
       const { prices, metrics } = await priceRes.json()
@@ -491,7 +493,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         return { ...h, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, total_cost: tc, pnl, pnl_pct }
       }))
     }
-  }, [router])
+  }, [])
 
   const handleDelete = useCallback(async (id: string) => {
     const res = await fetch(`/api/holdings/${id}`, { method: 'DELETE' })

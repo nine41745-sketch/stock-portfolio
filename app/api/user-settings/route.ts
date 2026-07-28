@@ -13,10 +13,10 @@ export async function GET() {
     .single()
 
   return NextResponse.json({
-    cash_balance:      data?.cash_balance      ?? 0,
-    dime_balance:      data?.dime_balance      ?? 0,
-    initial_capital:   data?.initial_capital   ?? 0,
-    dime_updated_at:   data?.dime_updated_at   ?? null,
+    cash_balance:       data?.cash_balance       ?? 0,
+    dime_balance:       data?.dime_balance       ?? 0,
+    initial_capital:    data?.initial_capital    ?? 0,
+    dime_updated_at:    data?.dime_updated_at    ?? null,
     capital_updated_at: data?.capital_updated_at ?? null,
   })
 }
@@ -26,11 +26,22 @@ export async function PUT(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await request.json()
-  const update: Record<string, number> = { user_id: user.id as unknown as number }
-  if (body.cash_balance    !== undefined) update.cash_balance    = Number(body.cash_balance)
-  if (body.dime_balance    !== undefined) { update.dime_balance = Number(body.dime_balance); (update as any).dime_updated_at = new Date().toISOString() }
-  if (body.initial_capital !== undefined) { update.initial_capital = Number(body.initial_capital); (update as any).capital_updated_at = new Date().toISOString() }
+  let body: any
+  try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }) }
+
+  // user_id เป็น UUID (string) ตรงกับ auth.users.id — ห้าม cast เป็น number
+  const update: Record<string, number | string> = {}
+  if (body.cash_balance !== undefined) {
+    update.cash_balance = Number(body.cash_balance)
+  }
+  if (body.dime_balance !== undefined) {
+    update.dime_balance = Number(body.dime_balance)
+    update.dime_updated_at = new Date().toISOString()
+  }
+  if (body.initial_capital !== undefined) {
+    update.initial_capital = Number(body.initial_capital)
+    update.capital_updated_at = new Date().toISOString()
+  }
 
   const { error } = await supabase
     .from('user_settings')

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { translateAndClassifyNews } from '@/lib/groq'
 import { cacheGet, cacheSet } from '@/lib/cache'
+import { NEWS_CACHE_TTL_SEC } from '@/lib/constants'
 import { NewsItem } from '@/types'
 
 // ชื่อบริษัทที่ใช้ตรวจสอบใน headline (lowercase)
@@ -123,7 +124,7 @@ export async function GET(request: NextRequest) {
 
   // cache เฉพาะถ้า Groq แปลสำเร็จ
   const translated = result.some(n => n.headlineTh && n.headlineTh !== n.headline)
-  if (translated) cacheSet(cacheKey, result, 3600)
+  if (translated) cacheSet(cacheKey, result, NEWS_CACHE_TTL_SEC)
 
   return NextResponse.json({ news: result })
 }

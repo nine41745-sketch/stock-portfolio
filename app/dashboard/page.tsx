@@ -23,7 +23,7 @@ export default async function DashboardPage() {
   const holdings = rows ?? []
   const symbols: string[] = holdings.map((h: any) => h.symbol)
 
-  // ราคา + metrics จาก Finnhub (sequential เพื่อไม่ rate limit)
+  // ราคา + metrics จาก Finnhub (parallel แบบ chunk กัน rate limit)
   const priceData = symbols.length > 0 ? await getMultipleQuotesWithMetrics(symbols) : {}
 
   const holdingsWithPrices: HoldingWithPrice[] = holdings.map((h: any) => {
