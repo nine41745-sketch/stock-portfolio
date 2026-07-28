@@ -63,18 +63,28 @@ export async function analyzeHolding(
 - ข่าว: ${newsSnippet}
 
 เลือกสัญญาณ: BUY (พื้นฐานดี ราคาน่าซื้อ) / HOLD (สมดุลดี) / SELL_PARTIAL (lock กำไรบางส่วน) / SELL_ALL (cut loss หรือพื้นฐานแย่ลง)
+ฟันธงชัดเจน ห้ามเลี่ยงไป HOLD ถ้าข้อมูลบ่งชี้ว่าควรขาย เช่น กำไรสูงมากควร lock กำไรบางส่วน (SELL_PARTIAL) หรือขาดทุนหนัก/พื้นฐานแย่ลงควร cut loss (SELL_ALL)
 
-ตอบเป็น JSON เท่านั้น ทุกข้อความเป็นภาษาไทย:
-{"signal":"BUY|HOLD|SELL_PARTIAL|SELL_ALL","summary":"สรุป 1-2 ประโยค","reasons":["เหตุผล1","เหตุผล2","เหตุผล3"],"detail":"อธิบาย 2-4 ประโยค รวมปัจจัยพื้นฐาน แนวโน้ม ความเสี่ยง","action":"คำแนะนำปฏิบัติชัดเจน","sector":"อุตสาหกรรม","business":"ลักษณะธุรกิจ 1-2 ประโยค","targetCustomers":"กลุ่มลูกค้าหลัก"}`
+ตอบเป็น JSON เท่านั้น ทุกข้อความเป็นภาษาไทย กระชับ:
+{"signal":"BUY|HOLD|SELL_PARTIAL|SELL_ALL","summary":"สรุป 1-2 ประโยค","reasons":["เหตุผล1","เหตุผล2","เหตุผล3"],"detail":"อธิบาย 2-3 ประโยคสั้นๆ","action":"คำแนะนำปฏิบัติชัดเจน","sector":"อุตสาหกรรม","business":"ลักษณะธุรกิจ 1 ประโยค","targetCustomers":"กลุ่มลูกค้าหลัก"}`
+
+  const validSignals = ['BUY', 'HOLD', 'SELL_PARTIAL', 'SELL_ALL']
+
+  // ดึง signal ตรงๆ ด้วย regex ก่อน กันกรณี JSON ถูกตัดกลางคันจาก token limit
+  // ทำให้ยังได้ signal ที่ถูกต้อง แม้ field อื่นจะ parse ไม่ได้ครบ
+  function extractSignal(raw: string): AnalysisResult['signal'] {
+    const m = raw.match(/"signal"\s*:\s*"(BUY|HOLD|SELL_PARTIAL|SELL_ALL)"/)
+    return (m && validSignals.includes(m[1]) ? m[1] : 'HOLD') as AnalysisResult['signal']
+  }
 
   try {
-    const text = await callGroq(prompt, 1000)
+    const text = await callGroq(prompt, 1500)
+    const fallbackSignal = extractSignal(text)
     const match = text.match(/\{[\s\S]*\}/)
     const parsed = JSON.parse(match?.[0] ?? '{}')
-    const validSignals = ['BUY', 'HOLD', 'SELL_PARTIAL', 'SELL_ALL']
     return {
       symbol,
-      signal: (validSignals.includes(parsed.signal) ? parsed.signal : 'HOLD') as AnalysisResult['signal'],
+      signal: (validSignals.includes(parsed.signal) ? parsed.signal : fallbackSignal) as AnalysisResult['signal'],
       summary: parsed.summary ?? '',
       reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
       detail: parsed.detail ?? '',
