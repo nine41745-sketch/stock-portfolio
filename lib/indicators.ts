@@ -28,20 +28,59 @@ const EMPTY_INDICATORS: TechnicalIndicators = {
 }
 
 // ดึงราคาปิดรายวันย้อนหลัง ~1 ปี จาก Yahoo Finance chart API (ฟรี ไม่ต้องใช้ key)
-async function fetchHistoricalCloses(symbol: string): Promise<number[]> {
+// หมายเหตุ: Yahoo unofficial API บางครั้ง block/rate-limit IP ของ cloud provider (เช่น Vercel serverless)
+// ถ้า Yahoo ล้มเหลว จะ fallback ไป Stooq.com (แหล่งฟรีอีกที่ ไม่ต้อง key เหมือนกัน) แทนการคืนค่าว่างเงียบๆ
+async function fetchFromYahoo(symbol: string): Promise<number[]> {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d`
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PortfolioTracker/1.0)' },
       next: { revalidate: 3600 }, // cache 1 ชม. ลด load
     })
-    if (!res.ok) return []
+    if (!res.ok) {
+      console.error(`[indicators] Yahoo Finance HTTP ${res.status} for ${symbol}`)
+      return []
+    }
     const data = await res.json()
     const closes: (number | null)[] = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? []
     return closes.filter((c): c is number => typeof c === 'number' && !Number.isNaN(c))
-  } catch {
+  } catch (e) {
+    console.error(`[indicators] Yahoo Finance fetch error for ${symbol}:`, e)
     return []
   }
+}
+
+// Fallback: Stooq.com CSV — ใช้เมื่อ Yahoo ใช้ไม่ได้ (โดน block หรือ rate limit)
+async function fetchFromStooq(symbol: string): Promise<number[]> {
+  const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol.toLowerCase())}.us&i=d`
+  try {
+    const res = await fetch(url, { next: { revalidate: 3600 } })
+    if (!res.ok) {
+      console.error(`[indicators] Stooq HTTP ${res.status} for ${symbol}`)
+      return []
+    }
+    const csv = await res.text()
+    // format: Date,Open,High,Low,Close,Volume — บรรทัดแรกเป็น header
+    const lines = csv.trim().split('\n').slice(1)
+    const closes = lines
+      .map(line => Number(line.split(',')[4]))
+      .filter(n => !Number.isNaN(n))
+    // Stooq เรียงเก่า->ใหม่เหมือนกัน เอามาแค่ ~1 ปีล่าสุด (ประมาณ 252 trading days)
+    return closes.slice(-260)
+  } catch (e) {
+    console.error(`[indicators] Stooq fetch error for ${symbol}:`, e)
+    return []
+  }
+}
+
+async function fetchHistoricalCloses(symbol: string): Promise<number[]> {
+  const yahoo = await fetchFromYahoo(symbol)
+  if (yahoo.length >= 200) return yahoo
+
+  const stooq = await fetchFromStooq(symbol)
+  if (stooq.length > yahoo.length) return stooq
+
+  return yahoo
 }
 
 function last<T>(arr: T[]): T | null {
