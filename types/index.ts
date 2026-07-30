@@ -94,6 +94,8 @@ export interface DetailedAnalysisResult {
   technical: TechnicalSnapshot
   usedPrice: number | null
   usedNews: Array<{ headline: string; headlineTh?: string; impact: string }>
+  // ระบุเมื่อวิเคราะห์ไม่สำเร็จจริงๆ (เช่น Groq เกินโควต้ารายวัน) — UI ต้องแยกแสดงจากผลวิเคราะห์จริง
+  error?: 'RATE_LIMIT' | 'FAILED'
 }
 
 export interface HoldingFormData {

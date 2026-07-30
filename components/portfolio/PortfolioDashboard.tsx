@@ -507,6 +507,29 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     const action = analysis.recommendation.action
     const t = analysis.technical
 
+    // วิเคราะห์ไม่สำเร็จจริง (เช่น Groq เกินโควต้ารายวัน) — แสดง warning card แยกจากผลวิเคราะห์จริง
+    // กันไม่ให้ดูเหมือนเป็นคำแนะนำ HOLD ที่ AI วิเคราะห์จริงๆ ทั้งที่จริงๆ ระบบล้มเหลว
+    if (analysis.error) {
+      return (
+        <div className="rounded-lg border p-4 bg-amber-500/10 border-amber-500/30 text-amber-200">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-bold text-base">⚠️ วิเคราะห์ไม่สำเร็จ</span>
+            <button onClick={() => setAnalyses(prev => { const n = { ...prev }; delete n[analysis.symbol]; return n })} className="opacity-50 hover:opacity-100 text-sm">✕</button>
+          </div>
+          <p className="text-xs leading-relaxed opacity-90 mb-3">{analysis.summary}</p>
+          {analysis.error === 'RATE_LIMIT' && (
+            <p className="text-xs opacity-60">💡 โควต้าฟรีของ Groq AI มีจำกัดต่อวัน ลองใหม่อีกครั้งในอีกสักครู่ หรือพรุ่งนี้เมื่อโควต้า reset</p>
+          )}
+          <button
+            onClick={() => handleAnalyze({ ...holdings.find(h => h.symbol === analysis.symbol)! })}
+            className="mt-3 text-xs bg-amber-500/20 hover:bg-amber-500/30 rounded px-3 py-1.5 font-medium"
+          >
+            🔄 ลองวิเคราะห์อีกครั้ง
+          </button>
+        </div>
+      )
+    }
+
     const techChips: Array<{ label: string; value: string }> = [
       t.trend !== 'UNKNOWN' ? { label: 'แนวโน้ม', value: t.trend === 'UPTREND' ? '📈 ขาขึ้น' : t.trend === 'DOWNTREND' ? '📉 ขาลง' : '➖ Sideways' } : null,
       t.ema50 != null ? { label: 'EMA50', value: `$${t.ema50}` } : null,

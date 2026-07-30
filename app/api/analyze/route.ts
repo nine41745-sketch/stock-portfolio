@@ -41,8 +41,10 @@ export async function POST(request: NextRequest) {
       recentNews ?? []
     )
 
-    // cache เฉพาะผลที่วิเคราะห์สำเร็จจริง (มี technicalSummary + summary)
-    if (result.technicalSummary && result.summary) {
+    // cache เฉพาะผลที่วิเคราะห์สำเร็จจริง (ไม่มี error และมี technicalSummary + summary)
+    // ห้าม cache ผลที่ error (เช่น เกินโควต้า Groq) เพราะโควต้าอาจ reset ได้ภายในไม่กี่นาที/ชั่วโมง
+    // ถ้า cache ไว้ user จะเห็น error message ซ้ำเดิมไปอีก 30 นาทีทั้งที่จริงๆ ลองใหม่แล้วอาจสำเร็จ
+    if (!result.error && result.technicalSummary && result.summary) {
       cacheSet(cacheKey, result, ANALYZE_CACHE_TTL_SEC)
     }
 

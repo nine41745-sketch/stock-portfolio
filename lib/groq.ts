@@ -1,9 +1,18 @@
 import { HoldingWithPrice, AnalysisResult, DetailedAnalysisResult, TechnicalSnapshot } from '@/types'
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const GROQ_MODEL = 'llama-3.3-70b-versatile'
 
-async function callGroq(prompt: string, maxTokens = 1024): Promise<string> {
+// โมเดลหลัก: คุณภาพดีกว่า แต่โควต้าฟรีต่ำกว่า (llama-3.3-70b-versatile = 100,000 token/วัน)
+const GROQ_MODEL = 'llama-3.3-70b-versatile'
+// โมเดลสำรอง: ใช้เมื่อโมเดลหลักโดน rate limit (llama-3.1-8b-instant = 500,000 token/วัน — มากกว่า 5 เท่า)
+const GROQ_FALLBACK_MODEL = 'llama-3.1-8b-instant'
+
+interface GroqCallResult {
+  text: string
+  rateLimited: boolean
+}
+
+async function callGroqWithModel(prompt: string, maxTokens: number, model: string): Promise<GroqCallResult> {
   try {
     const res = await fetch(GROQ_URL, {
       method: 'POST',
@@ -13,23 +22,42 @@ async function callGroq(prompt: string, maxTokens = 1024): Promise<string> {
         'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: GROQ_MODEL,
+        model,
         messages: [{ role: 'user', content: prompt }],
         max_tokens: maxTokens,
         temperature: 0.6,
       }),
     })
+    if (res.status === 429) {
+      const err = await res.text()
+      console.error(`[Groq] Rate limited on ${model}:`, err.slice(0, 300))
+      return { text: '', rateLimited: true }
+    }
     if (!res.ok) {
       const err = await res.text()
-      console.error('[Groq] HTTP', res.status, err.slice(0, 200))
-      return ''
+      console.error(`[Groq] HTTP ${res.status} on ${model}:`, err.slice(0, 200))
+      return { text: '', rateLimited: false }
     }
     const data = await res.json()
-    return data.choices?.[0]?.message?.content ?? ''
+    return { text: data.choices?.[0]?.message?.content ?? '', rateLimited: false }
   } catch (e) {
-    console.error('[Groq] Error:', e)
-    return ''
+    console.error(`[Groq] Error on ${model}:`, e)
+    return { text: '', rateLimited: false }
   }
+}
+
+// เรียกโมเดลหลักก่อน ถ้าโดน rate limit (429 = เกินโควต้ารายวัน) ให้ fallback ไปโมเดลสำรองอัตโนมัติ
+// กันไม่ต้องรอ 24 ชม. ให้โควต้า reset ทุกครั้งที่ใช้งานหนักในวันเดียว
+async function callGroq(prompt: string, maxTokens = 1024): Promise<GroqCallResult> {
+  const primary = await callGroqWithModel(prompt, maxTokens, GROQ_MODEL)
+  if (primary.text) return primary
+
+  if (primary.rateLimited) {
+    console.warn(`[Groq] ${GROQ_MODEL} rate limited, falling back to ${GROQ_FALLBACK_MODEL}`)
+    return callGroqWithModel(prompt, maxTokens, GROQ_FALLBACK_MODEL)
+  }
+
+  return primary
 }
 
 export async function analyzeHolding(
@@ -78,7 +106,7 @@ export async function analyzeHolding(
   }
 
   try {
-    const text = await callGroq(prompt, 1500)
+    const { text } = await callGroq(prompt, 1500)
     const fallbackSignal = extractSignal(text)
     const match = text.match(/\{[\s\S]*\}/)
     const parsed = JSON.parse(match?.[0] ?? '{}')
@@ -190,25 +218,35 @@ ${newsSnippet}
     return (m && validActions.includes(m[1]) ? m[1] : 'HOLD') as DetailedAnalysisResult['recommendation']['action']
   }
 
-  const fallback: DetailedAnalysisResult = {
+  const makeFallback = (message: string, error: DetailedAnalysisResult['error']): DetailedAnalysisResult => ({
     symbol,
     disclaimer: 'บทวิเคราะห์นี้สร้างโดย AI เพื่อประกอบการตัดสินใจเท่านั้น ไม่ใช่คำแนะนำการลงทุน',
-    technicalSummary: 'ไม่สามารถวิเคราะห์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง',
+    technicalSummary: message,
     newsImpact: [],
     risksAndOpportunities: { caution: '', opportunity: '' },
     recommendation: { action: 'HOLD', buyConditions: '', sellConditions: '' },
     risks: [],
-    summary: '',
+    summary: message,
     analysedAt: new Date().toISOString(),
     sector: '',
     business: '',
     technical,
     usedPrice: current_price ?? null,
     usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
-  }
+    error,
+  })
+
+  const fallback = makeFallback('ไม่สามารถวิเคราะห์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง', 'FAILED')
 
   try {
-    const text = await callGroq(prompt, 2500)
+    const { text, rateLimited } = await callGroq(prompt, 2500)
+
+    // Groq เกินโควต้ารายวันทั้งโมเดลหลักและสำรองแล้ว — แสดง error ให้ชัดเจน
+    // ไม่ใช่การ์ด HOLD ว่างเปล่าที่ดูเหมือนวิเคราะห์จริงแต่จริงๆ ไม่มีเนื้อหาอะไรเลย
+    if (!text && rateLimited) {
+      return makeFallback('เกินโควต้าการใช้งาน AI รายวันแล้ว (Groq API) กรุณาลองใหม่อีกครั้งในภายหลัง หรือพรุ่งนี้เมื่อโควต้า reset', 'RATE_LIMIT')
+    }
+
     // extractAction หา "action" ตรงๆ จาก raw text ก่อน — เพราะตอนนี้ "action" เป็น key แรกสุดของ JSON
     // (ย้ายมาไว้หน้าสุดเพราะเดิม nest อยู่ใน recommendation ท้ายๆ obj พอ Groq ตอบยาวจน token หมดกลางคัน
     // ฟิลด์ action เลยไม่ถูกเขียนออกมาเลย ทำให้ fallback เป็น HOLD ทุกครั้งที่ตัดกลางคัน)
@@ -263,7 +301,7 @@ ${list}
 [{"headlineTh":"หัวข้อภาษาไทย","impact":"NEGATIVE|POSITIVE|NEUTRAL|LOW"},...]`
 
   try {
-    const text = await callGroq(prompt, 1500)
+    const { text } = await callGroq(prompt, 1500)
     const match = text.match(/\[[\s\S]*\]/)
     const parsed = JSON.parse(match?.[0] ?? '[]')
     const valid = ['NEGATIVE', 'POSITIVE', 'NEUTRAL', 'LOW']
