@@ -10,6 +10,15 @@ const GROQ_FALLBACK_MODEL = 'llama-3.1-8b-instant'
 interface GroqCallResult {
   text: string
   rateLimited: boolean
+  // 'minute' = โดน TPM/RPM รอแค่ ~1 นาทีก็หาย, 'day' = โดน TPD/RPD ต้องรอถึงวันถัดไป
+  rateLimitScope: 'minute' | 'day' | null
+}
+
+function detectRateLimitScope(errText: string): 'minute' | 'day' | null {
+  const lower = errText.toLowerCase()
+  if (lower.includes('per minute')) return 'minute'
+  if (lower.includes('per day')) return 'day'
+  return null
 }
 
 async function callGroqWithModel(prompt: string, maxTokens: number, model: string): Promise<GroqCallResult> {
@@ -31,30 +40,34 @@ async function callGroqWithModel(prompt: string, maxTokens: number, model: strin
     if (res.status === 429) {
       const err = await res.text()
       console.error(`[Groq] Rate limited on ${model}:`, err.slice(0, 300))
-      return { text: '', rateLimited: true }
+      return { text: '', rateLimited: true, rateLimitScope: detectRateLimitScope(err) }
     }
     if (!res.ok) {
       const err = await res.text()
       console.error(`[Groq] HTTP ${res.status} on ${model}:`, err.slice(0, 200))
-      return { text: '', rateLimited: false }
+      return { text: '', rateLimited: false, rateLimitScope: null }
     }
     const data = await res.json()
-    return { text: data.choices?.[0]?.message?.content ?? '', rateLimited: false }
+    return { text: data.choices?.[0]?.message?.content ?? '', rateLimited: false, rateLimitScope: null }
   } catch (e) {
     console.error(`[Groq] Error on ${model}:`, e)
-    return { text: '', rateLimited: false }
+    return { text: '', rateLimited: false, rateLimitScope: null }
   }
 }
 
-// เรียกโมเดลหลักก่อน ถ้าโดน rate limit (429 = เกินโควต้ารายวัน) ให้ fallback ไปโมเดลสำรองอัตโนมัติ
-// กันไม่ต้องรอ 24 ชม. ให้โควต้า reset ทุกครั้งที่ใช้งานหนักในวันเดียว
+// เรียกโมเดลหลักก่อน ถ้าโดน rate limit ให้ fallback ไปโมเดลสำรองอัตโนมัติ
+// ถ้าโมเดลสำรองก็โดนด้วย ให้คืน scope ที่ "แย่กว่า" ระหว่าง 2 ตัว (day แย่กว่า minute) ให้ข้อความแม่นยำที่สุด
 async function callGroq(prompt: string, maxTokens = 1024): Promise<GroqCallResult> {
   const primary = await callGroqWithModel(prompt, maxTokens, GROQ_MODEL)
   if (primary.text) return primary
 
   if (primary.rateLimited) {
-    console.warn(`[Groq] ${GROQ_MODEL} rate limited, falling back to ${GROQ_FALLBACK_MODEL}`)
-    return callGroqWithModel(prompt, maxTokens, GROQ_FALLBACK_MODEL)
+    console.warn(`[Groq] ${GROQ_MODEL} rate limited (${primary.rateLimitScope ?? 'unknown'}), falling back to ${GROQ_FALLBACK_MODEL}`)
+    const fallback = await callGroqWithModel(prompt, maxTokens, GROQ_FALLBACK_MODEL)
+    if (fallback.text) return fallback
+    // ทั้งคู่โดน rate limit — ถ้าตัวใดตัวหนึ่งเป็น 'day' ให้ถือว่า worst-case คือ day
+    const worstScope = primary.rateLimitScope === 'day' || fallback.rateLimitScope === 'day' ? 'day' : (primary.rateLimitScope ?? fallback.rateLimitScope)
+    return { text: '', rateLimited: true, rateLimitScope: worstScope }
   }
 
   return primary
@@ -239,12 +252,16 @@ ${newsSnippet}
   const fallback = makeFallback('ไม่สามารถวิเคราะห์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง', 'FAILED')
 
   try {
-    const { text, rateLimited } = await callGroq(prompt, 2500)
+    const { text, rateLimited, rateLimitScope } = await callGroq(prompt, 2000)
 
-    // Groq เกินโควต้ารายวันทั้งโมเดลหลักและสำรองแล้ว — แสดง error ให้ชัดเจน
+    // Groq โดน rate limit ทั้งโมเดลหลักและสำรองแล้ว — แสดง error ให้ชัดเจน แยกข้อความตามว่า
+    // โดน per-minute (TPM/RPM รอแค่ ~1 นาที) หรือ per-day (TPD/RPD ต้องรอถึงวันถัดไป)
     // ไม่ใช่การ์ด HOLD ว่างเปล่าที่ดูเหมือนวิเคราะห์จริงแต่จริงๆ ไม่มีเนื้อหาอะไรเลย
     if (!text && rateLimited) {
-      return makeFallback('เกินโควต้าการใช้งาน AI รายวันแล้ว (Groq API) กรุณาลองใหม่อีกครั้งในภายหลัง หรือพรุ่งนี้เมื่อโควต้า reset', 'RATE_LIMIT')
+      const message = rateLimitScope === 'minute'
+        ? 'AI ใช้งานถี่เกินไปในนาทีนี้ (Groq rate limit ต่อนาที) รอสัก 1 นาทีแล้วลองใหม่ได้เลย'
+        : 'เกินโควต้าการใช้งาน AI รายวันแล้ว (Groq API) กรุณาลองใหม่พรุ่งนี้เมื่อโควต้า reset'
+      return makeFallback(message, 'RATE_LIMIT')
     }
 
     // extractAction หา "action" ตรงๆ จาก raw text ก่อน — เพราะตอนนี้ "action" เป็น key แรกสุดของ JSON

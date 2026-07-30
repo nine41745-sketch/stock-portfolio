@@ -517,9 +517,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
             <button onClick={() => setAnalyses(prev => { const n = { ...prev }; delete n[analysis.symbol]; return n })} className="opacity-50 hover:opacity-100 text-sm">✕</button>
           </div>
           <p className="text-xs leading-relaxed opacity-90 mb-3">{analysis.summary}</p>
-          {analysis.error === 'RATE_LIMIT' && (
-            <p className="text-xs opacity-60">💡 โควต้าฟรีของ Groq AI มีจำกัดต่อวัน ลองใหม่อีกครั้งในอีกสักครู่ หรือพรุ่งนี้เมื่อโควต้า reset</p>
-          )}
+          {/* ข้อความรายละเอียด (สั้น/ยาว) มาจาก analysis.summary ด้านบนแล้ว ไม่ต้องซ้ำ */}
           <button
             onClick={() => handleAnalyze({ ...holdings.find(h => h.symbol === analysis.symbol)! })}
             className="mt-3 text-xs bg-amber-500/20 hover:bg-amber-500/30 rounded px-3 py-1.5 font-medium"
