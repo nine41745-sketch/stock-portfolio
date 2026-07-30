@@ -163,19 +163,20 @@ ${newsSnippet}
 ห้ามเลือก HOLD เป็นค่าปลอดภัยเริ่มต้น — ต้องเช็คเกณฑ์ SELL_ALL, SELL_PARTIAL, BUY ก่อนเสมอ เลือก HOLD ได้ก็ต่อเมื่อไม่เข้าเกณฑ์ใดๆ เลยจริงๆ
 ถ้า technical indicators คำนวณไม่ได้ (ข้อมูลไม่พอ) ให้ใช้ fundamentals (P/E, 52W High/Low) และข่าวแทนในการตัดสินใจ ไม่ใช่รีบเลือก HOLD เพราะขาดข้อมูล
 
-ตอบเป็น JSON เท่านั้น ภาษาไทยสั้นกระชับ:
+สำคัญมาก: ต้องใส่ field "action" เป็น key แรกสุดของ JSON เสมอ (ก่อน field อื่นทั้งหมด) เพราะระบบอ่านค่านี้ก่อนเป็นอันดับแรก
+ถ้าพื้นที่ตอบไม่พอสำหรับทุก field ให้ตัดท้าย (risks/summary) ทิ้งได้ แต่ "action" ต้องมีเสมอและต้องมาก่อน
+
+ตอบเป็น JSON เท่านั้น ภาษาไทยสั้นกระชับ เรียง field ตามลำดับนี้ห้ามสลับ:
 {
+  "action": "BUY|HOLD|SELL_PARTIAL|SELL_ALL",
   "disclaimer": "บทวิเคราะห์โดย AI เพื่อประกอบการพิจารณาเท่านั้น ไม่ใช่คำแนะนำการลงทุน",
+  "buyConditions": "ระบุเงื่อนไข/ราคาที่จะเข้าซื้อ (ใส่ 'N/A' หาก action เป็น SELL_PARTIAL หรือ SELL_ALL)",
+  "sellConditions": "ระบุเงื่อนไข/ราคา/Stop Loss ที่ควรขายออก (ใส่ 'N/A' หาก action เป็น BUY)",
   "technicalSummary": "สรุปเทคนิคัล 2-3 ประโยค อ้างอิงค่า EMA/RSI/MACD/BB จริง",
   "newsImpact": ["สรุปผลกระทบข่าวข้อ 1", "สรุปผลกระทบข่าวข้อ 2"],
   "risksAndOpportunities": {
     "caution": "ข้อควรระวังหรือจุดเสี่ยงเชิงเทคนิค/พื้นฐาน",
     "opportunity": "โอกาสหรือปัจจัยบวก"
-  },
-  "recommendation": {
-    "action": "BUY|HOLD|SELL_PARTIAL|SELL_ALL",
-    "buyConditions": "ระบุเงื่อนไข/ราคาที่จะเข้าซื้อ (ใส่ 'N/A หรือยังไม่แนะนำ' หาก action เป็น SELL)",
-    "sellConditions": "ระบุเงื่อนไข/ราคา/Stop Loss ที่ควรขายออก"
   },
   "risks": ["ความเสี่ยงข้อ 1", "ความเสี่ยงข้อ 2"],
   "summary": "สรุปคำแนะนำสั้นๆ 1-2 ประโยค",
@@ -208,9 +209,14 @@ ${newsSnippet}
 
   try {
     const text = await callGroq(prompt, 2500)
+    // extractAction หา "action" ตรงๆ จาก raw text ก่อน — เพราะตอนนี้ "action" เป็น key แรกสุดของ JSON
+    // (ย้ายมาไว้หน้าสุดเพราะเดิม nest อยู่ใน recommendation ท้ายๆ obj พอ Groq ตอบยาวจน token หมดกลางคัน
+    // ฟิลด์ action เลยไม่ถูกเขียนออกมาเลย ทำให้ fallback เป็น HOLD ทุกครั้งที่ตัดกลางคัน)
     const fallbackAction = extractAction(text)
     const match = text.match(/\{[\s\S]*\}/)
     const parsed = JSON.parse(match?.[0] ?? '{}')
+
+    const action = (validActions.includes(parsed.action) ? parsed.action : fallbackAction) as DetailedAnalysisResult['recommendation']['action']
 
     return {
       symbol,
@@ -222,9 +228,9 @@ ${newsSnippet}
         opportunity: parsed.risksAndOpportunities?.opportunity ?? '',
       },
       recommendation: {
-        action: (validActions.includes(parsed.recommendation?.action) ? parsed.recommendation.action : fallbackAction),
-        buyConditions: parsed.recommendation?.buyConditions ?? '',
-        sellConditions: parsed.recommendation?.sellConditions ?? '',
+        action,
+        buyConditions: parsed.buyConditions ?? '',
+        sellConditions: parsed.sellConditions ?? '',
       },
       risks: Array.isArray(parsed.risks) ? parsed.risks : [],
       summary: parsed.summary ?? '',
@@ -235,7 +241,8 @@ ${newsSnippet}
       usedPrice: current_price ?? null,
       usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
     }
-  } catch {
+  } catch (e) {
+    console.error(`[groq] analyzeHoldingDetailed parse failed for ${symbol}:`, e)
     return fallback
   }
 }
