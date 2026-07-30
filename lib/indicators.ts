@@ -1,5 +1,6 @@
 // ============================================================
-// Technical Indicators — ดึง historical price + คำนวณ EMA/RSI/MACD/Bollinger Bands
+// Technical Indicators — ดึง historical OHLCV + คำนวณ EMA/RSI/MACD/Bollinger Bands
+// + Support/Resistance (20-day swing) + Volume Ratio
 //
 // หมายเหตุสำคัญ: Finnhub free tier ไม่รองรับ /stock/candle สำหรับหุ้น US แล้ว
 // (คืน 403 Forbidden — ฟีเจอร์นี้ถูกย้ายไปอยู่ paid tier) จึงใช้ Yahoo Finance แทน
@@ -13,6 +14,13 @@ import YahooFinance from 'yahoo-finance2'
 // สร้าง instance เดียวใช้ซ้ำ (เก็บ cookie/crumb session ไว้ใช้ข้ามการเรียกภายใน serverless instance เดียวกัน)
 const yahooFinance = new YahooFinance()
 
+interface Bar {
+  close: number
+  high: number
+  low: number
+  volume: number
+}
+
 export interface TechnicalIndicators {
   ema50: number | null
   ema100: number | null
@@ -22,6 +30,11 @@ export interface TechnicalIndicators {
   bollinger: { upper: number | null; middle: number | null; lower: number | null }
   trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS' | 'UNKNOWN'
   lastClose: number | null
+  // แนวรับ-แนวต้านจากราคาสูงสุด/ต่ำสุดจริงในรอบ 20 วันทำการล่าสุด — ใช้แทนการให้ AI เดาราคาเอง
+  support: number | null
+  resistance: number | null
+  // volume วันล่าสุด / ค่าเฉลี่ย 20 วัน — >1.5 แปลว่ามีแรงซื้อ/ขายผิดปกติ ช่วยยืนยัน breakout จริงหรือหลอก
+  volumeRatio: number | null
 }
 
 const EMPTY_INDICATORS: TechnicalIndicators = {
@@ -31,12 +44,26 @@ const EMPTY_INDICATORS: TechnicalIndicators = {
   bollinger: { upper: null, middle: null, lower: null },
   trend: 'UNKNOWN',
   lastClose: null,
+  support: null,
+  resistance: null,
+  volumeRatio: null,
 }
 
-// ดึงราคาปิดรายวันย้อนหลัง ~1 ปี จาก Yahoo Finance chart API (ฟรี ไม่ต้องใช้ key)
+function toBars(raw: Array<{ close: number | null; high: number | null; low: number | null; volume: number | null }>): Bar[] {
+  return raw
+    .filter((b): b is { close: number; high: number; low: number; volume: number } =>
+      typeof b.close === 'number' && !Number.isNaN(b.close) &&
+      typeof b.high === 'number' && !Number.isNaN(b.high) &&
+      typeof b.low === 'number' && !Number.isNaN(b.low) &&
+      typeof b.volume === 'number' && !Number.isNaN(b.volume)
+    )
+    .map(b => ({ close: b.close, high: b.high, low: b.low, volume: b.volume }))
+}
+
+// ดึง OHLCV รายวันย้อนหลัง ~1 ปี จาก Yahoo Finance chart API (ฟรี ไม่ต้องใช้ key)
 // หมายเหตุ: Yahoo unofficial API บางครั้ง block/rate-limit IP ของ cloud provider (เช่น Vercel serverless)
 // ถ้า Yahoo ล้มเหลว จะ fallback ไป Stooq.com (แหล่งฟรีอีกที่ ไม่ต้อง key เหมือนกัน) แทนการคืนค่าว่างเงียบๆ
-async function fetchFromYahoo(symbol: string): Promise<number[]> {
+async function fetchFromYahoo(symbol: string): Promise<Bar[]> {
   try {
     // period1 ต้องเป็น Date/date-string จริง (ห้ามใช้ '1y' ตรงๆ — chart() ของ v4 ไม่รองรับ shorthand range)
     const period1 = new Date()
@@ -47,8 +74,7 @@ async function fetchFromYahoo(symbol: string): Promise<number[]> {
       interval: '1d',
     })
 
-    const closes = (result.quotes ?? []).map(q => q.close)
-    return closes.filter((c): c is number => typeof c === 'number' && !Number.isNaN(c))
+    return toBars((result.quotes ?? []).map(q => ({ close: q.close, high: q.high, low: q.low, volume: q.volume })))
   } catch (e) {
     console.error(`[indicators] yahoo-finance2 error for ${symbol}:`, e)
     return []
@@ -56,7 +82,7 @@ async function fetchFromYahoo(symbol: string): Promise<number[]> {
 }
 
 // Fallback: Stooq.com CSV — ใช้เมื่อ Yahoo ใช้ไม่ได้ (โดน block หรือ rate limit)
-async function fetchFromStooq(symbol: string): Promise<number[]> {
+async function fetchFromStooq(symbol: string): Promise<Bar[]> {
   const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol.toLowerCase())}.us&i=d`
   try {
     const res = await fetch(url, { next: { revalidate: 3600 } })
@@ -67,18 +93,24 @@ async function fetchFromStooq(symbol: string): Promise<number[]> {
     const csv = await res.text()
     // format: Date,Open,High,Low,Close,Volume — บรรทัดแรกเป็น header
     const lines = csv.trim().split('\n').slice(1)
-    const closes = lines
-      .map(line => Number(line.split(',')[4]))
-      .filter(n => !Number.isNaN(n))
+    const bars = toBars(lines.map(line => {
+      const cols = line.split(',')
+      return {
+        high: Number(cols[2]),
+        low: Number(cols[3]),
+        close: Number(cols[4]),
+        volume: Number(cols[5]),
+      }
+    }))
     // Stooq เรียงเก่า->ใหม่เหมือนกัน เอามาแค่ ~1 ปีล่าสุด (ประมาณ 252 trading days)
-    return closes.slice(-260)
+    return bars.slice(-260)
   } catch (e) {
     console.error(`[indicators] Stooq fetch error for ${symbol}:`, e)
     return []
   }
 }
 
-async function fetchHistoricalCloses(symbol: string): Promise<number[]> {
+async function fetchHistoricalBars(symbol: string): Promise<Bar[]> {
   const yahoo = await fetchFromYahoo(symbol)
   if (yahoo.length >= 200) return yahoo
 
@@ -103,14 +135,38 @@ function classifyTrend(price: number | null, ema50: number | null, ema200: numbe
   return 'SIDEWAYS'
 }
 
+// แนวรับ-แนวต้านแบบง่าย: จุดต่ำสุด/สูงสุดจริงในรอบ N วันทำการล่าสุด (swing low/high)
+// ใช้แทนการให้ AI เดาตัวเลขราคาเอง — ป้องกัน hallucination บนตัวเลขที่สำคัญที่สุด (จุดเข้า-ออก)
+function calcSupportResistance(bars: Bar[], window = 20): { support: number | null; resistance: number | null } {
+  if (bars.length < 5) return { support: null, resistance: null }
+  const recent = bars.slice(-window)
+  const lows = recent.map(b => b.low)
+  const highs = recent.map(b => b.high)
+  return {
+    support: round2(Math.min(...lows)),
+    resistance: round2(Math.max(...highs)),
+  }
+}
+
+// volume วันล่าสุด เทียบกับค่าเฉลี่ย 20 วัน — >1.5 เท่า = มีแรงซื้อ/ขายผิดปกติ (high volume confirmation)
+function calcVolumeRatio(bars: Bar[], window = 20): number | null {
+  if (bars.length < window + 1) return null
+  const recentWindow = bars.slice(-window)
+  const avgVolume = recentWindow.reduce((sum, b) => sum + b.volume, 0) / recentWindow.length
+  if (avgVolume <= 0) return null
+  const latestVolume = last(bars)!.volume
+  return Math.round((latestVolume / avgVolume) * 100) / 100
+}
+
 // คำนวณ indicators ทั้งหมดจากราคาปิดย้อนหลัง
 export async function getTechnicalIndicators(symbol: string): Promise<TechnicalIndicators> {
-  const closes = await fetchHistoricalCloses(symbol)
+  const bars = await fetchHistoricalBars(symbol)
 
   // ต้องมีข้อมูลอย่างน้อย ~210 วัน ถึงจะคำนวณ EMA200 ได้แม่นยำ
   // ถ้าข้อมูลไม่พอ (หุ้น IPO ใหม่ หรือ API ล่ม) ให้คืนค่าเท่าที่คำนวณได้ ไม่ error
-  if (closes.length < 15) return EMPTY_INDICATORS
+  if (bars.length < 15) return EMPTY_INDICATORS
 
+  const closes = bars.map(b => b.close)
   const lastClose = last(closes)
 
   const ema50arr  = closes.length >= 50  ? EMA.calculate({ period: 50,  values: closes }) : []
@@ -137,6 +193,7 @@ export async function getTechnicalIndicators(symbol: string): Promise<TechnicalI
   const ema200 = round2(last(ema200arr))
   const macdLast = last(macdArr)
   const bbLast = last(bbArr)
+  const { support, resistance } = calcSupportResistance(bars)
 
   return {
     ema50,
@@ -155,5 +212,8 @@ export async function getTechnicalIndicators(symbol: string): Promise<TechnicalI
     },
     trend: classifyTrend(lastClose, ema50, ema200),
     lastClose: round2(lastClose),
+    support,
+    resistance,
+    volumeRatio: calcVolumeRatio(bars),
   }
 }

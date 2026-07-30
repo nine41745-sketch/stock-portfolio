@@ -67,6 +67,15 @@ export interface TechnicalSnapshot {
   bollinger: { upper: number | null; middle: number | null; lower: number | null }
   trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS' | 'UNKNOWN'
   lastClose: number | null
+  support: number | null
+  resistance: number | null
+  volumeRatio: number | null
+}
+
+export interface EarningsInfo {
+  date: string
+  daysUntil: number
+  hour: string | null
 }
 
 // ผลวิเคราะห์เชิงลึกแบบสถาบันการเงิน — เทคนิคัล + ข่าว + ความเสี่ยง/โอกาส + แผนเทรด
@@ -96,6 +105,10 @@ export interface DetailedAnalysisResult {
   usedNews: Array<{ headline: string; headlineTh?: string; impact: string }>
   // ระบุเมื่อวิเคราะห์ไม่สำเร็จจริงๆ (เช่น Groq เกินโควต้ารายวัน) — UI ต้องแยกแสดงจากผลวิเคราะห์จริง
   error?: 'RATE_LIMIT' | 'FAILED'
+  // วันประกาศงบที่ใกล้ที่สุด (ถ้ามีข้อมูล) — ใช้เตือนความเสี่ยงก่อนสัญญาณเทคนิคัลจะไม่มีความหมาย
+  earnings?: EarningsInfo | null
+  // โมเดล Groq ที่ตอบสำเร็จจริง — โชว์บน UI เพื่อความโปร่งใส (คุณภาพต่างกันระหว่างโมเดลหลัก/สำรอง)
+  usedModel?: string
 }
 
 export interface HoldingFormData {

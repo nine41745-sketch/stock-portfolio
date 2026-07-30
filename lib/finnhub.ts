@@ -102,3 +102,41 @@ export async function getMultipleQuotesWithMetrics(
 
   return result
 }
+
+export interface UpcomingEarnings {
+  date: string          // YYYY-MM-DD
+  daysUntil: number
+  hour: string | null    // 'bmo' (before market open) | 'amc' (after close) | 'dmh' (during hours) | null
+}
+
+function fmtDate(d: Date): string {
+  return d.toISOString().split('T')[0]
+}
+
+// เช็ควันประกาศผลประกอบการที่ใกล้ที่สุด — ใช้เตือนความเสี่ยงก่อน AI วิเคราะห์
+// (technical indicators ไม่มีความหมายถ้าราคาจะเหวี่ยงแรงจากงบที่กำลังจะออก)
+export async function getUpcomingEarnings(symbol: string): Promise<UpcomingEarnings | null> {
+  try {
+    const today = new Date()
+    const to = new Date(today)
+    to.setDate(to.getDate() + 60) // มองล่วงหน้า 60 วัน ครอบคลุมรอบประกาศงบไตรมาสถัดไปแน่นอน
+
+    const url = `${BASE}/calendar/earnings?from=${fmtDate(today)}&to=${fmtDate(to)}&symbol=${symbol}&token=${KEY}`
+    const res = await fetch(url, { next: { revalidate: 21600 } }) // cache 6 ชม. — วันประกาศงบไม่เปลี่ยนบ่อย
+    if (!res.ok) return null
+
+    const data = await res.json()
+    const list: Array<{ date: string; hour?: string }> = data?.earningsCalendar ?? []
+    if (!list.length) return null
+
+    // เอาอันที่ใกล้วันนี้ที่สุด (Finnhub มักเรียงมาให้แล้ว แต่ sort กันเหนียวไว้)
+    const sorted = [...list].sort((a, b) => a.date.localeCompare(b.date))
+    const next = sorted[0]
+    const daysUntil = Math.ceil((new Date(next.date).getTime() - today.getTime()) / 86400000)
+
+    return { date: next.date, daysUntil, hour: next.hour ?? null }
+  } catch (e) {
+    console.error(`[finnhub] getUpcomingEarnings error for ${symbol}:`, e)
+    return null
+  }
+}

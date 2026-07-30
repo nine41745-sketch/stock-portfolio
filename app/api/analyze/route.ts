@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { analyzeHoldingDetailed } from '@/lib/groq'
 import { getTechnicalIndicators } from '@/lib/indicators'
+import { getUpcomingEarnings } from '@/lib/finnhub'
 import { cacheGet, cacheSet } from '@/lib/cache'
 import { ANALYZE_CACHE_TTL_SEC } from '@/lib/constants'
 import { HoldingWithPrice, DetailedAnalysisResult } from '@/types'
@@ -30,15 +31,19 @@ export async function POST(request: NextRequest) {
   if (cached) return NextResponse.json(cached)
 
   try {
-    // Flow: ดึงราคาย้อนหลัง -> คำนวณ technical indicators -> ส่งพร้อมข่าว+ข้อมูลพอร์ตเข้า Groq AI
-    const technical = await getTechnicalIndicators(holding.symbol)
+    // Flow: ดึงราคาย้อนหลัง+เช็ควันประกาศงบ (parallel) -> คำนวณ technical indicators -> ส่งพร้อมข่าว+ข้อมูลพอร์ตเข้า Groq AI
+    const [technical, earnings] = await Promise.all([
+      getTechnicalIndicators(holding.symbol),
+      getUpcomingEarnings(holding.symbol),
+    ])
 
     const result = await analyzeHoldingDetailed(
       holding,
       technical,
       cashBalance ?? 0,
       totalPortfolioValue ?? 0,
-      recentNews ?? []
+      recentNews ?? [],
+      earnings
     )
 
     // cache เฉพาะผลที่วิเคราะห์สำเร็จจริง (ไม่มี error และมี technicalSummary + summary)

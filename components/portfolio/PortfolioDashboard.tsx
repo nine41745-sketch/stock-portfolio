@@ -536,7 +536,13 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       t.rsi14 != null ? { label: 'RSI(14)', value: `${t.rsi14}` } : null,
       t.macd.histogram != null ? { label: 'MACD Hist', value: `${t.macd.histogram}` } : null,
       t.bollinger.upper != null ? { label: 'BB บน/ล่าง', value: `$${t.bollinger.upper} / $${t.bollinger.lower}` } : null,
+      t.support != null ? { label: 'แนวรับ', value: `$${t.support}` } : null,
+      t.resistance != null ? { label: 'แนวต้าน', value: `$${t.resistance}` } : null,
+      t.volumeRatio != null ? { label: 'Volume', value: `${t.volumeRatio}x${t.volumeRatio > 1.5 ? ' 🔥' : ''}` } : null,
     ].filter((x): x is { label: string; value: string } => x !== null)
+
+    const earningsSoon = analysis.earnings != null && analysis.earnings.daysUntil <= 7
+    const modelLabel = analysis.usedModel?.includes('8b') ? '⚡ Llama-8b (Fallback)' : analysis.usedModel ? '🤖 Llama-70b' : null
 
     return (
       <div className={`rounded-lg border p-4 ${SIGNAL_STYLE[action]}`}>
@@ -547,6 +553,14 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
 
         {analysis.disclaimer && (
           <p className="text-[11px] opacity-50 mb-3 italic">⚠️ {analysis.disclaimer}</p>
+        )}
+
+        {earningsSoon && (
+          <div className="mb-3 p-3 bg-red-500/15 border border-red-500/40 rounded-lg">
+            <p className="text-xs font-bold text-red-300">
+              🚨 ประกาศงบในอีก {analysis.earnings!.daysUntil} วัน ({analysis.earnings!.date}) — ราคาอาจเหวี่ยงแรง เทคนิคัลอาจไม่แม่นช่วงนี้
+            </p>
+          </div>
         )}
 
         {(analysis.sector || analysis.business) && (
@@ -647,7 +661,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
               📈 Technical จาก Yahoo Finance (ราคาปิดย้อนหลัง 1 ปี)
             </span>
             <span className="text-xs opacity-60 bg-black/20 rounded px-2 py-0.5">
-              🤖 Groq AI · llama-3.3-70b
+              {modelLabel ?? '🤖 Groq AI'}
             </span>
           </div>
           {analysis.usedNews.length > 0 && (

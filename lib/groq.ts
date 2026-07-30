@@ -1,4 +1,4 @@
-import { HoldingWithPrice, AnalysisResult, DetailedAnalysisResult, TechnicalSnapshot } from '@/types'
+import { HoldingWithPrice, AnalysisResult, DetailedAnalysisResult, TechnicalSnapshot, EarningsInfo } from '@/types'
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
@@ -12,6 +12,8 @@ interface GroqCallResult {
   rateLimited: boolean
   // 'minute' = โดน TPM/RPM รอแค่ ~1 นาทีก็หาย, 'day' = โดน TPD/RPD ต้องรอถึงวันถัดไป
   rateLimitScope: 'minute' | 'day' | null
+  // โมเดลที่ตอบสำเร็จจริง (null ถ้าล้มเหลวทั้งหมด) — ใช้โชว์ transparency badge บน UI
+  usedModel: string | null
 }
 
 function detectRateLimitScope(errText: string): 'minute' | 'day' | null {
@@ -40,18 +42,19 @@ async function callGroqWithModel(prompt: string, maxTokens: number, model: strin
     if (res.status === 429) {
       const err = await res.text()
       console.error(`[Groq] Rate limited on ${model}:`, err.slice(0, 300))
-      return { text: '', rateLimited: true, rateLimitScope: detectRateLimitScope(err) }
+      return { text: '', rateLimited: true, rateLimitScope: detectRateLimitScope(err), usedModel: null }
     }
     if (!res.ok) {
       const err = await res.text()
       console.error(`[Groq] HTTP ${res.status} on ${model}:`, err.slice(0, 200))
-      return { text: '', rateLimited: false, rateLimitScope: null }
+      return { text: '', rateLimited: false, rateLimitScope: null, usedModel: null }
     }
     const data = await res.json()
-    return { text: data.choices?.[0]?.message?.content ?? '', rateLimited: false, rateLimitScope: null }
+    const text = data.choices?.[0]?.message?.content ?? ''
+    return { text, rateLimited: false, rateLimitScope: null, usedModel: text ? model : null }
   } catch (e) {
     console.error(`[Groq] Error on ${model}:`, e)
-    return { text: '', rateLimited: false, rateLimitScope: null }
+    return { text: '', rateLimited: false, rateLimitScope: null, usedModel: null }
   }
 }
 
@@ -67,7 +70,7 @@ async function callGroq(prompt: string, maxTokens = 1024): Promise<GroqCallResul
     if (fallback.text) return fallback
     // ทั้งคู่โดน rate limit — ถ้าตัวใดตัวหนึ่งเป็น 'day' ให้ถือว่า worst-case คือ day
     const worstScope = primary.rateLimitScope === 'day' || fallback.rateLimitScope === 'day' ? 'day' : (primary.rateLimitScope ?? fallback.rateLimitScope)
-    return { text: '', rateLimited: true, rateLimitScope: worstScope }
+    return { text: '', rateLimited: true, rateLimitScope: worstScope, usedModel: null }
   }
 
   return primary
@@ -144,7 +147,8 @@ export async function analyzeHoldingDetailed(
   technical: TechnicalSnapshot,
   cashBalance = 0,
   totalPortfolioValue = 0,
-  recentNews: Array<{ headline: string; headlineTh?: string; impact?: string }> = []
+  recentNews: Array<{ headline: string; headlineTh?: string; impact?: string }> = [],
+  earnings: EarningsInfo | null = null
 ): Promise<DetailedAnalysisResult> {
   const { symbol, shares, cost_basis, current_price, pnl_pct, market_value, pe, week52High, week52Low } = holding
 
@@ -158,7 +162,8 @@ export async function analyzeHoldingDetailed(
     week52Low  != null ? `52W Low: $${week52Low.toFixed(2)}`   : null,
   ].filter(Boolean).join(', ')
 
-  // สรุป technical indicators เป็นข้อความให้ AI อ่าน
+  // สรุป technical indicators เป็นข้อความให้ AI อ่าน (รวม support/resistance/volume ที่คำนวณจริงแล้ว
+  // เพื่อบังคับให้ AI ใช้ตัวเลขจริงแทนการเดาราคาเอง)
   const techLines = [
     technical.ema50  != null ? `EMA50: $${technical.ema50}`   : null,
     technical.ema100 != null ? `EMA100: $${technical.ema100}` : null,
@@ -166,12 +171,19 @@ export async function analyzeHoldingDetailed(
     technical.rsi14   != null ? `RSI(14): ${technical.rsi14}` : null,
     technical.macd.macd != null ? `MACD: ${technical.macd.macd} / Signal: ${technical.macd.signal} / Histogram: ${technical.macd.histogram}` : null,
     technical.bollinger.upper != null ? `Bollinger Bands: บน $${technical.bollinger.upper} / กลาง $${technical.bollinger.middle} / ล่าง $${technical.bollinger.lower}` : null,
+    technical.support    != null ? `แนวรับ (Support, 20-day swing low): $${technical.support}` : null,
+    technical.resistance != null ? `แนวต้าน (Resistance, 20-day swing high): $${technical.resistance}` : null,
+    technical.volumeRatio != null ? `Volume Ratio (วันล่าสุด/เฉลี่ย 20 วัน): ${technical.volumeRatio}x${technical.volumeRatio > 1.5 ? ' (สูงผิดปกติ — มีแรงซื้อ/ขายหนาแน่น)' : ''}` : null,
     `แนวโน้มราคา (EMA cross): ${technical.trend}`,
   ].filter(Boolean).join('\n')
 
   const newsSnippet = recentNews.slice(0, 5)
     .map((n, i) => `${i + 1}. ${n.headlineTh ?? n.headline}${n.impact ? ` [${n.impact}]` : ''}`)
     .join('\n') || 'ไม่มีข่าวล่าสุด'
+
+  const earningsLine = earnings
+    ? `⚠️ หุ้นนี้จะประกาศผลประกอบการในอีก ${earnings.daysUntil} วัน (${earnings.date}${earnings.hour ? `, ${earnings.hour}` : ''}) — ราคาอาจเหวี่ยงแรงจากงบ ทำให้ technical indicators ใช้ทำนายไม่ได้แม่นยำช่วงนี้`
+    : 'ไม่มีข้อมูลวันประกาศงบในอีก 60 วันข้างหน้า'
 
   const prompt = `คุณเป็นนักวิเคราะห์การลงทุนระดับสถาบัน (Institutional Portfolio Manager) ประเมินหุ้น ${symbol} อย่างเป็นกลาง ปราศจาก Bias
 
@@ -184,25 +196,32 @@ export async function analyzeHoldingDetailed(
 === ตัวชี้วัดทางเทคนิค (Technical Indicators) ===
 ${techLines || 'ไม่มีข้อมูลเทคนิค'}
 
+=== ปฏิทินผลประกอบการ (Earnings Calendar) ===
+${earningsLine}
+
 === ข่าวสารและปัจจัยกระทบล่าสุด ===
 ${newsSnippet}
 
 === เกณฑ์ประเมินสัญญาณ (DECISION FRAMEWORK) ===
 วิเคราะห์และเลือกเพียง 1 สัญญาณใน "action" ตามหลักเกณฑ์ต่อไปนี้ โดยเรียงลำดับการพิจารณาจากบนลงล่าง (เจอเกณฑ์ไหนก่อนให้เลือกอันนั้น อย่าข้ามไปดู HOLD ก่อน):
+0. ถ้าใกล้ประกาศงบภายใน 7 วัน — ยกระดับความเสี่ยงเป็น High Risk เสมอ ไม่ว่า action จะเป็นอะไร ต้องเตือนใน "caution" อย่างชัดเจนว่าใกล้ประกาศงบ ราคาอาจเหวี่ยงแรงเกินคาดจาก technical signal และควรพิจารณาลดขนาดโพซิชันหรือรอดูงบก่อนตัดสินใจซื้อเพิ่ม
 1. SELL_ALL (ขายตัดขาดทุน / ล้างพอร์ต) — พิจารณาก่อนอันดับแรก:
    - P&L ต่ำกว่า -15% ร่วมกับแนวโน้ม DOWNTREND หรือราคาต่ำกว่า EMA200 ชัดเจน
    - หรือมีข่าวปัจจัยพื้นฐานเปลี่ยนอย่างร้ายแรง (NEGATIVE impact สูง)
 2. SELL_PARTIAL (ขายล็อกกำไรบางส่วน):
    - P&L เกิน +20% ขึ้นไป หรือ RSI > 70 (Overbought)
-   - หรือราคาชนแนวต้านสำคัญ (BB Upper หรือใกล้ 52W High)
+   - หรือราคาชนแนวต้านสำคัญ (BB Upper หรือใกล้แนวต้าน/52W High) — โดยเฉพาะถ้า Volume Ratio สูงผิดปกติร่วมด้วย ยิ่งน่าเชื่อว่าเป็นจุดพีค
 3. BUY (ซื้อเพิ่ม):
-   - แนวโน้มเป็น UPTREND หรือ RSI < 45 (โซนสะสม) หรือราคาใกล้/ต่ำกว่า BB Lower
-   - ข่าวสารส่วนใหญ่เป็นเชิงบวกหรือเป็นกลาง และยังไม่เข้าเกณฑ์ SELL_PARTIAL ข้างต้น
+   - แนวโน้มเป็น UPTREND หรือ RSI < 45 (โซนสะสม) หรือราคาใกล้/ต่ำกว่าแนวรับ (Support)
+   - ข่าวสารส่วนใหญ่เป็นเชิงบวกหรือเป็นกลาง และยังไม่เข้าเกณฑ์ SELL_PARTIAL ข้างต้น และไม่ใกล้ประกาศงบภายใน 7 วัน
 4. HOLD (ถือต่อ) — ใช้เฉพาะเมื่อไม่เข้าเกณฑ์ 1-3 ข้างต้นเลยจริงๆ เท่านั้น เช่น RSI อยู่กลางแท้ๆ (45-60) และ P&L อยู่ระหว่าง -15% ถึง +20% และไม่มีข่าวสำคัญ
 
 ห้ามเลือก BUY แค่เพราะมีเงินสดเหลือเยอะ ต้องมีเหตุผลด้านเทคนิคัล/ข่าว/fundamentals รองรับเสมอ
 ห้ามเลือก HOLD เป็นค่าปลอดภัยเริ่มต้น — ต้องเช็คเกณฑ์ SELL_ALL, SELL_PARTIAL, BUY ก่อนเสมอ เลือก HOLD ได้ก็ต่อเมื่อไม่เข้าเกณฑ์ใดๆ เลยจริงๆ
 ถ้า technical indicators คำนวณไม่ได้ (ข้อมูลไม่พอ) ให้ใช้ fundamentals (P/E, 52W High/Low) และข่าวแทนในการตัดสินใจ ไม่ใช่รีบเลือก HOLD เพราะขาดข้อมูล
+
+สำคัญมากเรื่องราคา: "buyConditions" และ "sellConditions" ต้องอ้างอิงจากค่า แนวรับ (Support) / แนวต้าน (Resistance) / EMA / Bollinger Bands ที่ให้มาข้างต้นเท่านั้น
+ห้ามตั้งตัวเลขราคาขึ้นมาเองที่ไม่มีในข้อมูล ถ้าไม่มีตัวเลขให้อ้างอิงได้จริง ให้อธิบายเป็นเงื่อนไขเชิงคุณภาพแทน (เช่น "รอราคาย่อกลับมาที่แนวรับ") โดยไม่ต้องระบุตัวเลข
 
 สำคัญมาก: ต้องใส่ field "action" เป็น key แรกสุดของ JSON เสมอ (ก่อน field อื่นทั้งหมด) เพราะระบบอ่านค่านี้ก่อนเป็นอันดับแรก
 ถ้าพื้นที่ตอบไม่พอสำหรับทุก field ให้ตัดท้าย (risks/summary) ทิ้งได้ แต่ "action" ต้องมีเสมอและต้องมาก่อน
@@ -211,12 +230,12 @@ ${newsSnippet}
 {
   "action": "BUY|HOLD|SELL_PARTIAL|SELL_ALL",
   "disclaimer": "บทวิเคราะห์โดย AI เพื่อประกอบการพิจารณาเท่านั้น ไม่ใช่คำแนะนำการลงทุน",
-  "buyConditions": "ระบุเงื่อนไข/ราคาที่จะเข้าซื้อ (ใส่ 'N/A' หาก action เป็น SELL_PARTIAL หรือ SELL_ALL)",
-  "sellConditions": "ระบุเงื่อนไข/ราคา/Stop Loss ที่ควรขายออก (ใส่ 'N/A' หาก action เป็น BUY)",
-  "technicalSummary": "สรุปเทคนิคัล 2-3 ประโยค อ้างอิงค่า EMA/RSI/MACD/BB จริง",
+  "buyConditions": "ระบุเงื่อนไข/ราคาที่จะเข้าซื้อ อ้างอิงจาก Support/EMA/BB ที่ให้มาเท่านั้น (ใส่ 'N/A' หาก action เป็น SELL_PARTIAL หรือ SELL_ALL)",
+  "sellConditions": "ระบุเงื่อนไข/ราคา/Stop Loss ที่ควรขายออก อ้างอิงจาก Resistance/EMA/BB ที่ให้มาเท่านั้น (ใส่ 'N/A' หาก action เป็น BUY)",
+  "technicalSummary": "สรุปเทคนิคัล 2-3 ประโยค อ้างอิงค่า EMA/RSI/MACD/BB/Volume จริง",
   "newsImpact": ["สรุปผลกระทบข่าวข้อ 1", "สรุปผลกระทบข่าวข้อ 2"],
   "risksAndOpportunities": {
-    "caution": "ข้อควรระวังหรือจุดเสี่ยงเชิงเทคนิค/พื้นฐาน",
+    "caution": "ข้อควรระวังหรือจุดเสี่ยงเชิงเทคนิค/พื้นฐาน (รวมเตือน earnings ถ้าใกล้ภายใน 7 วัน)",
     "opportunity": "โอกาสหรือปัจจัยบวก"
   },
   "risks": ["ความเสี่ยงข้อ 1", "ความเสี่ยงข้อ 2"],
@@ -247,12 +266,13 @@ ${newsSnippet}
     usedPrice: current_price ?? null,
     usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
     error,
+    earnings,
   })
 
   const fallback = makeFallback('ไม่สามารถวิเคราะห์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง', 'FAILED')
 
   try {
-    const { text, rateLimited, rateLimitScope } = await callGroq(prompt, 2000)
+    const { text, rateLimited, rateLimitScope, usedModel } = await callGroq(prompt, 2000)
 
     // Groq โดน rate limit ทั้งโมเดลหลักและสำรองแล้ว — แสดง error ให้ชัดเจน แยกข้อความตามว่า
     // โดน per-minute (TPM/RPM รอแค่ ~1 นาที) หรือ per-day (TPD/RPD ต้องรอถึงวันถัดไป)
@@ -295,6 +315,8 @@ ${newsSnippet}
       technical,
       usedPrice: current_price ?? null,
       usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
+      earnings,
+      usedModel: usedModel ?? undefined,
     }
   } catch (e) {
     console.error(`[groq] analyzeHoldingDetailed parse failed for ${symbol}:`, e)
