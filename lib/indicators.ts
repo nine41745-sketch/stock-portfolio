@@ -2,10 +2,16 @@
 // Technical Indicators — ดึง historical price + คำนวณ EMA/RSI/MACD/Bollinger Bands
 //
 // หมายเหตุสำคัญ: Finnhub free tier ไม่รองรับ /stock/candle สำหรับหุ้น US แล้ว
-// (คืน 403 Forbidden — ฟีเจอร์นี้ถูกย้ายไปอยู่ paid tier) จึงใช้ Yahoo Finance
-// chart API แทน (ฟรี ไม่ต้องมี API key) สำหรับดึงราคาปิดย้อนหลังมาคำนวณ indicators
+// (คืน 403 Forbidden — ฟีเจอร์นี้ถูกย้ายไปอยู่ paid tier) จึงใช้ Yahoo Finance แทน
+// (ฟรี ไม่ต้องมี API key) ผ่าน package yahoo-finance2 ซึ่งจัดการ cookie/crumb
+// session ให้อัตโนมัติ ลดความเสี่ยงโดน anti-scraping block บน Vercel serverless
+// เทียบกับการยิง fetch ตรงๆ ไปที่ query1.finance.yahoo.com
 // ============================================================
 import { EMA, RSI, MACD, BollingerBands } from 'technicalindicators'
+import YahooFinance from 'yahoo-finance2'
+
+// สร้าง instance เดียวใช้ซ้ำ (เก็บ cookie/crumb session ไว้ใช้ข้ามการเรียกภายใน serverless instance เดียวกัน)
+const yahooFinance = new YahooFinance()
 
 export interface TechnicalIndicators {
   ema50: number | null
@@ -31,21 +37,20 @@ const EMPTY_INDICATORS: TechnicalIndicators = {
 // หมายเหตุ: Yahoo unofficial API บางครั้ง block/rate-limit IP ของ cloud provider (เช่น Vercel serverless)
 // ถ้า Yahoo ล้มเหลว จะ fallback ไป Stooq.com (แหล่งฟรีอีกที่ ไม่ต้อง key เหมือนกัน) แทนการคืนค่าว่างเงียบๆ
 async function fetchFromYahoo(symbol: string): Promise<number[]> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d`
   try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PortfolioTracker/1.0)' },
-      next: { revalidate: 3600 }, // cache 1 ชม. ลด load
+    // period1 ต้องเป็น Date/date-string จริง (ห้ามใช้ '1y' ตรงๆ — chart() ของ v4 ไม่รองรับ shorthand range)
+    const period1 = new Date()
+    period1.setFullYear(period1.getFullYear() - 1)
+
+    const result = await yahooFinance.chart(symbol, {
+      period1,
+      interval: '1d',
     })
-    if (!res.ok) {
-      console.error(`[indicators] Yahoo Finance HTTP ${res.status} for ${symbol}`)
-      return []
-    }
-    const data = await res.json()
-    const closes: (number | null)[] = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? []
+
+    const closes = (result.quotes ?? []).map(q => q.close)
     return closes.filter((c): c is number => typeof c === 'number' && !Number.isNaN(c))
   } catch (e) {
-    console.error(`[indicators] Yahoo Finance fetch error for ${symbol}:`, e)
+    console.error(`[indicators] yahoo-finance2 error for ${symbol}:`, e)
     return []
   }
 }
