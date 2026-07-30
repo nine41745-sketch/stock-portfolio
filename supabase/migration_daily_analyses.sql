@@ -34,10 +34,12 @@ CREATE INDEX IF NOT EXISTS idx_daily_analyses_lookup
 -- ใส่ policy insert ไว้เผื่ออนาคตอยากให้ client เขียนตรงได้ (เช่น ปุ่ม "วิเคราะห์ซ้ำ" ที่ยังไม่รอ cron)
 ALTER TABLE public.daily_analyses ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "daily_analyses_select_own" ON public.daily_analyses;
 CREATE POLICY "daily_analyses_select_own"
   ON public.daily_analyses FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "daily_analyses_insert_own" ON public.daily_analyses;
 CREATE POLICY "daily_analyses_insert_own"
   ON public.daily_analyses FOR INSERT
   WITH CHECK (auth.uid() = user_id);
@@ -106,3 +108,5 @@ $$;
 -- SELECT * FROM get_track_record('USER_UUID', 7);
 -- SELECT symbol, COUNT(*) FILTER (WHERE is_correct) * 100.0 / COUNT(*) AS win_rate_pct
 --   FROM get_track_record('USER_UUID', 30) GROUP BY symbol;
+
+NOTIFY pgrst, 'reload schema';
