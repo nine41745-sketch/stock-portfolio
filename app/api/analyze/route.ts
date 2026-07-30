@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { analyzeHolding } from '@/lib/groq'
+import { analyzeHoldingDetailed } from '@/lib/groq'
+import { getTechnicalIndicators } from '@/lib/indicators'
 import { cacheGet, cacheSet } from '@/lib/cache'
 import { ANALYZE_CACHE_TTL_SEC } from '@/lib/constants'
-import { HoldingWithPrice, AnalysisResult } from '@/types'
+import { HoldingWithPrice, DetailedAnalysisResult } from '@/types'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -14,28 +15,40 @@ export async function POST(request: NextRequest) {
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }) }
 
   const { cashBalance, totalPortfolioValue, recentNews, ...holding }:
-    HoldingWithPrice & { cashBalance?: number; totalPortfolioValue?: number; recentNews?: Array<{ headline: string }> } = body
+    HoldingWithPrice & {
+      cashBalance?: number
+      totalPortfolioValue?: number
+      recentNews?: Array<{ headline: string; headlineTh?: string; impact?: string }>
+    } = body
 
   if (!holding.symbol) return NextResponse.json({ error: 'Symbol required' }, { status: 400 })
 
-  // cache key ต้องผูกกับ user เพราะผลวิเคราะห์ขึ้นกับเงินสด/holdings ของแต่ละคน
-  // ถ้าไม่ใส่ user.id สองคนถือหุ้นตัวเดียวกันที่ราคาเดียวกันจะได้ผลวิเคราะห์ของกันและกันสลับกัน (key collision)
+  // cache key ผูกกับ user (ผลวิเคราะห์ขึ้นกับเงินสด/holdings ส่วนตัว) + ราคาปัจจุบัน
   const priceKey = holding.current_price?.toFixed(2) ?? 'null'
   const cacheKey = `analyze:${user.id}:${holding.symbol}:${priceKey}`
-  const cached = cacheGet<AnalysisResult>(cacheKey)
+  const cached = cacheGet<DetailedAnalysisResult>(cacheKey)
   if (cached) return NextResponse.json(cached)
 
-  const result = await analyzeHolding(
-    holding,
-    cashBalance ?? 0,
-    totalPortfolioValue ?? 0,
-    recentNews ?? []
-  )
+  try {
+    // Flow: ดึงราคาย้อนหลัง -> คำนวณ technical indicators -> ส่งพร้อมข่าว+ข้อมูลพอร์ตเข้า Groq AI
+    const technical = await getTechnicalIndicators(holding.symbol)
 
-  // cache เฉพาะผลที่สำเร็จ (มี reasons และ detail)
-  if (result.reasons.length > 0 && result.detail) {
-    cacheSet(cacheKey, result, ANALYZE_CACHE_TTL_SEC)
+    const result = await analyzeHoldingDetailed(
+      holding,
+      technical,
+      cashBalance ?? 0,
+      totalPortfolioValue ?? 0,
+      recentNews ?? []
+    )
+
+    // cache เฉพาะผลที่วิเคราะห์สำเร็จจริง (มี technicalSummary + summary)
+    if (result.technicalSummary && result.summary) {
+      cacheSet(cacheKey, result, ANALYZE_CACHE_TTL_SEC)
+    }
+
+    return NextResponse.json(result)
+  } catch (e: any) {
+    console.error('[analyze] Error:', e)
+    return NextResponse.json({ error: 'วิเคราะห์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง' }, { status: 500 })
   }
-
-  return NextResponse.json(result)
 }

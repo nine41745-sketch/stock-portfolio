@@ -1,4 +1,4 @@
-import { HoldingWithPrice, AnalysisResult } from '@/types'
+import { HoldingWithPrice, AnalysisResult, DetailedAnalysisResult, TechnicalSnapshot } from '@/types'
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
@@ -95,6 +95,137 @@ export async function analyzeHolding(
     }
   } catch {
     return { symbol, signal: 'HOLD', summary: '', reasons: [], detail: '', action: '' }
+  }
+}
+
+export async function analyzeHoldingDetailed(
+  holding: HoldingWithPrice,
+  technical: TechnicalSnapshot,
+  cashBalance = 0,
+  totalPortfolioValue = 0,
+  recentNews: Array<{ headline: string; headlineTh?: string; impact?: string }> = []
+): Promise<DetailedAnalysisResult> {
+  const { symbol, shares, cost_basis, current_price, pnl_pct, market_value, pe, week52High, week52Low } = holding
+
+  const cashRatioPct = totalPortfolioValue > 0
+    ? ((cashBalance / (totalPortfolioValue + cashBalance)) * 100).toFixed(1)
+    : '0'
+  const canBuyShares = current_price && current_price > 0 ? Math.floor(cashBalance / current_price) : 0
+
+  const metricsInfo = [
+    pe         != null ? `P/E: ${pe.toFixed(1)}` : null,
+    week52High != null ? `52W High: $${week52High.toFixed(2)}` : null,
+    week52Low  != null ? `52W Low: $${week52Low.toFixed(2)}`   : null,
+  ].filter(Boolean).join(', ')
+
+  // สรุป technical indicators เป็นข้อความให้ AI อ่าน
+  const techLines = [
+    technical.ema50  != null ? `EMA50: $${technical.ema50}`   : null,
+    technical.ema100 != null ? `EMA100: $${technical.ema100}` : null,
+    technical.ema200 != null ? `EMA200: $${technical.ema200}` : null,
+    technical.rsi14   != null ? `RSI(14): ${technical.rsi14}` : null,
+    technical.macd.macd != null ? `MACD: ${technical.macd.macd} / Signal: ${technical.macd.signal} / Histogram: ${technical.macd.histogram}` : null,
+    technical.bollinger.upper != null ? `Bollinger Bands: บน $${technical.bollinger.upper} / กลาง $${technical.bollinger.middle} / ล่าง $${technical.bollinger.lower}` : null,
+    `แนวโน้มราคา (EMA cross): ${technical.trend}`,
+  ].filter(Boolean).join('\n')
+
+  const newsSnippet = recentNews.slice(0, 5)
+    .map((n, i) => `${i + 1}. ${n.headlineTh ?? n.headline}${n.impact ? ` [${n.impact}]` : ''}`)
+    .join('\n') || 'ไม่มีข่าวล่าสุด'
+
+  const prompt = `คุณเป็นนักวิเคราะห์หุ้น US ระดับสถาบันการเงิน (Institutional Equity Research) เขียนบทวิเคราะห์เชิงลึกของหุ้น ${symbol} เป็นภาษาไทย
+
+=== ข้อมูลพื้นฐาน ===
+ราคาปัจจุบัน: $${current_price?.toFixed(2) ?? 'N/A'}
+ต้นทุนของผู้ถือ: ${cost_basis ? `$${cost_basis.toFixed(2)}` : 'N/A'}, จำนวน: ${shares} หุ้น
+มูลค่าถือครอง: ${market_value ? `$${market_value.toFixed(2)}` : 'N/A'}, กำไร/ขาดทุน: ${pnl_pct != null ? `${pnl_pct > 0 ? '+' : ''}${pnl_pct.toFixed(1)}%` : 'N/A'}
+Fundamentals: ${metricsInfo || 'ไม่มีข้อมูล'}
+เงินสดพร้อมซื้อ: $${cashBalance.toFixed(2)} (ซื้อเพิ่มได้ ~${canBuyShares} หุ้น), สัดส่วนเงินสดในพอร์ต: ${cashRatioPct}%
+
+=== Technical Indicators (คำนวณจากราคาปิดย้อนหลังจริง) ===
+${techLines || 'ข้อมูลไม่พอคำนวณ (หุ้นอาจเพิ่งเข้าตลาดหรือข้อมูลราคาไม่ครบ)'}
+
+=== ข่าวล่าสุด ===
+${newsSnippet}
+
+=== คำสั่ง ===
+เขียนบทวิเคราะห์แบบมืออาชีพ อ้างอิงจากข้อมูล technical indicators และข่าวข้างต้นจริงเท่านั้น ห้ามเดาตัวเลขที่ไม่มีในข้อมูล
+ฟันธงชัดเจน เลือก action ที่เหมาะสมที่สุด ห้ามเลี่ยงไป HOLD ถ้าข้อมูลบ่งชี้ชัดว่าควรซื้อเพิ่มหรือขาย
+
+ตอบเป็น JSON เท่านั้น ทุกข้อความเป็นภาษาไทย กระชับแต่ได้ใจความ:
+{
+  "disclaimer": "ประโยคสั้นๆ เตือนว่าเป็นการวิเคราะห์ด้วย AI ไม่ใช่คำแนะนำการลงทุน",
+  "technicalSummary": "สรุปภาพรวมเทคนิคัล 3-4 ประโยค อ้างอิง EMA/RSI/MACD/Bollinger Bands ที่ให้มาจริง",
+  "newsImpact": ["ผลกระทบข่าวข้อ1 ต่อราคาหุ้น", "ผลกระทบข่าวข้อ2 (ถ้ามี)"],
+  "risksAndOpportunities": {
+    "caution": "ข้อควรระวัง 2-3 ประโยค",
+    "opportunity": "โอกาส 2-3 ประโยค"
+  },
+  "recommendation": {
+    "action": "BUY|HOLD|SELL_PARTIAL|SELL_ALL",
+    "buyConditions": "เงื่อนไข/ราคาที่ควรซื้อเพิ่ม ระบุตัวเลขชัดเจนถ้าเป็นไปได้",
+    "sellConditions": "เงื่อนไข/ราคาที่ควรขาย (take profit หรือ stop loss) ระบุตัวเลขชัดเจนถ้าเป็นไปได้"
+  },
+  "risks": ["ความเสี่ยงหลัก 1", "ความเสี่ยงหลัก 2", "ความเสี่ยงหลัก 3"],
+  "summary": "สรุปรวบยอด 1-2 ประโยค",
+  "sector": "อุตสาหกรรมของบริษัท",
+  "business": "ลักษณะธุรกิจ 1 ประโยค"
+}`
+
+  const validActions = ['BUY', 'HOLD', 'SELL_PARTIAL', 'SELL_ALL']
+  function extractAction(raw: string): DetailedAnalysisResult['recommendation']['action'] {
+    const m = raw.match(/"action"\s*:\s*"(BUY|HOLD|SELL_PARTIAL|SELL_ALL)"/)
+    return (m && validActions.includes(m[1]) ? m[1] : 'HOLD') as DetailedAnalysisResult['recommendation']['action']
+  }
+
+  const fallback: DetailedAnalysisResult = {
+    symbol,
+    disclaimer: 'บทวิเคราะห์นี้สร้างโดย AI เพื่อประกอบการตัดสินใจเท่านั้น ไม่ใช่คำแนะนำการลงทุน',
+    technicalSummary: 'ไม่สามารถวิเคราะห์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง',
+    newsImpact: [],
+    risksAndOpportunities: { caution: '', opportunity: '' },
+    recommendation: { action: 'HOLD', buyConditions: '', sellConditions: '' },
+    risks: [],
+    summary: '',
+    analysedAt: new Date().toISOString(),
+    sector: '',
+    business: '',
+    technical,
+    usedPrice: current_price ?? null,
+    usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
+  }
+
+  try {
+    const text = await callGroq(prompt, 2000)
+    const fallbackAction = extractAction(text)
+    const match = text.match(/\{[\s\S]*\}/)
+    const parsed = JSON.parse(match?.[0] ?? '{}')
+
+    return {
+      symbol,
+      disclaimer: parsed.disclaimer ?? fallback.disclaimer,
+      technicalSummary: parsed.technicalSummary ?? '',
+      newsImpact: Array.isArray(parsed.newsImpact) ? parsed.newsImpact : [],
+      risksAndOpportunities: {
+        caution: parsed.risksAndOpportunities?.caution ?? '',
+        opportunity: parsed.risksAndOpportunities?.opportunity ?? '',
+      },
+      recommendation: {
+        action: (validActions.includes(parsed.recommendation?.action) ? parsed.recommendation.action : fallbackAction),
+        buyConditions: parsed.recommendation?.buyConditions ?? '',
+        sellConditions: parsed.recommendation?.sellConditions ?? '',
+      },
+      risks: Array.isArray(parsed.risks) ? parsed.risks : [],
+      summary: parsed.summary ?? '',
+      analysedAt: new Date().toISOString(),
+      sector: parsed.sector ?? '',
+      business: parsed.business ?? '',
+      technical,
+      usedPrice: current_price ?? null,
+      usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
+    }
+  } catch {
+    return fallback
   }
 }
 

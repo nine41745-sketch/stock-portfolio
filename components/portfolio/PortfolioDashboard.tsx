@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
-import { HoldingWithPrice, AnalysisResult, HoldingFormData, NewsItem } from '@/types'
+import { HoldingWithPrice, DetailedAnalysisResult, HoldingFormData, NewsItem } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import HoldingModal from './HoldingModal'
@@ -75,7 +75,7 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
 
 const DONUT_COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16','#ec4899','#6b7280']
 
-function DonutChart({ holdings, analyses }: { holdings: HoldingWithPrice[], analyses: Record<string, AnalysisResult> }) {
+function DonutChart({ holdings, analyses }: { holdings: HoldingWithPrice[], analyses: Record<string, DetailedAnalysisResult> }) {
   const [donutView, setDonutView] = useState<'stock' | 'sector'>('stock')
   const total = holdings.reduce((s, h) => s + (h.market_value ?? 0), 0)
   if (total <= 0) return null
@@ -208,7 +208,7 @@ function DCACalculator({ holding }: { holding: HoldingWithPrice }) {
 
 export default function PortfolioDashboard({ holdings: initialHoldings, userName }: Props) {
   const [holdings, setHoldings] = useState<HoldingWithPrice[]>(initialHoldings)
-  const [analyses, setAnalyses] = useState<Record<string, AnalysisResult>>({})
+  const [analyses, setAnalyses] = useState<Record<string, DetailedAnalysisResult>>({})
   const [loadingSymbol, setLoadingSymbol] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [modalHolding, setModalHolding] = useState<HoldingWithPrice | null | undefined>(undefined)
@@ -386,7 +386,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     }
   }
 
-  // Analyze — ส่ง metrics + news + cash info
+  // Analyze — ส่ง metrics + news + cash info ไปให้ backend คำนวณ technical indicators + เรียก Groq AI
+  // metadata (analysedAt, technical, usedPrice, usedNews, sector) ถูกเติมจาก server แล้ว ไม่ต้อง enrich ฝั่ง client ซ้ำ
   async function handleAnalyze(holding: HoldingWithPrice) {
     setLoadingSymbol(holding.symbol)
     try {
@@ -401,15 +402,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           recentNews,
         }),
       })
-      const result: AnalysisResult = await res.json()
-      const enriched: AnalysisResult = {
-        ...result,
-        analysedAt: new Date().toISOString(),
-        usedPrice: holding.current_price,
-        usedPE: holding.pe ?? null,
-        usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact })),
-      }
-      setAnalyses(prev => ({ ...prev, [holding.symbol]: enriched }))
+      if (!res.ok) throw new Error('analyze failed')
+      const result: DetailedAnalysisResult = await res.json()
+      setAnalyses(prev => ({ ...prev, [holding.symbol]: result }))
     } catch {
       showToast('วิเคราะห์ไม่สำเร็จ', false)
     } finally {
@@ -507,50 +502,134 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   }
 
   // Analysis card
-  function AnalysisCard({ analysis }: { analysis: AnalysisResult }) {
+  // Analysis card — บทวิเคราะห์เชิงลึกแบบสถาบันการเงิน (technical + news + risk/opportunity + แผนเทรด)
+  function AnalysisCard({ analysis }: { analysis: DetailedAnalysisResult }) {
+    const action = analysis.recommendation.action
+    const t = analysis.technical
+
+    const techChips: Array<{ label: string; value: string }> = [
+      t.trend !== 'UNKNOWN' ? { label: 'แนวโน้ม', value: t.trend === 'UPTREND' ? '📈 ขาขึ้น' : t.trend === 'DOWNTREND' ? '📉 ขาลง' : '➖ Sideways' } : null,
+      t.ema50 != null ? { label: 'EMA50', value: `$${t.ema50}` } : null,
+      t.ema100 != null ? { label: 'EMA100', value: `$${t.ema100}` } : null,
+      t.ema200 != null ? { label: 'EMA200', value: `$${t.ema200}` } : null,
+      t.rsi14 != null ? { label: 'RSI(14)', value: `${t.rsi14}` } : null,
+      t.macd.histogram != null ? { label: 'MACD Hist', value: `${t.macd.histogram}` } : null,
+      t.bollinger.upper != null ? { label: 'BB บน/ล่าง', value: `$${t.bollinger.upper} / $${t.bollinger.lower}` } : null,
+    ].filter((x): x is { label: string; value: string } => x !== null)
+
     return (
-      <div className={`rounded-lg border p-4 ${SIGNAL_STYLE[analysis.signal]}`}>
-        <div className="flex items-center justify-between mb-3">
-          <span className="font-bold text-base">{SIGNAL_LABEL[analysis.signal]}</span>
+      <div className={`rounded-lg border p-4 ${SIGNAL_STYLE[action]}`}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="font-bold text-base">{SIGNAL_LABEL[action]}</span>
           <button onClick={() => setAnalyses(prev => { const n = { ...prev }; delete n[analysis.symbol]; return n })} className="opacity-50 hover:opacity-100 text-sm">✕</button>
         </div>
+
+        {analysis.disclaimer && (
+          <p className="text-[11px] opacity-50 mb-3 italic">⚠️ {analysis.disclaimer}</p>
+        )}
+
         {(analysis.sector || analysis.business) && (
           <div className="mb-3 p-3 bg-black/20 rounded-lg text-xs space-y-1 border border-current/10">
             {analysis.sector && <p><span className="opacity-60">Sector: </span><span className="font-medium">{analysis.sector}</span></p>}
             {analysis.business && <p><span className="opacity-60">Business: </span>{analysis.business}</p>}
-            {analysis.targetCustomers && <p><span className="opacity-60">Target: </span>{analysis.targetCustomers}</p>}
           </div>
         )}
-        <p className="text-sm font-medium mb-3">{analysis.summary}</p>
-        {analysis.detail && <p className="text-xs opacity-80 mb-3 leading-relaxed border-t border-current/20 pt-3">{analysis.detail}</p>}
-        {analysis.reasons.length > 0 && (
-          <ul className="space-y-1 mb-3">
-            {analysis.reasons.map((r, i) => <li key={i} className="text-xs opacity-75 flex gap-2"><span className="shrink-0">•</span><span>{r}</span></li>)}
-          </ul>
-        )}
-        {analysis.action && (
-          <div className="border-t border-current/20 pt-3">
-            <p className="text-xs font-semibold mb-1">📌 คำแนะนำ</p>
-            <p className="text-xs opacity-90 leading-relaxed">{analysis.action}</p>
+
+        {/* Technical Summary */}
+        {analysis.technicalSummary && (
+          <div className="mb-3 p-3 bg-blue-500/10 border border-blue-500/25 rounded-lg">
+            <p className="text-xs font-semibold mb-1.5 text-blue-300">📊 ภาพรวมเทคนิคัล</p>
+            <p className="text-xs opacity-90 leading-relaxed mb-2">{analysis.technicalSummary}</p>
+            {techChips.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {techChips.map((c, i) => (
+                  <span key={i} className="text-[11px] bg-black/25 rounded px-2 py-0.5">
+                    <span className="opacity-60">{c.label}: </span><span className="font-medium">{c.value}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
-        {cashBalanceUSD > 0 && analysis.signal === 'BUY' && (
+
+        {/* News Impact */}
+        {analysis.newsImpact.length > 0 && (
+          <div className="mb-3">
+            <p className="text-xs font-semibold mb-1.5">📰 ผลกระทบจากข่าว</p>
+            <ul className="space-y-1">
+              {analysis.newsImpact.map((n, i) => (
+                <li key={i} className="text-xs opacity-80 flex gap-2"><span className="shrink-0">•</span><span>{n}</span></li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Risks & Opportunities — สีส้ม/แดง กับ สีเขียว */}
+        {(analysis.risksAndOpportunities.caution || analysis.risksAndOpportunities.opportunity) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+            {analysis.risksAndOpportunities.caution && (
+              <div className="p-3 bg-orange-500/10 border border-orange-500/25 rounded-lg">
+                <p className="text-xs font-semibold mb-1 text-orange-300">⚠️ ข้อควรระวัง</p>
+                <p className="text-xs opacity-90 leading-relaxed">{analysis.risksAndOpportunities.caution}</p>
+              </div>
+            )}
+            {analysis.risksAndOpportunities.opportunity && (
+              <div className="p-3 bg-green-500/10 border border-green-500/25 rounded-lg">
+                <p className="text-xs font-semibold mb-1 text-green-300">🌱 โอกาส</p>
+                <p className="text-xs opacity-90 leading-relaxed">{analysis.risksAndOpportunities.opportunity}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* แผนซื้อขาย */}
+        {(analysis.recommendation.buyConditions || analysis.recommendation.sellConditions) && (
+          <div className="mb-3 p-3 bg-black/20 rounded-lg border border-current/10 space-y-2">
+            <p className="text-xs font-semibold">📌 แผนการเทรด</p>
+            {analysis.recommendation.buyConditions && (
+              <p className="text-xs leading-relaxed"><span className="text-green-400 font-medium">ซื้อเพิ่ม: </span><span className="opacity-90">{analysis.recommendation.buyConditions}</span></p>
+            )}
+            {analysis.recommendation.sellConditions && (
+              <p className="text-xs leading-relaxed"><span className="text-red-400 font-medium">ขาย/Cut loss: </span><span className="opacity-90">{analysis.recommendation.sellConditions}</span></p>
+            )}
+          </div>
+        )}
+
+        {/* ความเสี่ยงหลัก */}
+        {analysis.risks.length > 0 && (
+          <div className="mb-3">
+            <p className="text-xs font-semibold mb-1.5 text-red-300">🚩 ความเสี่ยงหลัก</p>
+            <ul className="space-y-1">
+              {analysis.risks.map((r, i) => <li key={i} className="text-xs opacity-80 flex gap-2"><span className="shrink-0">•</span><span>{r}</span></li>)}
+            </ul>
+          </div>
+        )}
+
+        {analysis.summary && (
+          <p className="text-sm font-medium border-t border-current/20 pt-3 mb-1">{analysis.summary}</p>
+        )}
+
+        {cashBalanceUSD > 0 && action === 'BUY' && (
           <p className="text-xs opacity-60 mt-2 border-t border-current/20 pt-2">
             💰 เงินในธนาคาร {fmtAmt(cashBalanceUSD)} · สัดส่วนเงินสด {cashRatioPct}%
           </p>
         )}
+
         {/* Data source section */}
         <div className="border-t border-current/20 pt-3 mt-2 space-y-2">
           <p className="text-xs opacity-40 font-medium uppercase tracking-wide">📊 ข้อมูลที่ใช้วิเคราะห์</p>
           <div className="flex flex-wrap gap-1.5">
             <span className="text-xs opacity-60 bg-black/20 rounded px-2 py-0.5">
-              💹 ราคา ${analysis.usedPrice?.toFixed(2) ?? '—'}{analysis.usedPE ? ` · P/E ${analysis.usedPE.toFixed(1)}` : ''} — Finnhub
+              💹 ราคา ${analysis.usedPrice?.toFixed(2) ?? '—'} — Finnhub
+            </span>
+            <span className="text-xs opacity-60 bg-black/20 rounded px-2 py-0.5">
+              📈 Technical จาก Yahoo Finance (ราคาปิดย้อนหลัง 1 ปี)
             </span>
             <span className="text-xs opacity-60 bg-black/20 rounded px-2 py-0.5">
               🤖 Groq AI · llama-3.3-70b
             </span>
           </div>
-          {analysis.usedNews && analysis.usedNews.length > 0 && (
+          {analysis.usedNews.length > 0 && (
             <div className="space-y-1">
               <p className="text-xs opacity-40">ข่าวที่ AI อ่านก่อนวิเคราะห์</p>
               {analysis.usedNews.map((n, i) => (
