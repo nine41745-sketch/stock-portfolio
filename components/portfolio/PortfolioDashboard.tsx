@@ -1248,6 +1248,11 @@ function ScratchpadDrawer() {
       .catch(() => {})
   }
 
+  function handleClear() {
+    if (content.trim() && !window.confirm('ล้างโน้ตทั้งหมด? กู้คืนไม่ได้')) return
+    setContent('')
+  }
+
   return (
     <>
       {/* Floating button — มุมขวาล่าง เกาะตลอดเวลา (fixed) ซ่อนตอน drawer เปิดอยู่ */}
@@ -1268,8 +1273,8 @@ function ScratchpadDrawer() {
       {/* Drawer: mobile = bottom sheet (65vh จากล่าง), sm+ = slide-over ขวา (360px เต็มความสูง) */}
       <div
         className={`fixed z-50 bg-gray-900 flex flex-col shadow-2xl transition-transform duration-300 ease-out
-          inset-x-0 bottom-0 h-[65vh] rounded-t-2xl border-t border-gray-800
-          sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:left-auto sm:bottom-auto sm:h-screen sm:w-[360px] sm:rounded-none sm:rounded-l-2xl sm:border-l sm:border-t-0
+          inset-x-0 bottom-0 h-[65vh] max-h-screen rounded-t-2xl border-t border-gray-800
+          sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:left-auto sm:h-auto sm:max-h-none sm:w-[360px] sm:rounded-none sm:rounded-l-2xl sm:border-l sm:border-t-0
           ${isOpen ? 'translate-y-0 sm:translate-x-0' : 'translate-y-full sm:translate-y-0 sm:translate-x-full'}`}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
@@ -1288,9 +1293,14 @@ function ScratchpadDrawer() {
           <span className="text-xs text-gray-500">
             {saveStatus === 'saving' ? '⏳ กำลังบันทึก...' : saveStatus === 'saved' ? '✓ บันทึกอัตโนมัติแล้ว' : ''}
           </span>
-          <button onClick={handleCopy} className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded px-2.5 py-1 transition-colors">
-            {copied ? '✓ คัดลอกแล้ว' : '📋 Copy'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleClear} className="text-xs bg-gray-800 hover:bg-red-900/40 hover:text-red-300 text-gray-400 rounded px-2.5 py-1 transition-colors">
+              🗑️ Clear
+            </button>
+            <button onClick={handleCopy} className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded px-2.5 py-1 transition-colors">
+              {copied ? '✓ คัดลอกแล้ว' : '📋 Copy'}
+            </button>
+          </div>
         </div>
       </div>
     </>
