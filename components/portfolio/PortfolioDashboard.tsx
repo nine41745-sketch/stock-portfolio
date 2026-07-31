@@ -245,6 +245,8 @@ function MarketStatusBadge() {
         : 'bg-red-500/15 text-red-400 border-red-500/30'
     }`}>
       {status.isOpen ? '🟢 ตลาดเปิด' : '🔴 ตลาดปิด'} · {status.countdownText}
+      {status.isHoliday && ' (วันหยุดตลาด)'}
+      {status.isEarlyClose && ' · ปิดเร็ว 13:00 ET'}
     </span>
   )
 }
