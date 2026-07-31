@@ -1269,7 +1269,7 @@ function ScratchpadDrawer() {
       <div
         className={`fixed z-50 bg-gray-900 flex flex-col shadow-2xl transition-transform duration-300 ease-out
           inset-x-0 bottom-0 h-[65vh] rounded-t-2xl border-t border-gray-800
-          sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:left-auto sm:bottom-auto sm:h-full sm:w-[360px] sm:rounded-none sm:rounded-l-2xl sm:border-l sm:border-t-0
+          sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:left-auto sm:bottom-auto sm:h-screen sm:w-[360px] sm:rounded-none sm:rounded-l-2xl sm:border-l sm:border-t-0
           ${isOpen ? 'translate-y-0 sm:translate-x-0' : 'translate-y-full sm:translate-y-0 sm:translate-x-full'}`}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
