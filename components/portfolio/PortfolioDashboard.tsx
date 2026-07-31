@@ -161,6 +161,70 @@ function DonutChart({ holdings, analyses }: { holdings: HoldingWithPrice[], anal
   )
 }
 
+interface TrackRecordData {
+  days: number
+  overall: { total: number; correct: number; winRatePct: number | null }
+  bySymbol: { symbol: string; total: number; correct: number; winRatePct: number }[]
+}
+
+// การ์ด Track Record — เทียบสัญญาณ AI ที่เคยแนะนำ vs ราคาจริงที่เกิดขึ้นภายหลัง (win rate %)
+function TrackRecordCard() {
+  const [days, setDays] = useState<7 | 30>(7)
+  const [data, setData] = useState<TrackRecordData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/track-record?days=${days}`)
+      .then(r => r.json())
+      .then(d => setData(d))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false))
+  }, [days])
+
+  const winRate = data?.overall.winRatePct ?? null
+  const winColor = winRate === null ? 'text-gray-400' : winRate >= 60 ? 'text-green-400' : winRate >= 40 ? 'text-yellow-400' : 'text-red-400'
+
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">🎯 Track Record — ความแม่นยำ AI</p>
+        <div className="flex gap-1">
+          <button onClick={() => setDays(7)} className={`text-xs px-2.5 py-1 rounded-md transition-colors ${days === 7 ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>7 วัน</button>
+          <button onClick={() => setDays(30)} className={`text-xs px-2.5 py-1 rounded-md transition-colors ${days === 30 ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>30 วัน</button>
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="text-gray-600 text-sm">กำลังโหลด...</p>
+      ) : !data || data.overall.total === 0 ? (
+        <p className="text-gray-600 text-sm">
+          ยังไม่มีข้อมูลย้อนหลังพอ ({days} วัน) — ระบบวิเคราะห์อัตโนมัติรันทุกวัน 06:00 น. เก็บข้อมูลสะสมไปเรื่อยๆ รอสักพักแล้วกลับมาดูอีกครั้งครับ
+        </p>
+      ) : (
+        <>
+          <div className="flex items-baseline gap-2 mb-3">
+            <span className={`text-2xl font-bold ${winColor}`}>{winRate}%</span>
+            <span className="text-gray-500 text-xs">win rate ({data.overall.correct}/{data.overall.total} ครั้งถูก)</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {data.bySymbol.map(s => {
+              const c = s.winRatePct >= 60 ? 'text-green-400' : s.winRatePct >= 40 ? 'text-yellow-400' : 'text-red-400'
+              return (
+                <div key={s.symbol} className="rounded-lg bg-gray-950/50 border border-gray-800 px-3 py-2">
+                  <p className="text-gray-300 text-xs font-semibold">{s.symbol}</p>
+                  <p className={`text-sm font-bold ${c}`}>{s.winRatePct}%</p>
+                  <p className="text-gray-600 text-[10px]">{s.correct}/{s.total} ครั้ง</p>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function DCACalculator({ holding }: { holding: HoldingWithPrice }) {
   const [addAmt, setAddAmt] = useState('')
   const add = parseFloat(addAmt) || 0
@@ -310,6 +374,15 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     fetch(`/api/news?symbols=${holdings.map(h => h.symbol).join(',')}`)
       .then(r => r.json()).then(d => setNews(d.news ?? [])).catch(() => {})
       .finally(() => setNewsLoading(false))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // โหลดผลวิเคราะห์ AI ที่ cron รันไว้ให้วันนี้แล้ว (06:00 ICT) — โชว์ทันทีไม่ต้องกด "วิเคราะห์" เอง
+  useEffect(() => {
+    fetch('/api/daily-analyses/today').then(r => r.json()).then(d => {
+      if (d.analyses && Object.keys(d.analyses).length) {
+        setAnalyses(prev => ({ ...d.analyses, ...prev })) // ผลที่กดวิเคราะห์เองระหว่าง session สดกว่า ให้ทับ cron
+      }
+    }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // sync cashInput เมื่อเปลี่ยน currency
@@ -897,6 +970,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           <DonutChart holdings={holdings} analyses={analyses} />
         </div>
       )}
+
+      {/* Track Record — ความแม่นยำ AI ย้อนหลัง */}
+      <TrackRecordCard />
 
       {/* Controls */}
       <div className="flex items-center gap-3 flex-wrap">
