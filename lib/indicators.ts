@@ -1,6 +1,6 @@
 // ============================================================
 // Technical Indicators — ดึง historical OHLCV + คำนวณ EMA/RSI/MACD/Bollinger Bands
-// + Support/Resistance (20-day swing) + Volume Ratio
+// + Support/Resistance (20-day swing) + Volume Ratio + Weekly RSI(14)
 //
 // หมายเหตุสำคัญ: Finnhub free tier ไม่รองรับ /stock/candle สำหรับหุ้น US แล้ว
 // (คืน 403 Forbidden — ฟีเจอร์นี้ถูกย้ายไปอยู่ paid tier) จึงใช้ Yahoo Finance แทน
@@ -26,6 +26,9 @@ export interface TechnicalIndicators {
   ema100: number | null
   ema200: number | null
   rsi14: number | null
+  // RSI(14) รายสัปดาห์ — ดู momentum ภาพใหญ่ระยะยาว เทียบกับ rsi14 (รายวัน) ที่ดู momentum ระยะสั้น
+  // ช่วยกัน AI มองข้ามความเสี่ยงเวลา RSI รายวัน overbought/oversold ชั่วคราวแต่แนวโน้มรายสัปดาห์ยังไม่กลับตัวจริง
+  weeklyRsi14: number | null
   macd: { macd: number | null; signal: number | null; histogram: number | null }
   bollinger: { upper: number | null; middle: number | null; lower: number | null }
   trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS' | 'UNKNOWN'
@@ -40,6 +43,7 @@ export interface TechnicalIndicators {
 const EMPTY_INDICATORS: TechnicalIndicators = {
   ema50: null, ema100: null, ema200: null,
   rsi14: null,
+  weeklyRsi14: null,
   macd: { macd: null, signal: null, histogram: null },
   bollinger: { upper: null, middle: null, lower: null },
   trend: 'UNKNOWN',
@@ -81,6 +85,25 @@ async function fetchFromYahoo(symbol: string): Promise<Bar[]> {
   }
 }
 
+// ดึง OHLCV รายสัปดาห์ย้อนหลัง ~2 ปี จาก Yahoo Finance (interval=1wk) — ใช้คำนวณ Weekly RSI(14)
+// ย้อนหลัง 2 ปีเพื่อให้มีแท่งสัปดาห์เพียงพอ (~104 แท่ง) แม้ Yahoo จะคืนมาไม่ครบทุกสัปดาห์ก็ยังพอสำหรับ RSI(14)
+async function fetchFromYahooWeekly(symbol: string): Promise<Bar[]> {
+  try {
+    const period1 = new Date()
+    period1.setFullYear(period1.getFullYear() - 2)
+
+    const result = await yahooFinance.chart(symbol, {
+      period1,
+      interval: '1wk',
+    })
+
+    return toBars((result.quotes ?? []).map(q => ({ close: q.close, high: q.high, low: q.low, volume: q.volume })))
+  } catch (e) {
+    console.error(`[indicators] yahoo-finance2 weekly error for ${symbol}:`, e)
+    return []
+  }
+}
+
 // Fallback: Stooq.com CSV — ใช้เมื่อ Yahoo ใช้ไม่ได้ (โดน block หรือ rate limit)
 async function fetchFromStooq(symbol: string): Promise<Bar[]> {
   const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol.toLowerCase())}.us&i=d`
@@ -110,11 +133,49 @@ async function fetchFromStooq(symbol: string): Promise<Bar[]> {
   }
 }
 
+// Fallback รายสัปดาห์: Stooq รองรับ i=w (weekly) เหมือนกัน
+async function fetchFromStooqWeekly(symbol: string): Promise<Bar[]> {
+  const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol.toLowerCase())}.us&i=w`
+  try {
+    const res = await fetch(url, { next: { revalidate: 3600 } })
+    if (!res.ok) {
+      console.error(`[indicators] Stooq weekly HTTP ${res.status} for ${symbol}`)
+      return []
+    }
+    const csv = await res.text()
+    const lines = csv.trim().split('\n').slice(1)
+    const bars = toBars(lines.map(line => {
+      const cols = line.split(',')
+      return {
+        high: Number(cols[2]),
+        low: Number(cols[3]),
+        close: Number(cols[4]),
+        volume: Number(cols[5]),
+      }
+    }))
+    return bars.slice(-110)
+  } catch (e) {
+    console.error(`[indicators] Stooq weekly fetch error for ${symbol}:`, e)
+    return []
+  }
+}
+
 async function fetchHistoricalBars(symbol: string): Promise<Bar[]> {
   const yahoo = await fetchFromYahoo(symbol)
   if (yahoo.length >= 200) return yahoo
 
   const stooq = await fetchFromStooq(symbol)
+  if (stooq.length > yahoo.length) return stooq
+
+  return yahoo
+}
+
+// ต้องมีอย่างน้อย ~15 แท่งสัปดาห์ถึงจะคำนวณ RSI(14) รายสัปดาห์ได้
+async function fetchHistoricalWeeklyBars(symbol: string): Promise<Bar[]> {
+  const yahoo = await fetchFromYahooWeekly(symbol)
+  if (yahoo.length >= 15) return yahoo
+
+  const stooq = await fetchFromStooqWeekly(symbol)
   if (stooq.length > yahoo.length) return stooq
 
   return yahoo
@@ -158,13 +219,26 @@ function calcVolumeRatio(bars: Bar[], window = 20): number | null {
   return Math.round((latestVolume / avgVolume) * 100) / 100
 }
 
-// คำนวณ indicators ทั้งหมดจากราคาปิดย้อนหลัง
+// คำนวณ RSI(14) รายสัปดาห์จากแท่งราคาสัปดาห์
+function calcWeeklyRsi(weeklyBars: Bar[]): number | null {
+  if (weeklyBars.length < 15) return null
+  const closes = weeklyBars.map(b => b.close)
+  const rsiArr = RSI.calculate({ period: 14, values: closes })
+  return round2(last(rsiArr))
+}
+
+// คำนวณ indicators ทั้งหมดจากราคาปิดย้อนหลัง (ทั้งรายวันและรายสัปดาห์)
 export async function getTechnicalIndicators(symbol: string): Promise<TechnicalIndicators> {
-  const bars = await fetchHistoricalBars(symbol)
+  const [bars, weeklyBars] = await Promise.all([
+    fetchHistoricalBars(symbol),
+    fetchHistoricalWeeklyBars(symbol),
+  ])
+
+  const weeklyRsi14 = calcWeeklyRsi(weeklyBars)
 
   // ต้องมีข้อมูลอย่างน้อย ~210 วัน ถึงจะคำนวณ EMA200 ได้แม่นยำ
   // ถ้าข้อมูลไม่พอ (หุ้น IPO ใหม่ หรือ API ล่ม) ให้คืนค่าเท่าที่คำนวณได้ ไม่ error
-  if (bars.length < 15) return EMPTY_INDICATORS
+  if (bars.length < 15) return { ...EMPTY_INDICATORS, weeklyRsi14 }
 
   const closes = bars.map(b => b.close)
   const lastClose = last(closes)
@@ -200,6 +274,7 @@ export async function getTechnicalIndicators(symbol: string): Promise<TechnicalI
     ema100: round2(last(ema100arr)),
     ema200,
     rsi14: round2(last(rsiArr)),
+    weeklyRsi14,
     macd: {
       macd: round2(macdLast?.MACD ?? null),
       signal: round2(macdLast?.signal ?? null),

@@ -63,6 +63,8 @@ export interface TechnicalSnapshot {
   ema100: number | null
   ema200: number | null
   rsi14: number | null
+  // RSI(14) รายสัปดาห์ — เพิ่มเข้ามาคู่กับ rsi14 (รายวัน) ให้เห็นภาพ momentum ทั้งระยะสั้นและระยะยาว
+  weeklyRsi14: number | null
   macd: { macd: number | null; signal: number | null; histogram: number | null }
   bollinger: { upper: number | null; middle: number | null; lower: number | null }
   trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS' | 'UNKNOWN'

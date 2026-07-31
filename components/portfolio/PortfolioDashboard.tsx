@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import HoldingModal from './HoldingModal'
 import TradingViewChart from './TradingViewChart'
 import { AUTO_LOGOUT_MS, AUTO_LOGOUT_WARN_MS } from '@/lib/constants'
+import { getMarketStatus, MarketStatus } from '@/lib/market-status'
 
 interface Props {
   holdings: HoldingWithPrice[]
@@ -222,6 +223,29 @@ function TrackRecordCard() {
         </>
       )}
     </div>
+  )
+}
+
+// Badge สถานะตลาด US real-time — อัปเดตทุกนาทีด้วย setInterval (คำนวณฝั่ง client ล้วนๆ ไม่ยิง API)
+function MarketStatusBadge() {
+  const [status, setStatus] = useState<MarketStatus | null>(null)
+
+  useEffect(() => {
+    setStatus(getMarketStatus())
+    const timer = setInterval(() => setStatus(getMarketStatus()), 60_000)
+    return () => clearInterval(timer)
+  }, [])
+
+  if (!status) return null
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1 border ${
+      status.isOpen
+        ? 'bg-green-500/15 text-green-400 border-green-500/30'
+        : 'bg-red-500/15 text-red-400 border-red-500/30'
+    }`}>
+      {status.isOpen ? '🟢 ตลาดเปิด' : '🔴 ตลาดปิด'} · {status.countdownText}
+    </span>
   )
 }
 
@@ -606,7 +630,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       t.ema50 != null ? { label: 'EMA50', value: `$${t.ema50}` } : null,
       t.ema100 != null ? { label: 'EMA100', value: `$${t.ema100}` } : null,
       t.ema200 != null ? { label: 'EMA200', value: `$${t.ema200}` } : null,
-      t.rsi14 != null ? { label: 'RSI(14)', value: `${t.rsi14}` } : null,
+      t.rsi14 != null ? { label: 'RSI(14) Day', value: `${t.rsi14}` } : null,
+      t.weeklyRsi14 != null ? { label: 'RSI(14) Week', value: `${t.weeklyRsi14}` } : null,
       t.macd.histogram != null ? { label: 'MACD Hist', value: `${t.macd.histogram}` } : null,
       t.bollinger.upper != null ? { label: 'BB บน/ล่าง', value: `$${t.bollinger.upper} / $${t.bollinger.lower}` } : null,
       t.support != null ? { label: 'แนวรับ', value: `$${t.support}` } : null,
@@ -820,7 +845,10 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">📈 พอร์ตน้องเจน</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold text-white">📈 พอร์ตน้องเจน</h1>
+            <MarketStatusBadge />
+          </div>
           <p className="text-gray-500 text-xs mt-1">
             {lastUpdate
               ? `🔄 อัปเดต ${fmtDateTime(lastUpdate)} · 1 USD = ${exchangeRate.toFixed(2)} THB`
