@@ -9,8 +9,15 @@ function getThaiDateString(): string {
   return thai.toISOString().split('T')[0]
 }
 
-// GET /api/daily-analyses/today — ดึงผลวิเคราะห์ AI ที่ cron รันไว้ให้วันนี้แล้ว
-// ให้ dashboard โหลดโชว์ได้ทันทีโดยไม่ต้องกด "วิเคราะห์" เอง (ประหยัด Groq quota ด้วย)
+// GET /api/daily-analyses/today — ดึงผลวิเคราะห์ AI ที่ cron รันไว้ให้ล่าสุด
+//
+// Logic: ดึงแถวที่วิเคราะห์สำเร็จ (error IS NULL) เรียงจากวันที่ใหม่สุดก่อน แล้วเลือกแถวแรกที่เจอต่อ 1 symbol
+// เพราะฉะนั้น:
+//   - ถ้า cron วันนี้รันสำเร็จแล้ว -> ได้ผลของวันนี้ (แถวใหม่สุด ชนะแถวเก่ากว่าเสมอ)
+//   - ถ้า cron วันนี้ยังไม่รัน (เช่น เข้าเว็บก่อน 06:00 ICT) หรือรันแล้วแต่ error (เช่น rate limit)
+//     -> fallback ไปใช้ผลวิเคราะห์ล่าสุดที่สำเร็จจริงของวันก่อนหน้าแทน ดีกว่าไม่มีอะไรให้ดูเลย
+// ฝั่ง UI จะเห็นว่าผลเป็นของวันไหนจาก "🕐 วิเคราะห์เมื่อ ..." (analysis.analysedAt) ที่โชว์อยู่แล้วในการ์ด
+// จึงไม่ทำให้เข้าใจผิดว่าเป็นผลของวันนี้ทั้งที่จริงๆ เป็นของเมื่อวาน
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -18,19 +25,22 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('daily_analyses')
-    .select('symbol, result, error')
+    .select('symbol, result, analysis_date')
     .eq('user_id', user.id)
-    .eq('analysis_date', getThaiDateString())
+    .is('error', null) // ข้ามแถวที่ cron วิเคราะห์ไม่สำเร็จ (เช่น Groq rate limit) ตั้งแต่ระดับ query เลย
+    .order('analysis_date', { ascending: false })
+    .limit(500) // กันดึงมากเกินจำเป็นถ้าสะสมข้อมูลมานาน (9 หุ้น x ~55 วัน ก็เกินพอสำหรับ fallback แล้ว)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // ข้ามแถวที่ cron วิเคราะห์ไม่สำเร็จ (เช่น Groq rate limit) — ไม่งั้นการ์ด "วิเคราะห์ไม่สำเร็จ" จะค้างโชว์อยู่
-  // ทุกครั้งที่รีเฟรชโดยที่ user ไม่ได้กดวิเคราะห์เอง ปล่อยให้ fallback กลับไปเป็นปุ่ม "วิเคราะห์ AI" ปกติดีกว่า
-  // ให้ user กดลองเองตอนพร้อม (ตอนนั้นโควต้า Groq อาจ reset แล้วก็ได้)
   const analyses: Record<string, DetailedAnalysisResult> = {}
+  const analysisDates: Record<string, string> = {}
   for (const row of data ?? []) {
-    if (row.error) continue
-    analyses[row.symbol as string] = row.result as DetailedAnalysisResult
+    const symbol = row.symbol as string
+    if (analyses[symbol]) continue // เจอของ symbol นี้ไปแล้วจากแถวที่ใหม่กว่า (เพราะเรียง date desc) ข้ามแถวเก่ากว่าทิ้ง
+    analyses[symbol] = row.result as DetailedAnalysisResult
+    analysisDates[symbol] = row.analysis_date as string
   }
-  return NextResponse.json({ analyses, analysisDate: getThaiDateString() })
+
+  return NextResponse.json({ analyses, analysisDates, analysisDate: getThaiDateString() })
 }
