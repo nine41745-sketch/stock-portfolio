@@ -1199,7 +1199,101 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       {modalHolding !== undefined && (
         <HoldingModal holding={modalHolding} onClose={() => setModalHolding(undefined)} onSave={handleSave} onDelete={modalHolding ? handleDelete : undefined} />
       )}
+
+      <ScratchpadDrawer />
     </div>
+  )
+}
+
+// Quick Notes / Scratchpad Drawer — จดไอเดีย/ฟีเจอร์ที่อยากทำเพิ่ม บันทึกอัตโนมัติ (debounce 1 วิ) ต่อ user
+// Desktop: slide-over จากขอบขวา (fixed width) / Mobile (<sm): bottom sheet เต็มความกว้าง (fixed height 65vh)
+function ScratchpadDrawer() {
+  const [isOpen, setIsOpen] = useState(false)
+  const [content, setContent] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [copied, setCopied] = useState(false)
+
+  // โหลดโน้ตครั้งแรกตอน mount (ไม่ต้องรอเปิด drawer ก่อน — กดเปิดแล้วเห็นเนื้อหาทันที)
+  useEffect(() => {
+    fetch('/api/scratchpad')
+      .then(r => r.json())
+      .then(d => setContent(d.content ?? ''))
+      .catch(() => {})
+      .finally(() => setLoaded(true))
+  }, [])
+
+  // Auto-save แบบ debounce — บันทึกหลังหยุดพิมพ์ 1 วินาที กันยิง API ถี่ทุกตัวอักษร
+  useEffect(() => {
+    if (!loaded) return
+    setSaveStatus('saving')
+    const timer = setTimeout(async () => {
+      try {
+        await fetch('/api/scratchpad', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
+        })
+        setSaveStatus('saved')
+      } catch {
+        setSaveStatus('idle')
+      }
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [content, loaded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleCopy() {
+    navigator.clipboard.writeText(content)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+      .catch(() => {})
+  }
+
+  return (
+    <>
+      {/* Floating button — มุมขวาล่าง เกาะตลอดเวลา (fixed) ซ่อนตอน drawer เปิดอยู่ */}
+      <button
+        onClick={() => setIsOpen(true)}
+        aria-label="เปิด Quick Notes"
+        className={`fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-purple-600 hover:bg-purple-500 hover:scale-105 shadow-lg flex items-center justify-center text-xl transition-all ${isOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+      >
+        📝
+      </button>
+
+      {/* Backdrop — กดนอกพื้นที่ drawer เพื่อปิด */}
+      <div
+        onClick={() => setIsOpen(false)}
+        className={`fixed inset-0 z-40 bg-black/50 transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      />
+
+      {/* Drawer: mobile = bottom sheet (65vh จากล่าง), sm+ = slide-over ขวา (360px เต็มความสูง) */}
+      <div
+        className={`fixed z-50 bg-gray-900 flex flex-col shadow-2xl transition-transform duration-300 ease-out
+          inset-x-0 bottom-0 h-[65vh] rounded-t-2xl border-t border-gray-800
+          sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:left-auto sm:bottom-auto sm:h-full sm:w-[360px] sm:rounded-none sm:rounded-l-2xl sm:border-l sm:border-t-0
+          ${isOpen ? 'translate-y-0 sm:translate-x-0' : 'translate-y-full sm:translate-y-0 sm:translate-x-full'}`}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
+          <span className="text-sm font-semibold text-gray-200">📝 Quick Notes</span>
+          <button onClick={() => setIsOpen(false)} className="text-gray-500 hover:text-white text-sm">✕</button>
+        </div>
+        <div className="flex-1 p-3 min-h-0">
+          <textarea
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            placeholder="จดไอเดีย ฟีเจอร์ที่อยากทำเพิ่ม..."
+            className="w-full h-full resize-none rounded-lg bg-gray-950/60 border border-gray-800 p-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-purple-500/50"
+          />
+        </div>
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-800 shrink-0">
+          <span className="text-xs text-gray-500">
+            {saveStatus === 'saving' ? '⏳ กำลังบันทึก...' : saveStatus === 'saved' ? '✓ บันทึกอัตโนมัติแล้ว' : ''}
+          </span>
+          <button onClick={handleCopy} className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded px-2.5 py-1 transition-colors">
+            {copied ? '✓ คัดลอกแล้ว' : '📋 Copy'}
+          </button>
+        </div>
+      </div>
+    </>
   )
 }
 
