@@ -1,4 +1,5 @@
 import { HoldingWithPrice, AnalysisResult, DetailedAnalysisResult, TechnicalSnapshot, EarningsInfo } from '@/types'
+import { getStockMeta } from './stock-meta'
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
@@ -240,9 +241,7 @@ ${newsSnippet}
     "opportunity": "โอกาสหรือปัจจัยบวก"
   },
   "risks": ["ความเสี่ยงข้อ 1", "ความเสี่ยงข้อ 2"],
-  "summary": "สรุปคำแนะนำสั้นๆ 1-2 ประโยค",
-  "sector": "Sector หุ้น",
-  "business": "ลักษณะธุรกิจ 1 ประโยค"
+  "summary": "สรุปคำแนะนำสั้นๆ 1-2 ประโยค"
 }`
 
   const validActions = ['BUY', 'HOLD', 'SELL_PARTIAL', 'SELL_ALL']
@@ -251,7 +250,11 @@ ${newsSnippet}
     return (m && validActions.includes(m[1]) ? m[1] : 'HOLD') as DetailedAnalysisResult['recommendation']['action']
   }
 
-  const makeFallback = (message: string, error: DetailedAnalysisResult['error']): DetailedAnalysisResult => ({
+  // sector/business ดึงจากข้อมูลนิ่ง (static mapping + Yahoo Finance fallback) ไม่ให้ AI สุ่มเขียนเองอีกต่อไป
+  // กันปัญหาข้อความสลับไปมาไม่คงที่ทุกครั้งที่วิเคราะห์ใหม่ — ดึงคู่ขนานไปกับการเรียก Groq เพื่อไม่เสียเวลาเพิ่ม
+  const stockMetaPromise = getStockMeta(symbol)
+
+  const makeFallback = (message: string, error: DetailedAnalysisResult['error'], meta: { sector: string | null; business: string | null } = { sector: null, business: null }): DetailedAnalysisResult => ({
     symbol,
     disclaimer: 'บทวิเคราะห์นี้สร้างโดย AI เพื่อประกอบการตัดสินใจเท่านั้น ไม่ใช่คำแนะนำการลงทุน',
     technicalSummary: message,
@@ -261,8 +264,8 @@ ${newsSnippet}
     risks: [],
     summary: message,
     analysedAt: new Date().toISOString(),
-    sector: '',
-    business: '',
+    sector: meta.sector ?? '',
+    business: meta.business ?? '',
     technical,
     usedPrice: current_price ?? null,
     usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
@@ -273,7 +276,10 @@ ${newsSnippet}
   const fallback = makeFallback('ไม่สามารถวิเคราะห์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง', 'FAILED')
 
   try {
-    const { text, rateLimited, rateLimitScope, usedModel } = await callGroq(prompt, 2000)
+    const [{ text, rateLimited, rateLimitScope, usedModel }, stockMeta] = await Promise.all([
+      callGroq(prompt, 2000),
+      stockMetaPromise,
+    ])
 
     // Groq โดน rate limit ทั้งโมเดลหลักและสำรองแล้ว — แสดง error ให้ชัดเจน แยกข้อความตามว่า
     // โดน per-minute (TPM/RPM รอแค่ ~1 นาที) หรือ per-day (TPD/RPD ต้องรอถึงวันถัดไป)
@@ -282,7 +288,7 @@ ${newsSnippet}
       const message = rateLimitScope === 'minute'
         ? 'AI ใช้งานถี่เกินไปในนาทีนี้ (Groq rate limit ต่อนาที) รอสัก 1 นาทีแล้วลองใหม่ได้เลย'
         : 'เกินโควต้าการใช้งาน AI รายวันแล้ว (Groq API) กรุณาลองใหม่พรุ่งนี้เมื่อโควต้า reset'
-      return makeFallback(message, 'RATE_LIMIT')
+      return makeFallback(message, 'RATE_LIMIT', stockMeta)
     }
 
     // extractAction หา "action" ตรงๆ จาก raw text ก่อน — เพราะตอนนี้ "action" เป็น key แรกสุดของ JSON
@@ -311,8 +317,8 @@ ${newsSnippet}
       risks: Array.isArray(parsed.risks) ? parsed.risks : [],
       summary: parsed.summary ?? '',
       analysedAt: new Date().toISOString(),
-      sector: parsed.sector ?? '',
-      business: parsed.business ?? '',
+      sector: stockMeta.sector ?? '',
+      business: stockMeta.business ?? '',
       technical,
       usedPrice: current_price ?? null,
       usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),

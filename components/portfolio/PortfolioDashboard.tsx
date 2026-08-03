@@ -1205,6 +1205,24 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   )
 }
 
+// Prompt Template สำหรับ "ส่งโน้ตสั่งงาน AI" — ห่อโน้ตดิบด้วยโครงสร้างสั่งงานพัฒนาโค้ด
+// พร้อมฝัง Preservation Rules มาตรฐานของโปรเจกต์นี้ ให้ copy ไปวางสั่งงาน AI (Claude/Gemini/ChatGPT) ต่อได้ทันที
+function buildAiPrompt(notes: string): string {
+  const body = notes.trim() || '(ยังไม่ได้จดอะไรไว้ — เติมรายละเอียดตรงนี้ก่อน copy ไปสั่งงานจริง)'
+  return `ช่วยดำเนินการเก็บรายละเอียดและพัฒนาฟีเจอร์เพิ่มเติมให้ระบบ "พอร์ตน้องเจน" สมบูรณ์ตามรายการนี้ครับ:
+---
+${body}
+---
+### 🛡️ กฎเหล็กในการอัปเดตโค้ด (Code Preservation Guidelines):
+1. **Preserve Existing Features (ห้ามลบฟีเจอร์เดิม):**
+   - โค้ดใหม่ต้องเป็นแบบ Backward Compatible ทั้งหมด
+   - ห้ามตัด/ลบ Logic เดิมที่ทำเสร็จไปแล้ว (OHLCV Data, Swing High/Low, Volume Ratio, Model Badge, Earnings Calendar Check, Daily Cron Analysis, Weekly RSI, Market Status, Track Record, Fallback Latest Record, Quick Notes Drawer และ Sector/Business แบบนิ่ง)
+2. **Full Code Output (ห้ามละโค้ด):**
+   - เมื่อแก้ไขไฟล์ใดก็ตาม ให้เขียนโค้ดเต็มสมบูรณ์ของไฟล์นั้น ห้ามใช้คอมเมนต์ประเภท \`// ... existing code ...\` เพื่อป้องกันไม่ให้เผลอลบส่วนสำคัญออก
+3. **Targeted Changes Only (แก้เฉพาะจุด):**
+   - ปรับแก้ไขเฉพาะไฟล์และฟังก์ชันที่เกี่ยวข้องกับโจทย์นี้เท่านั้น ห้ามรีแฟคเตอร์ (Refactor) หรือเปลี่ยนชื่อ Variable/Interface ของส่วนอื่นเกินจำเป็น`
+}
+
 // Quick Notes / Scratchpad Drawer — จดไอเดีย/ฟีเจอร์ที่อยากทำเพิ่ม บันทึกอัตโนมัติ (debounce 1 วิ) ต่อ user
 // Desktop: slide-over จากขอบขวา (fixed width) / Mobile (<sm): bottom sheet เต็มความกว้าง (fixed height 65vh)
 function ScratchpadDrawer() {
@@ -1213,6 +1231,7 @@ function ScratchpadDrawer() {
   const [loaded, setLoaded] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [copied, setCopied] = useState(false)
+  const [exported, setExported] = useState(false)
 
   // โหลดโน้ตครั้งแรกตอน mount (ไม่ต้องรอเปิด drawer ก่อน — กดเปิดแล้วเห็นเนื้อหาทันที)
   useEffect(() => {
@@ -1253,6 +1272,14 @@ function ScratchpadDrawer() {
     setContent('')
   }
 
+  // "ส่งโน้ตสั่งงาน AI" — ห่อโน้ตดิบด้วย prompt template + preservation rules แล้ว copy ลง clipboard
+  // ให้เอาไปวางสั่งงานต่อในแชต AI (Claude/Gemini/ChatGPT) ได้ทันทีโดยไม่ต้องพิมพ์กฎเหล็กซ้ำเอง
+  function handleExportPrompt() {
+    navigator.clipboard.writeText(buildAiPrompt(content))
+      .then(() => { setExported(true); setTimeout(() => setExported(false), 2000) })
+      .catch(() => {})
+  }
+
   return (
     <>
       {/* Floating button — มุมขวาล่าง เกาะตลอดเวลา (fixed) ซ่อนตอน drawer เปิดอยู่ */}
@@ -1289,17 +1316,22 @@ function ScratchpadDrawer() {
             className="w-full h-full resize-none rounded-lg bg-gray-950/60 border border-gray-800 p-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-purple-500/50"
           />
         </div>
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-800 shrink-0">
-          <span className="text-xs text-gray-500">
-            {saveStatus === 'saving' ? '⏳ กำลังบันทึก...' : saveStatus === 'saved' ? '✓ บันทึกอัตโนมัติแล้ว' : ''}
-          </span>
-          <div className="flex items-center gap-2">
-            <button onClick={handleClear} className="text-xs bg-gray-800 hover:bg-red-900/40 hover:text-red-300 text-gray-400 rounded px-2.5 py-1 transition-colors">
-              🗑️ Clear
-            </button>
-            <button onClick={handleCopy} className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded px-2.5 py-1 transition-colors">
-              {copied ? '✓ คัดลอกแล้ว' : '📋 Copy'}
-            </button>
+        <div className="flex flex-col gap-2 px-4 py-2.5 border-t border-gray-800 shrink-0">
+          <button onClick={handleExportPrompt} className="w-full text-xs bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 rounded px-2.5 py-1.5 transition-colors font-medium">
+            {exported ? '✓ คัดลอก Prompt แล้ว — ไปวางสั่งงาน AI ได้เลย' : '📤 ส่งโน้ตสั่งงาน AI'}
+          </button>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-500">
+              {saveStatus === 'saving' ? '⏳ กำลังบันทึก...' : saveStatus === 'saved' ? '✓ บันทึกอัตโนมัติแล้ว' : ''}
+            </span>
+            <div className="flex items-center gap-2">
+              <button onClick={handleClear} className="text-xs bg-gray-800 hover:bg-red-900/40 hover:text-red-300 text-gray-400 rounded px-2.5 py-1 transition-colors">
+                🗑️ Clear
+              </button>
+              <button onClick={handleCopy} className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded px-2.5 py-1 transition-colors">
+                {copied ? '✓ คัดลอกแล้ว' : '📋 Copy'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
