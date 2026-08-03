@@ -70,10 +70,10 @@ export default function HoldingModal({ holding, onClose, onSave, onDelete }: Pro
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-md rounded-2xl bg-gray-900 border border-gray-700 shadow-2xl p-6">
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-gray-900 border border-gray-700 shadow-2xl p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-white">
             {isEdit ? `แก้ไข ${holding.symbol}` : 'เพิ่มหุ้นใหม่'}

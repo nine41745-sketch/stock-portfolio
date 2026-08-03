@@ -8,6 +8,7 @@ import HoldingModal from './HoldingModal'
 import TradingViewChart from './TradingViewChart'
 import { AUTO_LOGOUT_MS, AUTO_LOGOUT_WARN_MS } from '@/lib/constants'
 import { getMarketStatus, MarketStatus } from '@/lib/market-status'
+import { changelog, CURRENT_VERSION } from '@/config/changelog'
 
 interface Props {
   holdings: HoldingWithPrice[]
@@ -153,7 +154,7 @@ function DonutChart({ holdings, analyses }: { holdings: HoldingWithPrice[], anal
     return { ...item, d }
   })
   return (
-    <div className="flex items-center gap-5">
+    <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-5">
       <svg width="130" height="130" className="shrink-0">
         {paths.map(p => <path key={p.symbol} d={p.d} fill={p.color} opacity={0.9} />)}
       </svg>
@@ -327,6 +328,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [inactiveWarn, setInactiveWarn] = useState(false)
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [showChangelog, setShowChangelog] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
@@ -368,6 +370,14 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   }
 
   useEffect(() => { fetchExchangeRate() }, [])
+
+  // Auto-detect ขนาดจอตอนเปิดหน้าเว็บครั้งแรก — จอมือถือ (< 768px) จะสลับไปโหมด Card Layout ให้อัตโนมัติ
+  // ทำแค่ครั้งเดียวตอน mount เท่านั้น (ไม่ผูกกับ resize event) เพื่อไม่ไปแย่งค่าที่ user เลือกเองภายหลังด้วยปุ่ม 💻/📱
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setViewMode('mobile')
+    }
+  }, [])
 
   // apply theme ที่ <html> ให้ครอบทั้งหน้า
   useEffect(() => {
@@ -850,6 +860,13 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold text-white">📈 พอร์ตน้องเจน</h1>
             <MarketStatusBadge />
+            <button
+              onClick={() => setShowChangelog(true)}
+              title="ดูประวัติการอัปเดตระบบ"
+              className="inline-flex items-center text-xs font-medium rounded-full px-2.5 py-1 border bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:border-gray-600 transition-colors"
+            >
+              {CURRENT_VERSION}
+            </button>
           </div>
           <p className="text-gray-500 text-xs mt-1">
             {lastUpdate
@@ -1201,6 +1218,43 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       )}
 
       <ScratchpadDrawer />
+      <ChangelogModal isOpen={showChangelog} onClose={() => setShowChangelog(false)} />
+    </div>
+  )
+}
+
+// Changelog Modal — แสดงประวัติการอัปเดตระบบทั้งหมด อ่านจาก config/changelog.ts
+// (เพิ่มเวอร์ชันใหม่ในอนาคต แก้แค่ไฟล์ config/changelog.ts ไฟล์เดียว ไม่ต้องแตะ component นี้)
+function ChangelogModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  if (!isOpen) return null
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl bg-gray-900 border border-gray-700 shadow-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-white">📋 ประวัติการอัปเดตระบบ</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-sm">✕</button>
+        </div>
+        <div className="space-y-5">
+          {changelog.map(entry => (
+            <div key={entry.version} className="border-l-2 border-purple-600/40 pl-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-sm font-bold text-purple-300">{entry.version}</span>
+                <span className="text-xs text-gray-600">{entry.date}</span>
+              </div>
+              <ul className="space-y-1">
+                {entry.changes.map((c, i) => (
+                  <li key={i} className="text-xs text-gray-300 leading-relaxed flex gap-2">
+                    <span className="shrink-0 opacity-50">•</span><span>{c}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
