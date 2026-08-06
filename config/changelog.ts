@@ -2,6 +2,7 @@
 // Changelog — ประวัติการอัปเดตระบบ "พอร์ตน้องเจน"
 // เพิ่มเวอร์ชันใหม่โดยแทรกรายการใหม่ไว้ "บนสุด" ของ array นี้ (เรียงใหม่สุด -> เก่าสุด)
 // CURRENT_VERSION ด้านล่างจะดึงจากรายการแรกให้อัตโนมัติ ไม่ต้องแก้ 2 ที่
+// หมายเหตุ: วันที่/เวลาทุกรายการอ้างอิงจาก git commit history จริง (ไม่ใช่การประมาณ)
 // ============================================================
 
 export interface ChangelogEntry {
@@ -13,25 +14,24 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     version: 'v1.7.2',
-    date: '2026-08-07 01:15 ICT',
+    date: '2026-08-07 00:35 ICT',
     changes: [
       'แก้บั๊กสำคัญ: AI แนะนำ HOLD ทั้งที่เข้าเกณฑ์ SELL_ALL/SELL_PARTIAL ชัดเจน (เช่น P&L +66% ยังขึ้นถือต่อ, P&L -23% + DOWNTREND ก็ยังขึ้นถือต่อ)',
       'ต้นเหตุ: prompt เดิมเขียนเงื่อนไขย่อยเป็น bullet list ทำให้ AI ตีความเป็น "ต้องเข้าเงื่อนไขครบทุกข้อ (AND)" ทั้งที่จริงคือ "เข้าข้อใดข้อหนึ่งก็พอ (OR)"',
-      'ปรับ decision framework ใหม่เป็น checklist ระบุ (ก)(ข)(ค) ชัดเจน พร้อมตัวอย่างจริงกำกับทุกระดับ กันการตีความผิดซ้ำ',
+      'ปรับ decision framework ใหม่เป็น checklist ระบุ (ก)(ข)(ค) ชัดเจน พร้อมตัวอย่างจริงกำกับทุกระดับ กันการตีความผิดซ้ำ (ครอบคลุมหุ้นทุกตัวในระบบ)',
     ],
   },
   {
     version: 'v1.7.1',
-    date: '2026-08-07 00:30 ICT',
+    date: '2026-08-07 00:10 ICT',
     changes: [
       'เพิ่มเวลา (ไม่ใช่แค่วันที่) ในทุกรายการ Changelog ให้ละเอียดขึ้น',
-      'ตรวจสอบและยืนยัน Logic คำแนะนำหุ้น (BUY/HOLD/SELL_PARTIAL/SELL_ALL) ทำงานถูกต้องครบถ้วน',
       'ปรับ Decision Framework ให้ระบุชัดเจนว่าเกณฑ์ RSI อ้างอิงจาก RSI(14) รายวันเป็นตัวกระตุ้นสัญญาณหลัก ส่วน RSI(14) รายสัปดาห์ใช้ยืนยันภาพใหญ่เท่านั้น (กันความกำกวมหลังเพิ่ม Weekly RSI เข้ามา)',
     ],
   },
   {
     version: 'v1.7.0',
-    date: '2026-08-04 09:15 ICT',
+    date: '2026-08-04 02:06 ICT',
     changes: [
       'ปรับ Dashboard ให้ responsive บนมือถือดีขึ้น — auto-detect ขนาดจอ (< 768px) สลับเป็น Card Layout ให้อัตโนมัติ (ยังกดสลับเองด้วยปุ่ม 💻/📱 ได้เหมือนเดิม)',
       'ปรับ HoldingModal ให้ใช้งานสะดวกบนจอมือถือ (เพิ่ม padding กันชิดขอบจอ + scroll ได้เมื่อเนื้อหายาวเกินจอ)',
@@ -40,7 +40,7 @@ export const changelog: ChangelogEntry[] = [
   },
   {
     version: 'v1.6.0',
-    date: '2026-08-03 14:20 ICT',
+    date: '2026-08-04 01:37 ICT',
     changes: [
       'แก้ Sector/Business ให้นิ่ง 100% — ตัด AI ออกจากหน้าที่นี้ ใช้ static mapping ภาษาไทย + Yahoo Finance เป็น fallback แทน (เดิมสลับข้อความไปมาทุกครั้งที่วิเคราะห์ใหม่)',
       'เพิ่มปุ่ม "ส่งโน้ตสั่งงาน AI" ใน Quick Notes Drawer — copy โน้ตพร้อม prompt template + preservation rules ลง clipboard ในคลิกเดียว',
@@ -48,31 +48,26 @@ export const changelog: ChangelogEntry[] = [
   },
   {
     version: 'v1.5.0',
-    date: '2026-08-02 20:05 ICT',
+    date: '2026-07-31 16:40 ICT',
     changes: [
       'เพิ่มฟีเจอร์ Quick Notes / Scratchpad Drawer — จดไอเดีย/ฟีเจอร์ที่อยากทำเพิ่ม บันทึกอัตโนมัติ (floating button + slide-over บนคอม / bottom sheet บนมือถือ)',
+      'แก้บั๊ก UI ปุ่ม Copy ถูกตัดขอบด้านล่างบนจอเดสก์ท็อป (คลาส Tailwind ชนกันระหว่าง inset-y-0 กับ bottom-auto/h-screen)',
     ],
   },
   {
     version: 'v1.4.0',
-    date: '2026-08-01 11:40 ICT',
+    date: '2026-07-31 11:40 ICT',
     changes: [
       'เพิ่ม Weekly RSI(14) คู่กับ Daily RSI ให้ AI เห็นภาพ momentum ทั้งระยะสั้นและระยะยาว',
       'เพิ่ม Market Status Badge — สถานะเปิด/ปิดตลาด US พร้อม countdown แบบ real-time รองรับปฏิทินวันหยุด NYSE (2026-2028) และวันปิดเร็ว',
+      'เพิ่มระบบ Daily Cron Analysis — วิเคราะห์หุ้นทั้งพอร์ตอัตโนมัติทุกวัน 06:00 น. เวลาไทย ผ่าน Vercel Cron',
+      'เพิ่มระบบ Track Record — วัด win rate ของสัญญาณ AI ย้อนหลัง 7/30 วัน เทียบกับราคาจริงที่เกิดขึ้น',
+      'เพิ่ม fallback ใช้ผลวิเคราะห์ล่าสุดที่สำเร็จ ถ้าวันนี้ยังไม่มี (กันหน้าจอว่างเปล่าตอนเข้าเว็บก่อน cron รัน) + แก้ไม่ให้ error card ค้างจากการทดสอบ',
     ],
   },
   {
     version: 'v1.3.0',
-    date: '2026-07-31 22:50 ICT',
-    changes: [
-      'เพิ่มระบบ Daily Cron Analysis — วิเคราะห์หุ้นทั้งพอร์ตอัตโนมัติทุกวัน 06:00 น. เวลาไทย ผ่าน Vercel Cron',
-      'เพิ่มระบบ Track Record — วัด win rate ของสัญญาณ AI ย้อนหลัง 7/30 วัน เทียบกับราคาจริงที่เกิดขึ้น',
-      'เพิ่ม fallback ใช้ผลวิเคราะห์ล่าสุดที่สำเร็จ ถ้าวันนี้ยังไม่มี (กันหน้าจอว่างเปล่าตอนเข้าเว็บก่อน cron รัน)',
-    ],
-  },
-  {
-    version: 'v1.2.0',
-    date: '2026-07-30 18:10 ICT',
+    date: '2026-07-31 03:00 ICT',
     changes: [
       'เพิ่ม Earnings Calendar check — เตือนความเสี่ยงก่อนประกาศผลประกอบการภายใน 7 วัน',
       'เพิ่มการคำนวณ Support/Resistance (20-day swing high/low) และ Volume Ratio จริงจากข้อมูลราคา กัน AI เดาตัวเลขเอง',
@@ -80,17 +75,25 @@ export const changelog: ChangelogEntry[] = [
     ],
   },
   {
-    version: 'v1.1.0',
-    date: '2026-07-28 16:30 ICT',
+    version: 'v1.2.0',
+    date: '2026-07-31 02:41 ICT',
     changes: [
       'อัปเกรดการวิเคราะห์ AI เป็นแบบสถาบันการเงิน — เพิ่ม Technical Indicators เต็มรูปแบบ (EMA/RSI/MACD/Bollinger Bands) จากข้อมูล OHLCV จริง',
-      'เพิ่มระบบ fallback โมเดล Groq (llama-3.3-70b -> llama-3.1-8b-instant) อัตโนมัติเมื่อโดน rate limit',
-      'ปรับปรุงความปลอดภัยระบบทั้งหมด (RLS, จำกัดการใช้ Service Role, บังคับเช็ค auth ทุก API route)',
+      'เพิ่มระบบ fallback โมเดล Groq (llama-3.3-70b -> llama-3.1-8b-instant) อัตโนมัติเมื่อโดน rate limit + แยกข้อความ error ตามจริง (TPM รอสั้น vs TPD รอยาว)',
+      'ย้าย field "action" ขึ้นเป็น key แรกสุดของ JSON ที่ AI ตอบกลับ — แก้บั๊กค้าง HOLD จาก token truncation',
+    ],
+  },
+  {
+    version: 'v1.1.0',
+    date: '2026-07-29 04:15 ICT',
+    changes: [
+      'แก้บั๊ก AI signal ค้าง HOLD เสมอ — เพิ่ม token budget ให้ตอบครบ + extract signal ด้วย regex กันตัดกลางคัน',
+      'ปรับปรุงความปลอดภัยระบบทั้งหมด (RLS, จำกัดการใช้ Service Role เฉพาะ RPC ที่จำเป็น, บังคับเช็ค auth ทุก API route)',
     ],
   },
   {
     version: 'v1.0.0',
-    date: '2026-07-20 12:00 ICT',
+    date: '2026-07-16 16:51 ICT',
     changes: [
       'เปิดตัวระบบติดตามพอร์ตหุ้น US ส่วนตัว "พอร์ตน้องเจน" พร้อมเข้ารหัสต้นทุน (cost basis) ด้วย pgcrypto',
       'ระบบวิเคราะห์สัญญาณ AI เบื้องต้น (BUY/HOLD/SELL) และติดตามราคา/กำไรขาดทุนแบบ real-time',
