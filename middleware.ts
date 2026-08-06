@@ -29,7 +29,15 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
-  if (!user && pathname !== '/login') {
+  // v1.8.0: เพิ่ม middleware เป็นชั้นป้องกันเสริม (defense-in-depth) สำหรับ /api/*
+  // ทุก API route ปัจจุบันเช็ค auth.getUser() เองอยู่แล้วทุกจุด (ไม่กระทบพฤติกรรมเดิม)
+  // แต่เผื่ออนาคตมี route ใหม่ที่ลืมใส่ auth guard จะยังโดนกันไว้ที่ชั้นนี้ก่อน
+  // ยกเว้น /api/cron/* ที่ auth ด้วย CRON_SECRET แยกต่างหาก ไม่ได้ใช้ user session
+  if (!user && pathname.startsWith('/api/') && !pathname.startsWith('/api/cron/')) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  if (!user && pathname !== '/login' && !pathname.startsWith('/api/')) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
@@ -41,5 +49,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }

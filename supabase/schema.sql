@@ -75,75 +75,8 @@ CREATE TRIGGER holdings_updated_at
   BEFORE UPDATE ON public.holdings
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
--- ============================================================
--- FUNCTION: upsert_holding (server-side encryption helper)
--- รับ cost_basis เป็น plaintext, encrypt ด้วย key ที่ส่งมา
--- เรียกจาก server-side เท่านั้น (service_role)
--- ============================================================
-CREATE OR REPLACE FUNCTION public.upsert_holding(
-  p_user_id   UUID,
-  p_symbol    TEXT,
-  p_shares    NUMERIC,
-  p_cost_basis NUMERIC,
-  p_enc_key   TEXT
-)
-RETURNS public.holdings LANGUAGE plpgsql SECURITY DEFINER AS $$
-DECLARE
-  v_row public.holdings;
-BEGIN
-  INSERT INTO public.holdings (user_id, symbol, shares, cost_basis_enc)
-  VALUES (
-    p_user_id,
-    UPPER(p_symbol),
-    p_shares,
-    pgp_sym_encrypt(p_cost_basis::TEXT, p_enc_key)
-  )
-  ON CONFLICT (user_id, symbol) DO UPDATE SET
-    shares        = EXCLUDED.shares,
-    cost_basis_enc = EXCLUDED.cost_basis_enc,
-    updated_at    = NOW()
-  RETURNING * INTO v_row;
-
-  RETURN v_row;
-END;
-$$;
-
--- ============================================================
--- FUNCTION: get_decrypted_holdings (server-side decrypt)
--- เรียกจาก server เท่านั้น — ส่ง enc_key ผ่าน parameter
--- ============================================================
-CREATE OR REPLACE FUNCTION public.get_decrypted_holdings(
-  p_user_id UUID,
-  p_enc_key TEXT
-)
-RETURNS TABLE (
-  id            UUID,
-  symbol        TEXT,
-  shares        NUMERIC,
-  cost_basis    NUMERIC,
-  notes         TEXT,
-  created_at    TIMESTAMPTZ,
-  updated_at    TIMESTAMPTZ
-) LANGUAGE plpgsql SECURITY DEFINER AS $$
-BEGIN
-  RETURN QUERY
-  SELECT
-    h.id,
-    h.symbol,
-    h.shares,
-    CASE
-      WHEN h.cost_basis_enc IS NOT NULL
-      THEN pgp_sym_decrypt(h.cost_basis_enc::BYTEA, p_enc_key)::NUMERIC
-      ELSE NULL
-    END AS cost_basis,
-    h.notes,
-    h.created_at,
-    h.updated_at
-  FROM public.holdings h
-  WHERE h.user_id = p_user_id
-  ORDER BY h.symbol;
-END;
-$$;
+-- upsert_holding และ get_decrypted_holdings ถูกย้ายไปนิยามด้านล่าง (เวอร์ชันเดียว รองรับ notes + RPC hardening)
+-- ดู migration_rpc_hardening.sql สำหรับรายละเอียดการแก้ไข (v1.8.0)
 
 -- ============================================================
 -- SEED DATA
@@ -174,35 +107,123 @@ END $$;
 */
 
 -- ============================================================
--- FUNCTION: upsert_holding_nullable (รองรับ cost_basis = NULL)
+-- FUNCTION: upsert_holding (รองรับ cost_basis = NULL + notes)
+-- SECURITY DEFINER + search_path fixed + execute จำกัดเฉพาะ service_role เท่านั้น
+-- (เรียกจาก server-side ผ่าน createServiceClient() เท่านั้น — ดู v1.8.0 hardening)
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.upsert_holding(
   p_user_id    UUID,
   p_symbol     TEXT,
   p_shares     NUMERIC,
   p_cost_basis NUMERIC,   -- NULL = ไม่มีต้นทุน
-  p_enc_key    TEXT
+  p_enc_key    TEXT,
+  p_notes      TEXT DEFAULT NULL
 )
-RETURNS public.holdings LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS public.holdings
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
 DECLARE
   v_row public.holdings;
   v_enc TEXT;
 BEGIN
-  -- Encrypt ถ้ามี cost_basis
   IF p_cost_basis IS NOT NULL THEN
     v_enc := pgp_sym_encrypt(p_cost_basis::TEXT, p_enc_key);
   ELSE
     v_enc := NULL;
   END IF;
 
-  INSERT INTO public.holdings (user_id, symbol, shares, cost_basis_enc)
-  VALUES (p_user_id, UPPER(p_symbol), p_shares, v_enc)
+  INSERT INTO public.holdings (user_id, symbol, shares, cost_basis_enc, notes)
+  VALUES (p_user_id, UPPER(p_symbol), p_shares, v_enc, p_notes)
   ON CONFLICT (user_id, symbol) DO UPDATE SET
     shares         = EXCLUDED.shares,
     cost_basis_enc = EXCLUDED.cost_basis_enc,
+    notes          = COALESCE(EXCLUDED.notes, public.holdings.notes),
     updated_at     = NOW()
   RETURNING * INTO v_row;
 
   RETURN v_row;
 END;
 $$;
+
+-- ============================================================
+-- FUNCTION: get_decrypted_holdings (server-side decrypt)
+-- SECURITY DEFINER + search_path fixed + execute จำกัดเฉพาะ service_role เท่านั้น
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.get_decrypted_holdings(
+  p_user_id UUID,
+  p_enc_key TEXT
+)
+RETURNS TABLE (
+  id            UUID,
+  symbol        TEXT,
+  shares        NUMERIC,
+  cost_basis    NUMERIC,
+  notes         TEXT,
+  created_at    TIMESTAMPTZ,
+  updated_at    TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    h.id,
+    h.symbol,
+    h.shares,
+    CASE
+      WHEN h.cost_basis_enc IS NOT NULL
+      THEN pgp_sym_decrypt(h.cost_basis_enc::BYTEA, p_enc_key)::NUMERIC
+      ELSE NULL
+    END AS cost_basis,
+    h.notes,
+    h.created_at,
+    h.updated_at
+  FROM public.holdings h
+  WHERE h.user_id = p_user_id
+  ORDER BY h.symbol;
+END;
+$$;
+
+-- Critical fix (v1.8.0): ปิดสิทธิ์ execute จาก PUBLIC/anon/authenticated เหลือแค่ service_role
+-- (เดิมไม่มีการ REVOKE เลย ทำให้ user ที่ login เรียก RPC ตรงจาก client แล้วปลอม p_user_id เป็นคนอื่นได้)
+REVOKE ALL ON FUNCTION public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.get_decrypted_holdings(UUID, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.get_decrypted_holdings(UUID, TEXT) TO service_role;
+
+-- ============================================================
+-- TABLE: user_settings (เงินสด/เงินก้อนพิเศษ/ทุนตั้งต้น ต่อ user)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.user_settings (
+  user_id             UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  cash_balance        NUMERIC(15,2) NOT NULL DEFAULT 0,
+  dime_balance        NUMERIC(15,2) NOT NULL DEFAULT 0,
+  initial_capital     NUMERIC(15,2) NOT NULL DEFAULT 0,
+  dime_updated_at     TIMESTAMPTZ,
+  capital_updated_at  TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at          TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "user_settings_select_own"
+  ON public.user_settings FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "user_settings_insert_own"
+  ON public.user_settings FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "user_settings_update_own"
+  ON public.user_settings FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE TRIGGER user_settings_updated_at
+  BEFORE UPDATE ON public.user_settings
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();

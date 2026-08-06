@@ -17,7 +17,10 @@ export async function POST(request: NextRequest) {
   const cleanShares = Number(shares) || 0
 
   // cost_basis ต้อง encrypt ด้วย pgcrypto key -> ต้องผ่าน RPC ที่ใช้ service role
-  // (function เป็น SECURITY DEFINER และรับ p_user_id จาก session ที่ auth แล้วเท่านั้น ไม่ใช่จาก client input)
+  // (function เป็น SECURITY DEFINER, execute จำกัดเฉพาะ service_role เท่านั้นตั้งแต่ v1.8.0
+  //  p_user_id มาจาก session ที่ auth แล้วเท่านั้น ไม่ใช่จาก client input)
+  // v1.8.0: ส่ง notes เข้า RPC โดยตรงในคำสั่งเดียว ไม่ต้องยิง update แยกรอบสองอีกต่อไป
+  // (เดิมถ้ารอบสองพลาด notes จะไม่ถูกบันทึกโดย API ไม่รู้ตัว)
   if (cost_basis !== undefined && cost_basis !== null && cost_basis !== '') {
     const serviceClient = createServiceClient()
     const { data, error } = await serviceClient.rpc('upsert_holding', {
@@ -26,12 +29,9 @@ export async function POST(request: NextRequest) {
       p_shares: cleanShares,
       p_cost_basis: Number(cost_basis),
       p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
+      p_notes: notes || null,
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-    if (notes) {
-      await supabase.from('holdings').update({ notes }).eq('user_id', user.id).eq('symbol', cleanSymbol)
-    }
     return NextResponse.json({ holding: data })
   }
 

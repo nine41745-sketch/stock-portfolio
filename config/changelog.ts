@@ -13,6 +13,18 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: 'v1.8.0',
+    date: '2026-08-07 01:26 ICT',
+    changes: [
+      'Security Fix (Critical): ปิดช่องโหว่ RPC upsert_holding/get_decrypted_holdings ที่ไม่เคยจำกัดสิทธิ์ execute มาก่อน (เดิม user login แล้วเรียก RPC ตรงจาก client ปลอม user_id เป็นคนอื่นได้) จำกัดสิทธิ์เหลือเฉพาะ service_role เท่านั้น',
+      'แก้บั๊ก RPC upsert_holding ถูกประกาศซ้ำ 2 รอบใน schema.sql (ตัวหลังทับตัวแรกเงียบๆ) เหลือเวอร์ชันเดียว พร้อมเพิ่ม p_notes ให้บันทึก shares/cost_basis/notes ในคำสั่งเดียว (เดิมเผื่อรอบสองพลาด notes จะหายไปเงียบๆ)',
+      'Security Fix (High): app/api/analyze ไม่เชื่อ cost_basis/shares/market_value/pnl_pct/cashBalance จาก client อีกต่อไป ดึงจาก DB ฝั่ง server เองทั้งหมด กันการปลอมข้อมูลผ่าน dev tools เข้าไปหลอก AI',
+      'แก้ cache key ของผลวิเคราะห์ให้รวม shares/cost_basis/cash ด้วย กันปัญหาแก้พอร์ตแล้วยังเห็นผลวิเคราะห์เก่าค้างจาก cache',
+      'เพิ่ม middleware guard ชั้นเสริมสำหรับ /api/* (ยกเว้น /api/cron/*) ป้องกัน route ใหม่ในอนาคตที่อาจลืมใส่ auth check',
+      'เพิ่ม migration สร้างตาราง user_settings + RLS แบบ safety net (ของเดิมใช้งานอยู่จริงแต่ไม่มี migration file ติดตามไว้)',
+    ],
+  },
+  {
     version: 'v1.7.2',
     date: '2026-08-07 00:35 ICT',
     changes: [
