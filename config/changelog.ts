@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: 'v1.7.2',
+    date: '2026-08-07 01:15 ICT',
+    changes: [
+      'แก้บั๊กสำคัญ: AI แนะนำ HOLD ทั้งที่เข้าเกณฑ์ SELL_ALL/SELL_PARTIAL ชัดเจน (เช่น P&L +66% ยังขึ้นถือต่อ, P&L -23% + DOWNTREND ก็ยังขึ้นถือต่อ)',
+      'ต้นเหตุ: prompt เดิมเขียนเงื่อนไขย่อยเป็น bullet list ทำให้ AI ตีความเป็น "ต้องเข้าเงื่อนไขครบทุกข้อ (AND)" ทั้งที่จริงคือ "เข้าข้อใดข้อหนึ่งก็พอ (OR)"',
+      'ปรับ decision framework ใหม่เป็น checklist ระบุ (ก)(ข)(ค) ชัดเจน พร้อมตัวอย่างจริงกำกับทุกระดับ กันการตีความผิดซ้ำ',
+    ],
+  },
+  {
     version: 'v1.7.1',
     date: '2026-08-07 00:30 ICT',
     changes: [
