@@ -13,6 +13,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: 'v1.9.0',
+    date: '2026-08-08 01:09 ICT',
+    changes: [
+      'ปรับ Decision Framework เกณฑ์ SELL_PARTIAL ข้อ (ค): เดิมเขียนกำกวมว่า "ราคาชนแนวต้านสำคัญ" ทำให้ AI ตีความราคาทะลุแนวต้านเป็นสัญญาณ bullish breakout แล้วเลือก HOLD ทั้งที่ควรล็อกกำไรบางส่วน (เคสจริง: NOW ราคา $124.89 ทะลุแนวต้าน $120 ไปแล้ว กำไร +19.57% แต่ AI ยังแนะนำ HOLD)',
+      'เปลี่ยนเป็นเงื่อนไขตัวเลขชัดเจน: ราคาปัจจุบัน > แนวต้าน/52W High/BB Upper และ P&L เป็นบวกเกิน +15% ให้เข้าเกณฑ์ SELL_PARTIAL ทันที พร้อมเพิ่มตัวอย่างเคส NOW จริงกำกับในพรอม กันตีความผิดซ้ำ',
+      'ปรับปรุงร่วมกับความเห็นจาก ChatGPT + Gemini (ขอ 2nd opinion เรื่อง wording ของเงื่อนไข)',
+    ],
+  },
+  {
     version: 'v1.8.2',
     date: '2026-08-08 00:54 ICT',
     changes: [
