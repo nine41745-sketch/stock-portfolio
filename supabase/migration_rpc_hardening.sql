@@ -17,8 +17,9 @@
 -- 3. เพิ่ม p_notes ให้ upsert_holding บันทึก shares+cost_basis+notes ใน query เดียว
 --    (เดิมต้องยิง update แยกอีกรอบ ถ้ารอบสองพลาด notes จะไม่ถูกบันทึกโดย API ไม่รู้ตัว)
 --
--- 4. เพิ่ม SET search_path = pg_catalog, public ให้ SECURITY DEFINER ทุกตัว
---    กัน function/object shadowing attack
+-- 4. เพิ่ม SET search_path = public, extensions, pg_catalog ให้ SECURITY DEFINER ทุกตัว
+--    กัน function/object shadowing attack (ต้องรวม extensions เพราะ pgp_sym_encrypt/decrypt
+--    ของ pgcrypto อยู่ schema นี้ใน Supabase ไม่ใช่ public — พลาดจุดนี้ตอนแรกทำให้ RPC error เงียบๆ)
 --
 -- 5. Safety net: สร้างตาราง user_settings + RLS ถ้ายังไม่มี (ChatGPT ตั้งข้อสังเกตว่า
 --    ไม่พบ migration ของตารางนี้ในระบบเลย ทั้งที่ /api/user-settings ใช้งานอยู่จริง —
@@ -41,7 +42,7 @@ CREATE FUNCTION public.upsert_holding(
 RETURNS public.holdings
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = public, extensions, pg_catalog
 AS $$
 DECLARE
   v_row public.holdings;
@@ -82,7 +83,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = public, extensions, pg_catalog
 AS $$
 BEGIN
   RETURN QUERY

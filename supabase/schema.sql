@@ -122,7 +122,7 @@ CREATE OR REPLACE FUNCTION public.upsert_holding(
 RETURNS public.holdings
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = public, extensions, pg_catalog
 AS $$
 DECLARE
   v_row public.holdings;
@@ -166,7 +166,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = public, extensions, pg_catalog
 AS $$
 BEGIN
   RETURN QUERY

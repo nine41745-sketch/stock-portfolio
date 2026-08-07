@@ -13,6 +13,14 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: 'v1.8.1',
+    date: '2026-08-08 00:45 ICT',
+    changes: [
+      'Hotfix ด่วน: หลังแก้ security v1.8.0 หุ้นในพอร์ตหายไปหมด (ไม่ใช่ข้อมูลหาย แค่โหลดไม่ขึ้น) — สาเหตุคือ search_path ที่จำกัดไว้ตอน v1.8.0 แคบเกินไป หาไฟล์ pgp_sym_encrypt/decrypt (pgcrypto) ของ Supabase ไม่เจอเพราะอยู่ schema extensions ไม่ใช่ public',
+      'แก้โดยเพิ่ม extensions เข้า search_path ของ RPC upsert_holding/get_decrypted_holdings',
+    ],
+  },
+  {
     version: 'v1.8.0',
     date: '2026-08-07 01:26 ICT',
     changes: [
