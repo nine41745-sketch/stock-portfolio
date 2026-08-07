@@ -13,6 +13,14 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: 'v1.8.2',
+    date: '2026-08-08 00:54 ICT',
+    changes: [
+      'แก้บั๊กที่ Audit เจอไว้ (ChatGPT): เพิ่มหุ้นใหม่แล้วกดแก้/ลบทันทีโดยยังไม่รีเฟรชหน้าจะ error "invalid input syntax for type uuid" — สาเหตุคือ frontend สร้าง ID ปลอมจาก timestamp แทน UUID จริง ตอนนี้ใช้ UUID จริงจาก response ของ server แทน',
+      'แก้บั๊กที่ Audit เจอไว้ (Gemini): แก้ไขจำนวนหุ้น (shares) แล้วมูลค่าพอร์ต/กำไรขาดทุนบนหน้าจอยังคำนวณจากค่าเก่าจนกว่าจะรีเฟรช ตอนนี้คำนวณ market value ใหม่ทันทีจากราคาปัจจุบัน x จำนวนหุ้นใหม่',
+    ],
+  },
+  {
     version: 'v1.8.1',
     date: '2026-08-08 00:45 ICT',
     changes: [

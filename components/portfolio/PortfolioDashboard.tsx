@@ -576,11 +576,16 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     } else {
       res = await fetch('/api/holdings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     }
-    if (!res.ok) { const err = await res.json(); throw new Error(err.error ?? 'บันทึกไม่สำเร็จ') }
+    // v1.8.2: อ่าน response body ครั้งเดียว ใช้ได้ทั้ง error message และ (กรณี POST) UUID จริงของ holding ใหม่
+    const resBody = await res.json().catch(() => ({} as any))
+    if (!res.ok) { throw new Error(resBody?.error ?? 'บันทึกไม่สำเร็จ') }
     showToast(id ? `อัปเดต ${payload.symbol} แล้ว` : `เพิ่ม ${payload.symbol} แล้ว`)
     // ไม่เรียก router.refresh() ซ้ำ — อัปเดต local state ด้านล่างเป็น optimistic UI ที่สมบูรณ์แล้ว
     // (เดิมเรียกทั้งคู่ซึ่งซ้ำซ้อน ทำให้ fetch ข้อมูลจาก server สองรอบโดยไม่จำเป็น)
     if (!id) {
+      // v1.8.2: แก้บั๊ก ID ปลอม — เดิมใช้ Date.now().toString() ทำให้กดแก้/ลบหุ้นที่เพิ่งเพิ่มทันที
+      // (ยังไม่รีเฟรชหน้า) พังเพราะ backend คาด UUID จริง ตอนนี้ใช้ UUID จริงจาก response ของ POST แทน
+      const realId: string | undefined = resBody?.holding?.id
       const priceRes = await fetch(`/api/prices?symbols=${payload.symbol}`)
       const { prices, metrics } = await priceRes.json()
       const cp = prices[payload.symbol] ?? null
@@ -592,15 +597,18 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         const exists = prev.find(h => h.symbol === payload.symbol)
         const nm = metrics?.[payload.symbol] ?? {}
         if (exists) return prev.map(h => h.symbol === payload.symbol ? { ...h, ...payload, cost_basis: payload.cost_basis ?? null, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null } : h)
-        return [...prev, { id: Date.now().toString(), user_id: '', symbol: payload.symbol, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null }]
+        return [...prev, { id: realId ?? Date.now().toString(), user_id: '', symbol: payload.symbol, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null }]
       })
     } else {
+      // v1.8.2: แก้บั๊ก market_value ค้างค่าเก่า — เดิมแก้ shares แล้วยังใช้ h.market_value ตัวเก่ามาคำนวณ P&L
+      // ทำให้ตัวเลขเพี้ยนจนกว่าจะรีเฟรช ตอนนี้คำนวณ market_value ใหม่จาก current_price x shares ใหม่ทันที
       setHoldings(prev => prev.map(h => {
         if (h.id !== id) return h
+        const mv = h.current_price !== null ? h.current_price * payload.shares : null
         const tc = payload.cost_basis != null ? payload.cost_basis * payload.shares : null
-        const pnl = h.market_value !== null && tc !== null ? h.market_value - tc : null
+        const pnl = mv !== null && tc !== null ? mv - tc : null
         const pnl_pct = pnl !== null && tc !== null && tc > 0 ? (pnl / tc) * 100 : null
-        return { ...h, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, total_cost: tc, pnl, pnl_pct }
+        return { ...h, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, market_value: mv, total_cost: tc, pnl, pnl_pct }
       }))
     }
   }, [])
