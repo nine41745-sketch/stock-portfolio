@@ -26,18 +26,24 @@
 --    ใช้ IF NOT EXISTS ทั้งหมด จึงไม่กระทบข้อมูลเดิมถ้ามีตารางอยู่แล้ว)
 -- ============================================================
 
--- ---- (1) ลบฟังก์ชันเดิมทั้งหมดก่อนสร้างใหม่ (เปลี่ยน signature เพิ่ม p_notes) ----
+-- ---- (1) ลบฟังก์ชันเดิมทั้งหมดก่อนสร้างใหม่ (เปลี่ยน signature เพิ่ม p_notes / p_notes_provided) ----
+-- NOTE: ไฟล์นี้ปรับปรุงล่าสุดตอน v1.9.1 ให้ signature ตรงกับ schema.sql (7 parameters)
+-- ถ้า DB เคยรัน migration_rpc_hardening.sql เวอร์ชันเก่า (6 parameters ไม่มี p_notes_provided) มาก่อน
+-- ห้ามรันไฟล์นี้ซ้ำตรงๆ เพราะ DROP FUNCTION ข้างล่างจะไม่ match signature เดิม (จะเหลือ 2 overload ค้าง)
+-- ให้รัน supabase/migration_batch1_notes_and_daily_analyses.sql แทน (DROP signature เดิมตรงๆ)
 DROP FUNCTION IF EXISTS public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT);
+DROP FUNCTION IF EXISTS public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT, TEXT);
 DROP FUNCTION IF EXISTS public.get_decrypted_holdings(UUID, TEXT);
 
--- ---- (2) upsert_holding เวอร์ชันเดียว รองรับ cost_basis = NULL + notes ----
+-- ---- (2) upsert_holding เวอร์ชันเดียว รองรับ cost_basis = NULL + notes 3-state semantics ----
 CREATE FUNCTION public.upsert_holding(
-  p_user_id    UUID,
-  p_symbol     TEXT,
-  p_shares     NUMERIC,
-  p_cost_basis NUMERIC,   -- NULL = ไม่มีต้นทุน
-  p_enc_key    TEXT,
-  p_notes      TEXT DEFAULT NULL
+  p_user_id        UUID,
+  p_symbol         TEXT,
+  p_shares         NUMERIC,
+  p_cost_basis     NUMERIC,   -- NULL = ไม่มีต้นทุน
+  p_enc_key        TEXT,
+  p_notes          TEXT DEFAULT NULL,
+  p_notes_provided BOOLEAN DEFAULT FALSE  -- false = ไม่แตะ notes เดิม, true = ใช้ p_notes ตรงๆ (NULL ก็ลบได้)
 )
 RETURNS public.holdings
 LANGUAGE plpgsql
@@ -55,11 +61,14 @@ BEGIN
   END IF;
 
   INSERT INTO public.holdings (user_id, symbol, shares, cost_basis_enc, notes)
-  VALUES (p_user_id, UPPER(p_symbol), p_shares, v_enc, p_notes)
+  VALUES (
+    p_user_id, UPPER(p_symbol), p_shares, v_enc,
+    CASE WHEN p_notes_provided THEN p_notes ELSE NULL END
+  )
   ON CONFLICT (user_id, symbol) DO UPDATE SET
     shares         = EXCLUDED.shares,
     cost_basis_enc = EXCLUDED.cost_basis_enc,
-    notes          = COALESCE(EXCLUDED.notes, public.holdings.notes),
+    notes          = CASE WHEN p_notes_provided THEN p_notes ELSE public.holdings.notes END,
     updated_at     = NOW()
   RETURNING * INTO v_row;
 
@@ -108,9 +117,9 @@ $$;
 -- ---- (4) ปิดช่องโหว่ Critical: จำกัดสิทธิ์ execute เฉพาะ service_role ----
 -- (แอปทั้งหมดเรียก 2 ฟังก์ชันนี้ผ่าน createServiceClient() เท่านั้นอยู่แล้ว
 --  ไม่มีจุดไหนในโค้ดเรียกผ่าน client-side session — ปลอดภัยที่จะ revoke จาก anon/authenticated)
-REVOKE ALL ON FUNCTION public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT, TEXT, BOOLEAN) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.get_decrypted_holdings(UUID, TEXT) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT, TEXT, BOOLEAN) TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_decrypted_holdings(UUID, TEXT) TO service_role;
 
 -- ---- (5) Safety net: user_settings table (ถ้ายังไม่เคยมี migration ของตารางนี้) ----

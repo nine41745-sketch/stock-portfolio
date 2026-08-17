@@ -16,6 +16,11 @@ export async function POST(request: NextRequest) {
   const cleanSymbol = String(symbol).toUpperCase().trim()
   const cleanShares = Number(shares) || 0
 
+  // v1.9.1: แยก "ไม่ได้ส่ง notes มาเลย" (key ไม่อยู่ใน body) ออกจาก "ส่ง notes เป็นค่าว่าง/null"
+  // (ตั้งใจลบ) ให้ชัดเจน — เดิมทั้งสองกรณีถูกยุบรวมเป็น null เหมือนกันหมด ทำให้ลบ notes ไม่ได้จริง
+  const notesProvided = Object.prototype.hasOwnProperty.call(body, 'notes')
+  const cleanNotesValue: string | null = notes === '' ? null : (notes ?? null)
+
   // cost_basis ต้อง encrypt ด้วย pgcrypto key -> ต้องผ่าน RPC ที่ใช้ service role
   // (function เป็น SECURITY DEFINER, execute จำกัดเฉพาะ service_role เท่านั้นตั้งแต่ v1.8.0
   //  p_user_id มาจาก session ที่ auth แล้วเท่านั้น ไม่ใช่จาก client input)
@@ -29,22 +34,28 @@ export async function POST(request: NextRequest) {
       p_shares: cleanShares,
       p_cost_basis: Number(cost_basis),
       p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-      p_notes: notes || null,
+      p_notes: notesProvided ? cleanNotesValue : null,
+      p_notes_provided: notesProvided,
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ holding: data })
   }
 
   // ไม่มี cost_basis -> insert ตรงผ่าน RLS-scoped client (ไม่ต้องใช้ service role)
+  // v1.9.1: ใส่ notes ใน object เฉพาะตอน notesProvided = true เท่านั้น เพื่อไม่ให้ .upsert()
+  // เขียนทับ notes เดิมเป็น null เวลาที่ conflict เจอ row เดิม (Postgres/PostgREST upsert จะ SET
+  // เฉพาะคอลัมน์ที่อยู่ใน object ที่ส่งไป คอลัมน์ที่ไม่ได้ใส่จะไม่ถูกแตะ)
+  const upsertPayload: Record<string, unknown> = {
+    user_id: user.id,
+    symbol: cleanSymbol,
+    shares: cleanShares,
+    cost_basis_enc: null,
+  }
+  if (notesProvided) upsertPayload.notes = cleanNotesValue
+
   const { data, error } = await supabase
     .from('holdings')
-    .upsert({
-      user_id: user.id,
-      symbol: cleanSymbol,
-      shares: cleanShares,
-      cost_basis_enc: null,
-      notes: notes || null,
-    }, { onConflict: 'user_id,symbol' })
+    .upsert(upsertPayload, { onConflict: 'user_id,symbol' })
     .select()
     .single()
 

@@ -30,8 +30,10 @@ CREATE TABLE IF NOT EXISTS public.daily_analyses (
 CREATE INDEX IF NOT EXISTS idx_daily_analyses_lookup
   ON public.daily_analyses (user_id, symbol, analysis_date DESC);
 
--- RLS: อ่านได้เฉพาะของตัวเอง เขียนผ่าน cron ด้วย service_role (bypass RLS อยู่แล้ว)
--- ใส่ policy insert ไว้เผื่ออนาคตอยากให้ client เขียนตรงได้ (เช่น ปุ่ม "วิเคราะห์ซ้ำ" ที่ยังไม่รอ cron)
+-- RLS: อ่านได้เฉพาะของตัวเอง เขียนผ่าน cron/service_role เท่านั้น (bypass RLS อยู่แล้ว ไม่ต้องมี policy insert)
+-- v1.9.1: ตัด policy insert ออก — เดิมใส่ไว้ "เผื่ออนาคต" แต่เปิดช่องให้ authenticated user
+-- ปลอมแถว daily_analyses ของตัวเอง (action/price_at_analysis/result JSON/analysis_date) ผ่าน Supabase client
+-- ตรงได้ ทำให้ Track Record/Win Rate ไม่น่าเชื่อถือ ตอนนี้เขียนได้ทางเดียวคือผ่าน service_role (cron) เท่านั้น
 ALTER TABLE public.daily_analyses ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "daily_analyses_select_own" ON public.daily_analyses;
@@ -40,9 +42,6 @@ CREATE POLICY "daily_analyses_select_own"
   USING (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "daily_analyses_insert_own" ON public.daily_analyses;
-CREATE POLICY "daily_analyses_insert_own"
-  ON public.daily_analyses FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
 
 -- ============================================================
 -- FUNCTION: get_track_record

@@ -107,17 +107,24 @@ END $$;
 */
 
 -- ============================================================
--- FUNCTION: upsert_holding (รองรับ cost_basis = NULL + notes)
+-- FUNCTION: upsert_holding (รองรับ cost_basis = NULL + notes 3-state semantics)
 -- SECURITY DEFINER + search_path fixed + execute จำกัดเฉพาะ service_role เท่านั้น
 -- (เรียกจาก server-side ผ่าน createServiceClient() เท่านั้น — ดู v1.8.0 hardening)
+--
+-- v1.9.1: เพิ่ม p_notes_provided แก้บั๊ก "ลบ notes ไม่ได้" — เดิมใช้
+-- COALESCE(EXCLUDED.notes, old_notes) ทำให้แยกไม่ออกระหว่าง "ไม่ได้ส่ง notes มา" (ควรคงค่าเดิม)
+-- กับ "ตั้งใจส่ง notes เป็นค่าว่าง/null" (ควรลบค่าเดิม) เพราะ SQL NULL ใช้แทนทั้งสองความหมาย
+-- ตอนนี้แยกด้วย flag ชัดเจน: p_notes_provided = false -> คงค่าเดิมเสมอ (ไม่สนใจ p_notes)
+--                              p_notes_provided = true  -> ใช้ p_notes ตรงๆ (NULL หรือ string ก็ได้ = ลบ/อัปเดต)
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.upsert_holding(
-  p_user_id    UUID,
-  p_symbol     TEXT,
-  p_shares     NUMERIC,
-  p_cost_basis NUMERIC,   -- NULL = ไม่มีต้นทุน
-  p_enc_key    TEXT,
-  p_notes      TEXT DEFAULT NULL
+  p_user_id        UUID,
+  p_symbol         TEXT,
+  p_shares         NUMERIC,
+  p_cost_basis     NUMERIC,   -- NULL = ไม่มีต้นทุน
+  p_enc_key        TEXT,
+  p_notes          TEXT DEFAULT NULL,
+  p_notes_provided BOOLEAN DEFAULT FALSE
 )
 RETURNS public.holdings
 LANGUAGE plpgsql
@@ -135,11 +142,14 @@ BEGIN
   END IF;
 
   INSERT INTO public.holdings (user_id, symbol, shares, cost_basis_enc, notes)
-  VALUES (p_user_id, UPPER(p_symbol), p_shares, v_enc, p_notes)
+  VALUES (
+    p_user_id, UPPER(p_symbol), p_shares, v_enc,
+    CASE WHEN p_notes_provided THEN p_notes ELSE NULL END
+  )
   ON CONFLICT (user_id, symbol) DO UPDATE SET
     shares         = EXCLUDED.shares,
     cost_basis_enc = EXCLUDED.cost_basis_enc,
-    notes          = COALESCE(EXCLUDED.notes, public.holdings.notes),
+    notes          = CASE WHEN p_notes_provided THEN p_notes ELSE public.holdings.notes END,
     updated_at     = NOW()
   RETURNING * INTO v_row;
 
@@ -190,9 +200,9 @@ $$;
 
 -- Critical fix (v1.8.0): ปิดสิทธิ์ execute จาก PUBLIC/anon/authenticated เหลือแค่ service_role
 -- (เดิมไม่มีการ REVOKE เลย ทำให้ user ที่ login เรียก RPC ตรงจาก client แล้วปลอม p_user_id เป็นคนอื่นได้)
-REVOKE ALL ON FUNCTION public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT, TEXT, BOOLEAN) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.get_decrypted_holdings(UUID, TEXT) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT, TEXT, BOOLEAN) TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_decrypted_holdings(UUID, TEXT) TO service_role;
 
 -- ============================================================

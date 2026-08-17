@@ -27,10 +27,14 @@ export async function PUT(
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const cleanShares = Number(shares) || 0
+  // undefined = ไม่ได้ส่ง notes มา (คงค่าเดิม) / null หรือ '' = ตั้งใจลบ / string = อัปเดตใหม่
   const cleanNotes = notes !== undefined ? (notes || null) : undefined
+  const notesProvided = cleanNotes !== undefined
 
   // มี cost_basis ใหม่ -> ต้อง encrypt ผ่าน RPC (service role, execute จำกัดเฉพาะ service_role ตั้งแต่ v1.8.0)
   // v1.8.0: ส่ง notes เข้า RPC โดยตรงในคำสั่งเดียว ไม่ต้องยิง update แยกรอบสองอีกต่อไป
+  // v1.9.1: เพิ่ม p_notes_provided แก้บั๊กลบ notes ไม่ได้ — เดิมส่ง p_notes: null ทั้งกรณี "ไม่ได้ส่งมา"
+  // และ "ตั้งใจลบ" ทำให้ RPC (ที่ตอนนั้นใช้ COALESCE) แยกไม่ออก เลยคงค่าเดิมไว้เสมอไม่ว่าจะตั้งใจลบหรือไม่
   if (cost_basis !== undefined && cost_basis !== null && cost_basis !== '') {
     const serviceClient = createServiceClient()
     const { error } = await serviceClient.rpc('upsert_holding', {
@@ -39,7 +43,8 @@ export async function PUT(
       p_shares: cleanShares,
       p_cost_basis: Number(cost_basis),
       p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-      p_notes: cleanNotes !== undefined ? cleanNotes : null,
+      p_notes: notesProvided ? cleanNotes : null,
+      p_notes_provided: notesProvided,
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ success: true })
