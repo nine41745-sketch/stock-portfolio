@@ -3,10 +3,10 @@ import { getStockMeta } from './stock-meta'
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
-// โมเดลหลัก: คุณภาพดีกว่า แต่โควต้าฟรีต่ำกว่า (llama-3.3-70b-versatile = 100,000 token/วัน)
-const GROQ_MODEL = 'llama-3.3-70b-versatile'
-// โมเดลสำรอง: ใช้เมื่อโมเดลหลักโดน rate limit (llama-3.1-8b-instant = 500,000 token/วัน — มากกว่า 5 เท่า)
-const GROQ_FALLBACK_MODEL = 'llama-3.1-8b-instant'
+// โมเดลหลัก (v1.10.7 hotfix: Groq deprecate/ปิด llama-3.3-70b-versatile แล้ว เปลี่ยนเป็น openai/gpt-oss-120b)
+const GROQ_MODEL = 'openai/gpt-oss-120b'
+// โมเดลสำรอง (v1.10.7 hotfix: Groq deprecate/ปิด llama-3.1-8b-instant แล้ว เปลี่ยนเป็น openai/gpt-oss-20b)
+const GROQ_FALLBACK_MODEL = 'openai/gpt-oss-20b'
 
 interface GroqCallResult {
   text: string

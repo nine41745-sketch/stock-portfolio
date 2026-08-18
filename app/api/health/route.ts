@@ -50,7 +50,7 @@ export async function GET() {
         'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         messages: [{ role: 'user', content: 'Say OK' }],
         max_tokens: 4,
       }),
