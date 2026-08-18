@@ -1305,7 +1305,11 @@ function ChangePinModal({ onClose, showToast }: { onClose: () => void; showToast
         <input
           type="password"
           inputMode="numeric"
-          pattern="\d*"
+          // v1.10.11 hotfix: \d* ทำให้บาง browser (พบใน production) ปฏิเสธ native pattern validation
+          // แม้กรอกเลข ASCII 0-9 ครบ 6 หลักถูกต้องแล้ว — เปลี่ยนเป็น [0-9]{6} ให้ตรงกับจุดอื่นทั้งหมด
+          // (Set/Confirm/Verify PIN ใน PinGate.tsx) onChange filter/maxLength/server validation เดิม
+          // ไม่ได้แตะ
+          pattern="[0-9]{6}"
           autoComplete="off"
           autoFocus={autoFocus}
           maxLength={6}

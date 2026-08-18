@@ -124,7 +124,12 @@ function PinInput({ value, onChange, autoFocus }: { value: string; onChange: (v:
     <input
       type="password"
       inputMode="numeric"
-      pattern="\\d*"
+      // v1.10.11 hotfix: \d* ทำให้บาง browser (พบใน production) ปฏิเสธ native pattern validation
+      // แม้กรอกเลข ASCII 0-9 ครบ 6 หลักถูกต้องแล้ว (ขึ้น "โปรดจับคู่รูปแบบที่ร้องขอ") เปลี่ยนเป็น
+      // [0-9]{6} ซึ่งตรงไปตรงมาและ browser-compatible กว่า — onChange filter (\D -> '') และ maxLength
+      // ยังคงกรอง input เป็นตัวเลขล้วนอยู่แล้วเหมือนเดิม, server-side ยังคง validate /^\d{6}$/ เหมือนเดิม
+      // ทุกประการ (lib/pin.ts isValidPinFormat) ไม่ได้แตะ
+      pattern="[0-9]{6}"
       autoComplete="off"
       autoFocus={autoFocus}
       maxLength={6}
