@@ -656,7 +656,15 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     ].filter((x): x is { label: string; value: string } => x !== null)
 
     const earningsSoon = analysis.earnings != null && analysis.earnings.daysUntil <= 7
-    const modelLabel = analysis.usedModel?.includes('8b') ? '⚡ Llama-8b (Fallback)' : analysis.usedModel ? '🤖 Llama-70b' : null
+    // v1.10.9 hotfix (UI model label): เดิม hardcode ชื่อ Llama ตาม substring '8b' — ไม่ตรงกับโมเดลจริง
+    // หลัง migrate ไป openai/gpt-oss-* (v1.10.7/v1.10.8) ผูก label ตรงกับ usedModel ID จริงแทน ถ้าเป็น
+    // โมเดลอื่นที่ไม่รู้จักในอนาคต (เช่นเปลี่ยนโมเดลอีกครั้ง) ให้โชว์ analysis.usedModel ดิบๆ แทนการเดา
+    // ชื่อ ป้องกัน label ผิดเพี้ยนแบบเงียบๆ เหมือนที่เกิดขึ้นรอบนี้
+    const MODEL_LABELS: Record<string, string> = {
+      'openai/gpt-oss-120b': '🤖 GPT-OSS 120B',
+      'openai/gpt-oss-20b': '⚡ GPT-OSS 20B (Fallback)',
+    }
+    const modelLabel = analysis.usedModel ? (MODEL_LABELS[analysis.usedModel] ?? `🤖 ${analysis.usedModel}`) : null
 
     return (
       <div className={`rounded-lg border p-4 ${SIGNAL_STYLE[action]}`}>
