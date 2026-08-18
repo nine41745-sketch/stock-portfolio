@@ -329,6 +329,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [showChangelog, setShowChangelog] = useState(false)
+  const [showChangePin, setShowChangePin] = useState(false)  // PIN Lock: เปลี่ยน PIN จาก Settings
   const router = useRouter()
   const supabase = createClient()
 
@@ -345,6 +346,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       clearTimeout(warnTimer)
       warnTimer   = setTimeout(() => setInactiveWarn(true), WARN)
       logoutTimer = setTimeout(async () => {
+        // PIN Lock: auto-logout จาก inactivity ต้องลบ PIN session ด้วยเหมือนปุ่ม "ออกจากระบบ" ปกติ
+        try { await fetch('/api/pin/lock', { method: 'POST' }) } catch { /* best-effort */ }
         await supabase.auth.signOut()
         router.push('/login')
       }, TIMEOUT)
@@ -611,7 +614,21 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   }, [])
 
   async function handleLogout() {
+    // PIN Lock: "ออกจากระบบ" ต้องลบทั้ง PIN session และ Supabase Auth session (ต่างจาก "🔒 ล็อก" ที่ลบ
+    // แค่ PIN session อย่างเดียว) — เรียก /api/pin/lock ก่อนเสมอ ไม่สนผล (best-effort เฉยๆ ไม่ต้อง block
+    // การ signOut ถ้า route นี้พลาดด้วยเหตุผลอะไรก็ตาม เพราะ signOut ทำให้ Supabase session หายไปเอง
+    // และ middleware ก็บังคับ PIN ใหม่อยู่ดีเมื่อ login รอบถัดไป)
+    try { await fetch('/api/pin/lock', { method: 'POST' }) } catch { /* best-effort */ }
     await supabase.auth.signOut(); router.push('/login'); router.refresh()
+  }
+
+  // PIN Lock: กด "🔒 ล็อก" — ลบแค่ PIN-unlocked session cookie เท่านั้น ห้าม signOut Supabase เด็ดขาด
+  // (ผู้ใช้ยัง login Gmail อยู่ แค่ portfolio ถูกล็อกใหม่ ต้องใส่ PIN ถึงจะกลับเข้าได้)
+  async function handleLockPortfolio() {
+    try { await fetch('/api/pin/lock', { method: 'POST' }) } catch { /* best-effort — middleware ยัง
+      บังคับ PIN อยู่ดีถ้า cookie เดิมหมดอายุ/ไม่ valid ต่อให้ route นี้พลาด */ }
+    router.push('/pin')
+    router.refresh()
   }
 
   // Analysis card
@@ -898,6 +915,14 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           <button onClick={() => setDarkMode(d => !d)}
             className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
             {darkMode ? '☀️ สว่าง' : '🌙 มืด'}
+          </button>
+          <button onClick={() => setShowChangePin(true)} title="เปลี่ยน PIN"
+            className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
+            🔑 เปลี่ยน PIN
+          </button>
+          <button onClick={handleLockPortfolio} title="ล็อก Portfolio ทันที (ยัง login Gmail อยู่)"
+            className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
+            🔒 ล็อก
           </button>
           <button onClick={handleLogout}
             className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
@@ -1231,6 +1256,91 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
 
       <ScratchpadDrawer />
       <ChangelogModal isOpen={showChangelog} onClose={() => setShowChangelog(false)} />
+      {showChangePin && <ChangePinModal onClose={() => setShowChangePin(false)} showToast={showToast} />}
+    </div>
+  )
+}
+
+// PIN Lock: Change PIN Modal — ใน Settings (เปิดจากปุ่ม "🔑 เปลี่ยน PIN" บน header)
+// flow: ใส่ PIN ปัจจุบัน + PIN ใหม่ + ยืนยัน PIN ใหม่ -> ส่งไป /api/pin/change ที่ยืนยัน PIN ปัจจุบัน
+// server-side ก่อนเสมอ (ไม่เชื่อ client เลย) -> สำเร็จแล้วปิด modal เฉยๆ ไม่ต้อง re-verify PIN ใหม่ทันที
+// เพราะ session ปัจจุบันยัง unlocked อยู่ (เปลี่ยน PIN ไม่กระทบ PIN-unlocked session ที่มีอยู่แล้ว)
+function ChangePinModal({ onClose, showToast }: { onClose: () => void; showToast: (msg: string, ok?: boolean) => void }) {
+  const [currentPin, setCurrentPin] = useState('')
+  const [newPin, setNewPin] = useState('')
+  const [confirmNewPin, setConfirmNewPin] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+
+    if (!/^\d{6}$/.test(currentPin) || !/^\d{6}$/.test(newPin)) {
+      setError('PIN ต้องเป็นตัวเลข 6 หลักเท่านั้น'); return
+    }
+    if (newPin !== confirmNewPin) { setError('PIN ใหม่และ PIN ยืนยันไม่ตรงกัน'); return }
+
+    setLoading(true)
+    try {
+      const res = await fetch('/api/pin/change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPin, newPin, confirmNewPin }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error ?? 'เปลี่ยน PIN ไม่สำเร็จ'); setLoading(false); return }
+      showToast('เปลี่ยน PIN สำเร็จ')
+      onClose()
+    } catch {
+      setError('เกิดข้อผิดพลาด กรุณาลองใหม่')
+      setLoading(false)
+    }
+  }
+
+  function pinField(label: string, value: string, onChange: (v: string) => void, autoFocus?: boolean) {
+    return (
+      <div>
+        <label className="block text-xs text-gray-400 mb-1">{label}</label>
+        <input
+          type="password"
+          inputMode="numeric"
+          pattern="\d*"
+          autoComplete="off"
+          autoFocus={autoFocus}
+          maxLength={6}
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          className="w-full rounded-lg bg-gray-800 border border-gray-700 px-4 py-2.5 text-white text-center text-lg tracking-[0.4em] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          placeholder="••••••"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <form
+        onSubmit={handleSubmit}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm rounded-lg bg-gray-900 border border-gray-800 p-6 space-y-4"
+      >
+        <div className="flex items-center justify-between">
+          <p className="text-white font-medium">🔑 เปลี่ยน PIN</p>
+          <button type="button" onClick={onClose} className="text-gray-500 hover:text-white text-sm">✕</button>
+        </div>
+        {pinField('PIN ปัจจุบัน', currentPin, setCurrentPin, true)}
+        {pinField('PIN ใหม่', newPin, setNewPin)}
+        {pinField('ยืนยัน PIN ใหม่', confirmNewPin, setConfirmNewPin)}
+        {error && <p className="text-red-400 text-xs text-center">{error}</p>}
+        <button
+          type="submit"
+          disabled={loading || currentPin.length !== 6 || newPin.length !== 6 || confirmNewPin.length !== 6}
+          className="w-full rounded-lg bg-blue-600 py-2.5 font-semibold text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading ? 'กำลังบันทึก...' : 'เปลี่ยน PIN'}
+        </button>
+      </form>
     </div>
   )
 }
