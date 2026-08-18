@@ -13,6 +13,14 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: 'v1.11.0',
+    date: '2026-08-18 16:15 ICT',
+    changes: [
+      'เพิ่มปุ่มรูปตา Show/Hide PIN ให้ทุกช่องกรอก PIN ในระบบ (Set PIN, Confirm PIN, Verify PIN, Change PIN: PIN ปัจจุบัน/PIN ใหม่/ยืนยัน PIN ใหม่) — default ซ่อนเป็น ****** เสมอ กดปุ่มรูปตาเพื่อสลับแสดง/ซ่อนได้ต่ออิสระในแต่ละช่อง',
+      'visibility เป็น local UI state ล้วนๆ ไม่ persist ลง localStorage/sessionStorage/cookie ใดๆ — เปิดหน้า/component ใหม่กลับมาซ่อนเสมอ ไม่กระทบ PIN hashing/session/lockout/security architecture เลย',
+    ],
+  },
+  {
     version: 'v1.10.1',
     date: '2026-08-18 15:21 ICT',
     changes: [

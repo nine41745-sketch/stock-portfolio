@@ -1298,30 +1298,9 @@ function ChangePinModal({ onClose, showToast }: { onClose: () => void; showToast
     }
   }
 
-  function pinField(label: string, value: string, onChange: (v: string) => void, autoFocus?: boolean) {
-    return (
-      <div>
-        <label className="block text-xs text-gray-400 mb-1">{label}</label>
-        <input
-          type="password"
-          inputMode="numeric"
-          // v1.10.11 hotfix: \d* ทำให้บาง browser (พบใน production) ปฏิเสธ native pattern validation
-          // แม้กรอกเลข ASCII 0-9 ครบ 6 หลักถูกต้องแล้ว — เปลี่ยนเป็น [0-9]{6} ให้ตรงกับจุดอื่นทั้งหมด
-          // (Set/Confirm/Verify PIN ใน PinGate.tsx) onChange filter/maxLength/server validation เดิม
-          // ไม่ได้แตะ
-          pattern="[0-9]{6}"
-          autoComplete="off"
-          autoFocus={autoFocus}
-          maxLength={6}
-          value={value}
-          onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          className="w-full rounded-lg bg-gray-800 border border-gray-700 px-4 py-2.5 text-white text-center text-lg tracking-[0.4em] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="••••••"
-        />
-      </div>
-    )
-  }
-
+  // v1.11.0 (Show/Hide PIN): เปลี่ยนจาก helper function ธรรมดา (pinField) เป็น component จริง (PinField)
+  // เพราะต้องมี useState แยกต่อช่อง (current/new/confirm ต้องคุม visibility เป็นอิสระจากกัน) — ให้ React
+  // ผูก state ต่อ instance ของ component แทนที่จะเรียก useState ซ้อนอยู่ในฟังก์ชันช่วย render ธรรมดา
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
       <form
@@ -1333,9 +1312,9 @@ function ChangePinModal({ onClose, showToast }: { onClose: () => void; showToast
           <p className="text-white font-medium">🔑 เปลี่ยน PIN</p>
           <button type="button" onClick={onClose} className="text-gray-500 hover:text-white text-sm">✕</button>
         </div>
-        {pinField('PIN ปัจจุบัน', currentPin, setCurrentPin, true)}
-        {pinField('PIN ใหม่', newPin, setNewPin)}
-        {pinField('ยืนยัน PIN ใหม่', confirmNewPin, setConfirmNewPin)}
+        <PinField label="PIN ปัจจุบัน" value={currentPin} onChange={setCurrentPin} autoFocus />
+        <PinField label="PIN ใหม่" value={newPin} onChange={setNewPin} />
+        <PinField label="ยืนยัน PIN ใหม่" value={confirmNewPin} onChange={setConfirmNewPin} />
         {error && <p className="text-red-400 text-xs text-center">{error}</p>}
         <button
           type="submit"
@@ -1345,6 +1324,62 @@ function ChangePinModal({ onClose, showToast }: { onClose: () => void; showToast
           {loading ? 'กำลังบันทึก...' : 'เปลี่ยน PIN'}
         </button>
       </form>
+    </div>
+  )
+}
+
+// v1.11.0 (Show/Hide PIN): eye/eye-off เป็น inline SVG ล้วน ไม่เพิ่ม icon library ใหม่ (เช็คแล้วโปรเจกต์นี้
+// ไม่มี lucide-react/heroicons/react-icons ติดตั้งอยู่) — คัดลอกจาก components/auth/PinGate.tsx ตั้งใจ
+// (ไม่แชร์ import ข้ามไฟล์ เพื่อไม่เพิ่มจุดผูกกันระหว่างสอง component ที่แยกกันโดยตั้งใจอยู่แล้ว)
+function ChangePinEyeIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ) : (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94" />
+      <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+      <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  )
+}
+
+function PinField({ label, value, onChange, autoFocus }: { label: string; value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
+  // v1.11.0 (Show/Hide PIN): local state ล้วนๆ ต่อ field ไม่ persist ที่ไหนเลย — เปิด modal ใหม่ทุกครั้ง
+  // (component unmount/remount ตอนปิด/เปิด ChangePinModal) ค่าจะรีเซ็ตเป็นซ่อน (false) เสมอโดยอัตโนมัติ
+  const [visible, setVisible] = useState(false)
+  return (
+    <div>
+      <label className="block text-xs text-gray-400 mb-1">{label}</label>
+      <div className="relative">
+        <input
+          type={visible ? 'text' : 'password'}
+          inputMode="numeric"
+          // v1.10.11 hotfix: \d* ทำให้บาง browser (พบใน production) ปฏิเสธ native pattern validation
+          // แม้กรอกเลข ASCII 0-9 ครบ 6 หลักถูกต้องแล้ว — เปลี่ยนเป็น [0-9]{6} ให้ตรงกับจุดอื่นทั้งหมด
+          // (Set/Confirm/Verify PIN ใน PinGate.tsx) onChange filter/maxLength/server validation เดิม
+          // ไม่ได้แตะ
+          pattern="[0-9]{6}"
+          autoComplete="off"
+          autoFocus={autoFocus}
+          maxLength={6}
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          className="w-full rounded-lg bg-gray-800 border border-gray-700 pl-4 pr-10 py-2.5 text-white text-center text-lg tracking-[0.4em] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          placeholder="••••••"
+        />
+        <button
+          type="button"
+          onClick={() => setVisible(v => !v)}
+          aria-label={visible ? 'ซ่อน PIN' : 'แสดง PIN'}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 focus:outline-none focus:text-gray-300"
+        >
+          <ChangePinEyeIcon open={visible} />
+        </button>
+      </div>
     </div>
   )
 }
