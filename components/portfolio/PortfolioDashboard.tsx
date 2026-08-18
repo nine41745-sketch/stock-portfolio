@@ -500,22 +500,12 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   async function handleAnalyze(holding: HoldingWithPrice) {
     setLoadingSymbol(holding.symbol)
     try {
-      const recentNews = news.filter(n => n.symbol === holding.symbol).slice(0, 3)
-      // Security fix (v1.8.0): ส่งแค่ symbol + ข้อมูลราคาตลาด (ไม่ใช่ข้อมูลลับ) ไปให้ backend
-      // cost_basis/shares/cashBalance ให้ server ดึงจาก DB เองเท่านั้น กันแก้ payload ปลอมค่าเข้า AI
+      // Security fix (v1.10.0 / Batch 2): ส่งแค่ symbol เท่านั้น — current_price/pe/week52High/
+      // week52Low/dayChange/recentNews/totalPortfolioValue ทั้งหมดให้ server ดึง/คำนวณเองล้วนๆ แล้ว
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          symbol: holding.symbol,
-          current_price: holding.current_price,
-          pe: holding.pe,
-          week52High: holding.week52High,
-          week52Low: holding.week52Low,
-          dayChange: holding.dayChange,
-          totalPortfolioValue: totalValue, // fallback เท่านั้น เผื่อ server คำนวณจาก price_cache ไม่ได้
-          recentNews,
-        }),
+        body: JSON.stringify({ symbol: holding.symbol }),
       })
       if (!res.ok) throw new Error('analyze failed')
       const result: DetailedAnalysisResult = await res.json()

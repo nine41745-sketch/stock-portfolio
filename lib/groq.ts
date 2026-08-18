@@ -147,15 +147,21 @@ export async function analyzeHoldingDetailed(
   holding: HoldingWithPrice,
   technical: TechnicalSnapshot,
   cashBalance = 0,
-  totalPortfolioValue = 0,
+  // final review v1.10.3: totalPortfolioValue รับ null ได้ เพื่อสื่อความหมาย "คำนวณไม่ได้ เพราะราคา
+  // หุ้นบางตัวในพอร์ตหาไม่ได้" แยกจาก 0 ที่แปลว่า "พอร์ตมีมูลค่าหุ้นจริงๆ เป็น 0" (มีแต่เงินสด) — ไม่ใช่
+  // การแก้ Decision Framework แค่แก้ semantic ของบรรทัดข้อมูลสภาพคล่องที่ AI อ่าน ค่า default ยังเป็น 0
+  // เหมือนเดิม (backward compatible กับ cron ที่ยังส่ง number ล้วนๆ อยู่)
+  totalPortfolioValue: number | null = 0,
   recentNews: Array<{ headline: string; headlineTh?: string; impact?: string }> = [],
   earnings: EarningsInfo | null = null
 ): Promise<DetailedAnalysisResult> {
   const { symbol, shares, cost_basis, current_price, pnl_pct, market_value, pe, week52High, week52Low } = holding
 
-  const cashRatioPct = totalPortfolioValue > 0
+  // cashRatioPct = null หมายถึง "ไม่ทราบ/คำนวณไม่ได้" (portfolio valuation incomplete) ต่างจาก '0'
+  // ที่หมายถึง "คำนวณได้แล้วได้ 0%" (พฤติกรรมเดิมตอน totalPortfolioValue===0 ยังคงเหมือนเดิมทุกประการ)
+  const cashRatioPct: string | null = totalPortfolioValue !== null && totalPortfolioValue > 0
     ? ((cashBalance / (totalPortfolioValue + cashBalance)) * 100).toFixed(1)
-    : '0'
+    : (totalPortfolioValue === null ? null : '0')
 
   const metricsInfo = [
     pe         != null ? `P/E: ${pe.toFixed(1)}` : null,
@@ -193,7 +199,7 @@ export async function analyzeHoldingDetailed(
 - ราคาปัจจุบัน: $${current_price?.toFixed(2) ?? 'N/A'} (ต้นทุน: ${cost_basis ? `$${cost_basis.toFixed(2)}` : 'N/A'}, ถืออยู่: ${shares} หุ้น)
 - สถานะ P&L ปัจจุบัน: ${pnl_pct != null ? `${pnl_pct > 0 ? '+' : ''}${pnl_pct.toFixed(1)}%` : 'N/A'} (มูลค่า: ${market_value ? `$${market_value.toFixed(2)}` : 'N/A'})
 - Valuation/Metrics: ${metricsInfo || 'ไม่มีข้อมูล'}
-- สถานะสภาพคล่อง: เงินสดสำรอง $${cashBalance.toFixed(2)} (${cashRatioPct}% ของพอร์ต) — เป็นข้อมูลอ้างอิงเท่านั้น ไม่ใช่เหตุผลในการแนะนำซื้อ
+- สถานะสภาพคล่อง: เงินสดสำรอง $${cashBalance.toFixed(2)} (${cashRatioPct === null ? 'N/A — ไม่สามารถคำนวณสัดส่วนเงินสดได้ เนื่องจากราคาหุ้นบางตัวในพอร์ตไม่พร้อม' : `${cashRatioPct}% ของพอร์ต`}) — เป็นข้อมูลอ้างอิงเท่านั้น ไม่ใช่เหตุผลในการแนะนำซื้อ
 
 === ตัวชี้วัดทางเทคนิค (Technical Indicators) ===
 ${techLines || 'ไม่มีข้อมูลเทคนิค'}

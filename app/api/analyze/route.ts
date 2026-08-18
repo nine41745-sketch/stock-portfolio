@@ -1,22 +1,178 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createHash } from 'crypto'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { analyzeHoldingDetailed } from '@/lib/groq'
-import { getTechnicalIndicators } from '@/lib/indicators'
-import { getUpcomingEarnings } from '@/lib/finnhub'
+import { analyzeHoldingDetailed, translateAndClassifyNews } from '@/lib/groq'
+import { getTechnicalIndicators, TechnicalIndicators } from '@/lib/indicators'
+import { getMultipleQuotesWithMetrics, getMultipleQuotes, getUpcomingEarnings, UpcomingEarnings } from '@/lib/finnhub'
 import { cacheGet, cacheSet } from '@/lib/cache'
 import { ANALYZE_CACHE_TTL_SEC } from '@/lib/constants'
-import { HoldingWithPrice, DetailedAnalysisResult } from '@/types'
+import { HoldingWithPrice, DetailedAnalysisResult, NewsItem } from '@/types'
 
-// รูปแบบข้อมูล "ตลาด" ที่ยอมรับจาก client ได้ (ไม่ใช่ข้อมูลตัวตน/การเงินส่วนตัวของ user)
-interface AnalyzeMarketInput {
+// ============================================================
+// Batch 2 (v1.10.0): เลิกเชื่อ market data จาก client ทั้งหมด
+// เดิม /api/analyze ยังรับ current_price/pe/week52High/week52Low/dayChange/recentNews/
+// totalPortfolioValue จาก request body ตรงๆ — แก้ผ่าน DevTools ปลอมราคา/ข่าว/P&L ที่ป้อนเข้า AI
+// ได้ (เช่น ส่ง current_price: 9999 หรือข่าว NEGATIVE ปลอม) ทั้งที่ cost_basis/shares/cashBalance
+// ถูกแก้ให้ปลอมไม่ได้ไปแล้วตั้งแต่ v1.8.0
+//
+// ตอนนี้ client ส่งได้แค่ "symbol" เท่านั้น ทุกอย่างอื่นดึง/คำนวณฝั่ง server ทั้งหมด:
+// current_price/pe/week52High/week52Low/dayChange -> getMultipleQuotesWithMetrics (Finnhub)
+// technical indicators -> getTechnicalIndicators (Yahoo/Stooq)
+// earnings -> getUpcomingEarnings (Finnhub)
+// news -> ดึงเองจาก Finnhub company-news (logic เดียวกับ cron route คัดลอกมาแบบย่อสำหรับ 1 symbol)
+// totalPortfolioValue -> ราคาสดของทุกหุ้นในพอร์ตจาก Finnhub (ดูหมายเหตุ blocker-fix ด้านล่าง)
+// ถ้า client ยังส่ง field เก่ามาด้วย (backward compat) จะถูก ignore ทั้งหมด ไม่ถูกอ่านเลย
+//
+// v1.10.1 (blocker fix รอบตรวจซ้ำ):
+// Blocker 1 — price_cache table ไม่มี writer จริงในระบบเลย (grep ทั้ง repo ไม่เจอ insert/upsert/
+// update ที่ไหนเลย เป็น dead table ที่สร้างไว้เฉยๆ) เดิม Batch 2 คำนวณ totalPortfolioValue จาก
+// price_cache ของหุ้นอื่น ซึ่งจะว่างตลอด ทำให้มูลค่าพอร์ตต่ำกว่าจริงมากในพอร์ตหลายหุ้น (เดิมมี client
+// fallback มาช่วยกลบปัญหานี้ไว้ แต่ Batch 2 ตัด fallback ออกแล้วตามที่ตั้งใจ) แก้โดยดึงราคาหุ้นอื่นสด
+// จาก Finnhub ด้วย getMultipleQuotes (price-only ไม่ดึง P/E ของหุ้นอื่น ประหยัด quota กว่า
+// getMultipleQuotesWithMetrics ที่ยิง 2 endpoint/ตัว) แทนการพึ่ง price_cache
+//
+// Blocker 2 — เดิมดึง+แปล/จัดหมวดข่าวด้วย translateAndClassifyNews (เรียก Groq) ก่อนเช็ค cache
+// เสมอ ทำให้แม้ cache HIT ก็ยังเสีย Groq call สำหรับแปลข่าวทุกครั้ง แถม fingerprint ใช้ impact ที่
+// Groq classify (temperature 0.6 ไม่ deterministic) ทำให้ข่าวดิบเดิมอาจได้ fingerprint คนละอันจน
+// cache miss โดยไม่จำเป็น แก้โดยแยกเป็น 2 ขั้น: (1) ดึงข่าวดิบจาก Finnhub อย่างเดียว ไม่เรียก Groq
+// ใช้ raw identity (headline+datetime+source) สร้าง fingerprint (2) เช็ค cache ก่อน ถ้า HIT return
+// ทันทีไม่เรียก Groq เลยแม้แต่ครั้งเดียว ถ้า MISS ค่อยเรียก translateAndClassifyNews แล้วค่อยเรียก
+// analyzeHoldingDetailed
+//
+// v1.10.2 (final review รอบ 3 — correctness/quota):
+// จุดที่ 1 — getMultipleQuotes (lib/finnhub.ts) ไม่มี chunking/rate-limit เลย ต่างจาก
+// getMultipleQuotesWithMetrics ที่มี CHUNK_SIZE=6 + CHUNK_DELAY_MS=250 กันไว้อยู่แล้ว (Finnhub free
+// tier จำกัด 30 calls/min) พอร์ตที่มีหลายหุ้นกด Analyze จะยิง getQuote ของหุ้นอื่นทุกตัวพร้อมกันหมด
+// (burst) เสี่ยงชน rate limit ได้ แก้โดยเพิ่ม chunked wrapper เฉพาะจุดนี้ในไฟล์นี้เท่านั้น (ไม่แก้
+// lib/finnhub.ts ตรงๆ เพื่อไม่กระทบจุดเรียกอื่นในอนาคต) ใช้ CHUNK_SIZE/DELAY ค่าเดียวกับที่มีอยู่แล้ว
+//
+// จุดที่ 2 — เดิมถ้าราคาหุ้นอื่นบางตัวหาไม่ได้ (Finnhub fail/rate limit) totalPortfolioValue จะรวม
+// เฉพาะตัวที่หาเจอ แล้วส่งเป็นค่าที่ดูสมบูรณ์เข้าไปใน cashRatioPct (lib/groq.ts) ทั้งที่จริงๆ ขาดหุ้น
+// บางตัวไป ทำให้ AI เห็นสัดส่วนเงินสดผิดเพี้ยนโดยไม่รู้ตัว แก้โดยเช็ค coverage ให้ครบทุกตัวก่อน ถ้าราคา
+// หุ้นตัวใดตัวหนึ่ง (รวมตัวที่กำลังวิเคราะห์เอง) หาไม่ได้ ให้ totalPortfolioValue = null (ไม่ใช้ค่า
+// partial)
+//
+// v1.10.3 (consistency review รอบ 4): เดิมใช้ totalPortfolioValue = 0 เป็น sentinel แทน "ไม่ทราบ"
+// แต่ 0 ทำให้ lib/groq.ts render "(0% ของพอร์ต)" ซึ่ง AI จะตีความว่าเงินสด 0% ของพอร์ตจริงๆ (semantic
+// ผิด — 0% ≠ ไม่ทราบ) แก้โดยเปลี่ยน totalPortfolioValue เป็น number | null ตลอดสาย ใช้ null แทนแปลว่า
+// "คำนวณไม่ได้" และ lib/groq.ts::analyzeHoldingDetailed render ข้อความ "N/A — ไม่สามารถคำนวณสัดส่วน
+// เงินสดได้..." อย่างชัดเจนแทน — แก้เฉพาะบรรทัด liquidity ใน lib/groq.ts เท่านั้น ไม่แตะ Decision
+// Framework (BUY/SELL/HOLD conditions) เลยแม้แต่บรรทัดเดียว, ค่า default ยังเป็น 0 เหมือนเดิม
+// (backward compatible กับ cron ที่ส่ง number ล้วนๆ อยู่ ไม่ต้องแก้ cron)
+// ============================================================
+
+// ชื่อบริษัทสั้นๆ ไว้กรอง headline หุ้นอื่นในพอร์ตปนมา (คัดลอกจาก cron route เจตนาไม่รวมเป็น
+// shared helper — อยู่นอกขอบเขต Batch 2 ตามที่ตกลง ไม่ refactor ระบบข่าวทั้งโปรเจกต์)
+const COMPANY_NAMES: Record<string, string[]> = {
+  META: ['meta', 'facebook'], NOW: ['servicenow'], RBRK: ['rubrik'],
+  TEM: ['tempus'], ORCL: ['oracle'], PLTR: ['palantir'], SOFI: ['sofi'],
+  NVO: ['novo nordisk', 'novonordisk'], SPCX: ['spacex'],
+}
+
+function isAboutOtherSymbol(headline: string, ownSymbol: string, allSymbols: string[]): boolean {
+  const hl = headline.toLowerCase()
+  return allSymbols.filter(s => s !== ownSymbol).some(s => {
+    if (hl.includes(s.toLowerCase())) return true
+    return (COMPANY_NAMES[s] ?? []).some(name => hl.includes(name))
+  })
+}
+
+interface RawNewsItem { symbol: string; headline: string; source: string; datetime: number; url: string }
+
+// ดึงข่าวดิบล่าสุดของหุ้น 1 ตัวจาก Finnhub เท่านั้น — ไม่เรียก Groq ที่นี่ (v1.10.1 blocker-2 fix)
+// filter logic เดียวกับ cron (ย่อเหลือ 1 symbol)
+async function fetchRawNewsForSymbol(symbol: string, allSymbols: string[]): Promise<RawNewsItem[]> {
+  const today = new Date()
+  const from = new Date(today); from.setDate(from.getDate() - 3)
+  const fromStr = from.toISOString().split('T')[0]
+  const toStr = today.toISOString().split('T')[0]
+
+  const rawItems: RawNewsItem[] = []
+  try {
+    const res = await fetch(
+      `https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${fromStr}&to=${toStr}&token=${process.env.FINNHUB_API_KEY}`,
+      { cache: 'no-store' }
+    )
+    const news = await res.json()
+    if (Array.isArray(news)) {
+      let added = 0
+      for (const item of news.slice(0, 8)) {
+        if (added >= 2) break
+        if (!item.headline || isAboutOtherSymbol(item.headline, symbol, allSymbols)) continue
+        rawItems.push({ symbol, headline: item.headline, source: item.source ?? '', datetime: item.datetime ?? 0, url: item.url ?? '' })
+        added++
+      }
+    }
+  } catch { /* skip — ไม่มีข่าวก็วิเคราะห์ต่อได้ ไม่ใช่ error ร้ายแรง */ }
+
+  return rawItems
+}
+
+// เดิม getMultipleQuotes (lib/finnhub.ts) ไม่มี chunk/rate-limit เลย ต่างจาก
+// getMultipleQuotesWithMetrics ที่มี CHUNK_SIZE=6 + DELAY=250ms กันไว้อยู่แล้ว (final review v1.10.2
+// จุดที่ 1) — ห่อ chunking เฉพาะจุดนี้ในไฟล์นี้ ไม่แก้ lib/finnhub.ts ตรงๆ (ไม่ใช่ refactor ระบบ Finnhub
+// ทั้งหมด ตามที่ตกลง)
+const OTHER_SYMBOLS_CHUNK_SIZE = 6
+const OTHER_SYMBOLS_CHUNK_DELAY_MS = 250
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+async function getOtherSymbolPricesChunked(symbols: string[]): Promise<Record<string, number>> {
+  const result: Record<string, number> = {}
+  for (let i = 0; i < symbols.length; i += OTHER_SYMBOLS_CHUNK_SIZE) {
+    const chunk = symbols.slice(i, i + OTHER_SYMBOLS_CHUNK_SIZE)
+    const chunkResult = await getMultipleQuotes(chunk)
+    Object.assign(result, chunkResult)
+    if (i + OTHER_SYMBOLS_CHUNK_SIZE < symbols.length) await delay(OTHER_SYMBOLS_CHUNK_DELAY_MS)
+  }
+  return result
+}
+
+// ============================================================
+// Cache fingerprint: hash ของทุก input ที่มีผลจริงต่อผลวิเคราะห์ (ตรวจจาก prompt ใน
+// lib/groq.ts::analyzeHoldingDetailed จริง) แทนการต่อ string ตรงๆ แบบเดิม เพื่อ:
+// 1) ความถูกต้อง — input เปลี่ยนอะไรก็ตาม (ข่าว/technical/earnings/portfolio state) hash เปลี่ยน
+//    ทันที ไม่คืนผลเก่าซ้ำ
+// 2) ไม่พึ่ง object key order — สร้างจาก array ที่เรียงลำดับ field ตายตัวเอง ไม่ได้ serialize
+//    object ตรงๆ จึงไม่มีปัญหา key order ไม่แน่นอน
+// 3) cache key ไม่ยาวผิดปกติ — hash คงที่ 32 ตัวอักษรเสมอ ไม่ว่าข่าวจะยาวแค่ไหน
+// 4) (v1.10.1) ใช้ "ข่าวดิบ" (headline+datetime+source) ไม่ใช่ headlineTh/impact ที่ Groq สร้าง
+//    เพราะ Groq classify ด้วย temperature 0.6 ไม่ deterministic — ข่าวดิบเดิมต้องได้ fingerprint
+//    เดิมเสมอ ไม่งั้น cache miss โดยไม่จำเป็นทุกครั้งที่ Groq ตีความข่าวเดิมต่างไปเล็กน้อย
+// หมายเหตุ: "dayChange" ไม่รวมใน fingerprint เพราะตรวจจาก lib/groq.ts แล้วไม่ถูกใช้ในพรอมต์เลย
+// (เก็บไว้ใน holding object แค่เพื่อความสมบูรณ์ของ type ไม่มีผลต่อผลวิเคราะห์จริง)
+// ============================================================
+function buildAnalysisFingerprint(input: {
   symbol: string
-  current_price?: number | null
-  pe?: number | null
-  week52High?: number | null
-  week52Low?: number | null
-  dayChange?: number | null
-  totalPortfolioValue?: number // ใช้เป็นค่า fallback เท่านั้น ถ้าคำนวณฝั่ง server ไม่ได้
-  recentNews?: Array<{ headline: string; headlineTh?: string; impact?: string }>
+  shares: number
+  cost_basis: number | null
+  cashBalance: number
+  totalPortfolioValue: number | null
+  current_price: number | null
+  pe: number | null
+  week52High: number | null
+  week52Low: number | null
+  rawNews: RawNewsItem[]
+  technical: TechnicalIndicators
+  earnings: UpcomingEarnings | null
+}): string {
+  const newsFp = input.rawNews.map(n => `${n.headline}|${n.datetime}|${n.source}`).join(';')
+  const t = input.technical
+  const technicalFp = [
+    t.ema50, t.ema100, t.ema200, t.rsi14, t.weeklyRsi14,
+    t.macd.macd, t.macd.signal, t.macd.histogram,
+    t.bollinger.upper, t.bollinger.middle, t.bollinger.lower,
+    t.trend, t.lastClose, t.support, t.resistance, t.volumeRatio,
+  ].join(',')
+  const earningsFp = input.earnings ? `${input.earnings.date}|${input.earnings.daysUntil}|${input.earnings.hour}` : 'none'
+
+  const raw = [
+    input.symbol, input.shares, input.cost_basis,
+    input.cashBalance.toFixed(2), input.totalPortfolioValue === null ? 'null' : input.totalPortfolioValue.toFixed(2),
+    input.current_price, input.pe, input.week52High, input.week52Low,
+    newsFp, technicalFp, earningsFp,
+  ].join('::')
+
+  return createHash('sha256').update(raw).digest('hex').slice(0, 32)
 }
 
 export async function POST(request: NextRequest) {
@@ -24,21 +180,16 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: AnalyzeMarketInput
+  let body: { symbol?: string }
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }) }
 
-  const { current_price, pe, week52High, week52Low, dayChange, recentNews, totalPortfolioValue: clientTotalPortfolioValue } = body
-  const symbol = String(body.symbol || '').toUpperCase().trim()
+  // รับแค่ symbol เท่านั้น — field อื่นที่ client อาจยังส่งมา (backward compat) ไม่ถูกอ่านเลย
+  const symbol = String(body?.symbol || '').toUpperCase().trim()
   if (!symbol) return NextResponse.json({ error: 'Symbol required' }, { status: 400 })
 
   try {
-    // ============================================================
-    // Security fix (v1.8.0): ห้ามเชื่อ cost_basis/shares/market_value/pnl_pct/cashBalance
-    // จาก client อีกต่อไป (ผู้ใช้แก้ payload ผ่าน dev tools ปลอมค่าเข้า AI ได้)
-    // ดึงข้อมูลจริงจาก DB ฝั่ง server เท่านั้น ผ่าน service role + decrypt key
-    // ============================================================
     const serviceClient = createServiceClient()
-    const [{ data: allHoldings, error: holdErr }, { data: settings }] = await Promise.all([
+    const [{ data: allHoldings, error: holdErr }, { data: settings }, quoteData] = await Promise.all([
       serviceClient.rpc('get_decrypted_holdings', {
         p_user_id: user.id,
         p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
@@ -48,6 +199,7 @@ export async function POST(request: NextRequest) {
         .select('cash_balance')
         .eq('user_id', user.id)
         .single(),
+      getMultipleQuotesWithMetrics([symbol]),
     ])
 
     if (holdErr) return NextResponse.json({ error: holdErr.message }, { status: 500 })
@@ -57,7 +209,17 @@ export async function POST(request: NextRequest) {
 
     if (!own) return NextResponse.json({ error: 'ไม่พบหุ้นนี้ในพอร์ตของคุณ' }, { status: 404 })
 
-    const cp = current_price ?? null
+    const allSymbols = (allHoldings ?? []).map((h: { symbol: string }) => h.symbol)
+    const otherSymbols = allSymbols.filter((s: string) => s !== symbol)
+    const cashBalance = settings?.cash_balance ?? 0
+
+    // ราคาปัจจุบัน + metrics ของหุ้นที่กำลังวิเคราะห์ — ดึงจาก Finnhub ฝั่ง server เท่านั้น
+    // ห้ามใช้ body.current_price/pe/week52High/week52Low/dayChange อีกต่อไป (root cause ของ Batch 2)
+    // cp เป็น null ได้ถ้า Finnhub หาราคาไม่ได้จริงๆ — market_value/pnl ด้านล่าง guard ด้วย null
+    // ทุกจุด (ไม่ default เป็น 0) กันสร้าง P&L ปลอมจากราคาที่หาไม่ได้
+    const q = quoteData[symbol]
+    const cp = q?.price ?? null
+
     const market_value = cp !== null ? cp * own.shares : null
     const total_cost = own.cost_basis !== null ? own.cost_basis * own.shares : null
     const pnl = market_value !== null && total_cost !== null ? market_value - total_cost : null
@@ -77,49 +239,75 @@ export async function POST(request: NextRequest) {
       total_cost,
       pnl,
       pnl_pct,
-      dayChange: dayChange ?? null,
-      pe: pe ?? null,
-      week52High: week52High ?? null,
-      week52Low: week52Low ?? null,
+      dayChange: q?.dayChange ?? null,
+      pe: q?.pe ?? null,
+      week52High: q?.week52High ?? null,
+      week52Low: q?.week52Low ?? null,
     }
 
-    const cashBalance = settings?.cash_balance ?? 0
+    // ดึง technical + earnings + ข่าวดิบ (ไม่แปล) + ราคาหุ้นอื่นในพอร์ตพร้อมกัน (parallel)
+    // ต้องดึงก่อนคำนวณ fingerprint/เช็ค cache เสมอ เพื่อให้ fingerprint สะท้อนข้อมูลจริงล่าสุด
+    const [technical, earnings, rawNews, otherPrices] = await Promise.all([
+      getTechnicalIndicators(symbol),
+      getUpcomingEarnings(symbol),
+      fetchRawNewsForSymbol(symbol, allSymbols),
+      otherSymbols.length > 0 ? getOtherSymbolPricesChunked(otherSymbols) : Promise.resolve({} as Record<string, number>),
+    ])
 
-    // มูลค่าพอร์ตรวม: คำนวณจากราคาล่าสุดที่รู้ (price_cache) ของทุกหุ้นใน DB
-    // ใช้เป็นค่าประมาณสำหรับสัดส่วนเงินสด ไม่ใช่ตัวเลขที่ต้องเป๊ะ 100% — ถ้าคำนวณไม่ได้เลย fallback ไปค่าที่ client ส่งมา
-    let totalPortfolioValue = 0
-    const symbols = (allHoldings ?? []).map((h: { symbol: string }) => h.symbol)
-    if (symbols.length > 0) {
-      const { data: cachedPrices } = await supabase
-        .from('price_cache')
-        .select('symbol, price')
-        .in('symbol', symbols)
-      const priceMap = new Map<string, number>((cachedPrices ?? []).map((r: { symbol: string; price: number }) => [r.symbol, r.price]))
-      if (cp !== null) priceMap.set(symbol, cp) // ใช้ราคาสดล่าสุดของตัวที่กำลังวิเคราะห์แทนราคา cache เก่า
+    // totalPortfolioValue: ราคาสดของหุ้นที่วิเคราะห์ + ราคาสดของหุ้นอื่นในพอร์ตทั้งหมด (server-side
+    // ล้วนๆ ไม่มี fallback ไปค่าจาก client — blocker-1 fix, price_cache ไม่มี writer จริงในระบบ)
+    //
+    // final review v1.10.2/1.10.3 จุดที่ 2: ต้อง all-or-nothing — ถ้าราคาหุ้นตัวใดตัวหนึ่งในพอร์ต
+    // (รวมตัวที่กำลังวิเคราะห์เอง) หาไม่ได้ (Finnhub fail/rate limit) ห้ามรวมเฉพาะตัวที่หาเจอแล้วส่งเป็น
+    // ค่าที่ดูสมบูรณ์ เพราะจะทำให้ cashRatioPct ใน lib/groq.ts คำนวณสัดส่วนเงินสดผิดโดยที่ AI ไม่รู้ว่า
+    // เป็นค่า partial — ให้ totalPortfolioValue = null ทั้งหมดแทน (ดูหมายเหตุ v1.10.3 ด้านล่าง)
+    const missingOtherPrices = otherSymbols.filter((s: string) => otherPrices[s] === undefined)
+    const portfolioValueComplete = cp !== null && missingOtherPrices.length === 0
+
+    // null = "คำนวณไม่ได้" (แยกจาก 0 ที่แปลว่า "คำนวณได้แล้วได้ 0 จริงๆ") — lib/groq.ts render เป็น
+    // ข้อความ N/A ให้ AI เห็นชัดแทนที่จะดูเหมือนเป็นตัวเลข 0% ที่แม่นแต่จริงๆ ไม่ครบ (v1.10.3)
+    let totalPortfolioValue: number | null = null
+    if (portfolioValueComplete) {
+      totalPortfolioValue = (cp as number) * own.shares
       for (const h of (allHoldings ?? []) as Array<{ symbol: string; shares: number }>) {
-        const p = priceMap.get(h.symbol)
-        if (p !== undefined) totalPortfolioValue += p * h.shares
+        if (h.symbol === symbol) continue
+        totalPortfolioValue += otherPrices[h.symbol] * h.shares
       }
     }
-    if (totalPortfolioValue <= 0 && clientTotalPortfolioValue) totalPortfolioValue = clientTotalPortfolioValue
 
-    // cache key ผูกกับทุกปัจจัยที่มีผลต่อผลวิเคราะห์จริง กันปัญหา cache ค้างข้อมูลเก่าหลังแก้ portfolio
-    const cacheKey = `analyze:${user.id}:${symbol}:${cp?.toFixed(2) ?? 'null'}:${own.shares}:${own.cost_basis ?? 'null'}:${cashBalance.toFixed(2)}`
+    const fingerprint = buildAnalysisFingerprint({
+      symbol,
+      shares: own.shares,
+      cost_basis: own.cost_basis,
+      cashBalance,
+      totalPortfolioValue,
+      current_price: cp,
+      pe: holding.pe ?? null,
+      week52High: holding.week52High ?? null,
+      week52Low: holding.week52Low ?? null,
+      rawNews,
+      technical,
+      earnings,
+    })
+    const cacheKey = `analyze:${user.id}:${symbol}:${fingerprint}`
     const cached = cacheGet<DetailedAnalysisResult>(cacheKey)
     if (cached) return NextResponse.json(cached)
 
-    // Flow: ดึงราคาย้อนหลัง+เช็ควันประกาศงบ (parallel) -> คำนวณ technical indicators -> ส่งพร้อมข่าว+ข้อมูลพอร์ตเข้า Groq AI
-    const [technical, earnings] = await Promise.all([
-      getTechnicalIndicators(symbol),
-      getUpcomingEarnings(symbol),
-    ])
+    // Cache MISS เท่านั้นที่เรียก Groq — ทั้งแปล/จัดหมวดข่าว (translateAndClassifyNews) และ
+    // วิเคราะห์หลัก (analyzeHoldingDetailed) เพื่อไม่ให้ cache HIT เสีย Groq call แม้แต่ครั้งเดียว
+    const translations = rawNews.length ? await translateAndClassifyNews(rawNews) : []
+    const news: NewsItem[] = rawNews.map((item, i) => ({
+      ...item,
+      headlineTh: translations[i]?.headlineTh ?? item.headline,
+      impact: (translations[i]?.impact ?? 'LOW') as NewsItem['impact'],
+    }))
 
     const result = await analyzeHoldingDetailed(
       holding,
       technical,
       cashBalance,
       totalPortfolioValue,
-      recentNews ?? [],
+      news,
       earnings
     )
 
