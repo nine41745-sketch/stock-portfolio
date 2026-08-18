@@ -63,8 +63,14 @@ import { HoldingWithPrice, DetailedAnalysisResult, NewsItem } from '@/types'
 
 // ชื่อบริษัทสั้นๆ ไว้กรอง headline หุ้นอื่นในพอร์ตปนมา (คัดลอกจาก cron route เจตนาไม่รวมเป็น
 // shared helper — อยู่นอกขอบเขต Batch 2 ตามที่ตกลง ไม่ refactor ระบบข่าวทั้งโปรเจกต์)
+//
+// v1.10.4 hotfix (News relevance): เพิ่ม instagram/whatsapp เป็น alias ของ META กันข่าว META ที่ใช้ชื่อ
+// ผลิตภัณฑ์แทนชื่อบริษัทหลุดทิ้งไปตอนเช็ค isAboutTargetSymbol ด้านล่าง
+// v1.10.5 hotfix (edge review): เพิ่ม zuckerberg เป็น alias ของ META ด้วย — headline ข่าวหุ้นมักอ้างถึง
+// ผู้บริหารแทนชื่อบริษัทตรงๆ บ่อยมาก (เช่น "Zuckerberg announces...") ถ้าไม่เพิ่มจะโดน isAboutTargetSymbol
+// ปฏิเสธทั้งที่เป็นข่าว META จริง
 const COMPANY_NAMES: Record<string, string[]> = {
-  META: ['meta', 'facebook'], NOW: ['servicenow'], RBRK: ['rubrik'],
+  META: ['meta', 'facebook', 'instagram', 'whatsapp', 'zuckerberg'], NOW: ['servicenow'], RBRK: ['rubrik'],
   TEM: ['tempus'], ORCL: ['oracle'], PLTR: ['palantir'], SOFI: ['sofi'],
   NVO: ['novo nordisk', 'novonordisk'], SPCX: ['spacex'],
 }
@@ -75,6 +81,36 @@ function isAboutOtherSymbol(headline: string, ownSymbol: string, allSymbols: str
     if (hl.includes(s.toLowerCase())) return true
     return (COMPANY_NAMES[s] ?? []).some(name => hl.includes(name))
   })
+}
+
+// v1.10.4 hotfix (News relevance): เดิม isAboutOtherSymbol กรองได้แค่ "headline พูดถึงหุ้นอื่นในพอร์ต
+// ชัดๆ ไหม" แต่ไม่เคยยืนยันว่า headline พูดถึงหุ้นเป้าหมายจริงหรือไม่ — Finnhub company-news บางครั้งคืน
+// ข่าวรวม/roundup ที่พูดถึงบริษัทอื่นที่ไม่ได้อยู่ในพอร์ตเลย (เช่น วิเคราะห์ META แต่ได้ข่าว Broadcom/
+// Apple ที่ไม่ได้ถือ) ซึ่งหลุดผ่าน filter เดิมได้เพราะ filter เดิมเช็คแค่ "ไม่ใช่หุ้นอื่นในพอร์ต" ไม่ได้
+// เช็คว่า "ใช่หุ้นเป้าหมาย" เพิ่ม positive check คู่กันนี้ — ต้องพูดถึงหุ้นเป้าหมายจริง (ticker หรือ alias)
+// ถึงจะผ่าน ป้องกันข่าวไม่เกี่ยวข้องหลุดเข้ามา โดยยังให้ข่าว cross-company ที่เกี่ยวข้องจริง (พูดถึงหุ้น
+// เป้าหมายด้วย) ผ่านได้ปกติ — ไม่ใช่การกรองแบบใหม่ทั้งระบบ แค่เพิ่มเงื่อนไขในไฟล์นี้เท่านั้น
+function isAboutTargetSymbol(headline: string, targetSymbol: string): boolean {
+  const hl = headline.toLowerCase()
+  if (hl.includes(targetSymbol.toLowerCase())) return true
+
+  const aliases = COMPANY_NAMES[targetSymbol]
+  // v1.10.5 hotfix (edge review): ไม่มี alias ข้อมูลสำหรับ symbol นี้เลย (เช่น หุ้นใหม่ในพอร์ตที่ยังไม่ได้
+  // เพิ่มลง COMPANY_NAMES — dict นี้ตอนนี้มีแค่ 9 ตัวตาม cron) — "fail-open" คือไม่ตัดข่าวทิ้ง เพราะไม่มี
+  // ข้อมูลพอจะยืนยัน/ปฏิเสธความเกี่ยวข้องได้เลย ดีกว่าเสี่ยงทำข่าวจริงของหุ้นที่ไม่มี alias หายหมดทุกชิ้น
+  // (เท่ากับ behavior เดิมก่อน hotfix นี้สำหรับ symbol กลุ่มนี้ — ไม่เพิ่มความเสี่ยงใหม่สำหรับ ticker ใหม่)
+  // เทียบกับ symbol ที่มี alias อยู่แล้ว (เช่น META) จะเช็คแบบเข้มงวดเต็มรูปแบบ (positive-match บังคับ)
+  //
+  // ทางเลือกที่พิจารณาแต่ไม่ทำ: ดึงชื่อบริษัทจริงแบบ dynamic จาก Yahoo Finance quote() (เช่น
+  // longName/shortName) มาใช้แทน static dict ทั้งหมด — ข้อดีคือรองรับ ticker ใหม่อัตโนมัติไม่ต้องเพิ่ม
+  // manual แต่ไม่ทำในรอบ hotfix นี้เพราะ (1) เพิ่ม external API call ต่อการ analyze อีก 1 ครั้งโดยไม่จำเป็น
+  // (2) รูปแบบชื่อบริษัทจาก Yahoo ไม่คงที่ (เช่น "Meta Platforms, Inc." vs "Apple Inc.") การแยกคำมาเทียบ
+  // แบบ heuristic เสี่ยง false positive/negative ใหม่ที่ทดสอบไม่ครบในเวลาจำกัดของ hotfix นี้ — ถ้าต้องการ
+  // ความแม่นยำสำหรับหุ้นใหม่ในอนาคต แนะนำเพิ่ม entry ใน COMPANY_NAMES ตรงๆ (เหมือนที่ทำกับ META) ซึ่งเป็น
+  // งานเล็กและปลอดภัยกว่า
+  if (!aliases) return true
+
+  return aliases.some(name => hl.includes(name))
 }
 
 interface RawNewsItem { symbol: string; headline: string; source: string; datetime: number; url: string }
@@ -98,7 +134,7 @@ async function fetchRawNewsForSymbol(symbol: string, allSymbols: string[]): Prom
       let added = 0
       for (const item of news.slice(0, 8)) {
         if (added >= 2) break
-        if (!item.headline || isAboutOtherSymbol(item.headline, symbol, allSymbols)) continue
+        if (!item.headline || !isAboutTargetSymbol(item.headline, symbol) || isAboutOtherSymbol(item.headline, symbol, allSymbols)) continue
         rawItems.push({ symbol, headline: item.headline, source: item.source ?? '', datetime: item.datetime ?? 0, url: item.url ?? '' })
         added++
       }

@@ -267,9 +267,15 @@ ${newsSnippet}
 }`
 
   const validActions = ['BUY', 'HOLD', 'SELL_PARTIAL', 'SELL_ALL']
-  function extractAction(raw: string): DetailedAnalysisResult['recommendation']['action'] {
+  // v1.10.6 hotfix (edge review): เดิม fallback เป็น 'HOLD' เสมอเมื่อหา action ที่ valid ไม่เจอ — ทำให้
+  // แยกไม่ออกระหว่าง "AI เลือก HOLD จริงๆ" กับ "หา action ไม่เจอเลย" (silent fallback) เปลี่ยนคืน null
+  // แทนเมื่อไม่เจอ explicit valid action ใน raw text — เหตุผลเดิมของ regex fallback (ดึง action จาก raw
+  // text ตรงๆ ก่อน parse JSON เผื่อ JSON ถูกตัดท้ายกลางคันตอน token หมดแต่ "action" เขียนไปแล้วตั้งแต่ต้น
+  // เพราะเป็น key แรกสุดของ schema) ยังคงอยู่ครบ แค่เปลี่ยนค่า default ตอน "ไม่เจอจริงๆ" จาก 'HOLD' เป็น
+  // null เพื่อให้ผู้เรียกตัดสินใจว่าควรถือเป็น error แทนได้
+  function extractAction(raw: string): DetailedAnalysisResult['recommendation']['action'] | null {
     const m = raw.match(/"action"\s*:\s*"(BUY|HOLD|SELL_PARTIAL|SELL_ALL)"/)
-    return (m && validActions.includes(m[1]) ? m[1] : 'HOLD') as DetailedAnalysisResult['recommendation']['action']
+    return (m && validActions.includes(m[1]) ? m[1] : null) as DetailedAnalysisResult['recommendation']['action'] | null
   }
 
   // sector/business ดึงจากข้อมูลนิ่ง (static mapping + Yahoo Finance fallback) ไม่ให้ AI สุ่มเขียนเองอีกต่อไป
@@ -313,6 +319,16 @@ ${newsSnippet}
       return makeFallback(message, 'RATE_LIMIT', stockMeta)
     }
 
+    // v1.10.4 hotfix: Groq ตอบว่างเปล่าโดยไม่ได้โดน rate limit (เช่น HTTP error ที่ไม่ใช่ 429, network
+    // error, หรือ Groq คืน content ว่างเฉยๆ) — เดิมโค้ดจะไหลต่อไป parse '{}' แล้วคืนผลลัพธ์ที่ดูเหมือน
+    // สำเร็จ (action เป็น HOLD จาก fallbackAction, ทุก field ที่ AI ต้องสร้างเป็นค่าว่างหมด) โดยไม่มี
+    // error flag เลย ทำให้ frontend เข้าใจผิดว่าวิเคราะห์สำเร็จ แสดงการ์งปกติ แต่ Technical Summary/RSI/
+    // EMA/MACD/BB/Support/Resistance/Volume/News Impact/Risks หายทั้งก้อน (เพราะ AnalysisCard gate
+    // การ์งพวกนี้ด้วย analysis.technicalSummary ตัวเดียว) ต้องถือว่านี่คือ error ไม่ใช่ผลวิเคราะห์จริง
+    if (!text) {
+      return makeFallback('AI ไม่ตอบกลับข้อมูล (Groq API error) กรุณาลองใหม่อีกครั้ง', 'FAILED', stockMeta)
+    }
+
     // extractAction หา "action" ตรงๆ จาก raw text ก่อน — เพราะตอนนี้ "action" เป็น key แรกสุดของ JSON
     // (ย้ายมาไว้หน้าสุดเพราะเดิม nest อยู่ใน recommendation ท้ายๆ obj พอ Groq ตอบยาวจน token หมดกลางคัน
     // ฟิลด์ action เลยไม่ถูกเขียนออกมาเลย ทำให้ fallback เป็น HOLD ทุกครั้งที่ตัดกลางคัน)
@@ -320,12 +336,43 @@ ${newsSnippet}
     const match = text.match(/\{[\s\S]*\}/)
     const parsed = JSON.parse(match?.[0] ?? '{}')
 
-    const action = (validActions.includes(parsed.action) ? parsed.action : fallbackAction) as DetailedAnalysisResult['recommendation']['action']
+    // v1.10.6 hotfix (edge review): action อาจเป็น null ได้แล้วถ้าทั้ง parsed.action และ fallbackAction
+    // (regex บน raw text) ไม่เจอ explicit valid action เลย — ต้องเช็คก่อนใช้งาน ห้าม default เป็น HOLD
+    // เองอีกต่อไป (ดูเหตุผลเต็มที่ extractAction ด้านบน)
+    const action: DetailedAnalysisResult['recommendation']['action'] | null =
+      validActions.includes(parsed.action) ? parsed.action : fallbackAction
+    const technicalSummary = (parsed.technicalSummary ?? '').trim()
+    const summary = (parsed.summary ?? '').trim()
+
+    // v1.10.6 hotfix (edge review): ต้องมี explicit valid action (AI เขียนมาจริง ไม่ว่าจาก parsed JSON
+    // ตรงๆ หรือ recover จาก raw text ตอน JSON ถูกตัดท้าย) ก่อนจะถือว่าเป็นผลวิเคราะห์ที่ใช้งานได้ — เดิม
+    // ไม่เจอ action ก็ default เป็น 'HOLD' เงียบๆ ทำให้แยกไม่ออกว่า AI เลือก HOLD จริงหรือแค่หาไม่เจอ
+    if (!action) {
+      return makeFallback('AI ไม่ได้ระบุคำแนะนำที่ชัดเจน (action) กรุณาลองใหม่อีกครั้ง', 'FAILED', stockMeta)
+    }
+
+    // v1.10.4/v1.10.5 hotfix: แยก required structural field ออกจาก optional/legitimately-empty field
+    // ชัดเจน — "technicalSummary" คือ field เดียวที่ frontend (PortfolioDashboard.tsx) ใช้เป็นเงื่อนไข
+    // ครอบ Technical block ทั้งก้อน (รวม RSI/EMA/MACD/BB/Support/Resistance/Volume chips ที่มาจาก
+    // "technical" object คนละตัวกัน) ถ้า technicalSummary ว่างแม้ field อื่นจะมีข้อมูลก็ตาม (เช่น summary
+    // ไม่ว่างแต่ technicalSummary ว่างเดี่ยวๆ) UI จะซ่อน technical block ทั้งก้อนอยู่ดี จึงต้องถือว่าไม่ใช่
+    // ผลวิเคราะห์ที่สมบูรณ์ ต้องคืน error แทน — เดิม guard เช็คแค่ "ทั้งคู่ว่าง" (AND) ทำให้เคส
+    // technicalSummary='' + summary='X' หลุดผ่านเป็น "success" ปลอมได้ (จุดที่พบใน final edge review)
+    //
+    // ตั้งใจ "ไม่" บังคับ summary ให้ non-empty ด้วย (เหลือเป็น optional) เพราะ "summary" อยู่ท้ายสุดของ
+    // JSON schema ในพรอมต์ — เป็น field ที่เสี่ยงโดนตัดทิ้งก่อนเพื่อนเวลา Groq token หมดกลางคัน (เหตุผล
+    // เดียวกับที่ "action" ถูกย้ายมาไว้ต้น schema ตั้งแต่ v1.8) ถ้าบังคับ summary ด้วยจะทำให้คำตอบที่ตัด
+    // ท้ายไปนิดเดียวแต่เนื้อหาจริงครบ (technical/news/risks) ถูกทิ้งเป็น error โดยไม่จำเป็น เช่นเดียวกับ
+    // newsImpact/risks/risksAndOpportunities/buyConditions/sellConditions/earnings ที่ยังคงเป็น
+    // optional เหมือนเดิม (ว่างได้จริงตามสถานการณ์ เช่น ไม่มีข่าว/ไม่มีความเสี่ยงเด่น/ไม่มีวันประกาศงบ)
+    if (!technicalSummary) {
+      return makeFallback('AI วิเคราะห์ไม่สมบูรณ์ (ไม่มีสรุปเทคนิคัล) กรุณาลองใหม่อีกครั้ง', 'FAILED', stockMeta)
+    }
 
     return {
       symbol,
       disclaimer: parsed.disclaimer ?? fallback.disclaimer,
-      technicalSummary: parsed.technicalSummary ?? '',
+      technicalSummary,
       newsImpact: Array.isArray(parsed.newsImpact) ? parsed.newsImpact : [],
       risksAndOpportunities: {
         caution: parsed.risksAndOpportunities?.caution ?? '',
@@ -337,7 +384,7 @@ ${newsSnippet}
         sellConditions: parsed.sellConditions ?? '',
       },
       risks: Array.isArray(parsed.risks) ? parsed.risks : [],
-      summary: parsed.summary ?? '',
+      summary,
       analysedAt: new Date().toISOString(),
       sector: stockMeta.sector ?? '',
       business: stockMeta.business ?? '',
