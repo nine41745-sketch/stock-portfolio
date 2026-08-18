@@ -36,8 +36,17 @@ async function callGroqWithModel(prompt: string, maxTokens: number, model: strin
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: maxTokens,
+        // v1.10.8 hotfix (GPT-OSS compatibility): โมเดลตระกูล openai/gpt-oss-* บน Groq ใช้ parameter
+        // ชื่อ max_completion_tokens แทน max_tokens (ของเดิม) — ถ้ายังส่ง max_tokens ไป Groq จะปฏิเสธ/
+        // ตอบ response ที่ไม่มี content กลับมา (เห็นผลเป็น groq: ❌ unknown ที่ /api/health)
+        max_completion_tokens: maxTokens,
         temperature: 0.6,
+        // v1.10.8 hotfix: gpt-oss เป็น reasoning model โดย default จะใส่ reasoning tokens ปนมาด้วย
+        // reasoning_effort: 'low' ลด reasoning ให้น้อยที่สุดเท่าที่ยังตอบได้ถูก (ไม่กระทบ Decision
+        // Framework/เนื้อหาคำตอบ — แค่ลด token ที่ใช้คิดก่อนตอบ) reasoning_format: 'hidden' ไม่ให้ reasoning
+        // trace ปนเข้ามาใน content ที่เราจะเอาไป JSON.parse ต่อ (ถ้าปนมาจะพัง parse ทันที)
+        reasoning_effort: 'low',
+        reasoning_format: 'hidden',
       }),
     })
     if (res.status === 429) {

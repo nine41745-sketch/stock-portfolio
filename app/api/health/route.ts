@@ -41,6 +41,11 @@ export async function GET() {
   }
 
   // 3. Groq AI
+  // v1.10.8 hotfix (GPT-OSS compatibility + diagnostic): เปลี่ยน max_tokens -> max_completion_tokens
+  // (parameter name ที่ openai/gpt-oss-* ต้องการ) + reasoning_effort/reasoning_format เหมือนกับ
+  // lib/groq.ts ทุกประการ เพื่อให้ health check สะท้อนพฤติกรรมจริงของ runtime call — เดิมถ้า Groq ตอบ
+  // กลับมาแบบไม่มี content (ไม่ว่าเพราะ HTTP error หรือ 200 ที่ content ว่าง) จะโชว์แค่ "unknown" เฉยๆ
+  // วินิจฉัยสาเหตุจริงไม่ได้เลย เพิ่ม diagnostic ให้เห็น HTTP status/error body/finish_reason ตรงๆ
   try {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -52,11 +57,24 @@ export async function GET() {
       body: JSON.stringify({
         model: 'openai/gpt-oss-120b',
         messages: [{ role: 'user', content: 'Say OK' }],
-        max_tokens: 4,
+        max_completion_tokens: 64,
+        reasoning_effort: 'low',
+        reasoning_format: 'hidden',
       }),
     })
-    const data = await res.json()
-    results.groq = data.choices?.[0]?.message?.content ? '✅ ok' : `❌ ${data.error?.message ?? 'unknown'}`
+    if (!res.ok) {
+      const errText = await res.text()
+      results.groq = `❌ HTTP ${res.status}: ${errText.slice(0, 300)}`
+    } else {
+      const data = await res.json()
+      const content = data.choices?.[0]?.message?.content
+      if (content) {
+        results.groq = '✅ ok'
+      } else {
+        const finishReason = data.choices?.[0]?.finish_reason ?? 'ไม่ทราบ'
+        results.groq = `❌ HTTP 200 แต่ content ว่าง (finish_reason: ${finishReason}) response: ${JSON.stringify(data).slice(0, 300)}`
+      }
+    }
   } catch (e: any) {
     results.groq = `❌ ${e.message}`
   }
