@@ -13,6 +13,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: 'v1.12.1',
+    date: '2026-08-19 03:40 ICT',
+    changes: [
+      'แก้บั๊ก production: Groq คืน HTTP 413 "Request too large... tokens per minute (TPM): Limit 8000, Requested 8051" บนโมเดลหลัก openai/gpt-oss-120b — เกิดจาก request ของ analyzeHoldingDetailed (ใช้ทั้งปุ่ม "วิเคราะห์ AI" แบบ manual และ cron รายวัน) มีขนาดเกินลิมิต TPM หลังขยาย Portfolio-Aware Decision Framework ใน v1.12.0',
+      'ลด output token budget (max_completion_tokens) จาก 2600 กลับมาที่ 2200 — ค่านี้นับรวมเป็นส่วนหนึ่งของ "Requested" tokens ที่ Groq ใช้เช็ค TPM เสมอ ไม่ใช่แค่ prompt tokens',
+      'ทำให้เนื้อหาพรอมต์ของ Decision Framework กระชับขึ้น (ตัดตัวอย่างประกอบ/ถ้อยคำซ้ำซ้อนที่ไม่จำเป็นต่อการตัดสินใจออก) โดยยังคงกฎ/threshold/หมวดหลักฐาน SELL_ALL, safeguard, และเนื้อหาบริบทพอร์ต (ทุน/มูลค่า/P&L/สัดส่วน/หุ้นอื่น/เทคนิคัล/ข่าว/valuation) ไว้ครบทุกประการ',
+      'ย่อรูปแบบสรุปหุ้นอื่นในพอร์ตให้กระชับขึ้น (SYMBOL:weight% แทน SYMBOL (weight%)) และปรับจำนวนข่าวที่ส่งให้ AI จาก 5 เหลือ 4 ชิ้น พร้อมเพิ่มการจำกัดความยาวหัวข้อข่าวต่อชิ้น (cap + ตัดจบด้วย "…") กันหัวข้อข่าวยาวผิดปกติทำให้ request บวมโดยไม่จำเป็น ไม่กระทบการจำแนก/ความเกี่ยวข้องของข่าวเดิม',
+      'ไม่แตะ Groq model/temperature/reasoning_effort/reasoning_format, cron schedule (01:15 UTC), PIN/Auth, หรือ portfolio accounting ใดๆ ในรอบนี้',
+    ],
+  },
+  {
     version: 'v1.12.0',
     date: '2026-08-19 03:08 ICT',
     changes: [
