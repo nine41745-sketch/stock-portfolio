@@ -111,6 +111,14 @@ export interface DetailedAnalysisResult {
   earnings?: EarningsInfo | null
   // โมเดล Groq ที่ตอบสำเร็จจริง — โชว์บน UI เพื่อความโปร่งใส (คุณภาพต่างกันระหว่างโมเดลหลัก/สำรอง)
   usedModel?: string
+  // v1.12.0 (Deterministic SELL_ALL Safeguard, hardened): structured evidence ที่ AI ต้องส่งมาคู่กับ
+  // action — ระบบฝั่ง server (lib/groq.ts) ตรวจสอบฟิลด์เหล่านี้ก่อนยอมให้ SELL_ALL แสดงผลจริง โดยยึด
+  // sellAllEvidenceTypes (enum อยู่ใน allowlist เท่านั้น ไม่มีเทคนิคัล/P&L/macro) เป็นตัวตัดสินหลัก
+  // sellAllEvidence (free-text) เป็นแค่คำอธิบายประกอบ ไม่ใช้ตัดสินอนุมัติ ถ้าไม่ผ่านจะ downgrade action
+  // อัตโนมัติ (ดู lib/groq.ts) ฟิลด์เหล่านี้เป็น optional/diagnostic ไม่บังคับ UI ต้องแสดงผล
+  thesisBroken?: boolean
+  sellAllEvidenceTypes?: string[]
+  sellAllEvidence?: string[]
 }
 
 export interface HoldingFormData {

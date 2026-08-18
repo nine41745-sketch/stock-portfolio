@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
-import { analyzeHoldingDetailed, translateAndClassifyNews } from '@/lib/groq'
+import { analyzeHoldingDetailed, translateAndClassifyNews, summarizeOtherHoldings } from '@/lib/groq'
 import { getTechnicalIndicators } from '@/lib/indicators'
 import { getMultipleQuotesWithMetrics, getUpcomingEarnings } from '@/lib/finnhub'
 import { HoldingWithPrice, NewsItem } from '@/types'
 
-// Cron รันทุกวัน 23:00 UTC (06:00 เวลาไทย / ICT) — ตั้งค่าใน vercel.json
+// Cron รันทุกวัน 01:15 UTC (~08:15 เวลาไทย / ICT) — ตั้งค่าใน vercel.json
 // วิเคราะห์ทุกหุ้นของทุก user อัตโนมัติ แล้วเก็บผลลง daily_analyses
 // เพื่อให้ dashboard โหลดผลวิเคราะห์วันนี้ได้ทันทีโดยไม่ต้องรอกด "วิเคราะห์" เอง
+// หมายเหตุ: Vercel Hobby plan cron อาจคลาดเคลื่อนได้ภายใน ~1 ชม.จากเวลาที่ตั้ง (ข้อจำกัดของแพลน)
+// ไม่ต้องสร้างกลไก workaround ใดๆ เพื่อบังคับให้รันตรงนาทีเป๊ะ — ผลวิเคราะห์รายวันไม่ได้ต้องการความแม่นยำระดับนาที
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // Vercel Hobby plan สูงสุด 60s — ถ้าพอร์ตมีหุ้น/user เยอะขึ้นมากอาจต้องอัปเกรด plan
 
@@ -18,7 +20,8 @@ function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-// วันที่ตามเวลาไทย (ICT = UTC+7) — cron รันตอน 23:00 UTC ซึ่งคือ 06:00 ของ "วันถัดไป" ตามเวลาไทย
+// วันที่ตามเวลาไทย (ICT = UTC+7) — แปลงจากเวลาปัจจุบันเสมอ ใช้ได้ถูกต้องไม่ว่า cron จะรันตรงเวลาเป๊ะ
+// หรือคลาดเคลื่อนไปบ้าง (Vercel Hobby plan) เพราะคำนวณจาก "เวลาที่รันจริง" ไม่ใช่เวลาที่ตั้งไว้ใน schedule
 function getThaiDateString(): string {
   const now = new Date()
   const thai = new Date(now.getTime() + 7 * 60 * 60 * 1000)
@@ -67,6 +70,19 @@ export async function GET(request: NextRequest) {
 
       const symbols: string[] = rawHoldings.map((h: any) => h.symbol)
 
+      // 1.5) กันยิง Groq ซ้ำซ้อนถ้า cron endpoint ถูกเรียกมากกว่า 1 ครั้งในวันเดียวกัน (เช่น Vercel
+      // retry หรือถูก trigger มือซ้ำ) — reuse ตาราง daily_analyses ที่มีอยู่แล้วเป็น "cache" ในตัว ไม่ต้อง
+      // สร้างระบบ cache/calendar ใหม่ใดๆ เพิ่ม: หุ้นที่มีผลวิเคราะห์สำเร็จ (ไม่มี error) ของวันนี้อยู่แล้ว
+      // จะถูกข้ามไปเลย ไม่เรียก Groq ซ้ำ — ครอบคลุมกรณีวันหยุดสุดสัปดาห์/ตลาดปิดโดยอัตโนมัติเช่นกัน เพราะ
+      // ถ้าวันนั้นมีผลวิเคราะห์อยู่แล้วก็จะไม่วิเคราะห์ซ้ำ (แต่ยังคงพยายามวิเคราะห์ทุกหุ้นที่ยังไม่มีผลของวันนี้)
+      const { data: existingToday } = await supabase
+        .from('daily_analyses')
+        .select('symbol')
+        .eq('user_id', userId)
+        .eq('analysis_date', analysisDate)
+        .is('error', null)
+      const alreadyAnalyzedSymbols = new Set((existingToday ?? []).map((r: any) => r.symbol as string))
+
       // 2) เงินสด + ราคาปัจจุบัน + earnings (parallel)
       const [{ data: settings }, quotes] = await Promise.all([
         supabase.from('user_settings').select('cash_balance').eq('user_id', userId).single(),
@@ -96,20 +112,36 @@ export async function GET(request: NextRequest) {
       })
       const totalPortfolioValue = holdings.reduce((sum, h) => sum + (h.market_value ?? 0), 0)
 
-      // 4) ข่าวล่าสุด (ย่อ — 2 ข่าว/หุ้น) แปล+จัดหมวดครั้งเดียวทั้ง batch
-      const newsBySymbol = await fetchNewsForSymbols(symbols)
+      // 4) ข่าวล่าสุด (ย่อ — 2 ข่าว/หุ้น) แปล+จัดหมวดครั้งเดียวทั้ง batch — ดึงเฉพาะหุ้นที่ยังไม่มีผลวิเคราะห์
+      // ของวันนี้ (ดูข้อ 1.5) เพราะ fetchNewsForSymbols เรียก Groq แปล/จัดหมวดข่าวด้วย ไม่อยากเสีย call ซ้ำ
+      const symbolsToAnalyze = symbols.filter(s => !alreadyAnalyzedSymbols.has(s))
+      const newsBySymbol = await fetchNewsForSymbols(symbolsToAnalyze)
 
       // 5) วิเคราะห์ทีละหุ้น (sequential + delay กัน rate limit)
       for (const holding of holdings) {
+        if (alreadyAnalyzedSymbols.has(holding.symbol)) {
+          // มีผลวิเคราะห์สำเร็จของวันนี้อยู่แล้ว (ดูข้อ 1.5 ด้านบน) — ข้าม ไม่เรียก Groq ซ้ำ นับเป็น processed
+          processed++
+          continue
+        }
         try {
           const [technical, earnings] = await Promise.all([
             getTechnicalIndicators(holding.symbol),
             getUpcomingEarnings(holding.symbol),
           ])
 
+          // v1.12.0 (Portfolio-Aware Decision Framework): holdings array มี market_value ของทุกตัวอยู่แล้ว
+          // (คำนวณไปตั้งแต่ข้อ 3 ด้านบน) ไม่ต้องดึงราคาเพิ่ม — ใช้ต่อยอดสรุปสัดส่วนหุ้นอื่นในพอร์ตให้ AI เห็น
+          // ภาพรวมพอร์ตทั้งก้อนเหมือนกับฝั่ง /api/analyze (interactive) ทุกประการ ไม่ต้องเพิ่ม hardcode ticker
+          const otherHoldingsForPrompt = summarizeOtherHoldings(
+            holding.symbol,
+            holdings.map(h => ({ symbol: h.symbol, marketValue: h.market_value })),
+            totalPortfolioValue
+          )
+
           const result = await analyzeHoldingDetailed(
             holding, technical, cashBalance, totalPortfolioValue,
-            newsBySymbol[holding.symbol] ?? [], earnings
+            newsBySymbol[holding.symbol] ?? [], earnings, otherHoldingsForPrompt
           )
 
           const { error: upsertErr } = await supabase

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { analyzeHoldingDetailed, translateAndClassifyNews } from '@/lib/groq'
+import { analyzeHoldingDetailed, translateAndClassifyNews, summarizeOtherHoldings } from '@/lib/groq'
 import { getTechnicalIndicators, TechnicalIndicators } from '@/lib/indicators'
 import { getMultipleQuotesWithMetrics, getMultipleQuotes, getUpcomingEarnings, UpcomingEarnings } from '@/lib/finnhub'
 import { cacheGet, cacheSet } from '@/lib/cache'
@@ -190,6 +190,8 @@ function buildAnalysisFingerprint(input: {
   rawNews: RawNewsItem[]
   technical: TechnicalIndicators
   earnings: UpcomingEarnings | null
+  // v1.12.0 (Portfolio-Aware Decision Framework): ดู comment ตรงจุดเรียกว่าทำไมต้องรวมใน fingerprint
+  otherHoldings: Array<{ symbol: string; weightPct: number }>
 }): string {
   const newsFp = input.rawNews.map(n => `${n.headline}|${n.datetime}|${n.source}`).join(';')
   const t = input.technical
@@ -200,12 +202,13 @@ function buildAnalysisFingerprint(input: {
     t.trend, t.lastClose, t.support, t.resistance, t.volumeRatio,
   ].join(',')
   const earningsFp = input.earnings ? `${input.earnings.date}|${input.earnings.daysUntil}|${input.earnings.hour}` : 'none'
+  const otherHoldingsFp = input.otherHoldings.map(h => `${h.symbol}:${h.weightPct.toFixed(2)}`).join(',')
 
   const raw = [
     input.symbol, input.shares, input.cost_basis,
     input.cashBalance.toFixed(2), input.totalPortfolioValue === null ? 'null' : input.totalPortfolioValue.toFixed(2),
     input.current_price, input.pe, input.week52High, input.week52Low,
-    newsFp, technicalFp, earningsFp,
+    newsFp, technicalFp, earningsFp, otherHoldingsFp,
   ].join('::')
 
   return createHash('sha256').update(raw).digest('hex').slice(0, 32)
@@ -311,6 +314,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // v1.12.0 (Portfolio-Aware Decision Framework): สรุปสัดส่วนหุ้นอื่นในพอร์ต ใช้ otherPrices ที่ดึงมาแล้ว
+    // ด้านบน (ไม่เพิ่ม API call ใหม่) — summarizeOtherHoldings คืน [] เองถ้า totalPortfolioValue เป็น null
+    // (portfolio context incomplete) จึงไม่ต้อง guard ซ้ำที่นี่
+    const otherHoldingsForPrompt = summarizeOtherHoldings(
+      symbol,
+      ((allHoldings ?? []) as Array<{ symbol: string; shares: number }>)
+        .filter(h => h.symbol !== symbol)
+        .map(h => ({ symbol: h.symbol, marketValue: otherPrices[h.symbol] != null ? otherPrices[h.symbol] * h.shares : null })),
+      totalPortfolioValue
+    )
+
     const fingerprint = buildAnalysisFingerprint({
       symbol,
       shares: own.shares,
@@ -324,6 +338,10 @@ export async function POST(request: NextRequest) {
       rawNews,
       technical,
       earnings,
+      // v1.12.0 (Portfolio-Aware Decision Framework): otherHoldings ต้องรวมใน fingerprint ด้วย — ถ้าไม่รวม
+      // จะมี edge case ที่ totalPortfolioValue รวมเท่าเดิม (เช่นหุ้น A ขึ้น $100 หุ้น B ลง $100 พอดี) แต่
+      // สัดส่วน (%) ของแต่ละตัวเปลี่ยนจริง cache เดิมจะถูก reuse ทั้งที่บริบทพอร์ตที่ AI เห็นเปลี่ยนไปแล้ว
+      otherHoldings: otherHoldingsForPrompt,
     })
     const cacheKey = `analyze:${user.id}:${symbol}:${fingerprint}`
     const cached = cacheGet<DetailedAnalysisResult>(cacheKey)
@@ -344,7 +362,8 @@ export async function POST(request: NextRequest) {
       cashBalance,
       totalPortfolioValue,
       news,
-      earnings
+      earnings,
+      otherHoldingsForPrompt
     )
 
     // cache เฉพาะผลที่วิเคราะห์สำเร็จจริง (ไม่มี error และมี technicalSummary + summary)

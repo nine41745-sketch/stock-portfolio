@@ -152,6 +152,24 @@ export async function analyzeHolding(
   }
 }
 
+// v1.12.0 (Portfolio-Aware Decision Framework): สรุปสัดส่วน (%) ของหุ้นตัวอื่นๆ ในพอร์ต (ไม่รวมตัวที่
+// กำลังวิเคราะห์) เทียบกับมูลค่าพอร์ตหุ้นรวม — ให้ AI เห็นภาพรวมการกระจายพอร์ตทั้งก้อน (concentration/
+// correlated exposure) แทนที่จะเห็นแค่หุ้นตัวเดียวโดดๆ เป็น pure function รับ array ทั่วไป ไม่ผูกกับ
+// ticker ใดเลย ใช้ได้กับหุ้นปัจจุบัน/อนาคตทุกตัวอัตโนมัติ ไม่ต้องเพิ่ม hardcode ทีละตัว
+// คืน [] ถ้า totalPortfolioValue คำนวณไม่ได้ (null/0) — เรียกใช้จุดที่เรียกต้องแสดง "N/A/ไม่ครบ" เอง
+// ไม่ใช่หน้าที่ฟังก์ชันนี้เดา
+export function summarizeOtherHoldings(
+  targetSymbol: string,
+  allHoldings: Array<{ symbol: string; marketValue: number | null }>,
+  totalPortfolioValue: number | null
+): Array<{ symbol: string; weightPct: number }> {
+  if (totalPortfolioValue === null || totalPortfolioValue <= 0) return []
+  return allHoldings
+    .filter(h => h.symbol !== targetSymbol && h.marketValue != null)
+    .map(h => ({ symbol: h.symbol, weightPct: ((h.marketValue as number) / totalPortfolioValue) * 100 }))
+    .sort((a, b) => b.weightPct - a.weightPct)
+}
+
 export async function analyzeHoldingDetailed(
   holding: HoldingWithPrice,
   technical: TechnicalSnapshot,
@@ -162,9 +180,20 @@ export async function analyzeHoldingDetailed(
   // เหมือนเดิม (backward compatible กับ cron ที่ยังส่ง number ล้วนๆ อยู่)
   totalPortfolioValue: number | null = 0,
   recentNews: Array<{ headline: string; headlineTh?: string; impact?: string }> = [],
-  earnings: EarningsInfo | null = null
+  earnings: EarningsInfo | null = null,
+  // v1.12.0 (Portfolio-Aware Decision Framework): หุ้นอื่นในพอร์ต + สัดส่วน — default [] เพื่อ backward
+  // compatible กับจุดเรียกเก่าที่ยังไม่ได้ส่งมา (ไม่มี ก็แค่ได้ portfolio context ที่ไม่มีข้อมูลหุ้นอื่น
+  // ไม่ error)
+  otherHoldings: Array<{ symbol: string; weightPct: number }> = []
 ): Promise<DetailedAnalysisResult> {
   const { symbol, shares, cost_basis, current_price, pnl_pct, market_value, pe, week52High, week52Low } = holding
+
+  // v1.12.0 (Portfolio-Aware Decision Framework): สัดส่วนของหุ้นตัวนี้เทียบกับมูลค่าพอร์ตหุ้นรวม (ไม่รวม
+  // เงินสด) — null แปลว่า "ไม่ทราบ/คำนวณไม่ได้" (portfolio context incomplete) เช่นเดียวกับ cashRatioPct
+  // ด้านล่าง ไม่ใช่ 0% จริงๆ
+  const positionWeightPct: string | null = totalPortfolioValue !== null && totalPortfolioValue > 0 && market_value !== null
+    ? ((market_value / totalPortfolioValue) * 100).toFixed(1)
+    : null
 
   // cashRatioPct = null หมายถึง "ไม่ทราบ/คำนวณไม่ได้" (portfolio valuation incomplete) ต่างจาก '0'
   // ที่หมายถึง "คำนวณได้แล้วได้ 0%" (พฤติกรรมเดิมตอน totalPortfolioValue===0 ยังคงเหมือนเดิมทุกประการ)
@@ -202,13 +231,36 @@ export async function analyzeHoldingDetailed(
     ? `⚠️ หุ้นนี้จะประกาศผลประกอบการในอีก ${earnings.daysUntil} วัน (${earnings.date}${earnings.hour ? `, ${earnings.hour}` : ''}) — ราคาอาจเหวี่ยงแรงจากงบ ทำให้ technical indicators ใช้ทำนายไม่ได้แม่นยำช่วงนี้`
     : 'ไม่มีข้อมูลวันประกาศงบในอีก 60 วันข้างหน้า'
 
+  // v1.12.0 (Portfolio-Aware Decision Framework): สรุปหุ้นอื่นในพอร์ตเป็นข้อความให้ AI อ่าน — ตัดที่ 8
+  // ตัวแรก (เรียงสัดส่วนมากไปน้อยจาก summarizeOtherHoldings) กันพรอมต์ยาวเกินไปในพอร์ตที่มีหุ้นเยอะมาก
+  // ตัวที่เหลือสรุปเป็นจำนวนรวมแทนไม่ทิ้งข้อมูลไปเฉยๆ — generic ล้วนๆ ทำงานกับหุ้นกี่ตัวก็ได้อัตโนมัติ
+  const OTHER_HOLDINGS_SHOWN = 8
+  const otherHoldingsLine = otherHoldings.length === 0
+    ? (totalPortfolioValue === null ? 'N/A — ไม่สามารถคำนวณได้ เนื่องจากราคาหุ้นบางตัวในพอร์ตไม่พร้อม (portfolio context incomplete)' : 'ไม่มีหุ้นอื่นในพอร์ต (ถือตัวนี้ตัวเดียว)')
+    : [
+        otherHoldings.slice(0, OTHER_HOLDINGS_SHOWN).map(h => `${h.symbol} (${h.weightPct.toFixed(1)}%)`).join(', '),
+        otherHoldings.length > OTHER_HOLDINGS_SHOWN ? `และอีก ${otherHoldings.length - OTHER_HOLDINGS_SHOWN} ตัว` : null,
+      ].filter(Boolean).join(' ')
+
+  // v1.12.0 (Portfolio-Aware Decision Framework): ย้าย "summary" มาไว้เป็น field ที่ 4 ในสคีมา (ต่อจาก
+  // technicalSummary) จากเดิมที่อยู่ท้ายสุด — เพราะตอนนี้ summary ต้องแบกรับเนื้อหาสำคัญเพิ่มขึ้นมาก
+  // (fundamental/valuation/portfolio impact/เหตุผล) เสี่ยงโดนตัดทิ้งถ้า Groq token หมดกลางคันตอนอยู่
+  // ท้ายสุดแบบเดิม ย้ายมาไว้ต้นๆ คู่กับ technicalSummary ที่ required อยู่แล้ว ให้ทั้งสอง field สำคัญนี้
+  // รอดจาก truncation ได้มากขึ้น ("action" ยังคงเป็น key แรกสุดเหมือนเดิมทุกประการ ไม่กระทบ regex
+  // recovery ที่มีอยู่)
   const prompt = `คุณเป็นนักวิเคราะห์การลงทุนระดับสถาบัน (Institutional Portfolio Manager) ประเมินหุ้น ${symbol} อย่างเป็นกลาง ปราศจาก Bias
+ต้องตัดสินใจโดยพิจารณาหลายมิติร่วมกันเสมอ (fundamentals, valuation, เทคนิคัล, ข่าวเฉพาะบริษัท, ข่าว sector/macro ภาพรวม, ต้นทุนผู้ใช้, กำไร/ขาดทุนปัจจุบัน, ขนาดโพซิชัน/สัดส่วนในพอร์ต, มูลค่าพอร์ตรวม, เงินสดคงเหลือ, ความเข้มข้นของพอร์ต, risk/reward และ downside, business thesis ระยะยาว) ห้ามใช้ตัวชี้วัดเทคนิคัลเพียงตัวเดียวเป็นตัวตัดสิน action เด็ดขาด
 
 === สถานะพอร์ตและปัจจัยแวดล้อม ===
 - ราคาปัจจุบัน: $${current_price?.toFixed(2) ?? 'N/A'} (ต้นทุน: ${cost_basis ? `$${cost_basis.toFixed(2)}` : 'N/A'}, ถืออยู่: ${shares} หุ้น)
 - สถานะ P&L ปัจจุบัน: ${pnl_pct != null ? `${pnl_pct > 0 ? '+' : ''}${pnl_pct.toFixed(1)}%` : 'N/A'} (มูลค่า: ${market_value ? `$${market_value.toFixed(2)}` : 'N/A'})
-- Valuation/Metrics: ${metricsInfo || 'ไม่มีข้อมูล'}
+- Valuation/Metrics: ${metricsInfo || 'ไม่มีข้อมูล'} (⚠️ P/E ที่ให้มาเป็นค่า trailing/normalized เท่านั้น ไม่มี forward P/E และไม่มี timestamp ความสดใหม่ของข้อมูลกำกับ — ห้ามสรุปว่าหุ้น "แพง/ถูก" จาก P/E ตัวเดียวถ้าไม่มีข้อมูลอื่นสนับสนุนพอ ให้ระบุว่า valuation confidence ต่ำแทน ห้ามสร้างตัวเลขขึ้นเอง)
 - สถานะสภาพคล่อง: เงินสดสำรอง $${cashBalance.toFixed(2)} (${cashRatioPct === null ? 'N/A — ไม่สามารถคำนวณสัดส่วนเงินสดได้ เนื่องจากราคาหุ้นบางตัวในพอร์ตไม่พร้อม' : `${cashRatioPct}% ของพอร์ต`}) — เป็นข้อมูลอ้างอิงเท่านั้น ไม่ใช่เหตุผลในการแนะนำซื้อ
+
+=== บริบทพอร์ตทั้งหมด (Portfolio-Wide Context) ===
+- มูลค่าพอร์ตหุ้นรวม (ไม่รวมเงินสด): ${totalPortfolioValue === null ? 'N/A — portfolio context incomplete (ราคาหุ้นบางตัวในพอร์ตไม่พร้อม ห้ามเดาตัวเลข)' : `$${totalPortfolioValue.toFixed(2)}`}
+- สัดส่วนหุ้นนี้ในพอร์ต (Position Weight): ${positionWeightPct === null ? 'N/A — portfolio context incomplete' : `${positionWeightPct}% ของมูลค่าพอร์ตหุ้นรวม`}
+- หุ้นอื่นในพอร์ต: ${otherHoldingsLine}
 
 === ตัวชี้วัดทางเทคนิค (Technical Indicators) ===
 ${techLines || 'ไม่มีข้อมูลเทคนิค'}
@@ -220,23 +272,46 @@ ${earningsLine}
 ${newsSnippet}
 
 === เกณฑ์ประเมินสัญญาณ (DECISION FRAMEWORK) ===
-เช็กตามลำดับข้อ 0 -> 1 -> 2 -> 3 -> 4 จากบนลงล่าง แต่ละข้อมีเงื่อนไขย่อยหลายข้อเชื่อมด้วย "หรือ" (OR) เสมอ
+เช็กตามลำดับข้อ 0 -> 1 -> 2 -> 3 -> 4 จากบนลงล่าง แต่ละข้อมีเงื่อนไขย่อยหลายข้อเชื่อมด้วย "หรือ" (OR) เสมอ (ยกเว้นข้อ 1 SELL_ALL ที่เข้มงวดกว่าข้ออื่นตามที่ระบุในข้อนั้น)
 กติกาสำคัญที่สุด: แค่เงื่อนไขย่อยข้อเดียวเป็นจริงก็เพียงพอให้เลือก action นั้นได้ทันที ห้ามหาเหตุผลอื่นมา "หักล้าง" หรือ "รอเงื่อนไขอื่นมายืนยันเพิ่ม" ก่อนตัดสินใจ (เช่น P&L เกินเกณฑ์แล้วแต่ RSI ยังไม่ยืนยัน ก็ต้องเลือกตามเกณฑ์ P&L ไปเลย ไม่ต้องรอ RSI)
+กติกาสำคัญอีกข้อ: ถ้าข้อมูลบริบทพอร์ต (มูลค่าพอร์ตรวม/สัดส่วนหุ้นนี้ในพอร์ต) เป็น N/A ห้ามเดาตัวเลขหรือสมมติค่าขึ้นเองเด็ดขาด ให้ระบุตรงๆ ว่า portfolio context ไม่ครบ แล้วใช้ข้อมูลส่วนที่มีอยู่จริง (ราคา/ต้นทุน/เทคนิคัล/ข่าว) ตัดสินใจแทน
 
 0. ถ้าใกล้ประกาศงบภายใน 7 วัน — ยกระดับความเสี่ยงเป็น High Risk เสมอ ไม่ว่า action จะเป็นอะไร ต้องเตือนใน "caution" อย่างชัดเจนว่าใกล้ประกาศงบ ราคาอาจเหวี่ยงแรงเกินคาดจาก technical signal และควรพิจารณาลดขนาดโพซิชันหรือรอดูงบก่อนตัดสินใจซื้อเพิ่ม
 
-1. SELL_ALL (ขายตัดขาดทุน / ล้างพอร์ต) — เข้าเกณฑ์ทันทีถ้ามีข้อใดข้อหนึ่งต่อไปนี้เป็นจริง (ไม่ต้องครบทุกข้อ ไม่ต้องมีข่าวลบร่วมด้วยก็ได้):
-   (ก) P&L ต่ำกว่า -15% และแนวโน้มเป็น DOWNTREND
-   (ข) ราคาต่ำกว่า EMA200 ชัดเจน
-   (ค) มีข่าวปัจจัยพื้นฐานเปลี่ยนอย่างร้ายแรง (NEGATIVE impact สูง)
-   ตัวอย่าง: P&L -23% และแนวโน้ม DOWNTREND แม้ไม่มีข่าวลบเลยและ RSI ยังไม่ oversold ก็ต้องเลือก SELL_ALL ทันที (เข้าเงื่อนไข ก อย่างเดียวก็พอแล้ว ห้ามมองว่า "ไม่มีข่าวลบเลยขอ HOLD ไปก่อน")
+1. SELL_ALL (ขายทั้งหมด) — เป็น action ที่มี threshold สูงที่สุด ใช้เฉพาะเมื่อมีหลักฐานว่า business thesis ของหุ้นนี้ "เสียหายอย่างมีนัยสำคัญ" เท่านั้น
+   ห้ามเลือก SELL_ALL เพียงเพราะเงื่อนไขต่อไปนี้ลำพัง ไม่ว่าจะรุนแรงแค่ไหนก็ตาม ถ้าไม่มีหลักฐาน thesis-breaking ตามรายการด้านล่างร่วมด้วย:
+   - ราคาต่ำกว่า EMA200 (ลำพัง)
+   - EMA50/EMA100/EMA200 เรียงตัวเป็นขาลง (bearish alignment)
+   - MACD ติดลบ
+   - RSI อ่อนแอ/oversold
+   - แนวโน้มราคาเป็นขาลง (downtrend) ลำพัง
+   - ข่าวลบภาพรวมตลาด/ETF/sector ทั่วไปที่ไม่ได้เจาะจงบริษัทนี้โดยตรง
+   - การขาดทุนที่ยังไม่รับรู้ (unrealized loss/P&L ติดลบ) ของผู้ใช้ลำพัง ไม่ว่าจะติดลบมากแค่ไหน
+   เข้าเกณฑ์ SELL_ALL ได้ก็ต่อเมื่อมีหลักฐานอย่างน้อยหนึ่งข้อต่อไปนี้ ที่มีนัยสำคัญและเจาะจงต่อบริษัทนี้จริง (ไม่ใช่ภาพรวมตลาด):
+   (ก) business thesis เดิมเสียหายอย่างมีสาระสำคัญ (เช่น ผลิตภัณฑ์/บริการหลักเสียส่วนแบ่งตลาดถาวร ไม่ใช่แค่ผลประกอบการรายไตรมาสแย่ลง)
+   (ข) fundamentals เสื่อมถอยรุนแรงเฉพาะบริษัท ที่มีหลักฐานจากข่าว/ข้อมูลจริง (ไม่ใช่แค่การตีความจากราคาหุ้นที่ลง)
+   (ค) ข่าว fraud / ปัญหาบัญชี / governance ที่มีผลกระทบรุนแรงต่อบริษัท
+   (ง) ความเสี่ยงด้านสภาพคล่อง/ความสามารถชำระหนี้ (solvency/liquidity risk) ที่มีนัยสำคัญ
+   (จ) สูญเสียความสามารถแข่งขันเชิงโครงสร้างอย่างรุนแรง (structural competitive loss)
+   (ฉ) เหตุการณ์กฎหมาย/กำกับดูแล (regulatory/legal) ที่กระทบธุรกิจหลักอย่างหนัก
+   (ช) ความเสี่ยงระดับสูงอื่นที่มีหลักฐานชัดเจนเทียบเท่าข้อ (ก)-(ฉ) ข้างต้น
+   ถ้าไม่เข้าเงื่อนไข (ก)-(ช) แม้แต่ข้อเดียว ห้ามเลือก SELL_ALL เด็ดขาด ไม่ว่า technical/P&L จะแย่แค่ไหนก็ตาม — ให้ปัจจัยเทคนิคัลที่อ่อนแอมีผลต่อ "จังหวะ/ขนาดโพซิชัน" (timing/position sizing) แทน โดย action ที่เลือกได้ยังคงเป็นหนึ่งใน 4 ค่าเดิมเท่านั้น (BUY/HOLD/SELL_PARTIAL/SELL_ALL) — ใช้ HOLD ถ้า thesis ยังดีและยังไม่อยากทำอะไรตอนนี้, ใช้ BUY พร้อมระบุใน "buyConditions" ว่าควรทยอยซื้อทีละน้อย (DCA) แทนซื้อเต็มจำนวนถ้าจะเข้าซื้อเพิ่ม, หรือใช้ SELL_PARTIAL ถ้าต้องการลดความเสี่ยงบางส่วนไว้ก่อน — ห้ามสร้าง action ค่าใหม่ที่ไม่อยู่ใน 4 ค่านี้เด็ดขาด (เช่น "WAIT" หรือ "BUY_SMALL" ไม่ใช่ action ที่ถูกต้อง)
+   ตัวอย่าง: P&L -23% และแนวโน้ม DOWNTREND ชัดเจน ราคาต่ำกว่า EMA200 แต่ไม่มีข่าว fundamentals เสีย/fraud/solvency/regulatory ใดๆ เลย — ห้ามเลือก SELL_ALL เพียงเพราะ P&L หรือแนวโน้มเทคนิคัล ให้พิจารณา HOLD (ถ้าเชื่อว่า thesis ระยะยาวยังดีอยู่) หรือ SELL_PARTIAL (ถ้าต้องการลดความเสี่ยง/คืนทุนบางส่วนก่อน) แทน พร้อมอธิบายความขัดแย้งระหว่างเทคนิคัลที่อ่อนแอกับพื้นฐานที่ยังไม่เสียให้ผู้ใช้เข้าใจตรงๆ
+   สำคัญมาก (structured evidence — ระบบจะตรวจสอบค่านี้แยกจาก action โดยอัตโนมัติ): ทุกครั้งที่ตอบต้องใส่ "thesisBroken" (boolean), "sellAllEvidenceTypes" (array ของ enum string) และ "sellAllEvidence" (array ของ string อธิบายเพิ่มเติม) เสมอ ไม่ว่า action จะเป็นอะไร
+   ถ้าเลือก action เป็น SELL_ALL ให้ thesisBroken เป็น true และใส่ sellAllEvidenceTypes อย่างน้อย 1 ค่า โดยแต่ละค่าต้องเป็นหนึ่งใน enum ที่อนุญาตเท่านั้น (ห้ามสร้างค่าอื่นนอกเหนือจากนี้เด็ดขาด):
+   "FUNDAMENTAL_DETERIORATION" (พื้นฐานธุรกิจเสียหายมีสาระสำคัญ), "FRAUD_GOVERNANCE" (ทุจริต/governance), "SOLVENCY_LIQUIDITY" (ความเสี่ยงสภาพคล่อง/ล้มละลาย), "STRUCTURAL_COMPETITIVE_LOSS" (สูญเสียความสามารถแข่งขันเชิงโครงสร้าง), "SEVERE_REGULATORY_LEGAL" (ปัญหากฎหมาย/กำกับดูแลรุนแรง), "BUSINESS_MODEL_IMPAIRMENT" (โมเดลธุรกิจเสียหาย), "OTHER_PERMANENT_IMPAIRMENT" (ความเสียหายถาวรเฉพาะบริษัทอื่นๆ ที่ไม่เข้าหมวดข้างต้นแต่ยังเป็น thesis-breaking จริง)
+   ห้ามใส่ enum ค่าใดๆ ที่สื่อถึงเทคนิคัล (EMA/MACD/RSI/downtrend), unrealized loss/P&L, หรือข่าวภาพรวมตลาด/macro/ETF/sector เด็ดขาด — ไม่มี enum สำหรับสิ่งเหล่านี้ในรายการที่อนุญาตเลย ถ้าเหตุผลที่แท้จริงเป็นแค่เทคนิคัลหรือภาพรวมตลาด ห้ามเลือก SELL_ALL ตั้งแต่แรก (ดูข้อ 1 ด้านบน)
+   ใส่ sellAllEvidence (string) เพิ่มเติมเพื่ออธิบายรายละเอียดของแต่ละ evidence type เป็นภาษาที่อ่านเข้าใจได้ (เช่น "(ค) พบข่าวปัญหาบัญชี/governance ที่กระทบบริษัทโดยตรง") แต่ field นี้เป็นแค่คำอธิบายประกอบเท่านั้น ระบบฝั่ง server ใช้ sellAllEvidenceTypes เป็นตัวตัดสินหลัก ไม่ใช้ sellAllEvidence แบบ free-text ในการอนุมัติ SELL_ALL
+   ถ้า action ไม่ใช่ SELL_ALL ให้ thesisBroken เป็น false, sellAllEvidenceTypes และ sellAllEvidence เป็น array ว่าง [] เสมอ ห้ามใส่ thesisBroken=true โดยไม่มี sellAllEvidenceTypes ที่ถูกต้องรองรับ — ระบบฝั่ง server จะปฏิเสธ SELL_ALL ที่ไม่ผ่านเงื่อนไขนี้โดยอัตโนมัติไม่ว่า action ที่ตอบมาจะเป็นอะไรก็ตาม
 
-2. SELL_PARTIAL (ขายล็อกกำไรบางส่วน) — เข้าเกณฑ์ทันทีถ้ามีข้อใดข้อหนึ่งต่อไปนี้เป็นจริง:
+
+2. SELL_PARTIAL (ขายล็อกกำไรบางส่วน / ลดความเสี่ยงบางส่วน) — เข้าเกณฑ์ทันทีถ้ามีข้อใดข้อหนึ่งต่อไปนี้เป็นจริง:
    (ก) P&L เกิน +20% ขึ้นไป
    (ข) RSI(14) รายวัน > 70 (Overbought)
    (ค) ราคาปัจจุบัน "ทะลุ" แนวต้านสำคัญไปแล้ว (Current Price > Resistance หรือ > 52W High หรือ > BB Upper ที่ให้มา) และ P&L เป็นบวกเกิน +15% ขึ้นไป
        ห้ามตีความการทะลุแนวต้านแบบนี้เป็นสัญญาณ bullish breakout ที่ต้องถือต่อ — ให้ถือว่าราคาวิ่งเกินเป้าหมายระยะสั้นแล้ว ต้องเลือก SELL_PARTIAL เพื่อทยอยล็อกกำไร แม้ RSI จะยังไม่เกิน 70 ก็ตาม
        ข้อยกเว้น (ยังไม่เข้าเกณฑ์นี้): ถ้าราคาปัจจุบันยังต่ำกว่าหรือเท่ากับแนวต้าน (แค่กำลังเข้าใกล้/ทดสอบแนวต้าน ยังไม่ทะลุ) ให้ถือว่ายังไม่เข้าเงื่อนไขข้อนี้ ไปประเมินเงื่อนไขอื่นแทน
+   (ง) fundamentals เริ่มเสื่อมถอยจริง (มีหลักฐานจากข่าว) แต่ยังไม่ถึงขั้น thesis-breaking ตามเกณฑ์ SELL_ALL ข้อ 1 — ใช้ SELL_PARTIAL เพื่อลดความเสี่ยงบางส่วนไว้ก่อน แทนที่จะถือเต็มจำนวนหรือขายทั้งหมดทันที
    ตัวอย่าง 1: P&L +66% แต่ RSI รายวันแค่ 60 (ยังไม่ overbought) ก็ต้องเลือก SELL_PARTIAL ทันที เพราะเข้าเงื่อนไข (ก) แล้ว ไม่ต้องรอ RSI ยืนยันเพิ่ม
    ตัวอย่าง 2: ราคาปัจจุบัน $124.89 แนวต้านที่คำนวณไว้ $120 (ราคาทะลุแนวต้านไปแล้ว) P&L +19.57% RSI รายวัน 61 (ยังไม่ overbought) — ต้องเลือก SELL_PARTIAL ทันที เพราะราคาทะลุแนวต้านไปแล้วและ P&L เกิน +15% เข้าเงื่อนไข (ค) ห้ามใช้เหตุผล "แนวโน้ม SIDEWAYS" หรือ "ยังไม่มีข่าวลบ" มาหักล้างแล้วเลือก HOLD แทน
    ตัวเสริมความมั่นใจ (ไม่ใช่เงื่อนไขบังคับ): ถ้า RSI(14) รายสัปดาห์ overbought (>70) ร่วมด้วย หรือ Volume Ratio สูงผิดปกติร่วมด้วย ให้ระบุใน technicalSummary ว่ายิ่งน่าเชื่อว่าเป็นจุดพีคจริง
@@ -246,36 +321,70 @@ ${newsSnippet}
    (ข) RSI(14) รายวัน < 45 (โซนสะสม)
    (ค) ราคาใกล้/ต่ำกว่าแนวรับ (Support)
    ตัวเสริมความมั่นใจ (ไม่ใช่เงื่อนไขบังคับ): ถ้า RSI(14) รายสัปดาห์ยังไม่ oversold (ยังสูงกว่า 45) ระหว่างที่ RSI รายวัน oversold — แปลว่าเป็นแค่การย่อตัวระยะสั้นในเทรนด์ใหญ่ที่ยังแข็งแรง ให้ระบุว่าสัญญาณซื้อน่าเชื่อถือกว่า แต่ถ้า RSI รายสัปดาห์ก็ oversold ด้วย ให้เตือนว่าอาจเป็นเทรนด์ขาลงใหญ่ ไม่ใช่แค่ย่อตัว
+   ก่อนสรุป BUY ต้องพิจารณาบริบทพอร์ตด้วยเสมอ (portfolio-aware sizing):
+   - ถ้าสัดส่วนหุ้นนี้ในพอร์ต (Position Weight) สูงอยู่แล้ว (เช่นเกิน ~25-30% ของมูลค่าพอร์ตหุ้นรวม) ห้ามแนะนำซื้อเพิ่มแบบไม่สนใจ concentration — ให้เตือนเรื่อง concentration risk ใน "caution" เสมอ และถ้ายังเลือก action เป็น BUY ให้ระบุใน "buyConditions" ว่าควรซื้อขนาดเล็กมากหรือรอให้สัดส่วนลดลงก่อน แทนการแนะนำซื้อเต็มจำนวนตามสัญญาณเทคนิคัลเพียงอย่างเดียว หรือพิจารณาเปลี่ยนเป็น HOLD แทนก็ได้ถ้า concentration สูงมากจนไม่ควรซื้อเพิ่มเลย
+   - ถ้าเงินสดคงเหลือต่ำเทียบกับมูลค่าพอร์ต ให้ระบุข้อจำกัดเรื่องเงินสดชัดเจนใน "buyConditions" (เช่น เงื่อนไขซื้อเมื่อมีเงินสดเพิ่ม หรือซื้อได้จำกัดกี่หุ้น) แทนที่จะแนะนำซื้อเกินกำลังเงินสดที่มี
+   - ถ้า Position Weight เป็น N/A (portfolio context ไม่ครบ) ห้ามเดาว่าโพซิชันใหญ่หรือเล็ก ให้ระบุว่าไม่สามารถประเมิน concentration ได้ตรงๆ
 
-4. HOLD (ถือต่อ) — ใช้ได้เฉพาะเมื่อเช็กครบข้อ 1-3 แล้วจริงๆ ว่าไม่เข้าเงื่อนไขย่อยข้อไหนเลยแม้แต่ข้อเดียว เช่น RSI(14) รายวันอยู่กลางแท้ๆ (45-60) และ P&L อยู่ระหว่าง -15% ถึง +20% และราคาไม่ชนแนวรับ/แนวต้าน และไม่มีข่าวสำคัญ
+4. HOLD (ถือต่อ) — ใช้ได้เฉพาะเมื่อเช็กครบข้อ 1-3 แล้วจริงๆ ว่าไม่เข้าเงื่อนไขย่อยข้อไหนเลยแม้แต่ข้อเดียว เช่น RSI(14) รายวันอยู่กลางแท้ๆ (45-60) และ P&L อยู่ระหว่าง -15% ถึง +20% และราคาไม่ชนแนวรับ/แนวต้าน และไม่มีข่าวสำคัญ หรือกรณีเทคนิคัลอ่อนแอแต่ fundamentals/thesis ยังไม่เสียตามที่อธิบายในข้อ 1
 
 ห้ามเลือก BUY แค่เพราะมีเงินสดเหลือเยอะ ต้องมีเหตุผลด้านเทคนิคัล/ข่าว/fundamentals รองรับเสมอ
 ห้ามเลือก HOLD เป็นค่าปลอดภัยเริ่มต้น — ต้องเช็คเงื่อนไขย่อยทุกข้อของ SELL_ALL, SELL_PARTIAL, BUY ก่อนเสมอทีละข้อ เลือก HOLD ได้ก็ต่อเมื่อไม่เข้าเงื่อนไขย่อยข้อใดเลยจริงๆ เท่านั้น
 ถ้า technical indicators คำนวณไม่ได้ (ข้อมูลไม่พอ) ให้ใช้ fundamentals (P/E, 52W High/Low) และข่าวแทนในการตัดสินใจ ไม่ใช่รีบเลือก HOLD เพราะขาดข้อมูล
 
+=== การจำแนกข่าว (News Classification) ===
+ข่าวแต่ละชิ้นด้านบนต้องจำแนกว่าเป็นข่าวเฉพาะบริษัทนี้ (company-specific) หรือข่าวภาพรวม sector/ตลาดทั่วไป (macro/broad-market) ก่อนนำไปใช้ประกอบการตัดสินใจ
+ข่าวภาพรวมตลาด/ETF/sector ทั่วไปที่ไม่ได้เจาะจงบริษัทนี้โดยตรง ห้ามตีความเป็นเหตุการณ์ลบร้ายแรงเฉพาะบริษัท (severe company-specific negative event) เด็ดขาด
+ข่าวที่จะมีน้ำหนักผลักไปทาง SELL_ALL (ตามเงื่อนไข (ก)-(ช) ในข้อ 1) ต้องมีความเกี่ยวข้อง (relevance) และความรุนแรง (severity) ต่อบริษัทเป้าหมายจริงเท่านั้น
+
 สำคัญมากเรื่องราคา: "buyConditions" และ "sellConditions" ต้องอ้างอิงจากค่า แนวรับ (Support) / แนวต้าน (Resistance) / EMA / Bollinger Bands ที่ให้มาข้างต้นเท่านั้น
 ห้ามตั้งตัวเลขราคาขึ้นมาเองที่ไม่มีในข้อมูล ถ้าไม่มีตัวเลขให้อ้างอิงได้จริง ให้อธิบายเป็นเงื่อนไขเชิงคุณภาพแทน (เช่น "รอราคาย่อกลับมาที่แนวรับ") โดยไม่ต้องระบุตัวเลข
 
 สำคัญมาก: ต้องใส่ field "action" เป็น key แรกสุดของ JSON เสมอ (ก่อน field อื่นทั้งหมด) เพราะระบบอ่านค่านี้ก่อนเป็นอันดับแรก
-ถ้าพื้นที่ตอบไม่พอสำหรับทุก field ให้ตัดท้าย (risks/summary) ทิ้งได้ แต่ "action" ต้องมีเสมอและต้องมาก่อน
+ตามด้วย "thesisBroken", "sellAllEvidenceTypes" และ "sellAllEvidence" เป็น key ที่ 2-4 เสมอ (ระบบฝั่ง server ตรวจสอบ
+ฟิลด์เหล่านี้แยกจาก action โดยอัตโนมัติเพื่อยืนยันว่า SELL_ALL มีเหตุผล thesis-breaking เฉพาะบริษัทจริง โดยยึด
+sellAllEvidenceTypes (enum ที่อนุญาต) เป็นตัวตัดสินหลัก — ถ้าตรวจไม่ผ่านระบบจะลด action ลงเองโดยไม่แสดง SELL_ALL ให้
+ผู้ใช้เห็น ดังนั้นต้องตอบฟิลด์เหล่านี้ให้ตรงความจริงเสมอ ห้ามใส่มั่ว)
+ถ้าพื้นที่ตอบไม่พอสำหรับทุก field ให้ตัดท้าย (newsImpact/risks) ทิ้งได้ก่อน แต่ "action", "thesisBroken", "sellAllEvidenceTypes",
+"sellAllEvidence", "technicalSummary" และ "summary" ต้องมีให้ครบเสมอ
 
 ตอบเป็น JSON เท่านั้น ภาษาไทยสั้นกระชับ เรียง field ตามลำดับนี้ห้ามสลับ:
 {
   "action": "BUY|HOLD|SELL_PARTIAL|SELL_ALL",
+  "thesisBroken": false,
+  "sellAllEvidenceTypes": [],
+  "sellAllEvidence": [],
   "disclaimer": "บทวิเคราะห์โดย AI เพื่อประกอบการพิจารณาเท่านั้น ไม่ใช่คำแนะนำการลงทุน",
-  "buyConditions": "ระบุเงื่อนไข/ราคาที่จะเข้าซื้อ อ้างอิงจาก Support/EMA/BB ที่ให้มาเท่านั้น (ใส่ 'N/A' หาก action เป็น SELL_PARTIAL หรือ SELL_ALL)",
-  "sellConditions": "ระบุเงื่อนไข/ราคา/Stop Loss ที่ควรขายออก อ้างอิงจาก Resistance/EMA/BB ที่ให้มาเท่านั้น (ใส่ 'N/A' หาก action เป็น BUY)",
   "technicalSummary": "สรุปเทคนิคัล 2-3 ประโยค อ้างอิงค่า EMA/RSI/MACD/BB/Volume จริง",
-  "newsImpact": ["สรุปผลกระทบข่าวข้อ 1", "สรุปผลกระทบข่าวข้อ 2"],
+  "summary": "สรุปมุมมองการลงทุนรวม 3-5 ประโยค ต้องครอบคลุม: มุมมองพื้นฐาน (fundamental), มุมมอง valuation (พร้อมระบุ confidence ถ้าข้อมูลไม่พอ), ผลกระทบต่อพอร์ต (position weight/concentration/เงินสด) และเหตุผลว่าทำไม action นี้เหมาะกับพอร์ตของผู้ใช้คนนี้โดยเฉพาะ ถ้ามุมมองเทคนิคัลกับพื้นฐาน/valuation ขัดแย้งกัน (เช่น เทคนิคัลอ่อนแอแต่พื้นฐาน/ราคาน่าสนใจ หรือกลับกัน) ต้องพูดถึงความขัดแย้งนี้ตรงๆ ห้ามสรุปด้านเดียว",
+  "buyConditions": "ระบุเงื่อนไข/ราคาที่จะเข้าซื้อ อ้างอิงจาก Support/EMA/BB ที่ให้มาเท่านั้น รวมถึงข้อจำกัดเรื่องเงินสด/ขนาดโพซิชันถ้ามี (ใส่ 'N/A' หาก action เป็น SELL_PARTIAL หรือ SELL_ALL)",
+  "sellConditions": "ระบุเงื่อนไข/ราคา/Stop Loss ที่ควรขายออก อ้างอิงจาก Resistance/EMA/BB ที่ให้มาเท่านั้น (ใส่ 'N/A' หาก action เป็น BUY)",
+  "newsImpact": ["สรุปผลกระทบข่าวข้อ 1 (ระบุด้วยว่าเป็นข่าวเฉพาะบริษัทหรือข่าวภาพรวมตลาด)", "สรุปผลกระทบข่าวข้อ 2"],
   "risksAndOpportunities": {
-    "caution": "ข้อควรระวังหรือจุดเสี่ยงเชิงเทคนิค/พื้นฐาน (รวมเตือน earnings ถ้าใกล้ภายใน 7 วัน)",
+    "caution": "ข้อควรระวังหรือจุดเสี่ยงเชิงเทคนิค/พื้นฐาน/พอร์ต (รวมเตือน earnings ถ้าใกล้ภายใน 7 วัน และเตือน concentration risk ถ้ามี)",
     "opportunity": "โอกาสหรือปัจจัยบวก"
   },
-  "risks": ["ความเสี่ยงข้อ 1", "ความเสี่ยงข้อ 2"],
-  "summary": "สรุปคำแนะนำสั้นๆ 1-2 ประโยค"
+  "risks": ["ความเสี่ยงข้อ 1", "ความเสี่ยงข้อ 2"]
 }`
+// หมายเหตุ (นอก prompt): "thesisBroken" ต้องเป็น true และ "sellAllEvidenceTypes" ต้องมีอย่างน้อย 1 ค่าที่อยู่ใน
+// allowlist enum (ดู ALLOWED_SELL_ALL_EVIDENCE_TYPES ด้านล่าง) หาก action เป็น SELL_ALL มิฉะนั้นระบบจะลด action
+// ลงเองโดยอัตโนมัติ (ดู validation ด้านล่าง) — "sellAllEvidence" แบบ free-text ไม่ถูกใช้เป็นตัวอนุมัติหลักอีกต่อไป
 
   const validActions = ['BUY', 'HOLD', 'SELL_PARTIAL', 'SELL_ALL']
+
+  // v1.12.0 (SELL_ALL Safeguard Hardening): allowlist enum เดียวที่ยอมให้เป็น "หลักฐาน thesis-breaking
+  // เฉพาะบริษัท" จริงๆ — ตั้งใจไม่มี enum ใดๆ ที่สื่อถึงเทคนิคัล (EMA/MACD/RSI/downtrend), unrealized
+  // loss/P&L, หรือข่าวภาพรวมตลาด/macro/ETF/sector เลย เพื่อปิดช่องที่ free-text เดิม (sellAllEvidence)
+  // ยังให้ model ใส่เหตุผลเชิงเทคนิคผ่าน guard ได้ — ตอนนี้ enum เป็นตัวตัดสินหลักแทน free-text ทั้งหมด
+  const ALLOWED_SELL_ALL_EVIDENCE_TYPES = [
+    'FUNDAMENTAL_DETERIORATION',
+    'FRAUD_GOVERNANCE',
+    'SOLVENCY_LIQUIDITY',
+    'STRUCTURAL_COMPETITIVE_LOSS',
+    'SEVERE_REGULATORY_LEGAL',
+    'BUSINESS_MODEL_IMPAIRMENT',
+    'OTHER_PERMANENT_IMPAIRMENT',
+  ]
   // v1.10.6 hotfix (edge review): เดิม fallback เป็น 'HOLD' เสมอเมื่อหา action ที่ valid ไม่เจอ — ทำให้
   // แยกไม่ออกระหว่าง "AI เลือก HOLD จริงๆ" กับ "หา action ไม่เจอเลย" (silent fallback) เปลี่ยนคืน null
   // แทนเมื่อไม่เจอ explicit valid action ใน raw text — เหตุผลเดิมของ regex fallback (ดึง action จาก raw
@@ -313,8 +422,12 @@ ${newsSnippet}
   const fallback = makeFallback('ไม่สามารถวิเคราะห์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง', 'FAILED')
 
   try {
+    // v1.12.0 (Portfolio-Aware Decision Framework): เพิ่ม token budget จาก 2000 -> 2600 เท่านั้น (ไม่แตะ
+    // model/temperature/reasoning_effort/reasoning_format อื่นเลย) เพราะ "summary" ตอนนี้ต้องครอบคลุม
+    // เนื้อหาเพิ่มมาก (fundamental/valuation/portfolio impact/ความขัดแย้งเทคนิคัล-fundamentals) จำเป็นต้อง
+    // มีที่ให้เขียนพอ ไม่งั้นเสี่ยงโดนตัดทิ้งกลางคันบ่อยขึ้นทั้งที่ย้ายมาไว้ต้น schema แล้วก็ตาม
     const [{ text, rateLimited, rateLimitScope, usedModel }, stockMeta] = await Promise.all([
-      callGroq(prompt, 2000),
+      callGroq(prompt, 2600),
       stockMetaPromise,
     ])
 
@@ -353,12 +466,43 @@ ${newsSnippet}
     const technicalSummary = (parsed.technicalSummary ?? '').trim()
     const summary = (parsed.summary ?? '').trim()
 
+    // v1.12.0 (Deterministic SELL_ALL Safeguard): ห้ามพึ่งแค่คำสั่งใน prompt ให้ AI "ไม่เลือก SELL_ALL
+    // จากเทคนิคัล/P&L/ข่าวภาพรวมตลาดเพียงอย่างเดียว" เพราะ LLM ไม่ compliant 100% เสมอไป — ต้องมี
+    // structured evidence (thesisBroken + sellAllEvidence) ที่ตรวจสอบได้จริงฝั่ง server แยกต่างหากจาก
+    // action ก่อนจะยอมให้ SELL_ALL หลุดออกไปแสดงผลกับผู้ใช้ ถ้าตรวจไม่ผ่าน ต้อง downgrade action ลงเอง
+    // แบบ deterministic (ไม่ใช่ auto-BUY เด็ดขาด) โดยไม่ hardcode ticker ใดๆ ทั้งสิ้น
+    const thesisBroken = parsed.thesisBroken === true
+    const sellAllEvidence: string[] = Array.isArray(parsed.sellAllEvidence)
+      ? parsed.sellAllEvidence.filter((x: unknown) => typeof x === 'string' && x.trim().length > 0)
+      : []
+    // v1.12.0 (SELL_ALL Safeguard Hardening): เดิม gate ใช้ sellAllEvidence (free-text) ที่ model
+    // สร้างเองเป็นตัวตัดสิน ทำให้เหตุผลเชิงเทคนิค (เช่น "price below EMA200/downtrend") ผ่าน structural
+    // check ได้เพราะแค่เช็คว่า "มี string ไม่ว่าง" — ตอนนี้เปลี่ยนตัวตัดสินหลักเป็น sellAllEvidenceTypes
+    // (enum) ที่ต้องอยู่ใน allowlist เท่านั้น ไม่มี enum สำหรับเทคนิคัล/P&L/macro เลย จึงปิดช่องนี้ได้จริง
+    // sellAllEvidence (free-text) ยังคงเก็บไว้เป็นคำอธิบายประกอบเท่านั้น ไม่ใช้ตัดสินอนุมัติอีกต่อไป
+    const sellAllEvidenceTypes: string[] = Array.isArray(parsed.sellAllEvidenceTypes)
+      ? parsed.sellAllEvidenceTypes.filter((x: unknown) => typeof x === 'string' && ALLOWED_SELL_ALL_EVIDENCE_TYPES.includes(x))
+      : []
+    const hasValidSellAllEvidence = thesisBroken && sellAllEvidenceTypes.length > 0
+
     // v1.10.6 hotfix (edge review): ต้องมี explicit valid action (AI เขียนมาจริง ไม่ว่าจาก parsed JSON
     // ตรงๆ หรือ recover จาก raw text ตอน JSON ถูกตัดท้าย) ก่อนจะถือว่าเป็นผลวิเคราะห์ที่ใช้งานได้ — เดิม
     // ไม่เจอ action ก็ default เป็น 'HOLD' เงียบๆ ทำให้แยกไม่ออกว่า AI เลือก HOLD จริงหรือแค่หาไม่เจอ
     if (!action) {
       return makeFallback('AI ไม่ได้ระบุคำแนะนำที่ชัดเจน (action) กรุณาลองใหม่อีกครั้ง', 'FAILED', stockMeta)
     }
+
+    let finalAction = action
+    let downgradeNote = ''
+    if (action === 'SELL_ALL' && !hasValidSellAllEvidence) {
+      // downgrade เป้าหมาย: SELL_PARTIAL ถ้ากำไรเกิน +20% (ใช้ threshold เดียวกับเงื่อนไข SELL_PARTIAL
+      // ในกรอบการตัดสินใจ เพื่อความสอดคล้องกัน) มิฉะนั้น HOLD — ห้าม upgrade เป็น BUY โดยเด็ดขาด
+      finalAction = (pnl_pct != null && pnl_pct > 20) ? 'SELL_PARTIAL' : 'HOLD'
+      downgradeNote = `ระบบปรับคำแนะนำจาก SELL_ALL เป็น ${finalAction} อัตโนมัติ เนื่องจาก AI ไม่ได้ให้หลักฐานเฉพาะบริษัทที่เข้าเงื่อนไข thesis-breaking (เกณฑ์ (ก)-(ช)) มากพอ จึงยังไม่ถือว่าพื้นฐานการลงทุนเสียหายจริง `
+      // log เฉพาะ diagnostic ที่ไม่ sensitive (symbol + จำนวน/boolean เท่านั้น ไม่ log มูลค่าเงิน/สัดส่วนพอร์ต)
+      console.warn(`[groq] SELL_ALL downgraded to ${finalAction} for ${symbol}: thesisBroken=${thesisBroken}, validEvidenceTypeCount=${sellAllEvidenceTypes.length}, evidenceTextCount=${sellAllEvidence.length}`)
+    }
+
 
     // v1.10.4/v1.10.5 hotfix: แยก required structural field ออกจาก optional/legitimately-empty field
     // ชัดเจน — "technicalSummary" คือ field เดียวที่ frontend (PortfolioDashboard.tsx) ใช้เป็นเงื่อนไข
@@ -378,17 +522,19 @@ ${newsSnippet}
       return makeFallback('AI วิเคราะห์ไม่สมบูรณ์ (ไม่มีสรุปเทคนิคัล) กรุณาลองใหม่อีกครั้ง', 'FAILED', stockMeta)
     }
 
+    const rawCaution = parsed.risksAndOpportunities?.caution ?? ''
+
     return {
       symbol,
       disclaimer: parsed.disclaimer ?? fallback.disclaimer,
       technicalSummary,
       newsImpact: Array.isArray(parsed.newsImpact) ? parsed.newsImpact : [],
       risksAndOpportunities: {
-        caution: parsed.risksAndOpportunities?.caution ?? '',
+        caution: downgradeNote ? `${downgradeNote}${rawCaution}` : rawCaution,
         opportunity: parsed.risksAndOpportunities?.opportunity ?? '',
       },
       recommendation: {
-        action,
+        action: finalAction,
         buyConditions: parsed.buyConditions ?? '',
         sellConditions: parsed.sellConditions ?? '',
       },
@@ -402,6 +548,9 @@ ${newsSnippet}
       usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
       earnings,
       usedModel: usedModel ?? undefined,
+      thesisBroken,
+      sellAllEvidenceTypes,
+      sellAllEvidence,
     }
   } catch (e) {
     console.error(`[groq] analyzeHoldingDetailed parse failed for ${symbol}:`, e)
