@@ -13,6 +13,63 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: 'v1.10.1',
+    date: '2026-08-18 15:21 ICT',
+    changes: [
+      'แก้บั๊ก production ที่หน้า Set PIN/Confirm PIN/Verify PIN/Change PIN: browser ขึ้น "โปรดจับคู่รูปแบบที่ร้องขอ" แม้กรอกเลข ASCII 0-9 ครบ 6 หลักถูกต้องแล้ว — เปลี่ยน HTML pattern attribute จาก \\d* เป็น [0-9]{6} ให้ browser-compatible มากขึ้นในทุกจุดที่กรอก PIN',
+      'ไม่กระทบ inputMode="numeric"/maxLength={6}/server-side validation (isValidPinFormat) เดิมแต่อย่างใด',
+    ],
+  },
+  {
+    version: 'v1.10.0',
+    date: '2026-08-18 14:45 ICT',
+    changes: [
+      'เพิ่มระบบ Portfolio PIN Lock — ล็อกพอร์ตด้วย PIN 6 หลักหลัง login Gmail/Supabase สำเร็จ (ชั้นป้องกันที่ 2 แยกจาก Auth) บังคับที่ server-side middleware ไม่ใช่แค่ UI',
+      'PIN hash ด้วย scrypt (memory-hard) + salt สุ่มต่อ user + server pepper แยกเก็บใน environment variable ไม่เก็บ PIN จริงหรือ SHA-256 ธรรมดา',
+      'PIN-unlocked session เป็น signed HttpOnly cookie ที่ server ตรวจสอบได้จริง แยกจาก Supabase Auth session โดยสิ้นเชิง — ปลอมผ่าน localStorage/DevTools ไม่ได้',
+      'ผิด PIN ครบ 5 ครั้ง ล็อก 5 นาที คำนวณแบบ atomic ฝั่ง Postgres กัน race condition จากหลาย request พร้อมกัน',
+      'ปุ่ม "🔒 ล็อก" (ล็อกพอร์ตอย่างเดียว ไม่ signOut Gmail) แยกชัดเจนจาก "ออกจากระบบ" (signOut เต็มรูปแบบ) + เปลี่ยน PIN ได้จากหน้า Settings',
+      'ตาราง user_pin_security ใหม่ — RLS deny-by-default เข้าถึงได้เฉพาะ service_role เท่านั้น ไม่ expose ผ่าน client SELECT',
+    ],
+  },
+  {
+    version: 'v1.9.5',
+    date: '2026-08-18 14:28 ICT',
+    changes: [
+      'แก้ label โมเดล AI บนการ์ดวิเคราะห์ที่ hardcode ชื่อ "Llama-8b/Llama-70b" เดิม ให้ตรงกับโมเดลจริงหลัง migrate เป็น GPT-OSS (🤖 GPT-OSS 120B / ⚡ GPT-OSS 20B) และ fallback ไปแสดงชื่อโมเดลดิบจาก usedModel แทนการเดาชื่อ ถ้าเปลี่ยนโมเดลอีกในอนาคต',
+    ],
+  },
+  {
+    version: 'v1.9.4',
+    date: '2026-08-18 14:18 ICT',
+    changes: [
+      'แก้ /api/health ขึ้น "groq: ❌ unknown" หลัง migrate โมเดล — โมเดลตระกูล openai/gpt-oss-* ต้องการ parameter max_completion_tokens แทน max_tokens เดิม เปลี่ยนทั้งใน lib/groq.ts และ /api/health พร้อมเพิ่ม reasoning_effort/reasoning_format',
+      'เพิ่ม diagnostic ใน /api/health ให้เห็น HTTP status/error body/finish_reason จริงแทนข้อความ "unknown" เดิม',
+    ],
+  },
+  {
+    version: 'v1.9.3',
+    date: '2026-08-18 14:07 ICT',
+    changes: [
+      'Groq ปิด/deprecate โมเดล llama-3.3-70b-versatile และ llama-3.1-8b-instant แล้ว — migrate โมเดลหลัก/สำรองเป็น openai/gpt-oss-120b / openai/gpt-oss-20b ทั้งใน lib/groq.ts และ /api/health',
+    ],
+  },
+  {
+    version: 'v1.9.2',
+    date: '2026-08-18 13:35 ICT',
+    changes: [
+      'แก้บั๊ก production หลัง Batch 2: กรณี Groq ตอบว่างเปล่า/ไม่มี action ที่ชัดเจน/ไม่มี technicalSummary เคยถูกนับเป็น "วิเคราะห์สำเร็จ" ปลอม (การ์ดเทคนิคัล RSI/EMA/MACD/BB/แนวรับ-แนวต้าน/Volume หายทั้งก้อนโดยไม่มี error แจ้ง) — เปลี่ยนให้ return error แทนในทุกกรณี พร้อมรักษากลไก regex recovery action จาก JSON ที่ถูกตัดท้ายไว้เหมือนเดิม',
+      'แก้ข่าวหุ้นอื่นที่ไม่เกี่ยวข้อง (เช่น Broadcom/Apple) หลุดปนเข้ามาในการวิเคราะห์ META — เพิ่ม positive-match relevance filter ต่อ symbol เป้าหมาย',
+    ],
+  },
+  {
+    version: 'v1.9.1',
+    date: '2026-08-18 11:37 ICT',
+    changes: [
+      '/api/analyze เลิกเชื่อ market data จาก client ทั้งหมด (current_price/pe/week52High/week52Low/dayChange/recentNews/totalPortfolioValue) — client ส่งได้แค่ symbol เท่านั้น ทุกอย่างอื่นดึง/คำนวณฝั่ง server (Finnhub/Yahoo/Stooq) ทั้งหมด กัน DevTools ปลอมข้อมูลป้อนเข้า AI',
+    ],
+  },
+  {
     version: 'v1.9.0',
     date: '2026-08-08 01:09 ICT',
     changes: [
