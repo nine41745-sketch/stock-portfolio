@@ -13,6 +13,18 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: 'v1.12.2',
+    date: '2026-08-19 15:22 ICT',
+    changes: [
+      'แก้บั๊ก production: Groq คืน HTTP 429 (rate limit) บนโมเดลหลัก openai/gpt-oss-120b เป็นครั้งคราว (log จริง: TPM Limit 8000, Used 1933, Requested 6761, retry-after ~5.2s) — เดิม fallback ไป GPT-OSS 20B ทันทีทุกครั้งที่โดน rate limit แม้จะเป็นแค่ rate limit ชั่วคราวที่รอไม่กี่วินาทีก็หายก็ตาม ทำให้คุณภาพคำตอบลดลงโดยไม่จำเป็น',
+      'เพิ่ม bounded retry (สูงสุด 1 ครั้ง) สำหรับปุ่ม "วิเคราะห์ AI" แบบ manual (interactive): ถ้าโดน 429 และ retry-after (จาก HTTP header) สั้นกว่าหรือเท่ากับ 8 วินาที จะรอแล้วลอง 120B อีกครั้งก่อน fallback ไป 20B ถ้า retry-after ยาวกว่านั้นหรือ retry แล้วยัง 429 จึง fallback ไป 20B ทันทีตามระบบเดิม — ไม่มี retry loop ไม่ retry 400/401/403/413 ด้วยวิธีเดียวกัน',
+      'Cron รายวัน (interactive=false) ไม่รอ retry-after เลยในทุกกรณี fallback ไป 20B ทันทีเมื่อโดน 429 เพื่อรักษา runtime budget ของ Vercel function ที่ต้องวิเคราะห์หลายหุ้นต่อเนื่องกัน (ยืนยันแล้วว่า cron วิเคราะห์แบบ sequential อยู่แล้ว ไม่ได้ยิง Groq พร้อมกันหลาย request)',
+      'Cron แยกรายงานผล processed / skipped (dedup) / failed / rateLimited ให้ชัดเจนแทนการรวมเป็น "processed" เดียว — ไม่กระทบข้อมูลที่บันทึกลง daily_analyses (ยังคง error field ตามเดิม ไม่มีการนับผลที่ล้มเหลว/โดน rate limit เป็นผลวิเคราะห์สำเร็จ) หุ้นตัวใดตัวหนึ่ง fail ไม่ทำให้หุ้นอื่นหรือ user อื่นในรอบเดียวกันหยุดวิเคราะห์',
+      'จัดโครงสร้างพรอมต์ของ analyzeHoldingDetailed ใหม่ให้ส่วน STATIC (Decision Framework, กติกา SELL_ALL, JSON schema, คำสั่งทั่วไป) อยู่ต้นพรอมต์เสมอ และย้ายส่วน DYNAMIC (symbol, ราคา/เทคนิคัล, portfolio context, ข่าว) ไปไว้ท้ายพรอมต์แทน — เพิ่มโอกาสให้ Groq automatic prompt caching จับ prefix ที่ตรงกันได้ (เดิม symbol ที่เปลี่ยนทุกครั้งอยู่ประโยคแรกสุด ทำให้ prefix ไม่ตรงกันเลย) ไม่เปลี่ยน semantics/เนื้อหาใดๆ เป็นการย้ายตำแหน่งเท่านั้น ไม่เพิ่ม cache service ใหม่ (ยังใช้ automatic caching ของ Groq เอง)',
+      'ไม่แตะ max_completion_tokens (2200), cron schedule (01:15 UTC), maxDuration, model IDs 120B/20B, Portfolio-Aware context, sellAllEvidenceTypes allowlist, deterministic SELL_ALL safeguard, PIN/Auth หรือ portfolio accounting ใดๆ ในรอบนี้',
+    ],
+  },
+  {
     version: 'v1.12.1',
     date: '2026-08-19 03:40 ICT',
     changes: [

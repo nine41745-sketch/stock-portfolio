@@ -15,6 +15,17 @@ interface GroqCallResult {
   rateLimitScope: 'minute' | 'day' | null
   // โมเดลที่ตอบสำเร็จจริง (null ถ้าล้มเหลวทั้งหมด) — ใช้โชว์ transparency badge บน UI
   usedModel: string | null
+  // v1.12.2 (429 Resilience): ค่าจาก HTTP header "retry-after" ตอนโดน 429 เท่านั้น (หน่วยวินาที) — null
+  // ถ้าไม่ใช่ 429 หรือ header ไม่มี/parse ไม่ได้ ใช้ตัดสินใจว่าควรรอแล้ว retry primary model หรือ fallback ทันที
+  retryAfterSec: number | null
+}
+
+// v1.12.2 (429 Resilience): retry-after สูงสุดที่ยอมรอ (วินาที) ก่อนตัดสินใจ fallback ไป 20B ทันทีแทน —
+// ป้องกันไม่ให้ interactive request ค้างรอนานเกินไปจนผู้ใช้รู้สึกว่าแอปแฮงก์
+const RETRY_AFTER_CAP_SEC = 8
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 function detectRateLimitScope(errText: string): 'minute' | 'day' | null {
@@ -50,37 +61,60 @@ async function callGroqWithModel(prompt: string, maxTokens: number, model: strin
       }),
     })
     if (res.status === 429) {
+      // v1.12.2 (429 Resilience): อ่าน retry-after header ก่อนเสมอ (หน่วยวินาที ตาม Groq convention) —
+      // ใช้ตัดสินใจว่าควร wait+retry primary model หรือ fallback ทันที เก็บ err body ไว้ diagnose ด้วย
+      // (ไม่ใช่ portfolio sensitive data — เป็นข้อความ rate-limit metadata ของ Groq API เท่านั้น)
       const err = await res.text()
-      console.error(`[Groq] Rate limited on ${model}:`, err.slice(0, 300))
-      return { text: '', rateLimited: true, rateLimitScope: detectRateLimitScope(err), usedModel: null }
+      const retryAfterHeader = res.headers.get('retry-after')
+      const retryAfterSec = retryAfterHeader != null && !Number.isNaN(Number(retryAfterHeader)) ? Number(retryAfterHeader) : null
+      console.error(`[Groq] 429 on ${model} (retry-after=${retryAfterSec ?? 'unknown'}s):`, err.slice(0, 200))
+      return { text: '', rateLimited: true, rateLimitScope: detectRateLimitScope(err), usedModel: null, retryAfterSec }
     }
+    // v1.12.2 (429 Resilience): 400/401/403/413 ฯลฯ (ทุก non-429 error) ไม่ผ่าน retry-after logic ใดๆ
+    // เลย — คืนผลทันทีเหมือนเดิมทุกประการ (ไม่มี retry ในชั้นนี้ ไม่มี fallback ในชั้นนี้เช่นกัน เหมือนเดิม)
     if (!res.ok) {
       const err = await res.text()
       console.error(`[Groq] HTTP ${res.status} on ${model}:`, err.slice(0, 200))
-      return { text: '', rateLimited: false, rateLimitScope: null, usedModel: null }
+      return { text: '', rateLimited: false, rateLimitScope: null, usedModel: null, retryAfterSec: null }
     }
     const data = await res.json()
     const text = data.choices?.[0]?.message?.content ?? ''
-    return { text, rateLimited: false, rateLimitScope: null, usedModel: text ? model : null }
+    return { text, rateLimited: false, rateLimitScope: null, usedModel: text ? model : null, retryAfterSec: null }
   } catch (e) {
     console.error(`[Groq] Error on ${model}:`, e)
-    return { text: '', rateLimited: false, rateLimitScope: null, usedModel: null }
+    return { text: '', rateLimited: false, rateLimitScope: null, usedModel: null, retryAfterSec: null }
   }
 }
 
 // เรียกโมเดลหลักก่อน ถ้าโดน rate limit ให้ fallback ไปโมเดลสำรองอัตโนมัติ
 // ถ้าโมเดลสำรองก็โดนด้วย ให้คืน scope ที่ "แย่กว่า" ระหว่าง 2 ตัว (day แย่กว่า minute) ให้ข้อความแม่นยำที่สุด
-async function callGroq(prompt: string, maxTokens = 1024): Promise<GroqCallResult> {
+//
+// v1.12.2 (429 Resilience): เพิ่ม bounded retry (สูงสุด 1 ครั้ง) สำหรับ primary model (120B) เมื่อโดน 429
+// ชั่วคราวและเป็น interactive call (manual "วิเคราะห์ AI") — ถ้า retry-after สั้นพอ (<= RETRY_AFTER_CAP_SEC)
+// จะรอแล้วลอง 120B อีกครั้งก่อน fallback ไป 20B เพื่อรักษาคุณภาพคำตอบให้ได้มากที่สุดเท่าที่ทำได้อย่างปลอดภัย
+// cron (interactive=false) จะไม่รอเลยในทุกกรณี ไป fallback ทันที เพื่อรักษา runtime budget ของ Vercel
+// function ที่ต้องวิเคราะห์หลายหุ้นต่อเนื่องกันภายใน maxDuration — ไม่ว่ากรณีใด retry ถูก bound ไว้ที่ 1
+// ครั้งเท่านั้น (ไม่มี retry loop) และ fallback (20B) เองก็ไม่ retry ซ้ำอีกเช่นกัน (ป้องกัน infinite retry)
+async function callGroq(prompt: string, maxTokens = 1024, interactive = true): Promise<GroqCallResult> {
   const primary = await callGroqWithModel(prompt, maxTokens, GROQ_MODEL)
   if (primary.text) return primary
 
   if (primary.rateLimited) {
-    console.warn(`[Groq] ${GROQ_MODEL} rate limited (${primary.rateLimitScope ?? 'unknown'}), falling back to ${GROQ_FALLBACK_MODEL}`)
+    if (interactive && primary.retryAfterSec != null && primary.retryAfterSec <= RETRY_AFTER_CAP_SEC) {
+      console.warn(`[Groq] 429 on ${GROQ_MODEL}, retry-after=${primary.retryAfterSec}s <= cap — waiting then retrying once`)
+      await sleep(primary.retryAfterSec * 1000)
+      const retried = await callGroqWithModel(prompt, maxTokens, GROQ_MODEL)
+      if (retried.text) return retried
+      console.warn(`[Groq] retry on ${GROQ_MODEL} still failed — falling back to ${GROQ_FALLBACK_MODEL}`)
+    } else {
+      console.warn(`[Groq] 429 on ${GROQ_MODEL} (retry-after=${primary.retryAfterSec ?? 'unknown'}s, interactive=${interactive}) — falling back to ${GROQ_FALLBACK_MODEL} without waiting`)
+    }
+
     const fallback = await callGroqWithModel(prompt, maxTokens, GROQ_FALLBACK_MODEL)
     if (fallback.text) return fallback
     // ทั้งคู่โดน rate limit — ถ้าตัวใดตัวหนึ่งเป็น 'day' ให้ถือว่า worst-case คือ day
     const worstScope = primary.rateLimitScope === 'day' || fallback.rateLimitScope === 'day' ? 'day' : (primary.rateLimitScope ?? fallback.rateLimitScope)
-    return { text: '', rateLimited: true, rateLimitScope: worstScope, usedModel: null }
+    return { text: '', rateLimited: true, rateLimitScope: worstScope, usedModel: null, retryAfterSec: null }
   }
 
   return primary
@@ -184,7 +218,12 @@ export async function analyzeHoldingDetailed(
   // v1.12.0 (Portfolio-Aware Decision Framework): หุ้นอื่นในพอร์ต + สัดส่วน — default [] เพื่อ backward
   // compatible กับจุดเรียกเก่าที่ยังไม่ได้ส่งมา (ไม่มี ก็แค่ได้ portfolio context ที่ไม่มีข้อมูลหุ้นอื่น
   // ไม่ error)
-  otherHoldings: Array<{ symbol: string; weightPct: number }> = []
+  otherHoldings: Array<{ symbol: string; weightPct: number }> = [],
+  // v1.12.2 (429 Resilience): true = manual "วิเคราะห์ AI" (interactive, ผู้ใช้รอผลอยู่หน้าจอ) — โดน 429
+  // ชั่วคราวแล้ว retry-after สั้นพอ จะรอ+retry 120B ก่อน fallback false = cron (background, ต้องวิเคราะห์
+  // หลายหุ้นต่อเนื่องภายใน runtime budget จำกัด) — ไม่รอเลย fallback ไป 20B ทันทีเมื่อโดน 429 default เป็น
+  // true เพื่อ backward compatible กับจุดเรียกเดิม (/api/analyze) ที่ไม่ต้องแก้อะไรเพิ่ม
+  interactive = true
 ): Promise<DetailedAnalysisResult> {
   const { symbol, shares, cost_basis, current_price, pnl_pct, market_value, pe, week52High, week52Low } = holding
 
@@ -260,28 +299,15 @@ export async function analyzeHoldingDetailed(
   // ท้ายสุดแบบเดิม ย้ายมาไว้ต้นๆ คู่กับ technicalSummary ที่ required อยู่แล้ว ให้ทั้งสอง field สำคัญนี้
   // รอดจาก truncation ได้มากขึ้น ("action" ยังคงเป็น key แรกสุดเหมือนเดิมทุกประการ ไม่กระทบ regex
   // recovery ที่มีอยู่)
-  const prompt = `คุณเป็นนักวิเคราะห์การลงทุนระดับสถาบัน (Institutional Portfolio Manager) ประเมินหุ้น ${symbol} อย่างเป็นกลาง ปราศจาก Bias
+  // v1.12.2 (Groq Prompt Caching Optimization): ย้ายส่วน STATIC (Decision Framework/SELL_ALL rules/
+  // JSON schema/common instructions) ขึ้นก่อน และย้ายส่วน DYNAMIC (symbol/ราคา/เทคนิคัล/portfolio
+  // context/ข่าว) มาไว้ท้ายสุด — Groq automatic prompt caching ต้องการ exact common prefix เดิม
+  // โครงสร้างวาง ${symbol} ไว้ประโยคแรกสุดทำให้ prefix ไม่ match กันเลยแม้ระหว่าง request คู่เดียวกัน
+  // (เปลี่ยนหุ้นก็เปลี่ยน prefix ทันที) ย้ายมาไว้ท้ายสุดทำให้ทุก request ที่ใช้ policy/schema เดียวกัน
+  // มี prefix ที่ยาวและตรงกันสุด (ทั้งก้อน STATIC ด้านบน) เพิ่มโอกาส cache hit โดยไม่เปลี่ยน
+  // semantics/เนื้อหาใดๆ เลย (ย้ายตำแหน่งอย่างเดียว ไม่ตัด/ไม่แก้ข้อความ)
+  const prompt = `คุณเป็นนักวิเคราะห์การลงทุนระดับสถาบัน (Institutional Portfolio Manager) ประเมินหุ้นที่ระบุไว้ในส่วนข้อมูลด้านล่างอย่างเป็นกลาง ปราศจาก Bias
 ต้องตัดสินใจโดยพิจารณาหลายมิติร่วมกันเสมอ (fundamentals, valuation, เทคนิคัล, ข่าวเฉพาะบริษัท, ข่าว sector/macro ภาพรวม, ต้นทุนผู้ใช้, กำไร/ขาดทุนปัจจุบัน, ขนาดโพซิชัน/สัดส่วนในพอร์ต, มูลค่าพอร์ตรวม, เงินสดคงเหลือ, ความเข้มข้นของพอร์ต, risk/reward และ downside, business thesis ระยะยาว) ห้ามใช้ตัวชี้วัดเทคนิคัลเพียงตัวเดียวเป็นตัวตัดสิน action เด็ดขาด
-
-=== สถานะพอร์ตและปัจจัยแวดล้อม ===
-- ราคาปัจจุบัน: $${current_price?.toFixed(2) ?? 'N/A'} (ต้นทุน: ${cost_basis ? `$${cost_basis.toFixed(2)}` : 'N/A'}, ถืออยู่: ${shares} หุ้น)
-- สถานะ P&L ปัจจุบัน: ${pnl_pct != null ? `${pnl_pct > 0 ? '+' : ''}${pnl_pct.toFixed(1)}%` : 'N/A'} (มูลค่า: ${market_value ? `$${market_value.toFixed(2)}` : 'N/A'})
-- Valuation/Metrics: ${metricsInfo || 'ไม่มีข้อมูล'} (⚠️ P/E ที่ให้มาเป็นค่า trailing/normalized เท่านั้น ไม่มี forward P/E และไม่มี timestamp ความสดใหม่ของข้อมูลกำกับ — ห้ามสรุปว่าหุ้น "แพง/ถูก" จาก P/E ตัวเดียวถ้าไม่มีข้อมูลอื่นสนับสนุนพอ ให้ระบุว่า valuation confidence ต่ำแทน ห้ามสร้างตัวเลขขึ้นเอง)
-- สถานะสภาพคล่อง: เงินสดสำรอง $${cashBalance.toFixed(2)} (${cashRatioPct === null ? 'N/A — ไม่สามารถคำนวณสัดส่วนเงินสดได้ เนื่องจากราคาหุ้นบางตัวในพอร์ตไม่พร้อม' : `${cashRatioPct}% ของพอร์ต`}) — เป็นข้อมูลอ้างอิงเท่านั้น ไม่ใช่เหตุผลในการแนะนำซื้อ
-
-=== บริบทพอร์ตทั้งหมด (Portfolio-Wide Context) ===
-- มูลค่าพอร์ตหุ้นรวม (ไม่รวมเงินสด): ${totalPortfolioValue === null ? 'N/A — portfolio context incomplete (ราคาหุ้นบางตัวในพอร์ตไม่พร้อม ห้ามเดาตัวเลข)' : `$${totalPortfolioValue.toFixed(2)}`}
-- สัดส่วนหุ้นนี้ในพอร์ต (Position Weight): ${positionWeightPct === null ? 'N/A — portfolio context incomplete' : `${positionWeightPct}% ของมูลค่าพอร์ตหุ้นรวม`}
-- หุ้นอื่นในพอร์ต: ${otherHoldingsLine}
-
-=== ตัวชี้วัดทางเทคนิค (Technical Indicators) ===
-${techLines || 'ไม่มีข้อมูลเทคนิค'}
-
-=== ปฏิทินผลประกอบการ (Earnings Calendar) ===
-${earningsLine}
-
-=== ข่าวสารและปัจจัยกระทบล่าสุด ===
-${newsSnippet}
 
 === เกณฑ์ประเมินสัญญาณ (DECISION FRAMEWORK) ===
 เช็กตามลำดับข้อ 0 -> 1 -> 2 -> 3 -> 4 จากบนลงล่าง แต่ละข้อมีเงื่อนไขย่อยหลายข้อเชื่อมด้วย "หรือ" (OR) เสมอ (ยกเว้นข้อ 1 SELL_ALL ที่เข้มงวดกว่าข้ออื่นตามที่ระบุในข้อนั้น)
@@ -369,6 +395,31 @@ sellAllEvidenceTypes (enum ที่อนุญาต) เป็นตัวต
     "opportunity": "โอกาสหรือปัจจัยบวก"
   },
   "risks": ["ความเสี่ยงข้อ 1", "ความเสี่ยงข้อ 2"]
+
+
+=== ข้อมูลสำหรับวิเคราะห์ครั้งนี้ (เปลี่ยนทุกครั้งตามคำขอ) ===
+กำลังวิเคราะห์หุ้น: ${symbol}
+
+=== สถานะพอร์ตและปัจจัยแวดล้อม ===
+- ราคาปัจจุบัน: $${current_price?.toFixed(2) ?? 'N/A'} (ต้นทุน: ${cost_basis ? `$${cost_basis.toFixed(2)}` : 'N/A'}, ถืออยู่: ${shares} หุ้น)
+- สถานะ P&L ปัจจุบัน: ${pnl_pct != null ? `${pnl_pct > 0 ? '+' : ''}${pnl_pct.toFixed(1)}%` : 'N/A'} (มูลค่า: ${market_value ? `$${market_value.toFixed(2)}` : 'N/A'})
+- Valuation/Metrics: ${metricsInfo || 'ไม่มีข้อมูล'} (⚠️ P/E ที่ให้มาเป็นค่า trailing/normalized เท่านั้น ไม่มี forward P/E และไม่มี timestamp ความสดใหม่ของข้อมูลกำกับ — ห้ามสรุปว่าหุ้น "แพง/ถูก" จาก P/E ตัวเดียวถ้าไม่มีข้อมูลอื่นสนับสนุนพอ ให้ระบุว่า valuation confidence ต่ำแทน ห้ามสร้างตัวเลขขึ้นเอง)
+- สถานะสภาพคล่อง: เงินสดสำรอง $${cashBalance.toFixed(2)} (${cashRatioPct === null ? 'N/A — ไม่สามารถคำนวณสัดส่วนเงินสดได้ เนื่องจากราคาหุ้นบางตัวในพอร์ตไม่พร้อม' : `${cashRatioPct}% ของพอร์ต`}) — เป็นข้อมูลอ้างอิงเท่านั้น ไม่ใช่เหตุผลในการแนะนำซื้อ
+
+=== บริบทพอร์ตทั้งหมด (Portfolio-Wide Context) ===
+- มูลค่าพอร์ตหุ้นรวม (ไม่รวมเงินสด): ${totalPortfolioValue === null ? 'N/A — portfolio context incomplete (ราคาหุ้นบางตัวในพอร์ตไม่พร้อม ห้ามเดาตัวเลข)' : `$${totalPortfolioValue.toFixed(2)}`}
+- สัดส่วนหุ้นนี้ในพอร์ต (Position Weight): ${positionWeightPct === null ? 'N/A — portfolio context incomplete' : `${positionWeightPct}% ของมูลค่าพอร์ตหุ้นรวม`}
+- หุ้นอื่นในพอร์ต: ${otherHoldingsLine}
+
+=== ตัวชี้วัดทางเทคนิค (Technical Indicators) ===
+${techLines || 'ไม่มีข้อมูลเทคนิค'}
+
+=== ปฏิทินผลประกอบการ (Earnings Calendar) ===
+${earningsLine}
+
+=== ข่าวสารและปัจจัยกระทบล่าสุด ===
+${newsSnippet}
+
 }`
 // หมายเหตุ (นอก prompt): "thesisBroken" ต้องเป็น true และ "sellAllEvidenceTypes" ต้องมีอย่างน้อย 1 ค่าที่อยู่ใน
 // allowlist enum (ดู ALLOWED_SELL_ALL_EVIDENCE_TYPES ด้านล่าง) หาก action เป็น SELL_ALL มิฉะนั้นระบบจะลด action
@@ -436,7 +487,7 @@ sellAllEvidenceTypes (enum ที่อนุญาต) เป็นตัวต
     // ยังคงเหลือพอสำหรับ JSON response ที่ครบทุก field (schema/เนื้อหาถูกทำให้กระชับขึ้นคู่ขนานกันในรอบนี้
     // ด้วย ดู DECISION FRAMEWORK section) ไม่แตะ model/temperature/reasoning_effort/reasoning_format เลย
     const [{ text, rateLimited, rateLimitScope, usedModel }, stockMeta] = await Promise.all([
-      callGroq(prompt, 2200),
+      callGroq(prompt, 2200, interactive),
       stockMetaPromise,
     ])
 

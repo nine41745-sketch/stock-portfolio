@@ -51,11 +51,18 @@ export async function GET(request: NextRequest) {
 
   const userIds = Array.from(new Set((holdingRows ?? []).map(r => r.user_id as string)))
 
-  const summary: { userId: string; processed: number; errors: string[] }[] = []
+  // v1.12.2 (Cron Reliability): แยก processed/skipped/failed/rateLimited ให้ชัดเจนแทนการรวมทุกอย่าง
+  // เป็น "processed" เดียว — ทำให้เห็นได้ตรงๆ จาก response/log ว่าหุ้นไหนสำเร็จจริง, ข้ามเพราะมีผลวันนี้
+  // อยู่แล้ว (dedup), ล้มเหลวจากข้อผิดพลาดอื่น, หรือโดน Groq rate limit — ไม่กระทบข้อมูลที่ upsert ลง
+  // daily_analyses เลย (ยังเก็บ error field ตามเดิมทุกประการ) เป็นแค่การนับสรุปเพื่อ observability
+  const summary: { userId: string; processed: number; skipped: number; failed: number; rateLimited: number; errors: string[] }[] = []
 
   for (const userId of userIds) {
     const errors: string[] = []
     let processed = 0
+    let skipped = 0
+    let failed = 0
+    let rateLimited = 0
 
     try {
       // 1) holdings ที่ decrypt แล้ว (ต้องใช้ RPC + encryption key)
@@ -66,7 +73,7 @@ export async function GET(request: NextRequest) {
       if (decErr) throw new Error(`decrypt holdings: ${decErr.message}`)
 
       const rawHoldings = (decrypted ?? []).filter((h: any) => Number(h.shares) > 0)
-      if (!rawHoldings.length) { summary.push({ userId, processed: 0, errors: [] }); continue }
+      if (!rawHoldings.length) { summary.push({ userId, processed: 0, skipped: 0, failed: 0, rateLimited: 0, errors: [] }); continue }
 
       const symbols: string[] = rawHoldings.map((h: any) => h.symbol)
 
@@ -120,8 +127,8 @@ export async function GET(request: NextRequest) {
       // 5) วิเคราะห์ทีละหุ้น (sequential + delay กัน rate limit)
       for (const holding of holdings) {
         if (alreadyAnalyzedSymbols.has(holding.symbol)) {
-          // มีผลวิเคราะห์สำเร็จของวันนี้อยู่แล้ว (ดูข้อ 1.5 ด้านบน) — ข้าม ไม่เรียก Groq ซ้ำ นับเป็น processed
-          processed++
+          // มีผลวิเคราะห์สำเร็จของวันนี้อยู่แล้ว (ดูข้อ 1.5 ด้านบน) — ข้าม ไม่เรียก Groq ซ้ำ นับเป็น skipped
+          skipped++
           continue
         }
         try {
@@ -139,9 +146,11 @@ export async function GET(request: NextRequest) {
             totalPortfolioValue
           )
 
+          // v1.12.2 (429 Resilience): interactive=false — cron ไม่รอ retry-after เลย fallback ไป 20B
+          // ทันทีเมื่อโดน 429 เพื่อรักษา runtime budget (maxDuration 60s ต้องพอสำหรับหลายหุ้นต่อเนื่อง)
           const result = await analyzeHoldingDetailed(
             holding, technical, cashBalance, totalPortfolioValue,
-            newsBySymbol[holding.symbol] ?? [], earnings, otherHoldingsForPrompt
+            newsBySymbol[holding.symbol] ?? [], earnings, otherHoldingsForPrompt, false
           )
 
           const { error: upsertErr } = await supabase
@@ -158,10 +167,21 @@ export async function GET(request: NextRequest) {
             }, { onConflict: 'user_id,symbol,analysis_date' })
 
           if (upsertErr) throw new Error(`upsert ${holding.symbol}: ${upsertErr.message}`)
-          processed++
+
+          // v1.12.2 (Cron Reliability): ห้ามนับ RATE_LIMIT/FAILED เป็น "processed" (สำเร็จ) — แม้จะ upsert
+          // แถวไว้แล้ว (มี error field กำกับชัดเจน ไม่ถูกนับเป็น "already analyzed" ในรอบถัดไปเพราะ dedup
+          // query กรอง .is('error', null) อยู่แล้ว) แค่แยกนับใน summary ให้ตรงกับความเป็นจริงเท่านั้น
+          if (result.error === 'RATE_LIMIT') {
+            rateLimited++
+          } else if (result.error) {
+            failed++
+          } else {
+            processed++
+          }
         } catch (e: any) {
           console.error(`[cron] ${userId}/${holding.symbol} failed:`, e)
           errors.push(`${holding.symbol}: ${e.message ?? e}`)
+          failed++
         }
         await delay(SYMBOL_DELAY_MS)
       }
@@ -170,7 +190,7 @@ export async function GET(request: NextRequest) {
       errors.push(e.message ?? String(e))
     }
 
-    summary.push({ userId, processed, errors })
+    summary.push({ userId, processed, skipped, failed, rateLimited, errors })
   }
 
   return NextResponse.json({ analysisDate, users: summary })
