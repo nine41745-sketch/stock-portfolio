@@ -13,6 +13,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: 'v1.13.0',
+    date: '2026-08-26 16:45 ICT',
+    changes: [
+      'เปลี่ยน Daily Auto Analysis เวลา ~08:15 จากการเรียก Groq แยกทีละหุ้นเป็น Portfolio Batch 1 ครั้งต่อ user — แก้ปัญหา production ที่วันนี้ 8 หุ้นมีเพียง META/NOW สำเร็จ ส่วน NVO/ORCL/PLTR/RBRK/SOFI/SPCX ถูก RATE_LIMIT เพราะ TPM ถูกใช้ต่อเนื่องจากหลาย request',
+      'Batch AI เห็นหุ้นที่ต้องวิเคราะห์พร้อมบริบทพอร์ตทั้งก้อนใน request เดียว (ราคา/ต้นทุน/P&L/position weight/เงินสด/technical/earnings/ข่าว) ทำให้คำแนะนำรายวันเปรียบเทียบกันในบริบทพอร์ตเดียวกัน และลด Groq calls จาก N ครั้งต่อหุ้นเหลือ 1 ครั้งต่อ user',
+      'คง deterministic SELL_ALL safeguard แบบเดียวกับระบบ manual: SELL_ALL ต้อง thesisBroken=true และมี sellAllEvidenceTypes จาก allowlist thesis-breaking เฉพาะบริษัทเท่านั้น; technical/P&L/macro เพียงอย่างเดียวไม่สามารถผ่าน safeguard ได้ และ action ที่ไม่ผ่านจะ downgrade เป็น SELL_PARTIAL/HOLD โดยไม่มีทางอัปเกรดเป็น BUY',
+      'ตัด Groq call แยกสำหรับแปล/จำแนกข่าวใน cron โดยรวมการแปลและ news impact เข้า batch call เดียว ลดโอกาสกิน TPM ก่อนเริ่มวิเคราะห์หุ้น พร้อมคง Finnhub news relevance filter เดิม',
+      'Cron บันทึก daily_analyses เฉพาะผลที่ AI วิเคราะห์สำเร็จจริงอีกต่อไป ไม่สร้าง HOLD ปลอมเมื่อ batch fail/rate-limit; dedup ยังนับเฉพาะแถว error IS NULL และสามารถเขียนทับ error row เก่าด้วยผลสำเร็จเมื่อ rerun วันเดียวกัน',
+      'แก้ portfolio valuation ของ cron: ถ้าราคาหุ้นตัวใดหาไม่ได้ จะส่ง totalPortfolioValue เป็น N/A แทนการรวมเฉพาะหุ้นที่มีราคา ซึ่งป้องกัน position weight/cash ratio ผิดจาก partial portfolio total',
+      'Manual ปุ่ม "วิเคราะห์ AI", PIN/Auth, Supabase schema, cron schedule 01:15 UTC (~08:15 ICT) และ Vercel maxDuration 60s ไม่ถูกเปลี่ยนใน release นี้',
+    ],
+  },
+  {
     version: 'v1.12.2',
     date: '2026-08-19 15:22 ICT',
     changes: [
