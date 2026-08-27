@@ -13,6 +13,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: 'v1.13.1',
+    date: '2026-08-28 02:04 ICT',
+    changes: [
+      'Hotfix Daily Portfolio Batch: แก้กรณี Groq ส่ง JSON ยาวแล้วท้ายคำตอบไม่สมบูรณ์จน parser ของ v1.13.0 ล้มทั้งพอร์ต — เปลี่ยน output เป็น compact JSONL แบบ 1 หุ้นต่อ 1 object และเพิ่ม balanced-object recovery เพื่อเก็บผลหุ้นที่สมบูรณ์ได้เป็นรายตัวแทนการทิ้งทั้ง batch',
+      'ลดขนาด output และ token budget ของ batch พร้อมคง 1 Groq call ต่อ user, Portfolio-Aware context, deterministic SELL_ALL safeguard, model 120B/20B fallback และหลักการไม่บันทึก HOLD ปลอมเมื่อผล AI ไม่สำเร็จไว้เหมือนเดิม',
+      'ผ่าน Preview dry-run ด้วยพอร์ตจริงครบ 8/8 หุ้น (requested=8, parsed=8, missing=[], error=null, writes=false) ก่อน Merge PR #2 เข้า Production และลบ endpoint ทดสอบชั่วคราวออกก่อน release',
+      'แก้ Release Metadata ที่ตกหล่นจากการ Merge v1.13.1: package.json เป็น 1.13.1 แล้วแต่ changelog ยังเริ่มที่ v1.13.0 ทำให้ Version Badge แสดงผิด — เพิ่ม v1.13.1 เป็นรายการล่าสุด โดยไม่เปลี่ยน Supabase, PIN/Auth, cron schedule หรือ logic วิเคราะห์เพิ่มเติมจาก hotfix ที่ผ่านการทดสอบแล้ว',
+    ],
+  },
+  {
     version: 'v1.13.0',
     date: '2026-08-26 16:45 ICT',
     changes: [
