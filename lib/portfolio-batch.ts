@@ -73,6 +73,119 @@ function stringArray(value: unknown, maxItems: number, maxChars: number): string
     .map(item => item.trim().slice(0, maxChars))
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+// v1.13.1: Groq อาจคืน JSON ก้อนใหญ่ที่มี comma/bracket ท้ายก้อนเสีย แต่ object ของหุ้นก่อนหน้า
+// สมบูรณ์แล้ว เราจึงสแกน balanced {...} ทุกระดับและ parse เฉพาะ object ที่สมบูรณ์แทนการทิ้งทั้ง batch.
+function extractBalancedObjects(text: string): string[] {
+  const starts: number[] = []
+  const candidates: string[] = []
+  let inString = false
+  let escaped = false
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (ch === '\\') {
+        escaped = true
+      } else if (ch === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (ch === '"') {
+      inString = true
+    } else if (ch === '{') {
+      starts.push(i)
+    } else if (ch === '}' && starts.length) {
+      const start = starts.pop()!
+      candidates.push(text.slice(start, i + 1))
+    }
+  }
+
+  return candidates
+}
+
+function normalizeBatchItem(value: unknown): BatchAIItem | null {
+  const obj = asRecord(value)
+  if (!obj) return null
+
+  // รองรับทั้ง compact schema v1.13.1 และ verbose schema v1.13.0 เพื่อให้ parser backward-tolerant.
+  const symbol = obj.s ?? obj.symbol
+  const action = obj.a ?? obj.action
+  if (typeof symbol !== 'string' || typeof action !== 'string') return null
+
+  return {
+    symbol,
+    action,
+    thesisBroken: obj.tb ?? obj.thesisBroken,
+    sellAllEvidenceTypes: obj.et ?? obj.sellAllEvidenceTypes,
+    sellAllEvidence: obj.ev ?? obj.sellAllEvidence,
+    summary: obj.sm ?? obj.summary,
+    buyConditions: obj.bc ?? obj.buyConditions,
+    sellConditions: obj.sc ?? obj.sellConditions,
+    newsImpact: obj.ni ?? obj.newsImpact,
+    caution: obj.c ?? obj.caution,
+    opportunity: obj.o ?? obj.opportunity,
+    risks: obj.r ?? obj.risks,
+    news: obj.n ?? obj.news,
+  }
+}
+
+function parseBatchItems(text: string): BatchAIItem[] {
+  const found: BatchAIItem[] = []
+
+  // Fast path: เผื่อโมเดลยังตอบ wrapper แบบ v1.13.0 และ JSON สมบูรณ์.
+  try {
+    const parsed = JSON.parse(text.trim())
+    const root = asRecord(parsed)
+    if (root && Array.isArray(root.analyses)) {
+      for (const item of root.analyses) {
+        const normalized = normalizeBatchItem(item)
+        if (normalized) found.push(normalized)
+      }
+    } else {
+      const normalized = normalizeBatchItem(parsed)
+      if (normalized) found.push(normalized)
+    }
+  } catch {
+    // ใช้ recovery path ด้านล่าง
+  }
+
+  // Recovery path: รองรับ JSONL, code fence, pretty JSON และ outer array/object ที่ถูกตัด/เสียท้ายก้อน.
+  for (const candidate of extractBalancedObjects(text)) {
+    try {
+      const parsed = JSON.parse(candidate)
+      const root = asRecord(parsed)
+      if (root && Array.isArray(root.analyses)) {
+        for (const item of root.analyses) {
+          const normalized = normalizeBatchItem(item)
+          if (normalized) found.push(normalized)
+        }
+      } else {
+        const normalized = normalizeBatchItem(parsed)
+        if (normalized) found.push(normalized)
+      }
+    } catch {
+      // candidate ไม่สมบูรณ์จริง ให้ข้ามเฉพาะ candidate นี้ ไม่ทิ้งผลหุ้นอื่น
+    }
+  }
+
+  const deduped = new Map<string, BatchAIItem>()
+  for (const item of found) {
+    const symbol = typeof item.symbol === 'string' ? item.symbol.toUpperCase().trim() : ''
+    if (symbol && !deduped.has(symbol)) deduped.set(symbol, item)
+  }
+  return Array.from(deduped.values())
+}
+
 function technicalSummary(holding: HoldingWithPrice, technical: TechnicalSnapshot): string {
   const parts = [
     `ราคา ${holding.current_price != null ? `$${holding.current_price.toFixed(2)}` : 'N/A'}`,
@@ -127,7 +240,7 @@ function compactInput(
       vol: safeNumber(t.volumeRatio, 2),
     },
     earn: earnings ? { d: earnings.daysUntil, date: earnings.date } : null,
-    news: news.slice(0, 2).map(n => n.headline.slice(0, 100)),
+    news: news.slice(0, 2).map(n => n.headline.slice(0, 90)),
   }
 }
 
@@ -144,7 +257,7 @@ async function callModel(prompt: string, maxTokens: number, model: string): Prom
         model,
         messages: [{ role: 'user', content: prompt }],
         max_completion_tokens: maxTokens,
-        temperature: 0.4,
+        temperature: 0.3,
         reasoning_effort: 'low',
         reasoning_format: 'hidden',
       }),
@@ -205,30 +318,26 @@ export async function analyzePortfolioBatch(
     .join(',')
 
   const payload = inputs.map(input => compactInput(input, totalPortfolioValue))
-  const prompt = `คุณเป็น Institutional Portfolio Manager วิเคราะห์หุ้นทุกตัวด้านล่างพร้อมกันเป็น "พอร์ตเดียว" เพื่อทำ Daily Portfolio Review
+  const prompt = `คุณเป็น Institutional Portfolio Manager ทำ Daily Portfolio Review ของหุ้นทุกตัวในพอร์ตพร้อมกัน
 
-กติกา action เรียงลำดับความสำคัญ:
-1) SELL_ALL: ใช้ได้เฉพาะมี thesis-breaking เฉพาะบริษัทจริง และต้อง thesisBroken=true + sellAllEvidenceTypes อย่างน้อย 1 ค่าใน allowlist: FUNDAMENTAL_DETERIORATION,FRAUD_GOVERNANCE,SOLVENCY_LIQUIDITY,STRUCTURAL_COMPETITIVE_LOSS,SEVERE_REGULATORY_LEGAL,BUSINESS_MODEL_IMPAIRMENT,OTHER_PERMANENT_IMPAIRMENT เท่านั้น ห้าม SELL_ALL จาก EMA/MACD/RSI/downtrend/P&L ขาดทุน/ข่าว macro-sector-ETF เพียงอย่างเดียว
-2) SELL_PARTIAL: พิจารณาเมื่อ P&L>20%, RSI Day>70, หรือราคาทะลุ Resistance/52W High/BB Upper พร้อม P&L>15%, หรือ fundamentals เริ่มเสื่อมแต่ยังไม่ thesis-breaking
-3) BUY: เมื่อยังไม่เข้า 1-2, earnings ไม่อยู่ใน 7 วัน, ไม่มีข่าวเฉพาะบริษัทลบรุนแรง และมีอย่างน้อยหนึ่งอย่าง: UPTREND, RSI Day<45, ราคาใกล้/ต่ำกว่า Support ต้องคำนึง position weight และเงินสด ห้ามซื้อเพิ่มหนักเมื่อ concentration สูง ~25-30%+
-4) HOLD: เมื่อไม่เข้าเงื่อนไขข้างต้น หรือ technical อ่อนแอแต่ thesis ยังไม่เสีย
+กติกา action:
+1) SELL_ALL เฉพาะ thesis-breaking เฉพาะบริษัทจริง และต้อง tb=true + et อย่างน้อย 1 ค่าใน allowlist: FUNDAMENTAL_DETERIORATION,FRAUD_GOVERNANCE,SOLVENCY_LIQUIDITY,STRUCTURAL_COMPETITIVE_LOSS,SEVERE_REGULATORY_LEGAL,BUSINESS_MODEL_IMPAIRMENT,OTHER_PERMANENT_IMPAIRMENT ห้ามใช้ EMA/MACD/RSI/downtrend/P&L/macro/sector เป็นเหตุ SELL_ALL เพียงลำพัง
+2) SELL_PARTIAL เมื่อ P&L>20%, RSI Day>70, หรือราคาทะลุ Resistance/52W High/BB Upper พร้อม P&L>15%, หรือพื้นฐานเริ่มเสื่อมแต่ยังไม่ thesis-breaking
+3) BUY เมื่อไม่เข้า 1-2, earnings ไม่อยู่ใน 7 วัน, ไม่มีข่าวบริษัทลบรุนแรง และมี UPTREND หรือ RSI Day<45 หรือราคาใกล้/ต่ำ Support โดยต้องคำนึง concentration ~25-30%+ และเงินสด
+4) HOLD เมื่อไม่เข้าเงื่อนไขข้างต้นหรือ technical อ่อนแต่ thesis ยังไม่เสีย
 
-ต้องแยกข่าว company-specific ออกจาก macro/sector; ข่าวภาพรวมห้ามใช้เป็น thesis break
-P/E เป็น trailing/normalized ไม่มี forward P/E/timestamp: ถ้าข้อมูลไม่พอให้ระบุ valuation confidence ต่ำ ห้ามเดาตัวเลข
-buyConditions/sellConditions ใช้เฉพาะ Support/Resistance/EMA/BB/52W ที่ให้มา ห้ามสร้างราคาเอง
-มองทั้งพอร์ตร่วมกัน: สัดส่วน, concentration, เงินสด, P&L และหุ้นอื่นที่ถืออยู่
+แยกข่าว company-specific กับ macro/sector; P/E เป็น trailing/normalized และไม่มี freshness timestamp; ห้ามเดาราคา/forward P/E
+พอร์ต: stockValue=${totalPortfolioValue == null ? 'N/A' : totalPortfolioValue.toFixed(2)},cash=${cashBalance.toFixed(2)},cashPct=${cashRatio == null ? 'N/A' : cashRatio.toFixed(1)},weights=${portfolioWeights}
 
-พอร์ต: stockValue=${totalPortfolioValue == null ? 'N/A' : totalPortfolioValue.toFixed(2)}, cash=${cashBalance.toFixed(2)}, cashPct=${cashRatio == null ? 'N/A' : cashRatio.toFixed(1)}, weights=${portfolioWeights}
-
-ตอบ JSON object เท่านั้น รูป {"analyses":[...]} และต้องมีหุ้นทุกตัวจาก input exactly once
-แต่ละ item ให้สั้น กระชับ:
-{"symbol":"META","action":"BUY|HOLD|SELL_PARTIAL|SELL_ALL","thesisBroken":false,"sellAllEvidenceTypes":[],"sellAllEvidence":[],"summary":"ไทย 1-2 ประโยค ครอบคลุมพื้นฐาน/valuation/ผลต่อพอร์ต","buyConditions":"ไทยสั้นๆ หรือ N/A","sellConditions":"ไทยสั้นๆ หรือ N/A","newsImpact":["ไทยสั้นๆ"],"caution":"ไทยสั้นๆ","opportunity":"ไทยสั้นๆ","risks":["ไทยสั้นๆ"],"news":[{"headlineTh":"คำแปลไทยตามลำดับข่าว input","impact":"NEGATIVE|POSITIVE|NEUTRAL|LOW"}]}
-ถ้า action ไม่ใช่ SELL_ALL ต้อง thesisBroken=false และ evidence arrays=[]
+สำคัญมาก: ตอบเป็น JSONL เท่านั้น = 1 JSON object ต่อ 1 บรรทัด, ไม่มี markdown, ไม่มี code fence, ไม่มี outer array/object, ต้องตอบหุ้นทุกตัว exactly once และแต่ละบรรทัดต้อง parse ได้เอง
+ใช้ key แบบย่อเท่านั้น:
+{"s":"META","a":"BUY|HOLD|SELL_PARTIAL|SELL_ALL","tb":false,"et":[],"ev":[],"sm":"สรุปไทย <=140 ตัวอักษร","bc":"เงื่อนไขซื้อ <=90 ตัวอักษร","sc":"เงื่อนไขขาย <=90 ตัวอักษร","ni":["ผลข่าว <=80 ตัวอักษร"],"c":"ข้อควรระวัง <=90 ตัวอักษร","o":"โอกาส <=90 ตัวอักษร","r":["ความเสี่ยง <=80 ตัวอักษร"],"n":[{"headlineTh":"แปลข่าว <=80 ตัวอักษร","impact":"NEGATIVE|POSITIVE|NEUTRAL|LOW"}]}
+จำกัด ni/r อย่างละไม่เกิน 1 รายการ และ n ไม่เกินจำนวนข่าว input (สูงสุด 2) ถ้า a ไม่ใช่ SELL_ALL ต้อง tb=false,et=[],ev=[]
 
 INPUT=${JSON.stringify(payload)}`
 
-  // Output budget โตตามจำนวนหุ้น แต่ cap ไว้เพื่อรักษา Groq TPM headroom.
-  const maxTokens = Math.min(2800, 800 + inputs.length * 180)
+  // v1.13.1: compact JSONL ลด output size; budget พอสำหรับ 8 หุ้นแต่ยังรักษา TPM headroom.
+  const maxTokens = Math.min(2200, 600 + inputs.length * 160)
   const { text, rateLimited, usedModel } = await callGroqBatch(prompt, maxTokens)
 
   if (!text) {
@@ -240,22 +349,15 @@ INPUT=${JSON.stringify(payload)}`
     }
   }
 
-  let parsed: { analyses?: BatchAIItem[] }
-  try {
-    const match = text.match(/\{[\s\S]*\}/)
-    parsed = JSON.parse(match?.[0] ?? '{}') as { analyses?: BatchAIItem[] }
-  } catch (error) {
-    console.error('[portfolio-batch] JSON parse failed:', error)
-    return { results: {}, error: 'FAILED', usedModel, message: 'AI batch response ไม่ใช่ JSON ที่สมบูรณ์' }
-  }
-
-  if (!Array.isArray(parsed.analyses)) {
-    return { results: {}, error: 'FAILED', usedModel, message: 'AI batch response ไม่มี analyses array' }
+  const parsedItems = parseBatchItems(text)
+  if (!parsedItems.length) {
+    console.error(`[portfolio-batch] no recoverable JSON items; responseChars=${text.length}`)
+    return { results: {}, error: 'FAILED', usedModel, message: 'AI batch response ไม่มี JSON item ที่สมบูรณ์' }
   }
 
   const inputBySymbol = new Map(inputs.map(input => [input.holding.symbol, input]))
   const aiBySymbol = new Map<string, BatchAIItem>()
-  for (const item of parsed.analyses) {
+  for (const item of parsedItems) {
     const symbol = typeof item.symbol === 'string' ? item.symbol.toUpperCase().trim() : ''
     if (inputBySymbol.has(symbol) && !aiBySymbol.has(symbol)) aiBySymbol.set(symbol, item)
   }
@@ -280,7 +382,7 @@ INPUT=${JSON.stringify(payload)}`
           .filter((value): value is string => typeof value === 'string' && (ALLOWED_SELL_ALL_EVIDENCE_TYPES as readonly string[]).includes(value))
           .slice(0, 3)
       : []
-    const evidenceText = stringArray(item.sellAllEvidence, 3, 160)
+    const evidenceText = stringArray(item.sellAllEvidence, 3, 140)
 
     let finalAction = rawAction
     let downgradeNote = ''
@@ -298,30 +400,30 @@ INPUT=${JSON.stringify(payload)}`
         : 'LOW'
       return {
         headline: raw.headline,
-        headlineTh: trimText(translated.headlineTh, 180) || raw.headline,
+        headlineTh: trimText(translated.headlineTh, 160) || raw.headline,
         impact: impactValue,
       }
     })
 
-    const caution = `${downgradeNote}${trimText(item.caution, 280)}`.trim()
-    const summary = trimText(item.summary, 520) || `Daily Portfolio Review: ${finalAction} โดยอิงข้อมูลพอร์ตและตัวชี้วัดล่าสุด`
+    const caution = `${downgradeNote}${trimText(item.caution, 240)}`.trim()
+    const summary = trimText(item.summary, 420) || `Daily Portfolio Review: ${finalAction} โดยอิงข้อมูลพอร์ตและตัวชี้วัดล่าสุด`
     const meta = metas[index]
 
     results[symbol] = {
       symbol,
       disclaimer: 'บทวิเคราะห์นี้สร้างโดย AI เพื่อประกอบการตัดสินใจเท่านั้น ไม่ใช่คำแนะนำการลงทุน',
       technicalSummary: technicalSummary(holding, technical),
-      newsImpact: stringArray(item.newsImpact, 2, 220),
+      newsImpact: stringArray(item.newsImpact, 1, 180),
       risksAndOpportunities: {
         caution,
-        opportunity: trimText(item.opportunity, 280),
+        opportunity: trimText(item.opportunity, 240),
       },
       recommendation: {
         action: finalAction,
-        buyConditions: trimText(item.buyConditions, 280),
-        sellConditions: trimText(item.sellConditions, 280),
+        buyConditions: trimText(item.buyConditions, 240),
+        sellConditions: trimText(item.sellConditions, 240),
       },
-      risks: stringArray(item.risks, 2, 220),
+      risks: stringArray(item.risks, 1, 180),
       summary,
       analysedAt: new Date().toISOString(),
       sector: meta.sector ?? '',
@@ -337,5 +439,16 @@ INPUT=${JSON.stringify(payload)}`
     }
   })
 
-  return { results, error: null, usedModel }
+  if (Object.keys(results).length < inputs.length) {
+    console.warn(`[portfolio-batch] partial recovery: ${Object.keys(results).length}/${inputs.length} valid items`)
+  }
+
+  return {
+    results,
+    error: null,
+    usedModel,
+    message: Object.keys(results).length < inputs.length
+      ? `Recovered ${Object.keys(results).length}/${inputs.length} valid batch items`
+      : undefined,
+  }
 }
