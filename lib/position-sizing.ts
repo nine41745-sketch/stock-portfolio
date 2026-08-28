@@ -14,7 +14,7 @@ function formatShares(value: number): string {
 }
 
 function nearestAllowedAtOrBelow(value: number): number {
-  let chosen = PARTIAL_LEVELS[0]
+  let chosen: number = PARTIAL_LEVELS[0]
   for (const level of PARTIAL_LEVELS) {
     if (level <= value) chosen = level
   }
