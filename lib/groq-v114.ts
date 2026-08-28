@@ -8,7 +8,7 @@ export * from './groq'
 // แค่เติม deterministic sizing หลังผล AI ผ่าน safeguard เดิมเรียบร้อยแล้ว
 export async function analyzeHoldingDetailed(
   ...args: Parameters<typeof analyzeHoldingDetailedBase>
-): ReturnType<typeof analyzeHoldingDetailedBase> {
+) {
   const result = await analyzeHoldingDetailedBase(...args)
   const [holding, technical, cashBalance = 0, totalPortfolioValue = 0, , earnings = null] = args
 
