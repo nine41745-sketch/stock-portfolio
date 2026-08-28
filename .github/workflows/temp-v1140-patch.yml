@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, '[auto-patch-done]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +31,6 @@ jobs:
                   raise SystemExit(f'{path}: expected {expected} matches, found {found}')
               p.write_text(text.replace(old, new, expected), encoding='utf-8')
 
-          # (4) ให้ "แก้ไขล่าสุด" เปลี่ยนทันทีใน optimistic state หลังบันทึกสำเร็จ
           replace_exact(
               'components/portfolio/PortfolioDashboard.tsx',
               'week52Low: nm.week52Low ?? null } : h)',
@@ -44,7 +42,6 @@ jobs:
               'return { ...h, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, market_value: mv, total_cost: tc, pnl, pnl_pct, updated_at: new Date().toISOString() }',
           )
 
-          # (2) Manual AI: บังคับ sizing เป็น % ของจำนวนหุ้นที่ถือ และจำกัดเป็น step ที่กำหนด
           manual_anchor = 'ห้ามเลือก BUY แค่เพราะมีเงินสดเหลือเยอะ ต้องมีเหตุผลด้านเทคนิคัล/ข่าว/fundamentals รองรับเสมอ (HOLD เลือกได้เฉพาะเมื่อเช็กครบทุกข้อแล้วไม่เข้าเงื่อนไขใดเลยจริงๆ ตามที่อธิบายในข้อ 4)'
           manual_sizing = '''=== Position Sizing — คิดจากจำนวนหุ้นที่ถือปัจจุบัน ===
 - เปอร์เซ็นต์ทั้งหมดต้องคิดจาก shares ปัจจุบันของหุ้นตัวนี้ (ไม่ใช่ % ของเงินสดหรือมูลค่าพอร์ต)
@@ -55,7 +52,6 @@ jobs:
 - ห้ามใช้เปอร์เซ็นต์นอกชุดที่กำหนด และห้ามคำนวณ Y จาก cost/value แทน shares'''
           replace_exact('lib/groq.ts', manual_anchor, manual_sizing + '\n\n' + manual_anchor)
 
-          # (2) Daily Portfolio Batch: sizing แบบเดียวกับ manual แต่จัดสรรเงินสดในบริบทพอร์ตทั้งก้อน
           batch_anchor = 'แยกข่าว company-specific กับ macro/sector; P/E เป็น trailing/normalized และไม่มี freshness timestamp; ห้ามเดาราคา/forward P/E'
           batch_sizing = '''กติกา Position Sizing (สำคัญ):
 - % ทุกตัวคิดจาก sh (จำนวนหุ้นที่ถือปัจจุบัน) ของหุ้นนั้น ไม่ใช่ % ของเงินสด/มูลค่าพอร์ต และเลือกได้เฉพาะ 5,10,15,20,25,33,50 (SELL_ALL = 100, HOLD = 0)
@@ -64,7 +60,6 @@ jobs:
 - ถ้า sh=0 ห้ามแต่งจำนวนหุ้นจากศูนย์เอง ให้ระบุว่า sizing แบบ % ของจำนวนหุ้นที่ถือคำนวณไม่ได้'''
           replace_exact('lib/portfolio-batch.ts', batch_anchor, batch_sizing + '\n\n' + batch_anchor)
 
-          # workflow นี้มีไว้ patch ครั้งเดียวเท่านั้น — ลบตัวเองก่อน commit ปลายทาง
           Path('.github/workflows/temp-v1140-patch.yml').unlink()
           PY
 
@@ -75,5 +70,5 @@ jobs:
           git config user.email "nine41745@gmail.com"
           git add -A
           git diff --cached --check
-          git commit -m "feat: add portfolio sizing and PIN-only inactivity lock [auto-patch-done]"
+          git commit -m "feat: add portfolio sizing and instant updated-at [auto-patch-done]"
           git push origin HEAD:feat/portfolio-guidance-v1.14.0
