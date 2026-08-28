@@ -47,6 +47,9 @@ export default function HoldingModal({ holding, onClose, onSave, onDelete }: Pro
     try {
       await onSave(form, holding?.id)
       onClose()
+      // DB/RPC อัปเดต holdings.updated_at ฝั่ง server อยู่แล้ว แต่ PortfolioDashboard ใช้ optimistic state
+      // ที่ยังถือ updated_at เก่าอยู่ จึง reload หลัง save สำเร็จเพื่ออ่าน timestamp จริงกลับมาทันที
+      window.location.reload()
     } catch (err: any) {
       setError(err.message ?? 'เกิดข้อผิดพลาด')
     } finally {
