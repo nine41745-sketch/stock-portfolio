@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { getMultipleQuotesWithMetrics } from '@/lib/finnhub'
 import PortfolioDashboard from '@/components/portfolio/PortfolioDashboard'
+import InvestingSinceBadge from '@/components/portfolio/InvestingSinceBadge'
+import InactivityPinLock from '@/components/auth/InactivityPinLock'
 import { HoldingWithPrice } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -59,6 +61,8 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+      <InactivityPinLock />
+      <InvestingSinceBadge />
       <PortfolioDashboard
         holdings={holdingsWithPrices}
         userName={userName}
