@@ -61,7 +61,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8">
-      <InactivityPinLock allowPreviewFastTest={process.env.VERCEL_ENV === 'preview'} />
+      <InactivityPinLock />
       <InvestingSinceBadge />
       <PortfolioDashboard
         holdings={holdingsWithPrices}
