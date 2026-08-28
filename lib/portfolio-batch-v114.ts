@@ -10,7 +10,7 @@ export * from './portfolio-batch'
 // BUY หลายตัวแชร์ remainingCash ก้อนเดียวกัน ป้องกันคำแนะนำรวมกันใช้เงินสดเกินยอดที่มี
 export async function analyzePortfolioBatch(
   ...args: Parameters<typeof analyzePortfolioBatchBase>
-): ReturnType<typeof analyzePortfolioBatchBase> {
+) {
   const [inputs, cashBalance, totalPortfolioValue] = args
   const outcome = await analyzePortfolioBatchBase(...args)
   if (outcome.error || Object.keys(outcome.results).length === 0) return outcome
