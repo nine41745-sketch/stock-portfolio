@@ -228,6 +228,27 @@ export async function POST(request: NextRequest) {
 
   try {
     const serviceClient = createServiceClient()
+
+    // v1.15.0: บันทึกผล manual ที่สำเร็จทันที โดยใช้ analysedAt ของผลจริงเป็นลำดับเวลา
+    // ไม่ใช้เวลาที่กด/เวลาที่เขียน DB เพื่อกัน cache HIT เก่าถูกยกให้ใหม่กว่าผล cron ที่เกิดทีหลัง
+    const saveManualLatest = async (analysis: DetailedAnalysisResult) => {
+      if (analysis.error || !analysis.technicalSummary || !analysis.summary) return
+      const parsed = Date.parse(analysis.analysedAt)
+      if (!Number.isFinite(parsed)) {
+        console.warn(`[analyze] skip latest persistence: invalid analysedAt for ${symbol}`)
+        return
+      }
+      const { error: saveErr } = await serviceClient.rpc('save_latest_manual_analysis', {
+        p_user_id: user.id,
+        p_symbol: symbol,
+        p_result: analysis,
+        p_analysed_at: new Date(parsed).toISOString(),
+      })
+      // การบันทึก latest เป็น persistence เสริม: ถ้า migration ยังไม่พร้อม/DB สะดุด
+      // ห้ามทำให้ผลวิเคราะห์ที่สำเร็จแล้วกลายเป็น error ต่อผู้ใช้
+      if (saveErr) console.error('[analyze] latest manual persistence failed:', saveErr)
+    }
+
     const [{ data: allHoldings, error: holdErr }, { data: settings }, quoteData] = await Promise.all([
       serviceClient.rpc('get_decrypted_holdings', {
         p_user_id: user.id,
@@ -345,7 +366,10 @@ export async function POST(request: NextRequest) {
     })
     const cacheKey = `analyze:${user.id}:${symbol}:${fingerprint}`
     const cached = cacheGet<DetailedAnalysisResult>(cacheKey)
-    if (cached) return NextResponse.json(cached)
+    if (cached) {
+      await saveManualLatest(cached)
+      return NextResponse.json(cached)
+    }
 
     // Cache MISS เท่านั้นที่เรียก Groq — ทั้งแปล/จัดหมวดข่าว (translateAndClassifyNews) และ
     // วิเคราะห์หลัก (analyzeHoldingDetailed) เพื่อไม่ให้ cache HIT เสีย Groq call แม้แต่ครั้งเดียว
@@ -366,11 +390,11 @@ export async function POST(request: NextRequest) {
       otherHoldingsForPrompt
     )
 
-    // cache เฉพาะผลที่วิเคราะห์สำเร็จจริง (ไม่มี error และมี technicalSummary + summary)
-    // ห้าม cache ผลที่ error (เช่น เกินโควต้า Groq) เพราะโควต้าอาจ reset ได้ภายในไม่กี่นาที/ชั่วโมง
-    // ถ้า cache ไว้ user จะเห็น error message ซ้ำเดิมไปอีก 30 นาทีทั้งที่จริงๆ ลองใหม่แล้วอาจสำเร็จ
+    // cache + persist เฉพาะผลที่วิเคราะห์สำเร็จจริง
+    // manual persistence แยกจาก daily_analyses เพื่อไม่เปลี่ยนประวัติ Track Record รายวัน
     if (!result.error && result.technicalSummary && result.summary) {
       cacheSet(cacheKey, result, ANALYZE_CACHE_TTL_SEC)
+      await saveManualLatest(result)
     }
 
     return NextResponse.json(result)
