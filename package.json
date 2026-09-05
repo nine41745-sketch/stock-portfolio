@@ -1,10 +1,11 @@
 {
   "name": "stock-portfolio",
-  "version": "1.15.1",
+  "version": "1.16.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "test:critical": "node scripts/test-critical.mjs",
+    "build": "node scripts/test-critical.mjs && next build",
     "start": "next start",
     "lint": "next lint"
   },

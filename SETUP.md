@@ -1,147 +1,93 @@
 # Stock Portfolio Tracker — Setup Guide
 
-## Stack
-- **Next.js 14** (App Router) — Frontend + API Routes
-- **Supabase** — Auth + PostgreSQL + pgcrypto (encrypted cost_basis)
-- **Finnhub** — Real-time US stock prices
-- **Claude AI** — BUY/HOLD/SELL analysis
-- **Vercel** — Deploy
+## Current stack
 
----
+- **Next.js 15.5.24** (App Router) + React 19
+- **Supabase** — Auth, PostgreSQL, RLS, pgcrypto encryption
+- **Finnhub** — current quotes, company metrics, news, earnings
+- **Yahoo Finance / Stooq** — historical data for technical indicators
+- **Groq AI** — primary `openai/gpt-oss-120b`, fallback `openai/gpt-oss-20b`
+- **Vercel** — Preview / Production / Cron
 
-## 1. สร้าง Supabase Project
+## Authentication model
 
-1. ไปที่ [supabase.com](https://supabase.com) → สร้าง project ใหม่
-2. เปิด **SQL Editor** → วาง `supabase/schema.sql` → **Run**
+1. User signs in through Supabase Auth.
+2. Private portfolio routes require a separate **6-digit PIN**.
+3. PIN is stored as scrypt hash + per-user salt + server `PIN_PEPPER`; the real PIN is never stored.
+4. A signed HttpOnly PIN session is bound to the current Supabase login session.
+5. Inactivity locks **PIN only** after 30 minutes. The Supabase login remains active, so re-entry normally needs only the PIN.
+6. **Logout** is different from **🔒 Lock**: Logout also removes the Supabase Auth session.
 
----
+## Environment variables
 
-## 2. สร้าง Users
+Copy `.env.local.example` to `.env.local` and provide all values:
 
-ไปที่ **Authentication → Users → Add user** (invite mode)
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_ENCRYPTION_KEY`
+- `FINNHUB_API_KEY`
+- `GROQ_API_KEY`
+- `CRON_SECRET`
+- `PIN_PEPPER`
+- `PIN_SESSION_SECRET`
+- optional `PIN_SESSION_MAX_AGE_SEC` (default 14400 seconds / 4 hours)
 
-| User | Email | Password |
-|------|-------|----------|
-| นาย | nay@example.com | your_password |
-| น้องเจน | jen@example.com | your_password |
+Never expose service-role, encryption, Groq, Cron, PIN pepper, or PIN session secrets to client-side code or commit real values to Git.
 
----
+## Database
 
-## 3. Seed ข้อมูลหุ้นเริ่มต้น
+### Existing deployed project
 
-1. Copy UUID ของแต่ละ user จาก Authentication → Users
-2. แก้ไข `supabase/seed.sql` — ใส่ UUID + encryption key
-3. รันใน SQL Editor
+Do **not** rerun the full schema. Apply only migrations that have not yet been applied. For v1.16.0 the new migration is:
 
----
+`supabase/migration_analysis_freshness_v1.16.0.sql`
 
-## 4. ดึง API Keys
+It adds portfolio/cash freshness timestamps and a holdings trigger used only to identify when an existing AI result became stale.
 
-| Key | ที่มา |
-|-----|-------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Project Settings → API → Project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API → anon/public |
-| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API → service_role (secret) |
-| `FINNHUB_API_KEY` | [finnhub.io](https://finnhub.io) → สมัครฟรี |
-| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) |
+### Fresh project
 
----
+1. Create a Supabase project.
+2. Run `supabase/schema.sql`.
+3. Apply the migration files required by the current release in their release order. Do not skip security/PIN/latest-analysis/data-integrity migrations.
+4. Create the intended user through Supabase Auth.
+5. Configure the same environment values in Vercel.
 
-## 5. Setup Local
+`SUPABASE_ENCRYPTION_KEY` must remain stable. Changing it after cost basis values have been encrypted makes existing encrypted cost-basis data unreadable with the new key.
+
+## Local development
 
 ```bash
-# Clone / copy โฟลเดอร์ stock-portfolio
 cd stock-portfolio
-
-# Copy env
-cp .env.local.example .env.local
-# แก้ไขค่าทุกตัวใน .env.local
-
-# Install dependencies
 npm install
-
-# Run dev server
+npm run test:critical
 npm run dev
-# เปิด http://localhost:3000
 ```
 
----
+Then open `http://localhost:3000`.
 
-## 6. Deploy บน Vercel
+Before a release, `npm run build` automatically runs the critical regression checks first, then the Next.js production build.
 
-```bash
-# Push ขึ้น GitHub ก่อน
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/YOUR_USERNAME/stock-portfolio.git
-git push -u origin main
-```
+## AI behavior
 
-จากนั้น:
-1. ไปที่ [vercel.com](https://vercel.com) → **Add New Project** → Import จาก GitHub
-2. ไปที่ **Settings → Environment Variables** → เพิ่มทุกตัวจาก `.env.local`
-3. กด **Deploy**
+- `/api/analyze` accepts only the ticker symbol from the browser; holdings, cost basis, cash, prices, technicals, news, earnings, and portfolio weights are rebuilt server-side.
+- Manual latest analysis is persisted separately from `daily_analyses`, so Track Record history is not overwritten.
+- The newest real `analysedAt` wins between manual and daily results.
+- If shares, cost basis, portfolio composition, or cash change after an analysis, the UI marks affected AI results as stale and asks for re-analysis.
+- SELL_ALL remains protected by deterministic permanent-impairment evidence checks in the existing decision framework.
 
-> ⚠️ **สำคัญ:** `SUPABASE_SERVICE_ROLE_KEY` และ `SUPABASE_ENCRYPTION_KEY` เป็น secret — ห้าม commit ลง Git
+## Daily Cron
 
----
+`vercel.json` schedules:
 
-## Architecture ที่น่ารู้
+`15 1 * * *`
 
-```
-Browser (Client)
-    │
-    ├── /login          → Supabase Auth (email/password)
-    │
-    └── /dashboard      → Server Component
-            │
-            ├── createServiceClient()   → get_decrypted_holdings() [pgp_sym_decrypt]
-            ├── getMultipleQuotes()     → Finnhub API (cache 60s)
-            └── <PortfolioDashboard>   → Client Component
-                    │
-                    ├── /api/holdings       → CRUD (upsert_holding → pgp_sym_encrypt)
-                    ├── /api/prices         → Finnhub real-time refresh
-                    └── /api/analyze        → Claude AI (BUY/HOLD/SELL)
-```
+That is **01:15 UTC ≈ 08:15 ICT (Asia/Bangkok)** each day. Keep `CRON_SECRET` configured in Vercel; the cron endpoint rejects requests without the matching Bearer secret.
 
-### Security
-- **RLS** ล็อกทุก table — anon key ก็ยังเห็นแค่ข้อมูลตัวเอง
-- **cost_basis** encrypt ด้วย `pgp_sym_encrypt` ใน Postgres
-- การ decrypt ทำฝั่ง server เท่านั้น ผ่าน service_role
-- `SUPABASE_ENCRYPTION_KEY` ไม่เคยส่งไป client
+## Release workflow
 
----
+Use this sequence for every release:
 
-## โครงสร้างไฟล์
+**branch → Preview build → required migration → Preview smoke test → PR review → explicit merge/Production approval → Production smoke test → Git tag**
 
-```
-stock-portfolio/
-├── app/
-│   ├── api/
-│   │   ├── analyze/route.ts       ← Claude AI analysis
-│   │   ├── holdings/
-│   │   │   ├── route.ts           ← POST (create), GET
-│   │   │   └── [id]/route.ts      ← PUT (update), DELETE
-│   │   └── prices/route.ts        ← Finnhub price fetch
-│   ├── dashboard/page.tsx         ← Server Component (SSR + decrypt)
-│   ├── login/page.tsx
-│   └── layout.tsx
-├── components/
-│   ├── auth/LoginForm.tsx
-│   └── portfolio/
-│       ├── PortfolioDashboard.tsx  ← Client Component หลัก
-│       └── HoldingModal.tsx        ← Add/Edit/Delete modal
-├── lib/
-│   ├── claude.ts                  ← Anthropic SDK
-│   ├── finnhub.ts                 ← Finnhub API
-│   └── supabase/
-│       ├── client.ts              ← Browser client
-│       └── server.ts              ← Server + Service Role client
-├── supabase/
-│   ├── schema.sql                 ← Tables, RLS, pgcrypto functions
-│   └── seed.sql                   ← Seed holdings ตั้งต้น
-├── types/index.ts
-├── middleware.ts                  ← Auth guard + session refresh
-└── SETUP.md
-```
+Do not merge a feature branch or promote it to Production before Preview verification and explicit approval.

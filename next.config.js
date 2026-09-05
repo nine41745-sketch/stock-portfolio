@@ -4,7 +4,7 @@ const path = require('path')
 const nextConfig = {
   webpack(config) {
     // Release metadata wrapper: keep previous changelog history intact while exposing the current version.
-    config.resolve.alias['@/config/changelog$'] = path.resolve(__dirname, 'config/changelog-v1151.ts')
+    config.resolve.alias['@/config/changelog$'] = path.resolve(__dirname, 'config/changelog-v116.ts')
     return config
   },
 }

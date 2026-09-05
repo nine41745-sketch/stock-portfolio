@@ -43,13 +43,15 @@ const IMPACT_LABEL: Record<string, string> = {
   LOW:      '⬜ เบา',
 }
 
+const BANGKOK_TIME_ZONE = 'Asia/Bangkok'
+
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+  return new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: BANGKOK_TIME_ZONE })
 }
 function fmtDateTime(iso: string) {
   const d = new Date(iso)
-  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'numeric', year: '2-digit' }) +
-    ' เวลา ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' ICT'
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'numeric', year: '2-digit', timeZone: BANGKOK_TIME_ZONE }) +
+    ' เวลา ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: BANGKOK_TIME_ZONE }) + ' ICT'
 }
 function fmtNewsTime(ts: number) {
   const diffH = Math.floor((Date.now() - ts * 1000) / 3600000)
@@ -201,7 +203,7 @@ function TrackRecordCard() {
         <p className="text-gray-600 text-sm">กำลังโหลด...</p>
       ) : !data || data.overall.total === 0 ? (
         <p className="text-gray-600 text-sm">
-          ยังไม่มีข้อมูลย้อนหลังพอ ({days} วัน) — ระบบวิเคราะห์อัตโนมัติรันทุกวัน 06:00 น. เก็บข้อมูลสะสมไปเรื่อยๆ รอสักพักแล้วกลับมาดูอีกครั้งครับ
+          ยังไม่มีข้อมูลย้อนหลังพอ ({days} วัน) — ระบบวิเคราะห์อัตโนมัติรันทุกวันประมาณ 08:15 น. เก็บข้อมูลสะสมไปเรื่อยๆ รอสักพักแล้วกลับมาดูอีกครั้งครับ
         </p>
       ) : (
         <>
@@ -415,7 +417,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       .finally(() => setNewsLoading(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // โหลดผลวิเคราะห์ AI ที่ cron รันไว้ให้วันนี้แล้ว (06:00 ICT) — โชว์ทันทีไม่ต้องกด "วิเคราะห์" เอง
+  // โหลดผลวิเคราะห์ AI ที่ cron รันไว้ให้วันนี้แล้ว (~08:15 ICT) — โชว์ทันทีไม่ต้องกด "วิเคราะห์" เอง
   useEffect(() => {
     fetch('/api/daily-analyses/today').then(r => r.json()).then(d => {
       if (d.analyses && Object.keys(d.analyses).length) {
@@ -1216,7 +1218,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       <div className="rounded-xl border border-gray-800 overflow-hidden">
         <div className="bg-gray-900 px-4 py-3 flex items-center gap-2">
           <span className="text-sm font-semibold text-white">📰 ข่าววันนี้</span>
-          <span className="text-gray-600 text-xs">{new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+          <span className="text-gray-600 text-xs">{new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: BANGKOK_TIME_ZONE })}</span>
           {newsLoading && <span className="text-gray-600 text-xs ml-auto animate-pulse">กำลังโหลด...</span>}
         </div>
         {!newsLoading && news.length === 0 ? (
