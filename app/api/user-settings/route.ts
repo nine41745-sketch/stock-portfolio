@@ -9,7 +9,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('user_settings')
-    .select('cash_balance, dime_balance, initial_capital, dime_updated_at, capital_updated_at')
+    .select('cash_balance, dime_balance, initial_capital, dime_updated_at, capital_updated_at, cash_updated_at, portfolio_updated_at')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -19,11 +19,13 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    cash_balance:       data?.cash_balance       ?? 0,
-    dime_balance:       data?.dime_balance       ?? 0,
-    initial_capital:    data?.initial_capital    ?? 0,
-    dime_updated_at:    data?.dime_updated_at    ?? null,
-    capital_updated_at: data?.capital_updated_at ?? null,
+    cash_balance:          data?.cash_balance          ?? 0,
+    dime_balance:          data?.dime_balance          ?? 0,
+    initial_capital:       data?.initial_capital       ?? 0,
+    dime_updated_at:       data?.dime_updated_at       ?? null,
+    capital_updated_at:    data?.capital_updated_at    ?? null,
+    cash_updated_at:       data?.cash_updated_at       ?? null,
+    portfolio_updated_at:  data?.portfolio_updated_at  ?? null,
   })
 }
 
@@ -42,18 +44,20 @@ export async function PUT(request: NextRequest) {
   }
 
   const update: Record<string, number | string> = {}
+  const now = new Date().toISOString()
 
   try {
     if (body.cash_balance !== undefined) {
       update.cash_balance = parseSettingAmount(body.cash_balance, 'เงินในธนาคาร')
+      update.cash_updated_at = now
     }
     if (body.dime_balance !== undefined) {
       update.dime_balance = parseSettingAmount(body.dime_balance, 'เงินใน Dime')
-      update.dime_updated_at = new Date().toISOString()
+      update.dime_updated_at = now
     }
     if (body.initial_capital !== undefined) {
       update.initial_capital = parseSettingAmount(body.initial_capital, 'เงินต้น')
-      update.capital_updated_at = new Date().toISOString()
+      update.capital_updated_at = now
     }
   } catch (error) {
     if (error instanceof InputValidationError) {
@@ -74,5 +78,6 @@ export async function PUT(request: NextRequest) {
     console.error('[user-settings:PUT] upsert failed:', error)
     return NextResponse.json({ error: 'บันทึกข้อมูลเงินไม่สำเร็จ' }, { status: 500 })
   }
+
   return NextResponse.json({ ok: true })
 }
