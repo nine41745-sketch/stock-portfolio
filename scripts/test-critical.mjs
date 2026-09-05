@@ -71,4 +71,9 @@ for (const route of [
   assert.match(source, /@\/lib\/news-relevance/, `${route} must use the shared news relevance helper`)
 }
 
+const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
+assert.match(dashboardSource, /Asia\/Bangkok/, 'Dashboard timestamps must force Asia/Bangkok')
+assert.match(dashboardSource, /08:15/, 'Track Record/Cron UI must show the real ~08:15 ICT schedule')
+assert.doesNotMatch(dashboardSource, /รันทุกวัน 06:00 น\./, 'Old 06:00 Track Record label must not return')
+
 console.log('✓ Critical regression tests passed')
