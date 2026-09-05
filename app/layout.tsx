@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import UserSettingsMutationGuard from '@/components/auth/UserSettingsMutationGuard'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="th">
-      <body className="min-h-screen bg-gray-950 text-gray-100 transition-colors duration-200">{children}</body>
+      <body className="min-h-screen bg-gray-950 text-gray-100 transition-colors duration-200">
+        <UserSettingsMutationGuard />
+        {children}
+      </body>
     </html>
   )
 }
