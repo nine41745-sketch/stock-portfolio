@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v1161: ChangelogEntry = {
   version: 'v1.16.1',
-  date: '2026-09-08 ICT',
+  date: '2026-09-08 02:48 ICT',
   changes: [
     'Data Safety: ถ้าโหลด holdings/decrypt ไม่สำเร็จ Dashboard จะเข้า error boundary แทนการแสดงพอร์ตว่าง และยอดเงินจะไม่ถูกแสดงเป็น 0 จาก failed API read',
     'FX Safety: แยก live USD/THB ออกจาก fallback ชัดเจน, ใช้ timeout กับ provider และห้ามบันทึกยอดที่กรอกเป็น THB ระหว่างใช้ fallback เพื่อกันการแปลง USD ผิด',

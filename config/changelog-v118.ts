@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v118: ChangelogEntry = {
   version: 'v1.18.0',
-  date: '2026-09-08 ICT',
+  date: '2026-09-08 04:54 ICT',
   changes: [
     'Stock Scanner: เพิ่มระบบสแกนหุ้นแบบ deterministic สำหรับกลุ่มหุ้น US ที่คัดไว้ รวมถึงหุ้นในพอร์ต/Watchlist พร้อมจำกัด provider fan-out เพื่อลดการใช้ quote และ technical-data requests',
     'Watchlist: เพิ่มรายการหุ้นที่เล็งเข้าซื้อแบบ per-user พร้อมราคาเป้าหมายและหมายเหตุ โดยใช้ authenticated RLS และ migration แบบไม่ทำลายข้อมูลเดิม',
