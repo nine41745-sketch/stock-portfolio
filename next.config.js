@@ -1,5 +1,3 @@
-const path = require('path')
-
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
@@ -18,11 +16,6 @@ const nextConfig = {
         headers: securityHeaders,
       },
     ]
-  },
-  webpack(config) {
-    // Release metadata wrapper: keep previous changelog history intact while exposing the current version.
-    config.resolve.alias['@/config/changelog$'] = path.resolve(__dirname, 'config/changelog-v117.ts')
-    return config
   },
 }
 
