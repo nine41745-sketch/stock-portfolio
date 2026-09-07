@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { getMultipleQuotesWithMetrics } from '@/lib/finnhub'
 import PortfolioDashboard from '@/components/portfolio/PortfolioDashboard'
+import OpportunityHub from '@/components/portfolio/OpportunityHub'
 import InvestingSinceBadge from '@/components/portfolio/InvestingSinceBadge'
 import InactivityPinLock from '@/components/auth/InactivityPinLock'
 import { HoldingWithPrice } from '@/types'
@@ -68,6 +69,7 @@ export default async function DashboardPage() {
     <div className="min-h-screen bg-gray-950 p-4 md:p-8">
       <InactivityPinLock />
       <InvestingSinceBadge />
+      <OpportunityHub holdingSymbols={symbols} />
       <PortfolioDashboard
         holdings={holdingsWithPrices}
         userName={userName}
