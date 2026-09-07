@@ -131,7 +131,7 @@ const scratchpadSource = fs.readFileSync('app/api/scratchpad/route.ts', 'utf8')
 assert.match(scratchpadSource, /MAX_SCRATCHPAD_LENGTH/, 'Scratchpad must enforce a bounded payload')
 assert.match(scratchpadSource, /maybeSingle\(\)/, 'Scratchpad GET must distinguish missing row from query failure')
 
-// v1.18.0 feature safety gates (version bump occurs only at release finalization)
+// v1.18.0 feature safety gates
 assert.equal(fs.existsSync('app/api/scanner/route.ts'), true, 'Stock scanner API is required')
 assert.equal(fs.existsSync('app/api/watchlist/route.ts'), true, 'Watchlist API is required')
 assert.equal(fs.existsSync('components/portfolio/OpportunityHub.tsx'), true, 'Opportunity Hub UI is required')
@@ -147,9 +147,9 @@ assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic 
 assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
 assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
 
-// v1.17.0 production-standard release gates
+// v1.18.0 release gates
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.17.0', 'Package version must match the production-standard release until v1.18 finalization')
+assert.equal(packageJson.version, '1.18.0', 'Package version must match finalized v1.18.0 release metadata')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.4', 'Patched Next.js release must stay pinned')
 assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
@@ -192,6 +192,6 @@ assert.match(proxySource, /export async function proxy\(/, 'Proxy must export th
 assert.match(proxySource, /PIN_SESSION_COOKIE_NAME/, 'Proxy must preserve the PIN session gate')
 
 const tsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v117'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v118'])
 
 console.log('✓ Critical regression tests passed')
