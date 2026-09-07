@@ -1,0 +1,57 @@
+name: Finalize v1.18.1 metadata
+
+on:
+  push:
+    branches:
+      - fix/changelog-time-v1.18.1
+
+permissions:
+  contents: write
+
+jobs:
+  finalize-metadata:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+
+      - name: Sync lockfile and release gates
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+
+          const lockPath = 'package-lock.json'
+          const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'))
+          lock.version = '1.18.1'
+          if (!lock.packages || !lock.packages['']) throw new Error('package-lock root package entry is missing')
+          lock.packages[''].version = '1.18.1'
+          fs.writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`)
+
+          const testPath = 'scripts/test-critical.mjs'
+          let test = fs.readFileSync(testPath, 'utf8')
+          const oldVersionGate = "assert.equal(packageJson.version, '1.18.0', 'Package version must match finalized v1.18.0 release metadata')"
+          const newVersionGate = "assert.equal(packageJson.version, '1.18.1', 'Package version must match finalized v1.18.1 metadata hotfix')"
+          if (!test.includes(oldVersionGate)) throw new Error('old v1.18.0 version gate not found')
+          test = test.replace('// v1.18.0 release gates', '// v1.18.1 metadata hotfix release gates')
+          test = test.replace(oldVersionGate, newVersionGate)
+
+          const oldAliasGate = "assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v118'])"
+          if (!test.includes(oldAliasGate)) throw new Error('old changelog alias gate not found')
+          const timeGates = `const changelogReleaseTimes = [\n  ['config/changelog-v1161.ts', '2026-09-08 02:48 ICT'],\n  ['config/changelog-v117.ts', '2026-09-08 03:40 ICT'],\n  ['config/changelog-v118.ts', '2026-09-08 04:54 ICT'],\n  ['config/changelog-v1181.ts', '2026-09-08 05:00 ICT'],\n]\nfor (const [file, expectedTime] of changelogReleaseTimes) {\n  const source = fs.readFileSync(file, 'utf8')\n  assert.ok(source.includes(\`date: '\${expectedTime}'\`), \`\${file} must include release time in YYYY-MM-DD HH:MM ICT format\`)\n}\n\nassert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1181'])`
+          test = test.replace(oldAliasGate, timeGates)
+          fs.writeFileSync(testPath, test)
+          NODE
+
+      - name: Commit finalized metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json scripts/test-critical.mjs
+          if git diff --cached --quiet; then
+            echo "metadata already synchronized"
+            exit 0
+          fi
+          git commit -m "test: finalize v1.18.1 metadata gates"
+          git push
