@@ -20,7 +20,12 @@ export default async function DashboardPage() {
     p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
   })
 
-  if (error) console.error('Holdings fetch error:', error)
+  // ห้ามตีความ DB/decrypt failure เป็นพอร์ตว่าง เพราะทำให้ผู้ใช้เข้าใจผิดว่าหุ้นถูกลบ
+  // โยน error ให้ dashboard/error.tsx แสดง recovery state ที่ชัดเจนแทน
+  if (error) {
+    console.error('Holdings fetch error:', error)
+    throw new Error('PORTFOLIO_LOAD_FAILED')
+  }
 
   const holdings = rows ?? []
   const symbols: string[] = holdings.map((h: any) => h.symbol)

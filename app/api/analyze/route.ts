@@ -171,7 +171,12 @@ export async function POST(request: NextRequest) {
       console.error('[analyze] holdings lookup failed:', holdErr)
       return NextResponse.json({ error: 'โหลดข้อมูลพอร์ตไม่สำเร็จ' }, { status: 500 })
     }
-    if (settingsErr) console.warn('[analyze] user_settings unavailable:', settingsErr.message)
+    // เงินสดเป็น input ที่มีผลต่อ deterministic BUY sizing โดยตรง
+    // DB query ล้มเหลวต้อง fail closed แทนการสมมติว่าผู้ใช้มีเงินสด $0 แล้วสร้างคำแนะนำจากข้อมูลผิด
+    if (settingsErr) {
+      console.error('[analyze] user_settings lookup failed:', settingsErr)
+      return NextResponse.json({ error: 'โหลดข้อมูลเงินสดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง' }, { status: 503 })
+    }
 
     const own = (allHoldings ?? []).find((h: { symbol: string }) => h.symbol === symbol) as
       { id: string; symbol: string; shares: number; cost_basis: number | null; notes: string | null; created_at: string; updated_at: string } | undefined

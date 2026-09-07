@@ -17,7 +17,7 @@
     "paths": {
       "@/lib/groq": ["./lib/groq-v114"],
       "@/lib/portfolio-batch": ["./lib/portfolio-batch-v114"],
-      "@/config/changelog": ["./config/changelog-v116"],
+      "@/config/changelog": ["./config/changelog-v1161"],
       "@/*": ["./*"]
     }
   },

@@ -34,6 +34,12 @@ export async function PUT(
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
+  // PUT endpoint นี้ใช้ full holding edit semantics: shares เป็นค่าบังคับเสมอ
+  // ป้องกัน request ที่ส่งเฉพาะ notes/cost_basis แล้ว parseShares(undefined) กลายเป็น 0 โดยไม่ตั้งใจ
+  if (!Object.prototype.hasOwnProperty.call(body, 'shares')) {
+    return NextResponse.json({ error: 'จำนวนหุ้นจำเป็นสำหรับการอัปเดต' }, { status: 400 })
+  }
+
   const { data: existing, error: existingError } = await supabase
     .from('holdings')
     .select('id, symbol')
