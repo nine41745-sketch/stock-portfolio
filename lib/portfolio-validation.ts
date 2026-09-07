@@ -58,8 +58,9 @@ export function parseSettingAmount(value: unknown, field: string): number {
   const parsed = toFiniteNumber(value, field)
   if (parsed < 0) throw new InputValidationError(`${field} ต้องไม่ติดลบ`)
   if (parsed > MAX_SETTING_VALUE) throw new InputValidationError(`${field} มากเกินขอบเขตที่ระบบรองรับ`)
-  assertScale(parsed, 2, field)
-  return parsed
+  // user_settings เป็น NUMERIC(15,2). THB -> USD conversion สร้างเศษมากกว่า 2 ตำแหน่งตามธรรมชาติ
+  // จึง normalize ที่ API boundary อย่างชัดเจน แทนปล่อยให้ Postgres round แบบ implicit/มองไม่เห็น
+  return Math.round((parsed + Number.EPSILON) * 100) / 100
 }
 
 export function parseSymbol(value: unknown): string {
