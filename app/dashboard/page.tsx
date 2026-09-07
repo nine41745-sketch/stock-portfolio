@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { getMultipleQuotesWithMetrics } from '@/lib/finnhub'
 import PortfolioDashboard from '@/components/portfolio/PortfolioDashboard'
+import OpportunityHub from '@/components/portfolio/OpportunityHub'
 import InvestingSinceBadge from '@/components/portfolio/InvestingSinceBadge'
 import InactivityPinLock from '@/components/auth/InactivityPinLock'
 import { HoldingWithPrice } from '@/types'
@@ -29,6 +30,9 @@ export default async function DashboardPage() {
 
   const holdings = rows ?? []
   const symbols: string[] = holdings.map((h: any) => h.symbol)
+  const activeSymbols: string[] = holdings
+    .filter((h: any) => Number(h.shares) > 0)
+    .map((h: any) => h.symbol)
 
   // ราคา + metrics จาก Finnhub (parallel แบบ chunk กัน rate limit)
   const priceData = symbols.length > 0 ? await getMultipleQuotesWithMetrics(symbols) : {}
@@ -68,6 +72,7 @@ export default async function DashboardPage() {
     <div className="min-h-screen bg-gray-950 p-4 md:p-8">
       <InactivityPinLock />
       <InvestingSinceBadge />
+      <OpportunityHub holdingSymbols={activeSymbols} />
       <PortfolioDashboard
         holdings={holdingsWithPrices}
         userName={userName}

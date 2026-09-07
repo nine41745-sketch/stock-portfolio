@@ -10,6 +10,7 @@
 }
 
 [data-theme="light"] .bg-gray-950 { background-color: #f1f5f9 !important; }
+[data-theme="light"] .bg-gray-950\/50 { background-color: #eef2f7 !important; }
 [data-theme="light"] .bg-gray-950\/60 { background-color: #e9eef5 !important; }
 [data-theme="light"] .bg-gray-950\/80 { background-color: #e2e8f0 !important; }
 [data-theme="light"] .bg-gray-900 { background-color: #ffffff !important; }
@@ -19,16 +20,53 @@
 [data-theme="light"] .bg-gray-800\/60 { background-color: #e9eef5 !important; }
 [data-theme="light"] .bg-gray-700 { background-color: #cbd5e1 !important; }
 
+/* Neutral text: keep all secondary copy readable on white/light cards. */
 [data-theme="light"] .text-white { color: #0f172a !important; }
-[data-theme="light"] .text-gray-100 { color: #1e293b !important; }
-[data-theme="light"] .text-gray-200 { color: #334155 !important; }
+[data-theme="light"] .text-gray-100 { color: #0f172a !important; }
+[data-theme="light"] .text-gray-200 { color: #1e293b !important; }
 [data-theme="light"] .text-gray-300 { color: #334155 !important; }
 [data-theme="light"] .text-gray-400 { color: #475569 !important; }
-[data-theme="light"] .text-gray-500 { color: #64748b !important; }
-[data-theme="light"] .text-gray-600 { color: #94a3b8 !important; }
-[data-theme="light"] .text-gray-700 { color: #cbd5e1 !important; }
+[data-theme="light"] .text-gray-500 { color: #475569 !important; }
+[data-theme="light"] .text-gray-600 { color: #475569 !important; }
+[data-theme="light"] .text-gray-700 { color: #334155 !important; }
+
+/* Semantic colors were tuned for dark mode originally; use darker variants on light backgrounds. */
+[data-theme="light"] .text-green-400 { color: #15803d !important; }
+[data-theme="light"] .text-yellow-400 { color: #a16207 !important; }
+[data-theme="light"] .text-orange-400 { color: #c2410c !important; }
+[data-theme="light"] .text-red-400 { color: #b91c1c !important; }
+[data-theme="light"] .text-blue-400 { color: #1d4ed8 !important; }
+[data-theme="light"] .text-cyan-400 { color: #0e7490 !important; }
+[data-theme="light"] .text-amber-100 { color: #78350f !important; }
+[data-theme="light"] .text-amber-200\/80,
+[data-theme="light"] .text-amber-200\/85 { color: #92400e !important; }
+[data-theme="light"] .text-red-100 { color: #7f1d1d !important; }
+[data-theme="light"] .text-red-200\/85 { color: #991b1b !important; }
+
+/* Semantic badge/background contrast in light mode. */
+[data-theme="light"] .bg-green-500\/15 { background-color: #dcfce7 !important; }
+[data-theme="light"] .bg-yellow-500\/15 { background-color: #fef9c3 !important; }
+[data-theme="light"] .bg-orange-500\/15 { background-color: #ffedd5 !important; }
+[data-theme="light"] .bg-red-500\/15 { background-color: #fee2e2 !important; }
+[data-theme="light"] .bg-red-500\/10 { background-color: #fef2f2 !important; }
+[data-theme="light"] .bg-blue-500\/15 { background-color: #dbeafe !important; }
+[data-theme="light"] .bg-amber-950\/95 { background-color: #fffbeb !important; }
+[data-theme="light"] .bg-red-950\/95 { background-color: #fef2f2 !important; }
 
 [data-theme="light"] .border-gray-800 { border-color: #cbd5e1 !important; }
-[data-theme="light"] .border-gray-700 { border-color: #e2e8f0 !important; }
+[data-theme="light"] .border-gray-700 { border-color: #cbd5e1 !important; }
 [data-theme="light"] .border-gray-600 { border-color: #94a3b8 !important; }
+[data-theme="light"] .border-green-500\/30 { border-color: #86efac !important; }
+[data-theme="light"] .border-yellow-500\/30 { border-color: #fde047 !important; }
+[data-theme="light"] .border-orange-500\/30 { border-color: #fdba74 !important; }
+[data-theme="light"] .border-red-500\/30 { border-color: #fca5a5 !important; }
+[data-theme="light"] .border-blue-500\/30 { border-color: #93c5fd !important; }
+[data-theme="light"] .border-amber-400\/40 { border-color: #f59e0b !important; }
+[data-theme="light"] .border-red-400\/50 { border-color: #ef4444 !important; }
 [data-theme="light"] .divide-gray-800 > * + * { border-color: #e2e8f0 !important; }
+
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder { color: #64748b !important; opacity: 1; }
+[data-theme="light"] select,
+[data-theme="light"] input,
+[data-theme="light"] textarea { color: #0f172a; }

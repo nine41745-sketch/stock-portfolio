@@ -56,6 +56,21 @@ assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T01:30:00Z'), chang
 assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T02:30:00Z'), change), false)
 assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T02:00:00Z'), change), false)
 
+const scanner = await importTsModule('lib/stock-scanner.ts')
+const strongScan = scanner.scoreScannerCandidate({
+  trend: 'UPTREND', rsi14: 55, weeklyRsi14: 58, macdHistogram: 1,
+  lastClose: 100, support: 97, resistance: 110, volumeRatio: 1.1,
+})
+assert.equal(strongScan.label, 'น่าสนใจ', 'healthy uptrend scanner candidate should rank as interesting')
+assert.ok(strongScan.score >= 72, 'strong scanner candidate should score >= 72')
+const weakScan = scanner.scoreScannerCandidate({
+  trend: 'DOWNTREND', rsi14: 80, weeklyRsi14: 78, macdHistogram: -1,
+  lastClose: 90, support: 80, resistance: 110, volumeRatio: 0.8,
+})
+assert.equal(weakScan.label, 'ยังไม่เด่น', 'weak/overheated downtrend candidate must not rank as interesting')
+assert.ok(scanner.SCANNER_UNIVERSES.ai.includes('NVDA'), 'AI scanner universe must include NVDA')
+assert.ok(scanner.SCANNER_UNIVERSES.growth.includes('TEM'), 'Growth scanner universe must include TEM')
+
 const latest = await importTsModule('lib/latest-analysis.ts')
 assert.equal(latest.shouldReplaceAnalysis(undefined, 100), true)
 assert.equal(latest.shouldReplaceAnalysis(100, 101), true)
@@ -93,8 +108,14 @@ assert.match(pricesSource, /MAX_SYMBOLS_PER_REQUEST/, '/api/prices must cap requ
 const holdingPutSource = fs.readFileSync('app/api/holdings/[id]/route.ts', 'utf8')
 assert.match(holdingPutSource, /hasOwnProperty\.call\(body, 'shares'\)/, 'Holding PUT must require shares explicitly')
 
+const dailyTodaySource = fs.readFileSync('app/api/daily-analyses/today/route.ts', 'utf8')
+assert.match(dailyTodaySource, /\.from\('holdings'\)/, 'Freshness endpoint must load current holdings')
+assert.match(dailyTodaySource, /\.in\('symbol', activeSymbols\)/, 'Daily/manual analyses must be restricted to current holdings')
+assert.match(dailyTodaySource, /activeSet\.has\(symbol\)/, 'Sold symbols must not appear in stale AI warnings')
+
 const dashboardPageSource = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
 assert.match(dashboardPageSource, /PORTFOLIO_LOAD_FAILED/, 'Dashboard must not render DB/decrypt failure as an empty portfolio')
+assert.match(dashboardPageSource, /OpportunityHub/, 'Dashboard must expose scanner/watchlist Opportunity Hub')
 assert.equal(fs.existsSync('app/dashboard/error.tsx'), true, 'Dashboard must provide a recovery error boundary')
 
 const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
@@ -110,9 +131,25 @@ const scratchpadSource = fs.readFileSync('app/api/scratchpad/route.ts', 'utf8')
 assert.match(scratchpadSource, /MAX_SCRATCHPAD_LENGTH/, 'Scratchpad must enforce a bounded payload')
 assert.match(scratchpadSource, /maybeSingle\(\)/, 'Scratchpad GET must distinguish missing row from query failure')
 
-// v1.17.0 production-standard release gates
+// v1.18.0 feature safety gates
+assert.equal(fs.existsSync('app/api/scanner/route.ts'), true, 'Stock scanner API is required')
+assert.equal(fs.existsSync('app/api/watchlist/route.ts'), true, 'Watchlist API is required')
+assert.equal(fs.existsSync('components/portfolio/OpportunityHub.tsx'), true, 'Opportunity Hub UI is required')
+assert.equal(fs.existsSync('supabase/migration_watchlist_v1.18.0.sql'), true, 'Watchlist RLS migration is required')
+const watchlistMigration = fs.readFileSync('supabase/migration_watchlist_v1.18.0.sql', 'utf8')
+assert.match(watchlistMigration, /ENABLE ROW LEVEL SECURITY/, 'Watchlist must enable RLS')
+assert.match(watchlistMigration, /auth\.uid\(\) = user_id/, 'Watchlist RLS must scope rows to the authenticated user')
+const scannerRouteSource = fs.readFileSync('app/api/scanner/route.ts', 'utf8')
+assert.match(scannerRouteSource, /MAX_SCAN_SYMBOLS/, 'Scanner must cap provider fan-out')
+assert.match(scannerRouteSource, /getTechnicalIndicators/, 'Scanner must use deterministic technical data')
+const lightModeCss = fs.readFileSync('app/globals.css', 'utf8')
+assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic green text for contrast')
+assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
+assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
+
+// v1.18.0 release gates
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.17.0', 'Package version must match the production-standard release')
+assert.equal(packageJson.version, '1.18.0', 'Package version must match finalized v1.18.0 release metadata')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.4', 'Patched Next.js release must stay pinned')
 assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
@@ -155,6 +192,6 @@ assert.match(proxySource, /export async function proxy\(/, 'Proxy must export th
 assert.match(proxySource, /PIN_SESSION_COOKIE_NAME/, 'Proxy must preserve the PIN session gate')
 
 const tsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v117'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v118'])
 
 console.log('✓ Critical regression tests passed')
