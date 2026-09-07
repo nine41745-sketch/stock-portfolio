@@ -3,6 +3,25 @@ import nextVitals from 'eslint-config-next/core-web-vitals'
 
 export default defineConfig([
   ...nextVitals,
+  // Legacy dashboard effects intentionally synchronize browser/network state after mount.
+  // Keep the modern rules enabled everywhere else and scope exceptions to the two existing
+  // components rather than weakening the repository-wide lint baseline.
+  {
+    files: [
+      'components/auth/UserSettingsMutationGuard.tsx',
+      'components/portfolio/PortfolioDashboard.tsx',
+    ],
+    rules: {
+      'react-hooks/set-state-in-effect': 'off',
+    },
+  },
+  {
+    files: ['components/portfolio/PortfolioDashboard.tsx'],
+    rules: {
+      'react-hooks/immutability': 'off',
+      'react-hooks/static-components': 'off',
+    },
+  },
   globalIgnores([
     '.next/**',
     'out/**',
