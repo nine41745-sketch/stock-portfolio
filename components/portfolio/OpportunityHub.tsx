@@ -86,7 +86,10 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
     }
   }, [])
 
-  useEffect(() => { void loadWatchlist() }, [loadWatchlist])
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadWatchlist() }, 0)
+    return () => window.clearTimeout(timer)
+  }, [loadWatchlist])
 
   async function runScanner() {
     setScannerLoading(true)
