@@ -117,6 +117,12 @@ assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused
 assert.equal(packageJson.scripts?.typecheck, 'tsc --noEmit', 'CI must expose an explicit TypeScript check')
 assert.equal(packageJson.scripts?.ci, 'npm run typecheck && npm run build', 'CI script must run typecheck and the guarded production build')
 assert.equal(fs.existsSync('package-lock.json'), true, 'A committed npm lockfile is required for reproducible builds')
+
+const packageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
+assert.equal(packageLock.version, packageJson.version, 'package-lock version must match package.json')
+assert.equal(packageLock.packages?.['']?.version, packageJson.version, 'lockfile root package version must match package.json')
+assert.equal(packageLock.packages?.['']?.dependencies?.['@anthropic-ai/sdk'], undefined, 'Removed dependencies must not remain in lockfile root')
+
 assert.equal(fs.existsSync('.github/workflows/ci.yml'), true, 'GitHub Actions CI workflow is required')
 assert.equal(fs.existsSync('.github/dependabot.yml'), true, 'Dependabot configuration is required')
 assert.equal(fs.existsSync('SECURITY.md'), true, 'Security policy is required')
