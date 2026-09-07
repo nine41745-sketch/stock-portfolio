@@ -16,7 +16,7 @@ function dedupeSymbols(symbols: string[]): string[] {
 async function getMineSymbols(userId: string): Promise<string[]> {
   const supabase = await createClient()
   const [holdingsResponse, watchlistResponse] = await Promise.all([
-    supabase.from('holdings').select('symbol').eq('user_id', userId),
+    supabase.from('holdings').select('symbol').eq('user_id', userId).gt('shares', 0),
     supabase.from('watchlist').select('symbol').eq('user_id', userId),
   ])
 
