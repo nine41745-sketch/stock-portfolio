@@ -2,12 +2,14 @@
 
 ## Current stack
 
-- **Next.js 15.5.24** (App Router) + React 19
+- **Node.js 22.x**
+- **Next.js 16.3.4** (App Router) + React 19
 - **Supabase** — Auth, PostgreSQL, RLS, pgcrypto encryption
 - **Finnhub** — current quotes, company metrics, news, earnings
 - **Yahoo Finance / Stooq** — historical data for technical indicators
 - **Groq AI** — primary `openai/gpt-oss-120b`, fallback `openai/gpt-oss-20b`
 - **Vercel** — Preview / Production / Cron
+- **GitHub Actions** — reproducible CI with `npm ci`, production dependency audit, ESLint, TypeScript and production build
 
 ## Authentication model
 
@@ -17,6 +19,7 @@
 4. A signed HttpOnly PIN session is bound to the current Supabase login session.
 5. Inactivity locks **PIN only** after 30 minutes. The Supabase login remains active, so re-entry normally needs only the PIN.
 6. **Logout** is different from **🔒 Lock**: Logout also removes the Supabase Auth session.
+7. Next.js 16 uses `proxy.ts` as the network boundary for Auth/PIN defense-in-depth; the authorization semantics are unchanged from the previous middleware gate.
 
 ## Environment variables
 
@@ -33,17 +36,19 @@ Copy `.env.local.example` to `.env.local` and provide all values:
 - `PIN_SESSION_SECRET`
 - optional `PIN_SESSION_MAX_AGE_SEC` (default 14400 seconds / 4 hours)
 
-Never expose service-role, encryption, Groq, Cron, PIN pepper, or PIN session secrets to client-side code or commit real values to Git.
+Never expose service-role, encryption, Groq, Cron, PIN pepper, or PIN session secrets to client-side code or commit real values to Git. GitHub Actions uses non-secret placeholder values only to allow static build verification; those placeholders are never runtime credentials.
 
 ## Database
 
 ### Existing deployed project
 
-Do **not** rerun the full schema. Apply only migrations that have not yet been applied. For v1.16.0 the new migration is:
+Do **not** rerun the full schema. Apply only migrations that have not yet been applied. The latest schema migration currently required by Production is:
 
 `supabase/migration_analysis_freshness_v1.16.0.sql`
 
 It adds portfolio/cash freshness timestamps and a holdings trigger used only to identify when an existing AI result became stale.
+
+**v1.17.0 has no SQL migration.**
 
 ### Fresh project
 
@@ -57,16 +62,18 @@ It adds portfolio/cash freshness timestamps and a holdings trigger used only to 
 
 ## Local development
 
+Use Node.js 22.x and the committed lockfile:
+
 ```bash
 cd stock-portfolio
-npm install
+npm ci
 npm run test:critical
 npm run dev
 ```
 
 Then open `http://localhost:3000`.
 
-Before a release, `npm run build` automatically runs the critical regression checks first, then the Next.js production build.
+Before a release, run `npm run ci`. It executes ESLint, TypeScript checking, critical regression checks, and the Next.js production build. Do not use `npm audit fix --force` blindly; review breaking dependency upgrades on a dedicated branch.
 
 ## AI behavior
 
@@ -88,6 +95,6 @@ That is **01:15 UTC ≈ 08:15 ICT (Asia/Bangkok)** each day. Keep `CRON_SECRET` 
 
 Use this sequence for every release:
 
-**branch → Preview build → required migration → Preview smoke test → PR review → explicit merge/Production approval → Production smoke test → Git tag**
+**branch → GitHub CI + Vercel Preview → required migration → Preview smoke test → PR review → explicit merge/Production approval → Production smoke test → Git tag**
 
-Do not merge a feature branch or promote it to Production before Preview verification and explicit approval.
+Do not merge a feature branch or promote it to Production before CI/Preview verification and explicit approval.

@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - main
+      - feat/production-standard-v1.17.0
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Build-only placeholders. They are intentionally non-secret and must never be used at runtime.
+  NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+  SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role
+  SUPABASE_ENCRYPTION_KEY: ci-placeholder-encryption-key-32-bytes-minimum
+  FINNHUB_API_KEY: ci-placeholder-finnhub
+  GROQ_API_KEY: ci-placeholder-groq
+  CRON_SECRET: ci-placeholder-cron-secret
+  PIN_PEPPER: ci-placeholder-pin-pepper
+  PIN_SESSION_SECRET: ci-placeholder-pin-session-secret-at-least-32-bytes
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Typecheck, regression tests and production build
+        run: npm run ci
