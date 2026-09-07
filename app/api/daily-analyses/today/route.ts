@@ -16,25 +16,50 @@ function getThaiDateForTimestamp(timestampMs: number): string {
   return thai.toISOString().split('T')[0]
 }
 
-// GET /api/daily-analyses/today — คืนผลล่าสุดจริงต่อหุ้น ไม่ว่ามาจาก cron หรือ manual Analyze
+// GET /api/daily-analyses/today — คืนผลล่าสุดจริงเฉพาะหุ้นที่ยังถืออยู่ในพอร์ต
 // พร้อม freshness metadata เพื่อเตือนเมื่อหุ้น/ต้นทุน/เงินสดเปลี่ยนหลังผลวิเคราะห์ล่าสุด
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // ประวัติ daily_analyses ถูกเก็บไว้เพื่อ Track Record แม้ขายหุ้นไปแล้ว
+  // แต่ Dashboard/stale banner ต้องสนใจเฉพาะ holdings ปัจจุบัน ไม่เช่นนั้นหุ้นที่ขายแล้วจะยังเตือนให้วิเคราะห์ใหม่
+  const { data: holdingRows, error: holdingsError } = await supabase
+    .from('holdings')
+    .select('symbol')
+    .eq('user_id', user.id)
+
+  if (holdingsError) {
+    console.error('[daily-analyses] holdings query failed:', holdingsError)
+    return NextResponse.json({ error: 'โหลดรายการหุ้นปัจจุบันไม่สำเร็จ' }, { status: 500 })
+  }
+
+  const activeSymbols = [...new Set((holdingRows ?? []).map(row => row.symbol as string).filter(Boolean))]
+  if (activeSymbols.length === 0) {
+    return NextResponse.json({
+      analyses: {},
+      analysisDates: {},
+      analysisDate: getThaiDateString(),
+      staleSymbols: [],
+      latestPortfolioChangeAt: null,
+    })
+  }
+
   const [dailyResponse, manualResponse, settingsResponse] = await Promise.all([
     supabase
       .from('daily_analyses')
       .select('symbol, result, analysis_date')
       .eq('user_id', user.id)
+      .in('symbol', activeSymbols)
       .is('error', null)
       .order('analysis_date', { ascending: false })
       .limit(500),
     supabase
       .from('manual_latest_analyses')
       .select('symbol, result, analysed_at')
-      .eq('user_id', user.id),
+      .eq('user_id', user.id)
+      .in('symbol', activeSymbols),
     supabase
       .from('user_settings')
       .select('portfolio_updated_at, cash_updated_at')
@@ -55,12 +80,14 @@ export async function GET() {
     console.warn('[daily-analyses] freshness clock unavailable:', settingsResponse.error.message)
   }
 
+  const activeSet = new Set(activeSymbols)
   const analyses: Record<string, DetailedAnalysisResult> = {}
   const analysisDates: Record<string, string> = {}
   const latestTimes: Record<string, number> = {}
 
   for (const row of dailyResponse.data ?? []) {
     const symbol = row.symbol as string
+    if (!activeSet.has(symbol)) continue
     const result = row.result as DetailedAnalysisResult
     const analysisDate = row.analysis_date as string
     const timestamp = getResultTimestamp(result, `${analysisDate}T00:00:00+07:00`)
@@ -73,6 +100,7 @@ export async function GET() {
   if (!manualResponse.error) {
     for (const row of manualResponse.data ?? []) {
       const symbol = row.symbol as string
+      if (!activeSet.has(symbol)) continue
       const result = row.result as DetailedAnalysisResult
       const analysedAt = row.analysed_at as string
       const timestamp = getResultTimestamp(result, analysedAt)
@@ -89,7 +117,7 @@ export async function GET() {
     freshnessData?.cash_updated_at ?? null
   )
   const staleSymbols = Object.keys(analyses)
-    .filter(symbol => isAnalysisStale(latestTimes[symbol] ?? 0, latestChangeMs))
+    .filter(symbol => activeSet.has(symbol) && isAnalysisStale(latestTimes[symbol] ?? 0, latestChangeMs))
     .sort()
 
   return NextResponse.json({
