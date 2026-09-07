@@ -73,7 +73,6 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
   const [savingSymbol, setSavingSymbol] = useState<string | null>(null)
 
   const loadWatchlist = useCallback(async () => {
-    setWatchlistLoading(true)
     try {
       const response = await fetch('/api/watchlist', { cache: 'no-store' })
       if (!response.ok) throw new Error(await getErrorMessage(response, 'โหลด Watchlist ไม่สำเร็จ'))
