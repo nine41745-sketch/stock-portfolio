@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v117: ChangelogEntry = {
   version: 'v1.17.0',
-  date: '2026-09-08 ICT',
+  date: '2026-09-08 03:40 ICT',
   changes: [
     'Reproducible Builds: เพิ่ม package-lock.json, pin Node.js 22 และใช้ npm ci ใน CI เพื่อให้ dependency resolution ระหว่าง CI และ deployment สม่ำเสมอขึ้น',
     'Framework Security: อัปเกรด Next.js เป็น 16.3.4 เพื่อปิด high-severity PostCSS advisory ใน dependency chain และย้าย middleware.ts เป็น proxy.ts ตามมาตรฐาน Next.js 16 โดยคง Auth/PIN gate เดิม',
