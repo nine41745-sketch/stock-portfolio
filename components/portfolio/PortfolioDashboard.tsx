@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import HoldingModal from './HoldingModal'
 import TradingViewChart from './TradingViewChart'
-import { AUTO_LOGOUT_MS, AUTO_LOGOUT_WARN_MS } from '@/lib/constants'
+import { AUTO_LOGOUT_MS, AUTO_LOGOUT_WARN_MS, FALLBACK_USD_THB_RATE } from '@/lib/constants'
 import { getMarketStatus, MarketStatus } from '@/lib/market-status'
 import { changelog, CURRENT_VERSION } from '@/config/changelog'
 
@@ -62,6 +62,18 @@ function fmtNewsTime(ts: number) {
 function fmtPct(n: number | null) {
   if (n === null) return '—'
   return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
+}
+
+async function requireOk(response: Response, fallback: string): Promise<Response> {
+  if (response.ok) return response
+  let message = fallback
+  try {
+    const payload = await response.clone().json() as { error?: unknown }
+    if (typeof payload.error === 'string' && payload.error.trim()) message = payload.error
+  } catch {
+    // use fallback
+  }
+  throw new Error(message)
 }
 
 // Tooltip component
@@ -176,14 +188,24 @@ function TrackRecordCard() {
   const [days, setDays] = useState<7 | 30>(7)
   const [data, setData] = useState<TrackRecordData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
     setLoading(true)
+    setLoadError(false)
     fetch(`/api/track-record?days=${days}`)
+      .then(r => requireOk(r, 'โหลด Track Record ไม่สำเร็จ'))
       .then(r => r.json())
-      .then(d => setData(d))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
+      .then(d => { if (!cancelled) setData(d) })
+      .catch(() => {
+        if (!cancelled) {
+          setData(null)
+          setLoadError(true)
+        }
+      })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [days])
 
   const winRate = data?.overall.winRatePct ?? null
@@ -201,6 +223,8 @@ function TrackRecordCard() {
 
       {loading ? (
         <p className="text-gray-600 text-sm">กำลังโหลด...</p>
+      ) : loadError ? (
+        <p className="text-red-400 text-sm">โหลด Track Record ไม่สำเร็จ — ข้อมูลเดิมไม่ได้ถูกลบ กรุณาลองใหม่ภายหลัง</p>
       ) : !data || data.overall.total === 0 ? (
         <p className="text-gray-600 text-sm">
           ยังไม่มีข้อมูลย้อนหลังพอ ({days} วัน) — ระบบวิเคราะห์อัตโนมัติรันทุกวันประมาณ 08:15 น. เก็บข้อมูลสะสมไปเรื่อยๆ รอสักพักแล้วกลับมาดูอีกครั้งครับ
@@ -307,12 +331,14 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [modalHolding, setModalHolding] = useState<HoldingWithPrice | null | undefined>(undefined)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [currency, setCurrency] = useState<'usd' | 'thb'>('usd')
-  const [exchangeRate, setExchangeRate] = useState(36.2)
+  const [exchangeRate, setExchangeRate] = useState(FALLBACK_USD_THB_RATE)
+  const [exchangeRateSource, setExchangeRateSource] = useState<'loading' | 'live' | 'fallback'>('loading')
   const [rateUpdatedAt, setRateUpdatedAt] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop')
   const [cashBalanceUSD, setCashBalanceUSD] = useState(0)
   const [dimeBalanceUSD, setDimeBalanceUSD] = useState(0)
   const [initialCapital, setInitialCapital] = useState(0)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [darkMode, setDarkMode] = useState(true)
 
   const [dimeUpdatedAt, setDimeUpdatedAt] = useState<string | null>(null)
@@ -366,15 +392,24 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // โหลด exchange rate
+  // โหลด exchange rate — fallback มีไว้แสดงค่าประมาณเท่านั้น การบันทึก THB ต้องใช้ live quote
   async function fetchExchangeRate() {
     try {
-      const d = await fetch('/api/exchange-rate').then(r => r.json())
-      if (d.rate) { setExchangeRate(d.rate); setRateUpdatedAt(d.updatedAt ?? null) }
-    } catch { /* keep default */ }
+      const res = await fetch('/api/exchange-rate')
+      await requireOk(res, 'โหลดอัตราแลกเปลี่ยนไม่สำเร็จ')
+      const d = await res.json() as { rate?: unknown; updatedAt?: string | null; source?: 'live' | 'fallback' }
+      if (typeof d.rate !== 'number' || !Number.isFinite(d.rate) || d.rate <= 0) throw new Error('invalid FX rate')
+      setExchangeRate(d.rate)
+      setRateUpdatedAt(d.source === 'live' ? d.updatedAt ?? null : null)
+      setExchangeRateSource(d.source === 'live' ? 'live' : 'fallback')
+    } catch {
+      setExchangeRate(FALLBACK_USD_THB_RATE)
+      setRateUpdatedAt(null)
+      setExchangeRateSource('fallback')
+    }
   }
 
-  useEffect(() => { fetchExchangeRate() }, [])
+  useEffect(() => { void fetchExchangeRate() }, [])
 
   // Auto-detect ขนาดจอตอนเปิดหน้าเว็บครั้งแรก — จอมือถือ (< 768px) จะสลับไปโหมด Card Layout ให้อัตโนมัติ
   // ทำแค่ครั้งเดียวตอน mount เท่านั้น (ไม่ผูกกับ resize event) เพื่อไม่ไปแย่งค่าที่ user เลือกเองภายหลังด้วยปุ่ม 💻/📱
@@ -391,22 +426,30 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
 
 
   useEffect(() => {
-    fetch('/api/user-settings').then(r => r.json()).then(d => {
-      const usd = d.cash_balance ?? 0
-      setCashBalanceUSD(usd)
-      setCashInput(currency === 'thb' ? String(Math.round(usd * exchangeRate)) : String(usd))
+    let cancelled = false
+    fetch('/api/user-settings')
+      .then(r => requireOk(r, 'โหลดข้อมูลเงินไม่สำเร็จ'))
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return
+        const usd = d.cash_balance ?? 0
+        setCashBalanceUSD(usd)
+        setCashInput(currency === 'thb' ? String(Math.round(usd * exchangeRate)) : String(usd))
 
-      const dime = d.dime_balance ?? 0
-      setDimeBalanceUSD(dime)
-      setDimeInput(currency === 'thb' ? String(Math.round(dime * exchangeRate)) : String(dime))
+        const dime = d.dime_balance ?? 0
+        setDimeBalanceUSD(dime)
+        setDimeInput(currency === 'thb' ? String(Math.round(dime * exchangeRate)) : String(dime))
 
-      const cap = d.initial_capital ?? 0
-      setInitialCapital(cap)
-      setCapitalInput(currency === 'thb' ? String(Math.round(cap * exchangeRate)) : String(cap))
+        const cap = d.initial_capital ?? 0
+        setInitialCapital(cap)
+        setCapitalInput(currency === 'thb' ? String(Math.round(cap * exchangeRate)) : String(cap))
 
-      setDimeUpdatedAt(d.dime_updated_at ?? null)
-      setCapitalUpdatedAt(d.capital_updated_at ?? null)
-    }).catch(() => {})
+        setDimeUpdatedAt(d.dime_updated_at ?? null)
+        setCapitalUpdatedAt(d.capital_updated_at ?? null)
+        setSettingsLoaded(true)
+      })
+      .catch(() => { if (!cancelled) setSettingsLoaded(false) })
+    return () => { cancelled = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -428,15 +471,22 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
 
   // sync cashInput เมื่อเปลี่ยน currency
   useEffect(() => {
-    if (!editingCash) {
+    if (!editingCash && settingsLoaded) {
       setCashInput(currency === 'thb'
         ? String(Math.round(cashBalanceUSD * exchangeRate))
         : String(cashBalanceUSD))
     }
-  }, [currency, exchangeRate]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currency, exchangeRate, settingsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok }); setTimeout(() => setToast(null), 3500)
+  }
+
+  function canSaveCurrentCurrency(): boolean {
+    if (currency !== 'thb') return true
+    if (exchangeRateSource === 'live') return true
+    showToast('ยังไม่มีอัตรา USD/THB แบบสด — ป้องกันการบันทึกยอดเงินบาทด้วยเรทประมาณ', false)
+    return false
   }
 
   // format ตามสกุลเงิน
@@ -468,9 +518,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const winners = holdings.filter(h => (h.pnl ?? 0) > 0).length
   const losers  = holdings.filter(h => (h.pnl ?? 0) < 0).length
   const winPct  = holdings.length > 0 ? (winners / holdings.length) * 100 : 0
-  const cashRatioPct = (totalValue + cashBalanceUSD) > 0
+  const cashRatioPct = settingsLoaded && (totalValue + cashBalanceUSD) > 0
     ? ((cashBalanceUSD / (totalValue + cashBalanceUSD)) * 100).toFixed(1)
-    : '0'
+    : '—'
 
   // Refresh prices + metrics + exchange rate
   async function handleRefresh() {
@@ -479,6 +529,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       await fetchExchangeRate()
       const symbols = holdings.map(h => h.symbol).join(',')
       const res = await fetch(`/api/prices?symbols=${symbols}`)
+      await requireOk(res, 'รีเฟรชราคาไม่สำเร็จ')
       const { prices, metrics } = await res.json()
 
       setHoldings(prev => prev.map(h => {
@@ -512,7 +563,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbol: holding.symbol }),
       })
-      if (!res.ok) throw new Error('analyze failed')
+      await requireOk(res, 'วิเคราะห์ไม่สำเร็จ')
       const result: DetailedAnalysisResult = await res.json()
       setAnalyses(prev => ({ ...prev, [holding.symbol]: result }))
     } catch {
@@ -524,14 +575,16 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
 
   // Save cash — แปลง input → USD ก่อนบันทึก
   async function handleSaveCash() {
+    if (!settingsLoaded || !canSaveCurrentCurrency()) return
     const inputVal = parseFloat(cashInput) || 0
     const usdVal = currency === 'thb' ? inputVal / exchangeRate : inputVal
     try {
-      await fetch('/api/user-settings', {
+      const res = await fetch('/api/user-settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cash_balance: usdVal }),
       })
+      await requireOk(res, 'บันทึกข้อมูลเงินไม่สำเร็จ')
       setCashBalanceUSD(usdVal)
       setEditingCash(false)
       showToast('บันทึกเงินในธนาคารแล้ว')
@@ -541,19 +594,23 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   }
 
   async function handleSaveDime() {
+    if (!settingsLoaded || !canSaveCurrentCurrency()) return
     const inputVal = parseFloat(dimeInput) || 0
     const usdVal = currency === 'thb' ? inputVal / exchangeRate : inputVal
     try {
-      await fetch('/api/user-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dime_balance: usdVal }) })
+      const res = await fetch('/api/user-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dime_balance: usdVal }) })
+      await requireOk(res, 'บันทึกข้อมูลเงินไม่สำเร็จ')
       setDimeBalanceUSD(usdVal); setDimeUpdatedAt(new Date().toISOString()); setEditingDime(false); showToast('บันทึกเงินใน Dime แล้ว')
     } catch { showToast('บันทึกไม่สำเร็จ', false) }
   }
 
   async function handleSaveCapital() {
+    if (!settingsLoaded || !canSaveCurrentCurrency()) return
     const inputVal = parseFloat(capitalInput) || 0
     const usdVal = currency === 'thb' ? inputVal / exchangeRate : inputVal
     try {
-      await fetch('/api/user-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initial_capital: usdVal }) })
+      const res = await fetch('/api/user-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initial_capital: usdVal }) })
+      await requireOk(res, 'บันทึกข้อมูลเงินไม่สำเร็จ')
       setInitialCapital(usdVal); setCapitalUpdatedAt(new Date().toISOString()); setEditingCapital(false); showToast('บันทึกเงินต้นจริงแล้ว')
     } catch { showToast('บันทึกไม่สำเร็จ', false) }
   }
@@ -581,8 +638,18 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       // v1.8.2: แก้บั๊ก ID ปลอม — เดิมใช้ Date.now().toString() ทำให้กดแก้/ลบหุ้นที่เพิ่งเพิ่มทันที
       // (ยังไม่รีเฟรชหน้า) พังเพราะ backend คาด UUID จริง ตอนนี้ใช้ UUID จริงจาก response ของ POST แทน
       const realId: string | undefined = resBody?.holding?.id
-      const priceRes = await fetch(`/api/prices?symbols=${payload.symbol}`)
-      const { prices, metrics } = await priceRes.json()
+      let prices: Record<string, number> = {}
+      let metrics: Record<string, any> = {}
+      try {
+        const priceRes = await fetch(`/api/prices?symbols=${payload.symbol}`)
+        if (priceRes.ok) {
+          const priceBody = await priceRes.json()
+          prices = priceBody.prices ?? {}
+          metrics = priceBody.metrics ?? {}
+        }
+      } catch {
+        // holding บันทึก DB สำเร็จแล้ว; provider ราคาเสียไม่ควรเปลี่ยน save success เป็น error
+      }
       const cp = prices[payload.symbol] ?? null
       const mv = cp !== null ? cp * payload.shares : null
       const tc = payload.cost_basis != null ? payload.cost_basis * payload.shares : null
@@ -624,16 +691,18 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     await supabase.auth.signOut(); router.push('/login'); router.refresh()
   }
 
-  // PIN Lock: กด "🔒 ล็อก" — ลบแค่ PIN-unlocked session cookie เท่านั้น ห้าม signOut Supabase เด็ดขาด
-  // (ผู้ใช้ยัง login Gmail อยู่ แค่ portfolio ถูกล็อกใหม่ ต้องใส่ PIN ถึงจะกลับเข้าได้)
+  // PIN Lock: กด "🔒 ล็อก" — ต้องยืนยันว่า server ลบ HttpOnly PIN session สำเร็จก่อนค่อยพาไป /pin
   async function handleLockPortfolio() {
-    try { await fetch('/api/pin/lock', { method: 'POST' }) } catch { /* best-effort — middleware ยัง
-      บังคับ PIN อยู่ดีถ้า cookie เดิมหมดอายุ/ไม่ valid ต่อให้ route นี้พลาด */ }
-    router.push('/pin')
-    router.refresh()
+    try {
+      const res = await fetch('/api/pin/lock', { method: 'POST', cache: 'no-store' })
+      await requireOk(res, 'ล็อกพอร์ตไม่สำเร็จ')
+      router.push('/pin')
+      router.refresh()
+    } catch {
+      showToast('ล็อกพอร์ตไม่สำเร็จ กรุณาลองใหม่', false)
+    }
   }
 
-  // Analysis card
   // Analysis card — บทวิเคราะห์เชิงลึกแบบสถาบันการเงิน (technical + news + risk/opportunity + แผนเทรด)
   function AnalysisCard({ analysis }: { analysis: DetailedAnalysisResult }) {
     const action = analysis.recommendation.action
@@ -649,7 +718,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
             <button onClick={() => setAnalyses(prev => { const n = { ...prev }; delete n[analysis.symbol]; return n })} className="opacity-50 hover:opacity-100 text-sm">✕</button>
           </div>
           <p className="text-xs leading-relaxed opacity-90 mb-3">{analysis.summary}</p>
-          {/* ข้อความรายละเอียด (สั้น/ยาว) มาจาก analysis.summary ด้านบนแล้ว ไม่ต้องซ้ำ */}
           <button
             onClick={() => handleAnalyze({ ...holdings.find(h => h.symbol === analysis.symbol)! })}
             className="mt-3 text-xs bg-amber-500/20 hover:bg-amber-500/30 rounded px-3 py-1.5 font-medium"
@@ -675,10 +743,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     ].filter((x): x is { label: string; value: string } => x !== null)
 
     const earningsSoon = analysis.earnings != null && analysis.earnings.daysUntil <= 7
-    // v1.10.9 hotfix (UI model label): เดิม hardcode ชื่อ Llama ตาม substring '8b' — ไม่ตรงกับโมเดลจริง
-    // หลัง migrate ไป openai/gpt-oss-* (v1.10.7/v1.10.8) ผูก label ตรงกับ usedModel ID จริงแทน ถ้าเป็น
-    // โมเดลอื่นที่ไม่รู้จักในอนาคต (เช่นเปลี่ยนโมเดลอีกครั้ง) ให้โชว์ analysis.usedModel ดิบๆ แทนการเดา
-    // ชื่อ ป้องกัน label ผิดเพี้ยนแบบเงียบๆ เหมือนที่เกิดขึ้นรอบนี้
     const MODEL_LABELS: Record<string, string> = {
       'openai/gpt-oss-120b': '🤖 GPT-OSS 120B',
       'openai/gpt-oss-20b': '⚡ GPT-OSS 20B (Fallback)',
@@ -711,7 +775,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           </div>
         )}
 
-        {/* Technical Summary */}
         {analysis.technicalSummary && (
           <div className="mb-3 p-3 bg-blue-500/10 border border-blue-500/25 rounded-lg">
             <p className="text-xs font-semibold mb-1.5 text-blue-300">📊 ภาพรวมเทคนิคัล</p>
@@ -728,7 +791,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           </div>
         )}
 
-        {/* News Impact */}
         {analysis.newsImpact.length > 0 && (
           <div className="mb-3">
             <p className="text-xs font-semibold mb-1.5">📰 ผลกระทบจากข่าว</p>
@@ -740,7 +802,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           </div>
         )}
 
-        {/* Risks & Opportunities — สีส้ม/แดง กับ สีเขียว */}
         {(analysis.risksAndOpportunities.caution || analysis.risksAndOpportunities.opportunity) && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
             {analysis.risksAndOpportunities.caution && (
@@ -758,7 +819,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           </div>
         )}
 
-        {/* แผนซื้อขาย */}
         {(analysis.recommendation.buyConditions || analysis.recommendation.sellConditions) && (
           <div className="mb-3 p-3 bg-black/20 rounded-lg border border-current/10 space-y-2">
             <p className="text-xs font-semibold">📌 แผนการเทรด</p>
@@ -771,7 +831,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           </div>
         )}
 
-        {/* ความเสี่ยงหลัก */}
         {analysis.risks.length > 0 && (
           <div className="mb-3">
             <p className="text-xs font-semibold mb-1.5 text-red-300">🚩 ความเสี่ยงหลัก</p>
@@ -785,13 +844,12 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           <p className="text-sm font-medium border-t border-current/20 pt-3 mb-1">{analysis.summary}</p>
         )}
 
-        {cashBalanceUSD > 0 && action === 'BUY' && (
+        {settingsLoaded && cashBalanceUSD > 0 && action === 'BUY' && (
           <p className="text-xs opacity-60 mt-2 border-t border-current/20 pt-2">
             💰 เงินในธนาคาร {fmtAmt(cashBalanceUSD)} · สัดส่วนเงินสด {cashRatioPct}%
           </p>
         )}
 
-        {/* Data source section */}
         <div className="border-t border-current/20 pt-3 mt-2 space-y-2">
           <p className="text-xs opacity-40 font-medium uppercase tracking-wide">📊 ข้อมูลที่ใช้วิเคราะห์</p>
           <div className="flex flex-wrap gap-1.5">
@@ -877,7 +935,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         </div>
       )}
 
-      {/* Inactivity warning */}
       {inactiveWarn && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-yellow-500 text-black rounded-lg px-5 py-3 text-sm font-medium shadow-xl flex items-center gap-3">
           ⚠️ จะออกจากระบบใน 1 นาที เนื่องจากไม่มีการใช้งาน
@@ -885,7 +942,12 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         </div>
       )}
 
-      {/* Header */}
+      {exchangeRateSource === 'fallback' && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+          ⚠️ USD/THB สดยังใช้ไม่ได้ ตอนนี้แสดงเงินบาทด้วยเรทสำรอง {exchangeRate.toFixed(2)} เท่านั้น และระบบจะไม่ยอมบันทึกยอดที่กรอกเป็น THB จนกว่าจะได้เรทสด
+        </div>
+      )}
+
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -901,9 +963,10 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           </div>
           <p className="text-gray-500 text-xs mt-1">
             {lastUpdate
-              ? `🔄 อัปเดต ${fmtDateTime(lastUpdate)} · 1 USD = ${exchangeRate.toFixed(2)} THB`
+              ? `🔄 อัปเดต ${fmtDateTime(lastUpdate)} · 1 USD = ${exchangeRate.toFixed(2)} THB${exchangeRateSource === 'live' ? '' : ' (ประมาณ)'}`
               : `สวัสดี, ${userName} · กด "รีเฟรชราคา" เพื่ออัปเดต`}
           </p>
+          {rateUpdatedAt && <p className="text-gray-700 text-[10px] mt-0.5">FX live: {fmtDateTime(rateUpdatedAt)}</p>}
         </div>
         <div className="flex gap-2 flex-wrap">
           <button onClick={handleRefresh} disabled={refreshing}
@@ -933,7 +996,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         </div>
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <SummaryCard label="มูลค่าพอร์ต" value={fmtAmt(totalValue)} />
         <SummaryCard label="ต้นทุนรวม" value={fmtAmt(totalCost)} />
@@ -949,10 +1011,11 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
             <div className="h-full bg-green-500 rounded-full" style={{ width: `${winPct}%` }} />
           </div>
         </div>
-        {/* Cash Cards */}
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
           <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินในธนาคาร</p>
-          {editingCash ? (
+          {!settingsLoaded ? (
+            <p className="text-gray-600 text-sm py-2">กำลังโหลดข้อมูล...</p>
+          ) : editingCash ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
                 <span className="text-gray-500 text-sm">{currency === 'thb' ? '฿' : '$'}</span>
@@ -976,12 +1039,12 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         </div>
       </div>
 
-      {/* Dime + Capital Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {/* เงินใน Dime */}
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
           <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินใน Dime (USD)</p>
-          {editingDime ? (
+          {!settingsLoaded ? (
+            <p className="text-gray-600 text-sm py-2">กำลังโหลดข้อมูล...</p>
+          ) : editingDime ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
                 <span className="text-gray-500 text-sm">{currency === 'thb' ? '฿' : '$'}</span>
@@ -1005,10 +1068,11 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           )}
         </div>
 
-        {/* เงินต้นจริง */}
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
           <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินต้นจริงที่ลงทุน</p>
-          {editingCapital ? (
+          {!settingsLoaded ? (
+            <p className="text-gray-600 text-sm py-2">กำลังโหลดข้อมูล...</p>
+          ) : editingCapital ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
                 <span className="text-gray-500 text-sm">{currency === 'thb' ? '฿' : '$'}</span>
@@ -1032,8 +1096,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           )}
         </div>
 
-        {/* กำไรจากเงินต้นจริง */}
-        {initialCapital > 0 && (() => {
+        {settingsLoaded && initialCapital > 0 && (() => {
           const totalAll = (totalValue ?? 0) + dimeBalanceUSD
           const realPnl = totalAll - initialCapital
           const realPct = (realPnl / initialCapital) * 100
@@ -1049,7 +1112,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         })()}
       </div>
 
-      {/* Portfolio Donut Chart */}
       {holdings.some(h => h.market_value != null && h.market_value > 0) && (
         <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
           <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-3">📊 สัดส่วนพอร์ต</p>
@@ -1057,10 +1119,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         </div>
       )}
 
-      {/* Track Record — ความแม่นยำ AI ย้อนหลัง */}
       <TrackRecordCard />
 
-      {/* Controls */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative">
           <select value={currency} onChange={e => setCurrency(e.target.value as 'usd' | 'thb')}
@@ -1076,7 +1136,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         </div>
       </div>
 
-      {/* Desktop Table */}
       {viewMode === 'desktop' && (
         <div className="rounded-xl border border-gray-800 overflow-hidden">
           <div className="overflow-x-auto">
@@ -1161,7 +1220,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         </div>
       )}
 
-      {/* Mobile Card View */}
       {viewMode === 'mobile' && (
         <div className="space-y-3">
           {holdings.length === 0 && <div className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต</div>}
@@ -1214,7 +1272,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         </div>
       )}
 
-      {/* News */}
       <div className="rounded-xl border border-gray-800 overflow-hidden">
         <div className="bg-gray-900 px-4 py-3 flex items-center gap-2">
           <span className="text-sm font-semibold text-white">📰 ข่าววันนี้</span>
@@ -1263,10 +1320,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   )
 }
 
-// PIN Lock: Change PIN Modal — ใน Settings (เปิดจากปุ่ม "🔑 เปลี่ยน PIN" บน header)
-// flow: ใส่ PIN ปัจจุบัน + PIN ใหม่ + ยืนยัน PIN ใหม่ -> ส่งไป /api/pin/change ที่ยืนยัน PIN ปัจจุบัน
-// server-side ก่อนเสมอ (ไม่เชื่อ client เลย) -> สำเร็จแล้วปิด modal เฉยๆ ไม่ต้อง re-verify PIN ใหม่ทันที
-// เพราะ session ปัจจุบันยัง unlocked อยู่ (เปลี่ยน PIN ไม่กระทบ PIN-unlocked session ที่มีอยู่แล้ว)
 function ChangePinModal({ onClose, showToast }: { onClose: () => void; showToast: (msg: string, ok?: boolean) => void }) {
   const [currentPin, setCurrentPin] = useState('')
   const [newPin, setNewPin] = useState('')
@@ -1300,9 +1353,6 @@ function ChangePinModal({ onClose, showToast }: { onClose: () => void; showToast
     }
   }
 
-  // v1.11.0 (Show/Hide PIN): เปลี่ยนจาก helper function ธรรมดา (pinField) เป็น component จริง (PinField)
-  // เพราะต้องมี useState แยกต่อช่อง (current/new/confirm ต้องคุม visibility เป็นอิสระจากกัน) — ให้ React
-  // ผูก state ต่อ instance ของ component แทนที่จะเรียก useState ซ้อนอยู่ในฟังก์ชันช่วย render ธรรมดา
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
       <form
@@ -1330,9 +1380,6 @@ function ChangePinModal({ onClose, showToast }: { onClose: () => void; showToast
   )
 }
 
-// v1.11.0 (Show/Hide PIN): eye/eye-off เป็น inline SVG ล้วน ไม่เพิ่ม icon library ใหม่ (เช็คแล้วโปรเจกต์นี้
-// ไม่มี lucide-react/heroicons/react-icons ติดตั้งอยู่) — คัดลอกจาก components/auth/PinGate.tsx ตั้งใจ
-// (ไม่แชร์ import ข้ามไฟล์ เพื่อไม่เพิ่มจุดผูกกันระหว่างสอง component ที่แยกกันโดยตั้งใจอยู่แล้ว)
 function ChangePinEyeIcon({ open }: { open: boolean }) {
   return open ? (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1350,8 +1397,6 @@ function ChangePinEyeIcon({ open }: { open: boolean }) {
 }
 
 function PinField({ label, value, onChange, autoFocus }: { label: string; value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
-  // v1.11.0 (Show/Hide PIN): local state ล้วนๆ ต่อ field ไม่ persist ที่ไหนเลย — เปิด modal ใหม่ทุกครั้ง
-  // (component unmount/remount ตอนปิด/เปิด ChangePinModal) ค่าจะรีเซ็ตเป็นซ่อน (false) เสมอโดยอัตโนมัติ
   const [visible, setVisible] = useState(false)
   return (
     <div>
@@ -1360,10 +1405,6 @@ function PinField({ label, value, onChange, autoFocus }: { label: string; value:
         <input
           type={visible ? 'text' : 'password'}
           inputMode="numeric"
-          // v1.10.11 hotfix: \d* ทำให้บาง browser (พบใน production) ปฏิเสธ native pattern validation
-          // แม้กรอกเลข ASCII 0-9 ครบ 6 หลักถูกต้องแล้ว — เปลี่ยนเป็น [0-9]{6} ให้ตรงกับจุดอื่นทั้งหมด
-          // (Set/Confirm/Verify PIN ใน PinGate.tsx) onChange filter/maxLength/server validation เดิม
-          // ไม่ได้แตะ
           pattern="[0-9]{6}"
           autoComplete="off"
           autoFocus={autoFocus}
@@ -1386,8 +1427,6 @@ function PinField({ label, value, onChange, autoFocus }: { label: string; value:
   )
 }
 
-// Changelog Modal — แสดงประวัติการอัปเดตระบบทั้งหมด อ่านจาก config/changelog.ts
-// (เพิ่มเวอร์ชันใหม่ในอนาคต แก้แค่ไฟล์ config/changelog.ts ไฟล์เดียว ไม่ต้องแตะ component นี้)
 function ChangelogModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   if (!isOpen) return null
   return (
@@ -1422,8 +1461,6 @@ function ChangelogModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   )
 }
 
-// Prompt Template สำหรับ "ส่งโน้ตสั่งงาน AI" — ห่อโน้ตดิบด้วยโครงสร้างสั่งงานพัฒนาโค้ด
-// พร้อมฝัง Preservation Rules มาตรฐานของโปรเจกต์นี้ ให้ copy ไปวางสั่งงาน AI (Claude/Gemini/ChatGPT) ต่อได้ทันที
 function buildAiPrompt(notes: string): string {
   const body = notes.trim() || '(ยังไม่ได้จดอะไรไว้ — เติมรายละเอียดตรงนี้ก่อน copy ไปสั่งงานจริง)'
   return `ช่วยดำเนินการเก็บรายละเอียดและพัฒนาฟีเจอร์เพิ่มเติมให้ระบบ "พอร์ตน้องเจน" สมบูรณ์ตามรายการนี้ครับ:
@@ -1440,43 +1477,50 @@ ${body}
    - ปรับแก้ไขเฉพาะไฟล์และฟังก์ชันที่เกี่ยวข้องกับโจทย์นี้เท่านั้น ห้ามรีแฟคเตอร์ (Refactor) หรือเปลี่ยนชื่อ Variable/Interface ของส่วนอื่นเกินจำเป็น`
 }
 
-// Quick Notes / Scratchpad Drawer — จดไอเดีย/ฟีเจอร์ที่อยากทำเพิ่ม บันทึกอัตโนมัติ (debounce 1 วิ) ต่อ user
-// Desktop: slide-over จากขอบขวา (fixed width) / Mobile (<sm): bottom sheet เต็มความกว้าง (fixed height 65vh)
 function ScratchpadDrawer() {
   const [isOpen, setIsOpen] = useState(false)
   const [content, setContent] = useState('')
   const [loaded, setLoaded] = useState(false)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [copied, setCopied] = useState(false)
   const [exported, setExported] = useState(false)
 
-  // โหลดโน้ตครั้งแรกตอน mount (ไม่ต้องรอเปิด drawer ก่อน — กดเปิดแล้วเห็นเนื้อหาทันที)
-  useEffect(() => {
-    fetch('/api/scratchpad')
-      .then(r => r.json())
-      .then(d => setContent(d.content ?? ''))
-      .catch(() => {})
-      .finally(() => setLoaded(true))
+  const loadScratchpad = useCallback(async () => {
+    setLoadFailed(false)
+    try {
+      const res = await fetch('/api/scratchpad')
+      await requireOk(res, 'โหลดโน้ตไม่สำเร็จ')
+      const d = await res.json()
+      setContent(d.content ?? '')
+      setLoaded(true)
+    } catch {
+      // สำคัญ: ห้าม set loaded=true เพราะ auto-save จะเอา content เริ่มต้น '' ไปทับโน้ตจริงหลัง read failure
+      setLoaded(false)
+      setLoadFailed(true)
+    }
   }, [])
 
-  // Auto-save แบบ debounce — บันทึกหลังหยุดพิมพ์ 1 วินาที กันยิง API ถี่ทุกตัวอักษร
+  useEffect(() => { void loadScratchpad() }, [loadScratchpad])
+
   useEffect(() => {
     if (!loaded) return
     setSaveStatus('saving')
     const timer = setTimeout(async () => {
       try {
-        await fetch('/api/scratchpad', {
+        const res = await fetch('/api/scratchpad', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content }),
         })
+        await requireOk(res, 'บันทึกโน้ตไม่สำเร็จ')
         setSaveStatus('saved')
       } catch {
-        setSaveStatus('idle')
+        setSaveStatus('error')
       }
     }, 1000)
     return () => clearTimeout(timer)
-  }, [content, loaded]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [content, loaded])
 
   function handleCopy() {
     navigator.clipboard.writeText(content)
@@ -1489,8 +1533,6 @@ function ScratchpadDrawer() {
     setContent('')
   }
 
-  // "ส่งโน้ตสั่งงาน AI" — ห่อโน้ตดิบด้วย prompt template + preservation rules แล้ว copy ลง clipboard
-  // ให้เอาไปวางสั่งงานต่อในแชต AI (Claude/Gemini/ChatGPT) ได้ทันทีโดยไม่ต้องพิมพ์กฎเหล็กซ้ำเอง
   function handleExportPrompt() {
     navigator.clipboard.writeText(buildAiPrompt(content))
       .then(() => { setExported(true); setTimeout(() => setExported(false), 2000) })
@@ -1499,7 +1541,6 @@ function ScratchpadDrawer() {
 
   return (
     <>
-      {/* Floating button — มุมขวาล่าง เกาะตลอดเวลา (fixed) ซ่อนตอน drawer เปิดอยู่ */}
       <button
         onClick={() => setIsOpen(true)}
         aria-label="เปิด Quick Notes"
@@ -1508,13 +1549,11 @@ function ScratchpadDrawer() {
         📝
       </button>
 
-      {/* Backdrop — กดนอกพื้นที่ drawer เพื่อปิด */}
       <div
         onClick={() => setIsOpen(false)}
         className={`fixed inset-0 z-40 bg-black/50 transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       />
 
-      {/* Drawer: mobile = bottom sheet (65vh จากล่าง), sm+ = slide-over ขวา (360px เต็มความสูง) */}
       <div
         className={`fixed z-50 bg-gray-900 flex flex-col shadow-2xl transition-transform duration-300 ease-out
           inset-x-0 bottom-0 h-[65vh] max-h-screen rounded-t-2xl border-t border-gray-800
@@ -1526,26 +1565,35 @@ function ScratchpadDrawer() {
           <button onClick={() => setIsOpen(false)} className="text-gray-500 hover:text-white text-sm">✕</button>
         </div>
         <div className="flex-1 p-3 min-h-0">
-          <textarea
-            value={content}
-            onChange={e => setContent(e.target.value)}
-            placeholder="จดไอเดีย ฟีเจอร์ที่อยากทำเพิ่ม..."
-            className="w-full h-full resize-none rounded-lg bg-gray-950/60 border border-gray-800 p-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-purple-500/50"
-          />
+          {loadFailed ? (
+            <div className="h-full rounded-lg border border-red-500/30 bg-red-500/10 p-4 flex flex-col items-center justify-center text-center">
+              <p className="text-sm text-red-300 font-medium">โหลดโน้ตไม่สำเร็จ</p>
+              <p className="text-xs text-gray-500 mt-1">ระบบหยุด Auto-save ไว้เพื่อไม่ให้ข้อความว่างทับโน้ตเดิม</p>
+              <button onClick={() => void loadScratchpad()} className="mt-3 rounded bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700">ลองโหลดใหม่</button>
+            </div>
+          ) : (
+            <textarea
+              value={content}
+              onChange={e => setContent(e.target.value)}
+              disabled={!loaded}
+              placeholder={loaded ? 'จดไอเดีย ฟีเจอร์ที่อยากทำเพิ่ม...' : 'กำลังโหลดโน้ต...'}
+              className="w-full h-full resize-none rounded-lg bg-gray-950/60 border border-gray-800 p-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-purple-500/50 disabled:opacity-50"
+            />
+          )}
         </div>
         <div className="flex flex-col gap-2 px-4 py-2.5 border-t border-gray-800 shrink-0">
-          <button onClick={handleExportPrompt} className="w-full text-xs bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 rounded px-2.5 py-1.5 transition-colors font-medium">
+          <button onClick={handleExportPrompt} disabled={!loaded} className="w-full text-xs bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 rounded px-2.5 py-1.5 transition-colors font-medium disabled:opacity-40">
             {exported ? '✓ คัดลอก Prompt แล้ว — ไปวางสั่งงาน AI ได้เลย' : '📤 ส่งโน้ตสั่งงาน AI'}
           </button>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-500">
-              {saveStatus === 'saving' ? '⏳ กำลังบันทึก...' : saveStatus === 'saved' ? '✓ บันทึกอัตโนมัติแล้ว' : ''}
+            <span className={`text-xs ${saveStatus === 'error' ? 'text-red-400' : 'text-gray-500'}`}>
+              {saveStatus === 'saving' ? '⏳ กำลังบันทึก...' : saveStatus === 'saved' ? '✓ บันทึกอัตโนมัติแล้ว' : saveStatus === 'error' ? '⚠️ บันทึกไม่สำเร็จ' : ''}
             </span>
             <div className="flex items-center gap-2">
-              <button onClick={handleClear} className="text-xs bg-gray-800 hover:bg-red-900/40 hover:text-red-300 text-gray-400 rounded px-2.5 py-1 transition-colors">
+              <button onClick={handleClear} disabled={!loaded} className="text-xs bg-gray-800 hover:bg-red-900/40 hover:text-red-300 text-gray-400 rounded px-2.5 py-1 transition-colors disabled:opacity-40">
                 🗑️ Clear
               </button>
-              <button onClick={handleCopy} className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded px-2.5 py-1 transition-colors">
+              <button onClick={handleCopy} disabled={!loaded} className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded px-2.5 py-1 transition-colors disabled:opacity-40">
                 {copied ? '✓ คัดลอกแล้ว' : '📋 Copy'}
               </button>
             </div>

@@ -18,8 +18,15 @@ function getThaiDateString(): string {
 }
 
 export async function GET(request: NextRequest) {
+  // Fail closed: route นี้ใช้ service_role และเขียนผลลงฐานข้อมูล ห้ามเปิดทางผ่านกรณี CRON_SECRET ไม่ได้ตั้งค่า
+  const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret) {
+    console.error('[cron] CRON_SECRET is not configured')
+    return NextResponse.json({ error: 'Cron is not configured' }, { status: 503 })
+  }
+
   const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -68,19 +75,24 @@ export async function GET(request: NextRequest) {
 
       const symbols: string[] = rawHoldings.map((h: any) => h.symbol)
 
-      const { data: existingToday } = await supabase
+      const { data: existingToday, error: existingTodayError } = await supabase
         .from('daily_analyses')
         .select('symbol')
         .eq('user_id', userId)
         .eq('analysis_date', analysisDate)
         .is('error', null)
+      if (existingTodayError) throw new Error(`load existing analyses: ${existingTodayError.message}`)
+
       const alreadyAnalyzedSymbols = new Set((existingToday ?? []).map((r: any) => r.symbol as string))
 
-      const [{ data: settings }, quotes] = await Promise.all([
+      const [settingsResponse, quotes] = await Promise.all([
         supabase.from('user_settings').select('cash_balance').eq('user_id', userId).maybeSingle(),
         getMultipleQuotesWithMetrics(symbols),
       ])
-      const cashBalance = Number(settings?.cash_balance ?? 0)
+      if (settingsResponse.error) {
+        throw new Error(`load user settings: ${settingsResponse.error.message}`)
+      }
+      const cashBalance = Number(settingsResponse.data?.cash_balance ?? 0)
 
       const holdings: HoldingWithPrice[] = rawHoldings.map((h: any) => {
         const q = quotes[h.symbol]

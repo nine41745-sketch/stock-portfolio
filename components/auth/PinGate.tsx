@@ -74,8 +74,16 @@ export default function PinGate({ userEmail }: { userEmail: string }) {
   }
 
   async function handleLogout() {
+    // ลบ PIN cookie ก่อนทุก logout path เพื่อ fail-closed แม้ browser/session restore หรือ sid fallback
+    // การ signOut ยังเป็น source of truth ของ Supabase session; PIN lock เป็น cleanup เพิ่มอีกชั้น
+    try {
+      await fetch('/api/pin/lock', { method: 'POST', cache: 'no-store' })
+    } catch {
+      // best-effort: session binding + Supabase signOut ยังทำให้ cookie เก่าใช้ต่อกับ login session ใหม่ไม่ได้
+    }
     await supabase.auth.signOut()
     router.push('/login')
+    router.refresh()
   }
 
   if (screen === 'loading') {

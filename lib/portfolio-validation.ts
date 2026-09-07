@@ -28,17 +28,29 @@ function toFiniteNumber(value: unknown, field: string): number {
   return parsed
 }
 
+function assertScale(value: number, scale: number, field: string): void {
+  const factor = 10 ** scale
+  const scaled = value * factor
+  const tolerance = Math.max(1, Math.abs(scaled)) * Number.EPSILON * 8
+  if (Math.abs(scaled - Math.round(scaled)) > tolerance) {
+    throw new InputValidationError(`${field} รองรับทศนิยมไม่เกิน ${scale} ตำแหน่ง`)
+  }
+}
+
 export function parseShares(value: unknown): number {
   if (value === undefined || value === null || value === '') return 0
   const parsed = toFiniteNumber(value, 'จำนวนหุ้น')
   if (parsed < 0) throw new InputValidationError('จำนวนหุ้นต้องไม่ติดลบ')
   if (parsed > MAX_SHARES) throw new InputValidationError('จำนวนหุ้นมากเกินขอบเขตที่ระบบรองรับ')
+  assertScale(parsed, 6, 'จำนวนหุ้น')
   return parsed
 }
 
 export function parseCostBasis(value: unknown): number {
   const parsed = toFiniteNumber(value, 'ต้นทุนเฉลี่ย')
   if (parsed < 0) throw new InputValidationError('ต้นทุนเฉลี่ยต้องไม่ติดลบ')
+  // ต้นทุนถูกเข้ารหัสเป็นข้อความ แต่จำกัด scale ให้สอดคล้องกับความละเอียดราคาที่ระบบใช้งานจริง
+  assertScale(parsed, 6, 'ต้นทุนเฉลี่ย')
   return parsed
 }
 
@@ -46,7 +58,9 @@ export function parseSettingAmount(value: unknown, field: string): number {
   const parsed = toFiniteNumber(value, field)
   if (parsed < 0) throw new InputValidationError(`${field} ต้องไม่ติดลบ`)
   if (parsed > MAX_SETTING_VALUE) throw new InputValidationError(`${field} มากเกินขอบเขตที่ระบบรองรับ`)
-  return parsed
+  // user_settings เป็น NUMERIC(15,2). THB -> USD conversion สร้างเศษมากกว่า 2 ตำแหน่งตามธรรมชาติ
+  // จึง normalize ที่ API boundary อย่างชัดเจน แทนปล่อยให้ Postgres round แบบ implicit/มองไม่เห็น
+  return Math.round((parsed + Number.EPSILON) * 100) / 100
 }
 
 export function parseSymbol(value: unknown): string {
