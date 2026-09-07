@@ -24,11 +24,13 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // ประวัติ daily_analyses ถูกเก็บไว้เพื่อ Track Record แม้ขายหุ้นไปแล้ว
-  // แต่ Dashboard/stale banner ต้องสนใจเฉพาะ holdings ปัจจุบัน ไม่เช่นนั้นหุ้นที่ขายแล้วจะยังเตือนให้วิเคราะห์ใหม่
+  // แต่ Dashboard/stale banner ต้องสนใจเฉพาะ holdings ที่ shares > 0 เท่านั้น
+  // เพื่อไม่ให้หุ้นที่ขายแล้วหรือคง row ไว้ที่ 0 หุ้นยังเตือนให้วิเคราะห์ใหม่
   const { data: holdingRows, error: holdingsError } = await supabase
     .from('holdings')
     .select('symbol')
     .eq('user_id', user.id)
+    .gt('shares', 0)
 
   if (holdingsError) {
     console.error('[daily-analyses] holdings query failed:', holdingsError)
