@@ -110,7 +110,29 @@ const scratchpadSource = fs.readFileSync('app/api/scratchpad/route.ts', 'utf8')
 assert.match(scratchpadSource, /MAX_SCRATCHPAD_LENGTH/, 'Scratchpad must enforce a bounded payload')
 assert.match(scratchpadSource, /maybeSingle\(\)/, 'Scratchpad GET must distinguish missing row from query failure')
 
+// v1.17.0 production-standard release gates
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.16.1', 'Package version must match the hotfix release')
+assert.equal(packageJson.version, '1.17.0', 'Package version must match the production-standard release')
+assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
+assert.equal(packageJson.scripts?.typecheck, 'tsc --noEmit', 'CI must expose an explicit TypeScript check')
+assert.equal(packageJson.scripts?.ci, 'npm run typecheck && npm run build', 'CI script must run typecheck and the guarded production build')
+assert.equal(fs.existsSync('package-lock.json'), true, 'A committed npm lockfile is required for reproducible builds')
+assert.equal(fs.existsSync('.github/workflows/ci.yml'), true, 'GitHub Actions CI workflow is required')
+assert.equal(fs.existsSync('.github/dependabot.yml'), true, 'Dependabot configuration is required')
+assert.equal(fs.existsSync('SECURITY.md'), true, 'Security policy is required')
+assert.equal(fs.existsSync('OPERATIONS.md'), true, 'Operations runbook is required')
+
+const ciSource = fs.readFileSync('.github/workflows/ci.yml', 'utf8')
+assert.match(ciSource, /npm ci/, 'CI must install from the exact lockfile')
+assert.match(ciSource, /npm run ci/, 'CI must run the project CI gate')
+
+const nextConfigSource = fs.readFileSync('next.config.js', 'utf8')
+assert.match(nextConfigSource, /poweredByHeader:\s*false/, 'X-Powered-By must be disabled')
+assert.match(nextConfigSource, /X-Content-Type-Options/, 'nosniff security header must be configured')
+assert.match(nextConfigSource, /Permissions-Policy/, 'Permissions-Policy security header must be configured')
+assert.match(nextConfigSource, /changelog-v117\.ts/, 'Next config must expose the v1.17.0 changelog wrapper')
+
+const tsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v117'])
 
 console.log('✓ Critical regression tests passed')
