@@ -3,7 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getMultipleQuotes } from '@/lib/finnhub'
 import { InputValidationError, parseSymbol } from '@/lib/portfolio-validation'
 
-const MAX_WATCHLIST_ITEMS = 20
+// Keep quote fan-out bounded because Finnhub free-tier quota is shared with the portfolio dashboard.
+const MAX_WATCHLIST_ITEMS = 12
 const MAX_NOTE_LENGTH = 500
 const MAX_TARGET_PRICE = 99_999_999_999.9999
 
