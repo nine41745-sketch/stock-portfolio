@@ -1,33 +1,16 @@
-import { BASE_CHANGELOG, ChangeLogEntry } from './changelog-v117'
+import { changelog as previousChangelog } from './changelog-v117'
+import type { ChangelogEntry } from './changelog'
 
-export const CHANGELOG: ChangeLogEntry[] = [
-  {
-    version: 'v1.18.0',
-    date: '2026-09-08 04:48 ICT',
-    title: 'Scanner, Watchlist & UI',
-    changes: [
-      {
-        category: 'Feature',
-        description: 'Added a deterministic stock scanner across curated US universes and the personal portfolio/watchlist, with bounded provider fan-out to limit quote and technical-data requests.'
-      },
-      {
-        category: 'Feature',
-        description: 'Added a persistent per-user Watchlist / entry-candidate list with optional target entry price and note, protected by authenticated RLS.'
-      },
-      {
-        category: 'UI',
-        description: 'Improved Light Mode semantic text and status contrast so labels, values and supporting copy remain readable on light backgrounds.'
-      },
-      {
-        category: 'Bug Fix',
-        description: 'Excluded sold and zero-share holdings from current Dashboard stale-AI warnings while preserving historical analyses for Track Record.'
-      }
-    ]
-  },
-  ...BASE_CHANGELOG
-]
+const v118: ChangelogEntry = {
+  version: 'v1.18.0',
+  date: '2026-09-08 ICT',
+  changes: [
+    'Stock Scanner: เพิ่มระบบสแกนหุ้นแบบ deterministic สำหรับกลุ่มหุ้น US ที่คัดไว้ รวมถึงหุ้นในพอร์ต/Watchlist พร้อมจำกัด provider fan-out เพื่อลดการใช้ quote และ technical-data requests',
+    'Watchlist: เพิ่มรายการหุ้นที่เล็งเข้าซื้อแบบ per-user พร้อมราคาเป้าหมายและหมายเหตุ โดยใช้ authenticated RLS และ migration แบบไม่ทำลายข้อมูลเดิม',
+    'Light Mode: ปรับ semantic text, status และ supporting copy ให้มี contrast อ่านง่ายขึ้นบนพื้นหลังโหมดสว่าง',
+    'Sold-stock Freshness: หุ้นที่ขายหมดหรือ shares = 0 จะไม่ขึ้น stale-AI warning บน Dashboard อีก แต่ยังคงประวัติการวิเคราะห์ไว้สำหรับ Track Record',
+  ],
+}
 
-export const BASE_CHANGELOG = CHANGELOG
-
-export type { ChangeLogEntry } from './changelog-v117'
-export const CURRENT_VERSION = CHANGELOG[0].version
+export const changelog: ChangelogEntry[] = [v118, ...previousChangelog]
+export const CURRENT_VERSION = changelog[0]?.version ?? 'v1.0.0'
