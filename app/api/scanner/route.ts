@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getQuote } from '@/lib/finnhub'
-import { getTechnicalIndicators } from '@/lib/indicators'
+import { getUpcomingEarnings } from '@/lib/finnhub'
+import { getTechnicalIndicators, TechnicalIndicators } from '@/lib/indicators'
 import { SCANNER_UNIVERSES, ScannerUniverseKey, scoreScannerCandidate } from '@/lib/stock-scanner'
 
 export const maxDuration = 45
@@ -11,6 +11,20 @@ const VALID_UNIVERSES = new Set<ScannerUniverseKey>(['ai', 'semis', 'growth', 'q
 
 function dedupeSymbols(symbols: string[]): string[] {
   return [...new Set(symbols.map(s => s.trim().toUpperCase()).filter(Boolean))].slice(0, MAX_SCAN_SYMBOLS)
+}
+
+function diffOrNull(a: number | null, b: number | null): number | null {
+  if (a === null || b === null) return null
+  return Math.round((a - b) * 100) / 100
+}
+
+function riskReward(price: number | null, support: number | null, resistance: number | null): number | null {
+  if (price === null || support === null || resistance === null) return null
+  if (!(support < price && price < resistance)) return null
+  const risk = price - support
+  const reward = resistance - price
+  if (risk <= 0 || reward <= 0) return null
+  return Math.round((reward / risk) * 100) / 100
 }
 
 async function getMineSymbols(userId: string): Promise<string[]> {
@@ -35,11 +49,16 @@ async function getMineSymbols(userId: string): Promise<string[]> {
   ])
 }
 
-async function scanOne(symbol: string) {
-  const [quote, technical] = await Promise.all([
-    getQuote(symbol),
+async function scanOne(symbol: string, spy: TechnicalIndicators) {
+  // Price/day-change/52W are derived from the same historical feed as Technicals so scanner does not
+  // consume Finnhub quote/metric quota. Finnhub is reserved here for earnings catalyst risk only.
+  const [technical, earnings] = await Promise.all([
     getTechnicalIndicators(symbol),
+    getUpcomingEarnings(symbol),
   ])
+
+  const relativeStrength20 = diffOrNull(technical.return20dPct, spy.return20dPct)
+  const relativeStrength60 = diffOrNull(technical.return60dPct, spy.return60dPct)
 
   const scored = scoreScannerCandidate({
     trend: technical.trend,
@@ -47,25 +66,47 @@ async function scanOne(symbol: string) {
     weeklyRsi14: technical.weeklyRsi14,
     macdHistogram: technical.macd.histogram,
     lastClose: technical.lastClose,
-    support: technical.support,
-    resistance: technical.resistance,
-    volumeRatio: technical.volumeRatio,
+    ema50: technical.ema50,
+    support: technical.scannerSupport,
+    resistance: technical.scannerResistance,
+    volumeRatio: technical.scannerVolumeRatio,
+    week52High: technical.week52High,
+    week52Low: technical.week52Low,
+    relativeStrength20,
+    relativeStrength60,
+    earningsDays: earnings?.daysUntil ?? null,
   })
+
+  const price = technical.lastClose
+  const support = technical.scannerSupport
+  const resistance = technical.scannerResistance
 
   return {
     symbol,
     score: scored.score,
     label: scored.label,
+    setup: scored.setup,
     reasons: scored.reasons,
-    price: quote?.c ?? technical.lastClose,
-    dayChangePct: quote?.dp ?? null,
+    categoryScores: scored.categoryScores,
+    price,
+    dayChangePct: technical.return1dPct,
     trend: technical.trend,
+    ema50: technical.ema50,
+    ema200: technical.ema200,
     rsi14: technical.rsi14,
     weeklyRsi14: technical.weeklyRsi14,
     macdHistogram: technical.macd.histogram,
-    support: technical.support,
-    resistance: technical.resistance,
-    volumeRatio: technical.volumeRatio,
+    support,
+    resistance,
+    volumeRatio: technical.scannerVolumeRatio,
+    week52High: technical.week52High,
+    week52Low: technical.week52Low,
+    return20dPct: technical.return20dPct,
+    return60dPct: technical.return60dPct,
+    relativeStrength20,
+    relativeStrength60,
+    riskReward: riskReward(price, support, resistance),
+    earnings,
   }
 }
 
@@ -88,12 +129,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ universe: requested, items: [], scannedAt: new Date().toISOString() })
     }
 
+    // One benchmark fetch per scan. Relative Strength compares the same lookback windows against SPY.
+    const spy = await getTechnicalIndicators('SPY')
+
     const items: Awaited<ReturnType<typeof scanOne>>[] = []
     for (let i = 0; i < symbols.length; i += 2) {
       const chunk = symbols.slice(i, i + 2)
-      const settled = await Promise.allSettled(chunk.map(scanOne))
+      const settled = await Promise.allSettled(chunk.map(symbol => scanOne(symbol, spy)))
       for (const result of settled) {
         if (result.status === 'fulfilled') items.push(result.value)
+        else console.error('[scanner] symbol scan failed:', result.reason)
       }
     }
 
@@ -101,6 +146,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       universe: requested,
+      benchmark: 'SPY',
       items,
       scannedAt: new Date().toISOString(),
     }, { headers: { 'Cache-Control': 'no-store' } })
