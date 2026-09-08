@@ -340,6 +340,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [initialCapital, setInitialCapital] = useState(0)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [darkMode, setDarkMode] = useState(true)
+  const [themeReady, setThemeReady] = useState(false)
 
   const [dimeUpdatedAt, setDimeUpdatedAt] = useState<string | null>(null)
   const [capitalUpdatedAt, setCapitalUpdatedAt] = useState<string | null>(null)
@@ -419,10 +420,20 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     }
   }, [])
 
-  // apply theme ที่ <html> ให้ครอบทั้งหน้า
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
-  }, [darkMode])
+// Sync state กับ theme ที่ root bootstrap คืนค่าจาก browser preference ก่อน hydration
+useEffect(() => {
+  const currentTheme = document.documentElement.getAttribute('data-theme')
+  setDarkMode(currentTheme !== 'light')
+  setThemeReady(true)
+}, [])
+
+// apply + persist theme ที่ <html> ให้ครอบทั้ง Dashboard และ Scanner หลัง user เปลี่ยนค่า
+useEffect(() => {
+  if (!themeReady) return
+  const theme = darkMode ? 'dark' : 'light'
+  document.documentElement.setAttribute('data-theme', theme)
+  try { window.localStorage.setItem('stock-portfolio-theme', theme) } catch { /* storage unavailable */ }
+}, [darkMode, themeReady])
 
 
   useEffect(() => {
