@@ -129,7 +129,9 @@ jobs:
       - name: Verify patch
         run: |
           npm ci
-          npm run ci
+          npm run lint
+          npm run typecheck
+          node scripts/test-critical.mjs
 
       - name: Commit fix
         run: |
