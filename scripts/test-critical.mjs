@@ -68,6 +68,7 @@ const weakScan = scanner.scoreScannerCandidate({
   lastClose: 90, support: 80, resistance: 110, volumeRatio: 0.8,
 })
 assert.equal(weakScan.label, 'ยังไม่เด่น', 'weak/overheated downtrend candidate must not rank as interesting')
+assert.equal(weakScan.setup, 'AVOID', 'downtrend scanner candidate should classify as AVOID')
 assert.ok(scanner.SCANNER_UNIVERSES.ai.includes('NVDA'), 'AI scanner universe must include NVDA')
 assert.ok(scanner.SCANNER_UNIVERSES.growth.includes('TEM'), 'Growth scanner universe must include TEM')
 
@@ -115,8 +116,15 @@ assert.match(dailyTodaySource, /activeSet\.has\(symbol\)/, 'Sold symbols must no
 
 const dashboardPageSource = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
 assert.match(dashboardPageSource, /PORTFOLIO_LOAD_FAILED/, 'Dashboard must not render DB/decrypt failure as an empty portfolio')
-assert.match(dashboardPageSource, /OpportunityHub/, 'Dashboard must expose scanner/watchlist Opportunity Hub')
+assert.match(dashboardPageSource, /AppTabs/, 'Dashboard must expose the shared portfolio/scanner navigation')
+assert.doesNotMatch(dashboardPageSource, /OpportunityHub/, 'Scanner workspace must stay off the main portfolio dashboard')
 assert.equal(fs.existsSync('app/dashboard/error.tsx'), true, 'Dashboard must provide a recovery error boundary')
+
+const scannerPageSource = fs.readFileSync('app/scanner/page.tsx', 'utf8')
+assert.match(scannerPageSource, /OpportunityHub/, 'Dedicated scanner page must render the scanner/watchlist workspace')
+assert.match(scannerPageSource, /AppTabs/, 'Dedicated scanner page must expose shared navigation')
+assert.equal(fs.existsSync('app/scanner/error.tsx'), true, 'Scanner must provide a recovery error boundary')
+assert.equal(fs.existsSync('components/navigation/AppTabs.tsx'), true, 'Portfolio/scanner navigation tabs are required')
 
 const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
 assert.match(dashboardSource, /Asia\/Bangkok/, 'Dashboard timestamps must force Asia/Bangkok')
@@ -131,7 +139,7 @@ const scratchpadSource = fs.readFileSync('app/api/scratchpad/route.ts', 'utf8')
 assert.match(scratchpadSource, /MAX_SCRATCHPAD_LENGTH/, 'Scratchpad must enforce a bounded payload')
 assert.match(scratchpadSource, /maybeSingle\(\)/, 'Scratchpad GET must distinguish missing row from query failure')
 
-// v1.18.0 feature safety gates
+// Scanner / Watchlist feature safety gates
 assert.equal(fs.existsSync('app/api/scanner/route.ts'), true, 'Stock scanner API is required')
 assert.equal(fs.existsSync('app/api/watchlist/route.ts'), true, 'Watchlist API is required')
 assert.equal(fs.existsSync('components/portfolio/OpportunityHub.tsx'), true, 'Opportunity Hub UI is required')
@@ -141,15 +149,31 @@ assert.match(watchlistMigration, /ENABLE ROW LEVEL SECURITY/, 'Watchlist must en
 assert.match(watchlistMigration, /auth\.uid\(\) = user_id/, 'Watchlist RLS must scope rows to the authenticated user')
 const scannerRouteSource = fs.readFileSync('app/api/scanner/route.ts', 'utf8')
 assert.match(scannerRouteSource, /MAX_SCAN_SYMBOLS/, 'Scanner must cap provider fan-out')
-assert.match(scannerRouteSource, /getTechnicalIndicators/, 'Scanner must use deterministic technical data')
+assert.match(scannerRouteSource, /getTechnicalIndicators\('SPY'\)/, 'Scanner must benchmark Relative Strength against SPY')
+assert.match(scannerRouteSource, /getUpcomingEarnings/, 'Scanner must surface earnings catalyst risk')
+assert.match(scannerRouteSource, /scannerSupport/, 'Scanner must use completed-bar support levels')
+assert.match(scannerRouteSource, /scannerVolumeRatio/, 'Scanner must use scanner-safe volume ratio')
+
+const indicatorSource = fs.readFileSync('lib/indicators.ts', 'utf8')
+assert.match(indicatorSource, /bars\.slice\(0, -1\)/, 'Scanner support/resistance must exclude the current bar')
+assert.match(indicatorSource, /bars\.slice\(-\(window \+ 1\), -1\)/, 'Scanner volume average must exclude current-day volume')
+assert.match(indicatorSource, /return20dPct/, 'Scanner market data must expose 20-day returns')
+assert.match(indicatorSource, /week52High/, 'Scanner market data must expose 52-week range')
+
+const opportunitySource = fs.readFileSync('components/portfolio/OpportunityHub.tsx', 'utf8')
+assert.match(opportunitySource, /Relative Strength/, 'Scanner UI must expose Relative Strength')
+assert.match(opportunitySource, /ซ่อนงบ ≤ 7 วัน/, 'Scanner UI must provide earnings-risk filtering')
+assert.match(opportunitySource, /BREAKOUT/, 'Scanner UI must expose deterministic setup filtering')
+assert.match(opportunitySource, /เรียง: Score สูงสุด/, 'Scanner UI must provide deterministic sorting controls')
+
 const lightModeCss = fs.readFileSync('app/globals.css', 'utf8')
 assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic green text for contrast')
 assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
 assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
 
-// v1.18.1 metadata hotfix release gates
+// v1.18.1 metadata hotfix release gates remain until v1.19.0 is finalized after Preview smoke.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.18.1', 'Package version must match finalized v1.18.1 metadata hotfix')
+assert.equal(packageJson.version, '1.18.1', 'Package version must remain v1.18.1 until v1.19.0 finalization')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.4', 'Patched Next.js release must stay pinned')
 assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
