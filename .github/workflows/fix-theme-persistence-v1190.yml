@@ -1,0 +1,162 @@
+name: Fix v1.19.0 theme persistence
+
+on:
+  push:
+    branches:
+      - feat/scanner-page-v1.19.0
+
+permissions:
+  contents: write
+
+jobs:
+  fix-theme:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Patch theme persistence
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          dashboard_path = Path('components/portfolio/PortfolioDashboard.tsx')
+          dashboard = dashboard_path.read_text()
+
+          old_state = "  const [darkMode, setDarkMode] = useState(true)\n"
+          new_state = "  const [darkMode, setDarkMode] = useState(true)\n  const [themeReady, setThemeReady] = useState(false)\n"
+          if old_state not in dashboard:
+              raise SystemExit('darkMode state anchor not found')
+          dashboard = dashboard.replace(old_state, new_state, 1)
+
+          old_effect = """  // apply theme ที่ <html> ให้ครอบทั้งหน้า
+          useEffect(() => {
+            document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
+          }, [darkMode])
+          """
+          new_effect = """  // Sync state กับ theme ที่ root bootstrap คืนค่าจาก browser preference ก่อน hydration
+          useEffect(() => {
+            const currentTheme = document.documentElement.getAttribute('data-theme')
+            setDarkMode(currentTheme !== 'light')
+            setThemeReady(true)
+          }, [])
+
+          // apply + persist theme ที่ <html> ให้ครอบทั้ง Dashboard และ Scanner หลัง user เปลี่ยนค่า
+          useEffect(() => {
+            if (!themeReady) return
+            const theme = darkMode ? 'dark' : 'light'
+            document.documentElement.setAttribute('data-theme', theme)
+            try { window.localStorage.setItem('stock-portfolio-theme', theme) } catch { /* storage unavailable */ }
+          }, [darkMode, themeReady])
+          """
+          if old_effect not in dashboard:
+              raise SystemExit('theme effect anchor not found')
+          dashboard = dashboard.replace(old_effect, new_effect, 1)
+          dashboard_path.write_text(dashboard)
+
+          layout_path = Path('app/layout.tsx')
+          layout = layout_path.read_text()
+          old_layout = """import type { Metadata } from 'next'
+          import UserSettingsMutationGuard from '@/components/auth/UserSettingsMutationGuard'
+          import './globals.css'
+
+          export const metadata: Metadata = {
+            title: 'Stock Portfolio Tracker',
+            description: 'ติดตามพอร์ตหุ้น US ส่วนตัว',
+          }
+
+          export default function RootLayout({
+            children,
+          }: {
+            children: React.ReactNode
+          }) {
+            return (
+              <html lang=\"th\">
+                <body className=\"min-h-screen bg-gray-950 text-gray-100 transition-colors duration-200\">
+                  <UserSettingsMutationGuard />
+                  {children}
+                </body>
+              </html>
+            )
+          }
+          """
+          new_layout = """import type { Metadata } from 'next'
+          import Script from 'next/script'
+          import UserSettingsMutationGuard from '@/components/auth/UserSettingsMutationGuard'
+          import './globals.css'
+
+          export const metadata: Metadata = {
+            title: 'Stock Portfolio Tracker',
+            description: 'ติดตามพอร์ตหุ้น US ส่วนตัว',
+          }
+
+          const THEME_INIT_SCRIPT = `
+          (() => {
+            try {
+              const saved = window.localStorage.getItem('stock-portfolio-theme')
+              document.documentElement.setAttribute('data-theme', saved === 'light' ? 'light' : 'dark')
+            } catch {
+              document.documentElement.setAttribute('data-theme', 'dark')
+            }
+          })()
+          `
+
+          export default function RootLayout({
+            children,
+          }: {
+            children: React.ReactNode
+          }) {
+            return (
+              <html lang=\"th\" suppressHydrationWarning>
+                <body className=\"min-h-screen bg-gray-950 text-gray-100 transition-colors duration-200\">
+                  <Script
+                    id=\"theme-preference-init\"
+                    strategy=\"beforeInteractive\"
+                    dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
+                  />
+                  <UserSettingsMutationGuard />
+                  {children}
+                </body>
+              </html>
+            )
+          }
+          """
+          if old_layout not in layout:
+              raise SystemExit('root layout anchor not found')
+          layout_path.write_text(new_layout)
+
+          test_path = Path('scripts/test-critical.mjs')
+          tests = test_path.read_text()
+          anchor = """const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
+          assert.match(dashboardSource, /Asia\\/Bangkok/, 'Dashboard timestamps must force Asia/Bangkok')
+          """
+          replacement = """const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
+          assert.match(dashboardSource, /stock-portfolio-theme/, 'Dashboard theme toggle must persist the selected theme')
+          assert.match(dashboardSource, /localStorage\\.setItem/, 'Dashboard theme toggle must write browser preference')
+          const rootLayoutSource = fs.readFileSync('app/layout.tsx', 'utf8')
+          assert.match(rootLayoutSource, /localStorage\\.getItem\\('stock-portfolio-theme'\\)/, 'Root layout must restore the saved theme before page interaction')
+          assert.match(rootLayoutSource, /beforeInteractive/, 'Saved theme must be restored before hydration to avoid dark-mode reset/flash')
+          assert.match(dashboardSource, /Asia\\/Bangkok/, 'Dashboard timestamps must force Asia/Bangkok')
+          """
+          if anchor not in tests:
+              raise SystemExit('critical-test anchor not found')
+          test_path.write_text(tests.replace(anchor, replacement, 1))
+          PY
+
+      - name: Verify patch
+        run: |
+          npm ci
+          npm run ci
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/layout.tsx components/portfolio/PortfolioDashboard.tsx scripts/test-critical.mjs
+          git diff --cached --quiet && { echo "No changes to commit"; exit 1; }
+          git commit -m "fix: persist light and dark theme across refresh"
+          git push origin HEAD:feat/scanner-page-v1.19.0
