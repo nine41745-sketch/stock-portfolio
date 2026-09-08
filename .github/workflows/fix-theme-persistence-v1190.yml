@@ -23,22 +23,29 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           dashboard_path = Path('components/portfolio/PortfolioDashboard.tsx')
           dashboard = dashboard_path.read_text()
 
-          old_state = "  const [darkMode, setDarkMode] = useState(true)\n"
-          new_state = "  const [darkMode, setDarkMode] = useState(true)\n  const [themeReady, setThemeReady] = useState(false)\n"
-          if old_state not in dashboard:
+          state_anchor = "  const [darkMode, setDarkMode] = useState(true)\n"
+          if state_anchor not in dashboard:
               raise SystemExit('darkMode state anchor not found')
-          dashboard = dashboard.replace(old_state, new_state, 1)
+          dashboard = dashboard.replace(
+              state_anchor,
+              state_anchor + "  const [themeReady, setThemeReady] = useState(false)\n",
+              1,
+          )
 
-          old_effect = """  // apply theme ที่ <html> ให้ครอบทั้งหน้า
-          useEffect(() => {
-            document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
-          }, [darkMode])
-          """
-          new_effect = """  // Sync state กับ theme ที่ root bootstrap คืนค่าจาก browser preference ก่อน hydration
+          effect_pattern = re.compile(
+              r"\s*// apply theme ที่ <html> ให้ครอบทั้งหน้า\n"
+              r"\s*useEffect\(\(\) => \{\n"
+              r"\s*document\.documentElement\.setAttribute\('data-theme', darkMode \? 'dark' : 'light'\)\n"
+              r"\s*\}, \[darkMode\]\)"
+          )
+          new_effect = """
+
+          // Sync state กับ theme ที่ root bootstrap คืนค่าจาก browser preference ก่อน hydration
           useEffect(() => {
             const currentTheme = document.documentElement.getAttribute('data-theme')
             setDarkMode(currentTheme !== 'light')
@@ -53,48 +60,21 @@ jobs:
             try { window.localStorage.setItem('stock-portfolio-theme', theme) } catch { /* storage unavailable */ }
           }, [darkMode, themeReady])
           """
-          if old_effect not in dashboard:
-              raise SystemExit('theme effect anchor not found')
-          dashboard = dashboard.replace(old_effect, new_effect, 1)
+          dashboard, count = effect_pattern.subn(new_effect.rstrip(), dashboard, count=1)
+          if count != 1:
+              raise SystemExit(f'theme effect replacement count={count}')
           dashboard_path.write_text(dashboard)
 
           layout_path = Path('app/layout.tsx')
           layout = layout_path.read_text()
-          old_layout = """import type { Metadata } from 'next'
-          import UserSettingsMutationGuard from '@/components/auth/UserSettingsMutationGuard'
-          import './globals.css'
+          import_anchor = "import type { Metadata } from 'next'\n"
+          if "import Script from 'next/script'" not in layout:
+              if import_anchor not in layout:
+                  raise SystemExit('layout import anchor not found')
+              layout = layout.replace(import_anchor, import_anchor + "import Script from 'next/script'\n", 1)
 
-          export const metadata: Metadata = {
-            title: 'Stock Portfolio Tracker',
-            description: 'ติดตามพอร์ตหุ้น US ส่วนตัว',
-          }
-
-          export default function RootLayout({
-            children,
-          }: {
-            children: React.ReactNode
-          }) {
-            return (
-              <html lang=\"th\">
-                <body className=\"min-h-screen bg-gray-950 text-gray-100 transition-colors duration-200\">
-                  <UserSettingsMutationGuard />
-                  {children}
-                </body>
-              </html>
-            )
-          }
-          """
-          new_layout = """import type { Metadata } from 'next'
-          import Script from 'next/script'
-          import UserSettingsMutationGuard from '@/components/auth/UserSettingsMutationGuard'
-          import './globals.css'
-
-          export const metadata: Metadata = {
-            title: 'Stock Portfolio Tracker',
-            description: 'ติดตามพอร์ตหุ้น US ส่วนตัว',
-          }
-
-          const THEME_INIT_SCRIPT = `
+          default_anchor = "export default function RootLayout({\n"
+          init_block = """const THEME_INIT_SCRIPT = `
           (() => {
             try {
               const saved = window.localStorage.getItem('stock-portfolio-theme')
@@ -105,46 +85,45 @@ jobs:
           })()
           `
 
-          export default function RootLayout({
-            children,
-          }: {
-            children: React.ReactNode
-          }) {
-            return (
-              <html lang=\"th\" suppressHydrationWarning>
-                <body className=\"min-h-screen bg-gray-950 text-gray-100 transition-colors duration-200\">
-                  <Script
-                    id=\"theme-preference-init\"
-                    strategy=\"beforeInteractive\"
+          """
+          if "const THEME_INIT_SCRIPT" not in layout:
+              if default_anchor not in layout:
+                  raise SystemExit('layout RootLayout anchor not found')
+              layout = layout.replace(default_anchor, init_block + default_anchor, 1)
+
+          html_anchor = '<html lang="th">'
+          if html_anchor not in layout:
+              raise SystemExit('html anchor not found')
+          layout = layout.replace(html_anchor, '<html lang="th" suppressHydrationWarning>', 1)
+
+          guard_anchor = "        <UserSettingsMutationGuard />\n"
+          script_block = """        <Script
+                    id="theme-preference-init"
+                    strategy="beforeInteractive"
                     dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
                   />
-                  <UserSettingsMutationGuard />
-                  {children}
-                </body>
-              </html>
-            )
-          }
           """
-          if old_layout not in layout:
-              raise SystemExit('root layout anchor not found')
-          layout_path.write_text(new_layout)
+          if "theme-preference-init" not in layout:
+              if guard_anchor not in layout:
+                  raise SystemExit('layout guard anchor not found')
+              layout = layout.replace(guard_anchor, script_block + guard_anchor, 1)
+          layout_path.write_text(layout)
 
           test_path = Path('scripts/test-critical.mjs')
           tests = test_path.read_text()
-          anchor = """const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
-          assert.match(dashboardSource, /Asia\\/Bangkok/, 'Dashboard timestamps must force Asia/Bangkok')
-          """
-          replacement = """const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
+          anchor = "const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')\n"
+          additions = """const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
           assert.match(dashboardSource, /stock-portfolio-theme/, 'Dashboard theme toggle must persist the selected theme')
           assert.match(dashboardSource, /localStorage\\.setItem/, 'Dashboard theme toggle must write browser preference')
           const rootLayoutSource = fs.readFileSync('app/layout.tsx', 'utf8')
           assert.match(rootLayoutSource, /localStorage\\.getItem\\('stock-portfolio-theme'\\)/, 'Root layout must restore the saved theme before page interaction')
           assert.match(rootLayoutSource, /beforeInteractive/, 'Saved theme must be restored before hydration to avoid dark-mode reset/flash')
-          assert.match(dashboardSource, /Asia\\/Bangkok/, 'Dashboard timestamps must force Asia/Bangkok')
           """
-          if anchor not in tests:
-              raise SystemExit('critical-test anchor not found')
-          test_path.write_text(tests.replace(anchor, replacement, 1))
+          if "Dashboard theme toggle must persist the selected theme" not in tests:
+              if anchor not in tests:
+                  raise SystemExit('critical-test anchor not found')
+              tests = tests.replace(anchor, additions, 1)
+          test_path.write_text(tests)
           PY
 
       - name: Verify patch
