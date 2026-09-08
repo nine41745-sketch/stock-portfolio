@@ -158,7 +158,7 @@ export function scoreScannerCandidate(input: ScannerTechnicalInput): ScannerScor
     priceLocationScore += 5
   }
 
-  if (input.lastClose !== null && input.week52High !== null && input.week52High > 0) {
+  if (input.lastClose !== null && input.week52High != null && input.week52High > 0) {
     const belowHighPct = ((input.week52High - input.lastClose) / input.week52High) * 100
     if (belowHighPct <= 10) priceLocationScore += 5
     else if (belowHighPct <= 25) priceLocationScore += 4
