@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 const TABS = [
   { href: '/dashboard', label: 'พอร์ต', icon: '📊' },
   { href: '/scanner', label: 'สแกนหุ้น', icon: '🔎' },
+  { href: '/transactions', label: 'ธุรกรรม', icon: '🧾' },
 ] as const
 
 export default function AppTabs() {
