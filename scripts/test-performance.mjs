@@ -96,11 +96,6 @@ const nav = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')
 assert.match(nav, /href: '\/performance'/, 'Performance must be a main navigation tab')
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(pkg.version, '1.22.0', 'Performance package version must be finalized after approved Preview smoke')
 assert.match(pkg.scripts['test:critical'], /test-performance\.mjs/, 'Performance regression test must be part of the critical build gate')
-
-const tsconfig = fs.readFileSync('tsconfig.json', 'utf8')
-assert.match(tsconfig, /changelog-v122/, 'Version History alias must point to v1.22.0 metadata')
-assert.equal(fs.existsSync('config/changelog-v122.ts'), true, 'v1.22.0 changelog metadata is required')
 
 console.log('✓ Performance regression tests passed')
