@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v1220: ChangelogEntry = {
   version: 'v1.22.0',
-  date: '2026-09-10 03:25 ICT',
+  date: '2026-09-10 03:58 ICT',
   changes: [
     'Performance Workspace: เพิ่มเมนู 📈 ผลงาน พร้อม Market Value, Total P/L, Realized P/L แบบ FIFO, Unrealized P/L, Dividend, Win Rate, Best/Worst Trade และผลลัพธ์แยกรายหุ้น',
     'Ledger Reconciliation: ใช้ OPENING_POSITION + BUY - SELL ตรวจเทียบจำนวนหุ้นกับ Holdings พร้อม Data Quality warning เมื่อข้อมูลไม่ตรง โดย Performance เป็น Read-only และไม่แก้ Holdings/Transaction อัตโนมัติ',
