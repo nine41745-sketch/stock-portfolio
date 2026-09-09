@@ -25,6 +25,7 @@ export default async function ScannerPage() {
 
   const holdingSymbols = (holdings ?? []).map(row => String(row.symbol).toUpperCase())
 
+  // ScannerWorkspace keeps the existing OpportunityHub (Scanner/Watchlist) intact and adds Stock Check.
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8">
       <InactivityPinLock />
