@@ -229,12 +229,13 @@ const changelogReleaseTimes = [
   ['config/changelog-v119.ts', '2026-09-09 23:10 ICT'],
   ['config/changelog-v120.ts', '2026-09-10 00:48 ICT'],
   ['config/changelog-v121.ts', '2026-09-10 02:16 ICT'],
+  ['config/changelog-v122.ts', '2026-09-10 03:58 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v121'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v122'])
 
 console.log('✓ Critical regression tests passed')
