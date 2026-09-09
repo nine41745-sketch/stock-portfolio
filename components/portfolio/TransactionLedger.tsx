@@ -129,6 +129,8 @@ export default function TransactionLedger() {
   const [filterSymbol, setFilterSymbol] = useState('ALL')
 
   async function load() {
+    // Yield once so a mount effect does not synchronously cascade state updates.
+    await Promise.resolve()
     setLoading(true)
     setError(null)
     try {
