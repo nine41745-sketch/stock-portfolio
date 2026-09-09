@@ -1,5 +1,6 @@
 import { getQuote, getStockMetrics, getUpcomingEarnings } from '@/lib/finnhub'
 import { getTechnicalIndicators } from '@/lib/indicators'
+import { getAtr14 } from '@/lib/atr'
 import { scoreScannerCandidate } from '@/lib/stock-scanner'
 import { buildStockCheck, StockCheckPlan, StockCheckSetup } from '@/lib/stock-check'
 
@@ -40,12 +41,13 @@ export interface StockCheckSnapshot {
 }
 
 export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot> {
-  const [technical, spy, quote, metrics, earnings] = await Promise.all([
+  const [technical, spy, quote, metrics, earnings, atr14] = await Promise.all([
     getTechnicalIndicators(symbol),
     getTechnicalIndicators('SPY'),
     getQuote(symbol),
     getStockMetrics(symbol),
     getUpcomingEarnings(symbol),
+    getAtr14(symbol),
   ])
 
   const price = quote?.c ?? technical.lastClose
@@ -79,7 +81,7 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     price,
     ema50: technical.ema50,
     ema200: technical.ema200,
-    atr14: technical.atr14,
+    atr14,
     support: technical.scannerSupport,
     resistance: technical.scannerResistance,
     rsi14: technical.rsi14,
@@ -107,7 +109,7 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     trend: technical.trend,
     ema50: technical.ema50,
     ema200: technical.ema200,
-    atr14: technical.atr14,
+    atr14,
     rsi14: technical.rsi14,
     weeklyRsi14: technical.weeklyRsi14,
     macdHistogram: technical.macd.histogram,
