@@ -129,8 +129,6 @@ export default function TransactionLedger() {
   const [filterSymbol, setFilterSymbol] = useState('ALL')
 
   async function load() {
-    // Yield once so a mount effect does not synchronously cascade state updates.
-    await Promise.resolve()
     setLoading(true)
     setError(null)
     try {
@@ -153,7 +151,33 @@ export default function TransactionLedger() {
   }
 
   useEffect(() => {
-    void load()
+    let cancelled = false
+
+    void fetch('/api/transactions', { cache: 'no-store' })
+      .then(async response => ({ response, data: await response.json() as LedgerResponse }))
+      .then(({ response, data }) => {
+        if (cancelled) return
+        if (!response.ok) {
+          setMigrationRequired(Boolean(data.migration_required))
+          if (data.migration) setMigrationPath(data.migration)
+          setError(data.error || 'โหลดธุรกรรมไม่สำเร็จ')
+          return
+        }
+        setMigrationRequired(false)
+        setItems(data.items ?? [])
+        setSummary(data.summary ?? EMPTY_SUMMARY)
+        setReconciliation(data.reconciliation ?? [])
+      })
+      .catch(err => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'โหลดธุรกรรมไม่สำเร็จ')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const symbols = useMemo(() => {
