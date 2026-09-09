@@ -7,6 +7,7 @@ const TABS = [
   { href: '/dashboard', label: 'พอร์ต', icon: '📊' },
   { href: '/scanner', label: 'สแกนหุ้น', icon: '🔎' },
   { href: '/transactions', label: 'ธุรกรรม', icon: '🧾' },
+  { href: '/performance', label: 'ผลงาน', icon: '📈' },
 ] as const
 
 export default function AppTabs() {
