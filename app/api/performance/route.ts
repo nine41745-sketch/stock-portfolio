@@ -90,11 +90,11 @@ export async function GET() {
   }
 
   const transactions = normalizeTransactions(transactionsResult.data as any[] | null)
-  const holdingRows = holdingsResult.data ?? []
-  const symbols = [...new Set(holdingRows.map((row: any) => String(row.symbol).toUpperCase()))]
+  const holdingRows = (holdingsResult.data ?? []) as any[]
+  const symbols: string[] = Array.from(new Set<string>(holdingRows.map(row => String(row.symbol).toUpperCase())))
   const quotes = symbols.length ? await getMultipleQuotesWithMetrics(symbols) : {}
 
-  const holdings: PerformanceHolding[] = holdingRows.map((row: any) => ({
+  const holdings: PerformanceHolding[] = holdingRows.map(row => ({
     symbol: String(row.symbol).toUpperCase(),
     shares: Number(row.shares),
     cost_basis: asNumber(row.cost_basis),
