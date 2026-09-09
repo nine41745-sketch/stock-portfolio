@@ -1,16 +1,16 @@
 {
   "name": "stock-portfolio",
-  "version": "1.19.0",
+  "version": "1.20.0",
   "private": true,
   "engines": {
     "node": "22.x"
   },
   "scripts": {
     "dev": "next dev",
-    "test:critical": "node scripts/test-critical.mjs",
+    "test:critical": "node scripts/test-critical.mjs && node scripts/test-stock-check.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "build": "node scripts/test-critical.mjs && next build",
+    "build": "npm run test:critical && next build",
     "ci": "npm run lint && npm run typecheck && npm run build",
     "start": "next start"
   },

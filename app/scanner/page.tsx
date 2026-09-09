@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import AppTabs from '@/components/navigation/AppTabs'
-import OpportunityHub from '@/components/portfolio/OpportunityHub'
+import ScannerWorkspace from '@/components/portfolio/ScannerWorkspace'
 import InvestingSinceBadge from '@/components/portfolio/InvestingSinceBadge'
 import InactivityPinLock from '@/components/auth/InactivityPinLock'
 
@@ -25,12 +25,13 @@ export default async function ScannerPage() {
 
   const holdingSymbols = (holdings ?? []).map(row => String(row.symbol).toUpperCase())
 
+  // ScannerWorkspace keeps the existing OpportunityHub (Scanner/Watchlist) intact and adds Stock Check.
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8">
       <InactivityPinLock />
       <InvestingSinceBadge />
       <AppTabs />
-      <OpportunityHub holdingSymbols={holdingSymbols} />
+      <ScannerWorkspace holdingSymbols={holdingSymbols} />
     </div>
   )
 }
