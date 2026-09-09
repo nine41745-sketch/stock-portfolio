@@ -1,0 +1,46 @@
+name: Fix v1.22.0 changelog gate
+
+on:
+  push:
+    branches:
+      - feat/performance-v1.22.0
+    paths:
+      - .github/workflows/fix-v1220-changelog-gate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: feat/performance-v1.22.0
+          fetch-depth: 0
+      - name: Update changelog regression gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/test-critical.mjs')
+          text = path.read_text()
+          old_times = "  ['config/changelog-v121.ts', '2026-09-10 02:16 ICT'],\n]"
+          new_times = "  ['config/changelog-v121.ts', '2026-09-10 02:16 ICT'],\n  ['config/changelog-v122.ts', '2026-09-10 03:58 ICT'],\n]"
+          if old_times not in text:
+              raise SystemExit('expected v1.21 changelog release-time tail not found')
+          text = text.replace(old_times, new_times, 1)
+          old_alias = "assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v121'])"
+          new_alias = "assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v122'])"
+          if old_alias not in text:
+              raise SystemExit('expected v1.21 changelog alias gate not found')
+          path.write_text(text.replace(old_alias, new_alias, 1))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/test-critical.mjs
+          git diff --cached --check
+          git commit -m "test: finalize v1.22.0 changelog gate"
+          git push origin HEAD:feat/performance-v1.22.0
