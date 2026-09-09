@@ -126,8 +126,8 @@ export async function getPerformanceHistory(
     }
   }
 
-  const curveTransactions = transactions.filter(item => item.trade_date >= effectiveStart)
-  const points = buildPerformanceCurve(curveTransactions, pricesBySymbol, calendar)
+  // Keep pre-window transactions so opening lots/cost basis are established before the first plotted day.
+  const points = buildPerformanceCurve(transactions, pricesBySymbol, calendar)
 
   return {
     points: downsample(points, MAX_CURVE_POINTS),
