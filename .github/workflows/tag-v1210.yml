@@ -1,0 +1,35 @@
+name: Tag v1.21.0
+
+on:
+  push:
+    branches:
+      - feat/transactions-ledger-v1.21.0
+    paths:
+      - .github/workflows/tag-v1210.yml
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create annotated production tag
+        run: |
+          set -euo pipefail
+          TARGET="8bc49e8aa9776b95d7a3d36739cd83cbc449fded"
+          git fetch origin main --tags
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          test "$CURRENT_MAIN" = "$TARGET"
+          if git rev-parse "refs/tags/v1.21.0" >/dev/null 2>&1; then
+            echo "Tag v1.21.0 already exists" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a v1.21.0 "$TARGET" -m "v1.21.0 — Transaction Ledger"
+          git push origin refs/tags/v1.21.0
