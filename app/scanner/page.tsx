@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import AppTabs from '@/components/navigation/AppTabs'
-import OpportunityHub from '@/components/portfolio/OpportunityHub'
+import ScannerWorkspace from '@/components/portfolio/ScannerWorkspace'
 import InvestingSinceBadge from '@/components/portfolio/InvestingSinceBadge'
 import InactivityPinLock from '@/components/auth/InactivityPinLock'
 
@@ -30,7 +30,7 @@ export default async function ScannerPage() {
       <InactivityPinLock />
       <InvestingSinceBadge />
       <AppTabs />
-      <OpportunityHub holdingSymbols={holdingSymbols} />
+      <ScannerWorkspace holdingSymbols={holdingSymbols} />
     </div>
   )
 }
