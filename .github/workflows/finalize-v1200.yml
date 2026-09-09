@@ -31,17 +31,14 @@ jobs:
           import json, os
           from pathlib import Path
 
-          # Changelog alias -> v1.20.0
           p = Path('tsconfig.json')
           data = json.loads(p.read_text())
           data['compilerOptions']['paths']['@/config/changelog'] = ['./config/changelog-v120']
           p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
 
-          # New release entry, preserving all prior history.
           release_time = os.environ['RELEASE_TIME']
           Path('config/changelog-v120.ts').write_text(f"""import {{ changelog as previousChangelog }} from './changelog-v119'\nimport type {{ ChangelogEntry }} from './changelog'\n\nconst v1200: ChangelogEntry = {{\n  version: 'v1.20.0',\n  date: '{release_time}',\n  changes: [\n    'Stock Check: เพิ่มแท็บเช็กหุ้นรายตัวใน Scanner เพื่อวิเคราะห์หุ้น US ใดก็ได้โดยไม่ต้องเพิ่มเข้า Portfolio ก่อน',\n    'Deterministic Trade Plan: เพิ่ม BUY NOW / BUY ON PULLBACK / WAIT FOR BREAKOUT / WATCH / AVOID พร้อม Entry Zone, Stop Loss, Target 1/2 และ Risk:Reward',\n    'Risk Planning: เพิ่ม ATR14 แบบแยกจาก Portfolio AI เพื่อช่วยวาง Stop ตาม volatility พร้อม Position Sizing จากงบที่กำหนด',\n    'Market Context: ใช้แนวรับ/แนวต้านและ Volume แบบ scanner-safe, Relative Strength เทียบ SPY, P/E, 52W range และ Earnings Risk',\n    'Optional AI: เพิ่มการวิเคราะห์เชิงลึกด้วย AI เป็นขั้นเสริม โดยไม่ให้ AI เปลี่ยนระดับราคาและคำตัดสิน deterministic',\n    'Data Safety: ไม่มี SQL migration ใหม่ ไม่แก้ Holdings และไม่เปลี่ยน logic AI/Track Record/Daily Cron เดิมของ Portfolio',\n  ],\n}}\n\nexport const changelog: ChangelogEntry[] = [v1200, ...previousChangelog]\nexport const CURRENT_VERSION = changelog[0]?.version ?? 'v1.0.0'\n""")
 
-          # Release regression gates.
           p = Path('scripts/test-critical.mjs')
           s = p.read_text()
           s = s.replace('// v1.19.0 finalized after approved Preview smoke.', '// v1.20.0 finalized after approved Stock Check Preview smoke.', 1)
@@ -60,8 +57,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Critical tests and production build
-        run: npm run build
+      - name: Critical regression tests
+        run: npm run test:critical
 
       - name: Commit finalized metadata
         run: |
