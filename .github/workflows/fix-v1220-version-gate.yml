@@ -1,0 +1,41 @@
+name: Fix v1.22.0 version gate
+
+on:
+  push:
+    branches:
+      - feat/performance-v1.22.0
+    paths:
+      - .github/workflows/fix-v1220-version-gate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: feat/performance-v1.22.0
+          fetch-depth: 0
+      - name: Update finalized version gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/test-critical.mjs')
+          text = path.read_text()
+          old = "// v1.21.0 finalized after approved Transaction Ledger Preview smoke.\nconst packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))\nassert.equal(packageJson.version, '1.21.0', 'Package version must be finalized as v1.21.0 after Preview smoke')"
+          new = "// v1.22.0 finalized after approved Performance Preview smoke.\nconst packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))\nassert.equal(packageJson.version, '1.22.0', 'Package version must be finalized as v1.22.0 after Preview smoke')"
+          if old not in text:
+              raise SystemExit('expected v1.21.0 version gate not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/test-critical.mjs
+          git diff --cached --check
+          git commit -m "test: finalize v1.22.0 version gate"
+          git push origin HEAD:feat/performance-v1.22.0
