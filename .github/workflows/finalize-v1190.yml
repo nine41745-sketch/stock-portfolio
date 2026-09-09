@@ -1,0 +1,101 @@
+name: Finalize v1.19.0 preview
+
+on:
+  push:
+    branches:
+      - feat/scanner-page-v1.19.0
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Finalize release metadata
+        run: |
+          npm version 1.19.0 --no-git-tag-version --allow-same-version
+          python3 - <<'PY'
+          from pathlib import Path
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          import json
+          import re
+
+          release_time = datetime.now(ZoneInfo('Asia/Bangkok')).strftime('%Y-%m-%d %H:%M ICT')
+
+          changelog = Path('config/changelog-v119.ts')
+          changelog.write_text(f"""import {{ changelog as previousChangelog }} from './changelog-v1181'
+import type {{ ChangelogEntry }} from './changelog'
+
+const v1190: ChangelogEntry = {{
+  version: 'v1.19.0',
+  date: '{release_time}',
+  changes: [
+    'Dedicated Scanner: แยกหน้า /scanner ออกจาก Dashboard พร้อมแท็บ Portfolio / Scanner และรวม Scanner + Watchlist ใน workspace เดียว',
+    'Scanner Upgrade: เพิ่ม Setup Classification, Filter/Sort, EMA50/200, RSI Day/Week, MACD, 52W range, Earnings Risk, Relative Strength vs SPY และ Risk:Reward',
+    'Technical Accuracy: แก้ Breakout ให้ใช้แนวรับ/แนวต้านจากแท่งก่อนหน้า และแก้ Volume Ratio ให้ค่าเฉลี่ย 20 วันไม่รวมวันปัจจุบัน โดยไม่เปลี่ยนสูตรเดิมของ AI/Portfolio',
+    'Theme Persistence: โหมดสว่าง/มืดจำค่าหลัง Refresh และใช้ค่าเดียวกันระหว่าง Dashboard กับ Scanner',
+    'Data Safety: ไม่มี SQL migration ใหม่ ไม่เปลี่ยน holdings, cost basis, cash, Dime, Supabase schema/RLS หรือ PIN/Auth',
+  ],
+}}
+
+export const changelog: ChangelogEntry[] = [v1190, ...previousChangelog]
+export const CURRENT_VERSION = changelog[0]?.version ?? 'v1.0.0'
+""")
+
+          tsconfig_path = Path('tsconfig.json')
+          tsconfig = json.loads(tsconfig_path.read_text())
+          tsconfig['compilerOptions']['paths']['@/config/changelog'] = ['./config/changelog-v119']
+          tsconfig_path.write_text(json.dumps(tsconfig, ensure_ascii=False, indent=2) + '\n')
+
+          test_path = Path('scripts/test-critical.mjs')
+          tests = test_path.read_text()
+          tests = tests.replace(
+              "// v1.18.1 metadata hotfix release gates remain until v1.19.0 is finalized after Preview smoke.\n",
+              "// v1.19.0 finalized after approved Preview smoke.\n",
+              1,
+          )
+          tests = tests.replace(
+              "assert.equal(packageJson.version, '1.18.1', 'Package version must remain v1.18.1 until v1.19.0 finalization')",
+              "assert.equal(packageJson.version, '1.19.0', 'Package version must be finalized as v1.19.0 after Preview smoke')",
+              1,
+          )
+          old_times = """  ['config/changelog-v1181.ts', '2026-09-08 05:00 ICT'],
+]"""
+          new_times = f"""  ['config/changelog-v1181.ts', '2026-09-08 05:00 ICT'],
+  ['config/changelog-v119.ts', '{release_time}'],
+]"""
+          if old_times not in tests:
+              raise SystemExit('changelog release-time anchor not found')
+          tests = tests.replace(old_times, new_times, 1)
+          tests = tests.replace(
+              "assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1181'])",
+              "assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v119'])",
+              1,
+          )
+          test_path.write_text(tests)
+          PY
+
+      - name: Verify finalization
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          node scripts/test-critical.mjs
+
+      - name: Commit v1.19.0 metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json tsconfig.json config/changelog-v119.ts scripts/test-critical.mjs
+          git diff --cached --quiet && { echo "No release changes to commit"; exit 1; }
+          git commit -m "chore: finalize v1.19.0 release metadata"
+          git push origin HEAD:feat/scanner-page-v1.19.0
