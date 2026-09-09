@@ -100,7 +100,7 @@ const nav = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')
 assert.match(nav, /href: '\/transactions'/, 'Transactions must be a main navigation tab')
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(pkg.version, '1.20.0', 'Preview implementation must not finalize v1.21.0 before smoke testing')
+assert.equal(pkg.version, '1.21.0', 'Transaction Ledger package version must be finalized after approved Preview smoke')
 assert.match(pkg.scripts['test:critical'], /test-transactions\.mjs/, 'Transaction regression test must be part of critical build gate')
 
 console.log('✓ Transaction Ledger regression tests passed')
