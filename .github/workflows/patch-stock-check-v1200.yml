@@ -1,0 +1,193 @@
+name: Patch stock check v1.20.0
+
+on:
+  push:
+    branches:
+      - feat/stock-check-v1.20.0
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Patch existing files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # 1) ATR14 — additive only; existing AI/portfolio fields and semantics stay unchanged.
+          p = Path('lib/indicators.ts')
+          s = p.read_text()
+          old = "import { EMA, RSI, MACD, BollingerBands } from 'technicalindicators'"
+          new = "import { EMA, RSI, MACD, BollingerBands, ATR } from 'technicalindicators'"
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = "  rsi14: number | null\n  weeklyRsi14: number | null"
+          new = "  rsi14: number | null\n  atr14: number | null\n  weeklyRsi14: number | null"
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = "  rsi14: null,\n  weeklyRsi14: null,"
+          new = "  rsi14: null,\n  atr14: null,\n  weeklyRsi14: null,"
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          anchor = "function calcWeeklyRsi(weeklyBars: Bar[]): number | null {"
+          assert anchor in s
+          atr_fn = """function calcAtr14(bars: Bar[]): number | null {
+            if (bars.length < 15) return null
+            const values = ATR.calculate({
+              period: 14,
+              high: bars.map(b => b.high),
+              low: bars.map(b => b.low),
+              close: bars.map(b => b.close),
+            })
+            return round2(last(values))
+          }
+
+          """
+          s = s.replace(anchor, atr_fn + anchor, 1)
+
+          old = "  const closes = bars.map(b => b.close)\n  const lastClose = last(closes)"
+          new = "  const closes = bars.map(b => b.close)\n  const lastClose = last(closes)\n  const atr14 = calcAtr14(bars)"
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = "    rsi14: round2(last(rsiArr)),\n    weeklyRsi14,"
+          new = "    rsi14: round2(last(rsiArr)),\n    atr14,\n    weeklyRsi14,"
+          assert old in s
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          # 2) Add the third sub-tab without changing Scanner/Watchlist behavior.
+          p = Path('components/portfolio/OpportunityHub.tsx')
+          s = p.read_text()
+          old = "import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'\n"
+          new = old + "import StockCheckPanel from './StockCheckPanel'\n"
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = "const [tab, setTab] = useState<'scanner' | 'watchlist'>('scanner')"
+          new = "const [tab, setTab] = useState<'scanner' | 'watchlist' | 'check'>('scanner')"
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = """          >⭐ Watchlist {watchlist.length > 0 ? `(${watchlist.length})` : ''}</button>
+        </div>"""
+          new = """          >⭐ Watchlist {watchlist.length > 0 ? `(${watchlist.length})` : ''}</button>
+          <button
+            type="button"
+            onClick={() => setTab('check')}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium ${tab === 'check' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+          >🔬 เช็กหุ้น</button>
+        </div>"""
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = """      ) : (
+        <div>
+          <form onSubmit={handleSubmit}"""
+          new = """      ) : tab === 'watchlist' ? (
+        <div>
+          <form onSubmit={handleSubmit}"""
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = """        </div>
+      )}
+    </section>"""
+          new = """        </div>
+      ) : (
+        <StockCheckPanel heldSymbols={holdingSymbols} onWatchlistSaved={() => void loadWatchlist()} />
+      )}
+    </section>"""
+          assert old in s
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          # 3) Regression gates for the new isolated Stock Check workspace.
+          p = Path('scripts/test-critical.mjs')
+          s = p.read_text()
+          anchor = "const lightModeCss = fs.readFileSync('app/globals.css', 'utf8')"
+          assert anchor in s
+          block = r'''
+          // Stock Check v1.20.0 Preview safety gates — no Portfolio AI semantics or SQL changes.
+          assert.equal(fs.existsSync('app/api/stock-check/route.ts'), true, 'Stock Check API is required')
+          assert.equal(fs.existsSync('app/api/stock-check/ai/route.ts'), true, 'Optional Stock Check AI API is required')
+          assert.equal(fs.existsSync('components/portfolio/StockCheckPanel.tsx'), true, 'Stock Check UI is required')
+          assert.equal(fs.existsSync('lib/stock-check.ts'), true, 'Deterministic Stock Check decision engine is required')
+          const stockCheck = await importTsModule('lib/stock-check.ts')
+          const buyNowPlan = stockCheck.buildStockCheck({
+            trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 82,
+            price: 100.5, ema50: 99.5, ema200: 90, atr14: 2,
+            support: 100, resistance: 115, rsi14: 55, weeklyRsi14: 58,
+            macdHistogram: 1, volumeRatio: 1.3, relativeStrength20: 5,
+            relativeStrength60: 12, week52High: 120, week52Low: 70,
+            earningsDays: 20, pe: 25,
+          })
+          assert.equal(buyNowPlan.decision, 'BUY_NOW', 'Strong near-support setup should permit BUY_NOW')
+          assert.ok((buyNowPlan.riskRewardAtEntry ?? 0) >= 1.5, 'BUY_NOW plan must have acceptable R:R')
+          const avoidPlan = stockCheck.buildStockCheck({
+            trend: 'DOWNTREND', setup: 'AVOID', score: 30,
+            price: 90, ema50: 100, ema200: 110, atr14: 3,
+            support: 95, resistance: 105, rsi14: 38, weeklyRsi14: 40,
+            macdHistogram: -1, volumeRatio: 0.8, relativeStrength20: -8,
+            relativeStrength60: -15, week52High: 130, week52Low: 80,
+            earningsDays: 20, pe: 20,
+          })
+          assert.equal(avoidPlan.decision, 'AVOID', 'Downtrend/breakdown Stock Check must fail closed to AVOID')
+          const stockCheckRouteSource = fs.readFileSync('app/api/stock-check/route.ts', 'utf8')
+          assert.match(stockCheckRouteSource, /parseSymbol/, 'Stock Check must validate arbitrary ticker input')
+          assert.match(stockCheckRouteSource, /loadStockCheck/, 'Stock Check route must use the shared deterministic data service')
+          const stockCheckDataSource = fs.readFileSync('lib/stock-check-data.ts', 'utf8')
+          assert.match(stockCheckDataSource, /getTechnicalIndicators\('SPY'\)/, 'Stock Check must benchmark Relative Strength against SPY')
+          assert.match(stockCheckDataSource, /scannerSupport/, 'Stock Check must use scanner-safe completed-bar support')
+          assert.match(stockCheckDataSource, /scannerVolumeRatio/, 'Stock Check must use scanner-safe volume ratio')
+          const stockCheckUiSource = fs.readFileSync('components/portfolio/StockCheckPanel.tsx', 'utf8')
+          assert.match(stockCheckUiSource, /Entry Zone/, 'Stock Check UI must expose Entry Zone')
+          assert.match(stockCheckUiSource, /Stop Loss/, 'Stock Check UI must expose Stop Loss')
+          assert.match(stockCheckUiSource, /Position Sizing/, 'Stock Check UI must expose budget-based position sizing')
+          assert.match(stockCheckUiSource, /วิเคราะห์เชิงลึกด้วย AI/, 'Stock Check AI must remain an explicit optional action')
+          assert.match(opportunitySource, /🔬 เช็กหุ้น/, 'Scanner workspace must expose the Stock Check sub-tab')
+          assert.match(indicatorSource, /ATR\.calculate/, 'Technical indicators must expose ATR14 for volatility-aware stops')
+          assert.match(indicatorSource, /atr14/, 'ATR14 must be part of TechnicalIndicators')
+
+          '''
+          s = s.replace(anchor, block + anchor, 1)
+          p.write_text(s)
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Critical regression tests
+        run: npm run test:critical
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/indicators.ts components/portfolio/OpportunityHub.tsx scripts/test-critical.mjs
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: integrate stock check workspace v1.20.0"
+          git push origin HEAD:feat/stock-check-v1.20.0
