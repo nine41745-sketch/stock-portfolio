@@ -22,34 +22,33 @@ jobs:
       - name: Finalize release metadata
         run: |
           npm version 1.19.0 --no-git-tag-version --allow-same-version
+          RELEASE_TIME="$(TZ=Asia/Bangkok date '+%Y-%m-%d %H:%M ICT')"
+          export RELEASE_TIME
+          cat > config/changelog-v119.ts <<EOF
+          import { changelog as previousChangelog } from './changelog-v1181'
+          import type { ChangelogEntry } from './changelog'
+
+          const v1190: ChangelogEntry = {
+            version: 'v1.19.0',
+            date: '$RELEASE_TIME',
+            changes: [
+              'Dedicated Scanner: แยกหน้า /scanner ออกจาก Dashboard พร้อมแท็บ Portfolio / Scanner และรวม Scanner + Watchlist ใน workspace เดียว',
+              'Scanner Upgrade: เพิ่ม Setup Classification, Filter/Sort, EMA50/200, RSI Day/Week, MACD, 52W range, Earnings Risk, Relative Strength vs SPY และ Risk:Reward',
+              'Technical Accuracy: แก้ Breakout ให้ใช้แนวรับ/แนวต้านจากแท่งก่อนหน้า และแก้ Volume Ratio ให้ค่าเฉลี่ย 20 วันไม่รวมวันปัจจุบัน โดยไม่เปลี่ยนสูตรเดิมของ AI/Portfolio',
+              'Theme Persistence: โหมดสว่าง/มืดจำค่าหลัง Refresh และใช้ค่าเดียวกันระหว่าง Dashboard กับ Scanner',
+              'Data Safety: ไม่มี SQL migration ใหม่ ไม่เปลี่ยน holdings, cost basis, cash, Dime, Supabase schema/RLS หรือ PIN/Auth',
+            ],
+          }
+
+          export const changelog: ChangelogEntry[] = [v1190, ...previousChangelog]
+          export const CURRENT_VERSION = changelog[0]?.version ?? 'v1.0.0'
+          EOF
           python3 - <<'PY'
           from pathlib import Path
-          from datetime import datetime
-          from zoneinfo import ZoneInfo
           import json
-          import re
+          import os
 
-          release_time = datetime.now(ZoneInfo('Asia/Bangkok')).strftime('%Y-%m-%d %H:%M ICT')
-
-          changelog = Path('config/changelog-v119.ts')
-          changelog.write_text(f"""import {{ changelog as previousChangelog }} from './changelog-v1181'
-import type {{ ChangelogEntry }} from './changelog'
-
-const v1190: ChangelogEntry = {{
-  version: 'v1.19.0',
-  date: '{release_time}',
-  changes: [
-    'Dedicated Scanner: แยกหน้า /scanner ออกจาก Dashboard พร้อมแท็บ Portfolio / Scanner และรวม Scanner + Watchlist ใน workspace เดียว',
-    'Scanner Upgrade: เพิ่ม Setup Classification, Filter/Sort, EMA50/200, RSI Day/Week, MACD, 52W range, Earnings Risk, Relative Strength vs SPY และ Risk:Reward',
-    'Technical Accuracy: แก้ Breakout ให้ใช้แนวรับ/แนวต้านจากแท่งก่อนหน้า และแก้ Volume Ratio ให้ค่าเฉลี่ย 20 วันไม่รวมวันปัจจุบัน โดยไม่เปลี่ยนสูตรเดิมของ AI/Portfolio',
-    'Theme Persistence: โหมดสว่าง/มืดจำค่าหลัง Refresh และใช้ค่าเดียวกันระหว่าง Dashboard กับ Scanner',
-    'Data Safety: ไม่มี SQL migration ใหม่ ไม่เปลี่ยน holdings, cost basis, cash, Dime, Supabase schema/RLS หรือ PIN/Auth',
-  ],
-}}
-
-export const changelog: ChangelogEntry[] = [v1190, ...previousChangelog]
-export const CURRENT_VERSION = changelog[0]?.version ?? 'v1.0.0'
-""")
+          release_time = os.environ['RELEASE_TIME']
 
           tsconfig_path = Path('tsconfig.json')
           tsconfig = json.loads(tsconfig_path.read_text())
@@ -68,11 +67,8 @@ export const CURRENT_VERSION = changelog[0]?.version ?? 'v1.0.0'
               "assert.equal(packageJson.version, '1.19.0', 'Package version must be finalized as v1.19.0 after Preview smoke')",
               1,
           )
-          old_times = """  ['config/changelog-v1181.ts', '2026-09-08 05:00 ICT'],
-]"""
-          new_times = f"""  ['config/changelog-v1181.ts', '2026-09-08 05:00 ICT'],
-  ['config/changelog-v119.ts', '{release_time}'],
-]"""
+          old_times = "  ['config/changelog-v1181.ts', '2026-09-08 05:00 ICT'],\n]"
+          new_times = "  ['config/changelog-v1181.ts', '2026-09-08 05:00 ICT'],\n  ['config/changelog-v119.ts', '" + release_time + "'],\n]"
           if old_times not in tests:
               raise SystemExit('changelog release-time anchor not found')
           tests = tests.replace(old_times, new_times, 1)
