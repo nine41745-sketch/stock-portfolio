@@ -9,7 +9,7 @@ const v1220: ChangelogEntry = {
     'Ledger Reconciliation: ใช้ OPENING_POSITION + BUY - SELL ตรวจเทียบจำนวนหุ้นกับ Holdings พร้อม Data Quality warning เมื่อข้อมูลไม่ตรง โดย Performance เป็น Read-only และไม่แก้ Holdings/Transaction อัตโนมัติ',
     'Historical Performance: เพิ่ม Equity / P&L Curve แบบ 1M / YTD / 1Y / ALL ด้วย historical market data แยกจาก indicator เดิม พร้อม SPY reference benchmark และจำกัด lookback เพื่อควบคุมโหลด',
     'Existing Portfolio Baseline: รองรับการเริ่มวัดผลจากยอดหุ้นตั้งต้นและ Cost Basis จริงโดยไม่สร้าง BUY ย้อนหลังปลอม; Preview ยืนยัน Ledger ตรง Holdings ก่อน finalize release',
-    'Regression Safety: เพิ่ม Performance regression gate และคง Portfolio AI, Scanner, Daily Cron, Track Record, Holdings writes และ Transaction writes เดิมไว้โดยไม่เปลี่ยน รวมทั้งไม่มี SQL migration ใหม่ใน release นี้',
+    'Regression Safety: เพิ่ม Performance regression gate และคง Portfolio AI, Scanner, Daily Cron, Track Record, Holdings writes และ Transaction writes เดิมไว้โดยไม่เปลี่ยน รวมทั้งไม่มี SQL migration ใหม่ใน release นี้ และผ่าน Final Preview verification ก่อนขออนุมัติ Production',
   ],
 }
 
