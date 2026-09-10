@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "test:critical": "node scripts/test-critical.mjs && node scripts/test-stock-check.mjs && node scripts/test-transactions.mjs && node scripts/test-performance.mjs && node scripts/test-trade-plan.mjs",
+    "test:critical": "node scripts/test-critical.mjs && node scripts/test-stock-check.mjs && node scripts/test-transactions.mjs && node scripts/test-performance.mjs && node scripts/test-trade-plan.mjs && node scripts/test-risk.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "build": "npm run test:critical && next build",
