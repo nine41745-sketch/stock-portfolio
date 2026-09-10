@@ -137,6 +137,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   const support = validPositive(input.support) ? input.support : null
   const resistance = validPositive(input.resistance) ? input.resistance : null
   const ema50 = validPositive(input.ema50) ? input.ema50 : null
+  const ema200 = validPositive(input.ema200) ? input.ema200 : null
 
   const anchors = [support, ema50]
     .filter((value): value is number => value !== null && value <= price * 1.03)
@@ -187,7 +188,9 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   const supportDistance = pctDistance(price, support)
   const insideEntry = price >= entryLow && price <= entryHigh
   const aboveEntry = price > entryHigh
+  const belowEntry = price < entryLow
   const entryOvershootPct = aboveEntry ? ((price - entryHigh) / entryHigh) * 100 : 0
+  const entryUndershootPct = belowEntry ? ((entryLow - price) / entryLow) * 100 : 0
 
   // v1.26.0: AVOID ต้องเป็น "โครงสร้างเสียจริง" ไม่ใช่แค่เห็น DOWNTREND ครั้งเดียวแล้วปิดประตูทันที.
   // การหลุดแนวรับเล็กน้อยอาจเป็น noise ของราคา live เทียบกับ historical bar จึงใช้ -2% เป็น material breakdown.
@@ -204,13 +207,35 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   const overextended = (ema50Distance !== null && ema50Distance > 10) || (input.rsi14 ?? 0) > 74
   const goodRiskReward = rrAtEntry !== null && rrAtEntry >= 1.5
   const firstTrancheRiskReward = rrNow !== null && rrNow >= 1.25
-  const firstTranchePriceOk = insideEntry || (aboveEntry && entryOvershootPct <= 5)
+
+  // A controlled dip under EMA50 is reported as SIDEWAYS by the strict trend classifier even when
+  // EMA50 remains safely above EMA200. Treat only this narrow, support-intact case as a structural
+  // uptrend pullback for FIRST_TRANCHE; STANDARD BUY_NOW still requires strict UPTREND.
+  const structuralUptrendPullback =
+    input.trend === 'SIDEWAYS' &&
+    ema50 !== null &&
+    ema200 !== null &&
+    ema50 >= ema200 * 1.01 &&
+    ema50Distance !== null &&
+    ema50Distance >= -3 &&
+    ema50Distance <= 0 &&
+    supportDistance !== null &&
+    supportDistance >= 0 &&
+    supportDistance <= 8
+
+  const belowEntryDipOk = belowEntry && entryUndershootPct <= 3 && structuralUptrendPullback
+  const firstTranchePriceOk = insideEntry || (aboveEntry && entryOvershootPct <= 5) || belowEntryDipOk
+  const firstTrancheTrendOk = input.trend === 'UPTREND' || structuralUptrendPullback
+  const effectiveFirstTrancheScore = Math.min(100, input.score + (structuralUptrendPullback ? 13 : 0))
   const supportedBuySetup = ['BREAKOUT', 'PULLBACK', 'NEAR_SUPPORT'].includes(input.setup)
-  const supportedFirstTrancheSetup = ['BREAKOUT', 'PULLBACK', 'NEAR_SUPPORT', 'MOMENTUM'].includes(input.setup)
+  const supportedFirstTrancheSetup =
+    ['BREAKOUT', 'PULLBACK', 'NEAR_SUPPORT', 'MOMENTUM'].includes(input.setup) ||
+    (structuralUptrendPullback && input.setup === 'WAIT')
 
   const reasons: string[] = []
   const warnings: string[] = []
   if (input.trend === 'UPTREND') reasons.push('แนวโน้มหลักเป็นขาขึ้น')
+  if (structuralUptrendPullback) reasons.push('EMA50 ยังอยู่เหนือ EMA200 และราคาย่อใต้ EMA50 ไม่เกิน 3% โดยแนวรับยังไม่เสีย')
   if (input.setup === 'BREAKOUT') reasons.push('ราคา Breakout เหนือแนวต้านอ้างอิง')
   if (input.setup === 'PULLBACK') reasons.push('ราคาอยู่ในลักษณะ Pullback ของขาขึ้น')
   if (input.setup === 'NEAR_SUPPORT') reasons.push('ราคาอยู่ใกล้แนวรับสำคัญ')
@@ -248,18 +273,19 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
     decision = 'BUY_NOW'
     buyMode = 'STANDARD'
   } else if (
-    input.trend === 'UPTREND' &&
-    input.score >= 72 &&
+    firstTrancheTrendOk &&
+    effectiveFirstTrancheScore >= 72 &&
     !nearEventRisk &&
     !overextended &&
     firstTranchePriceOk &&
     firstTrancheRiskReward &&
     supportedFirstTrancheSetup
   ) {
-    // ไม้แรก: ยอมให้ราคาเลย Entry Zone ได้เล็กน้อย แต่ต้องใช้ R:R จากราคาที่ซื้อจริง ณ ตอนนี้
-    // เพื่อไม่ให้กรณีที่ราคาเกือบชน Target 1 ถูกแนะนำให้ไล่ซื้อเพราะ R:R @ Entry ดูดีในอดีต.
+    // ไม้แรก: ยอมให้ราคาเลย Entry Zone ได้เล็กน้อย หรือย่อต่ำกว่า Zone ใน structural uptrend ที่แนวรับยังอยู่.
+    // ใช้ R:R จากราคาที่ซื้อจริง ณ ตอนนี้เสมอ เพื่อไม่ให้ไล่ซื้อเพราะ R:R @ Entry ในอดีตดูดี.
     decision = 'BUY_NOW'
     buyMode = 'FIRST_TRANCHE'
+    if (belowEntryDipOk) reasons.push(`ราคาย่อต่ำกว่า Entry Zone ${entryUndershootPct.toFixed(1)}% แต่ยังยืนเหนือแนวรับ`)
     reasons.push(`R:R จากราคาปัจจุบันประมาณ ${rrNow!.toFixed(2)}:1 ผ่านเกณฑ์ไม้แรก`)
   } else if (
     input.trend === 'UPTREND' &&
@@ -276,7 +302,9 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   }
 
   let summary: string
-  if (decision === 'BUY_NOW' && buyMode === 'FIRST_TRANCHE') {
+  if (decision === 'BUY_NOW' && buyMode === 'FIRST_TRANCHE' && belowEntryDipOk) {
+    summary = 'ราคาย่อต่ำกว่า Entry Zone เล็กน้อย แต่โครงสร้าง EMA50 > EMA200 และแนวรับยังไม่เสีย พร้อม R:R จากราคาปัจจุบันที่ผ่านเกณฑ์ จึงเหมาะกับการช้อนไม้แรกบางส่วน'
+  } else if (decision === 'BUY_NOW' && buyMode === 'FIRST_TRANCHE') {
     summary = 'สัญญาณหลักยังแข็งและ R:R จากราคาปัจจุบันผ่านเกณฑ์ไม้แรก เหมาะกับการเริ่มสถานะบางส่วนโดยยังไม่ทุ่มเต็มไม้'
   } else if (decision === 'BUY_NOW') {
     summary = 'เงื่อนไขทางเทคนิคและ R:R อยู่ในจุดที่รับความเสี่ยงได้สำหรับการเข้าตามแผน'

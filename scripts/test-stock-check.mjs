@@ -48,6 +48,29 @@ assert.equal(firstTranche.buyMode, 'FIRST_TRANCHE', 'First-tranche BUY_NOW must 
 assert.match(firstTranche.decisionLabel, /ไม้แรก/, 'First-tranche label must be visible to the user')
 assert.ok((firstTranche.riskRewardNow ?? 0) >= 1.25, 'First tranche must use acceptable R:R from the live price')
 
+const structuralDipFirstTranche = stockCheck.buildStockCheck({
+  trend: 'SIDEWAYS', setup: 'NEAR_SUPPORT', score: 64,
+  price: 98, ema50: 100, ema200: 90, atr14: 2,
+  support: 95, resistance: 115, rsi14: 52, weeklyRsi14: 55,
+  macdHistogram: -0.1, volumeRatio: 0.9, relativeStrength20: 1,
+  relativeStrength60: 8, week52High: 120, week52Low: 70,
+  earningsDays: 20, pe: 24,
+})
+assert.equal(structuralDipFirstTranche.decision, 'BUY_NOW', 'Controlled dip under EMA50 with intact support should permit a first tranche')
+assert.equal(structuralDipFirstTranche.buyMode, 'FIRST_TRANCHE', 'Controlled structural dip must be labeled as first tranche, never standard BUY_NOW')
+assert.match(structuralDipFirstTranche.summary, /ช้อนไม้แรก/, 'Structural dip first tranche should explain the dip-buy intent')
+assert.ok((structuralDipFirstTranche.riskRewardNow ?? 0) >= 1.25, 'Structural dip first tranche must keep live R:R gate')
+
+const brokenSupportDip = stockCheck.buildStockCheck({
+  trend: 'SIDEWAYS', setup: 'WAIT', score: 70,
+  price: 96, ema50: 100, ema200: 90, atr14: 2,
+  support: 97, resistance: 115, rsi14: 50, weeklyRsi14: 54,
+  macdHistogram: -0.1, volumeRatio: 0.9, relativeStrength20: 1,
+  relativeStrength60: 7, week52High: 120, week52Low: 70,
+  earningsDays: 20, pe: 24,
+})
+assert.notEqual(brokenSupportDip.decision, 'BUY_NOW', 'A dip below support must not qualify as first-tranche BUY_NOW')
+
 const insideButPoorRr = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 77,
   price: 100, ema50: 99.5, ema200: 90, atr14: 2,
@@ -168,6 +191,7 @@ for (const path of [
   'app/api/stock-check/ai/route.ts',
   'components/portfolio/StockCheckPanel.tsx',
   'components/portfolio/ScannerWorkspace.tsx',
+  'components/portfolio/TodayOpportunities.tsx',
   'components/navigation/AppTabs.tsx',
   'lib/stock-check-data.ts',
   'lib/stock-check-ai.ts',
@@ -198,6 +222,15 @@ assert.match(ui, /\/api\/watchlist/, 'Stock Check must reuse the existing Watchl
 const workspace = fs.readFileSync('components/portfolio/ScannerWorkspace.tsx', 'utf8')
 assert.match(workspace, /🔬 เช็กหุ้น/, 'Scanner workspace must expose the Stock Check view')
 assert.match(workspace, /OpportunityHub/, 'Existing Scanner/Watchlist workspace must remain intact')
+assert.match(workspace, /🔥 โอกาสซื้อวันนี้/, 'Scanner workspace must expose the Today Opportunity Radar')
+assert.match(workspace, /TodayOpportunities/, 'Today Opportunity Radar must be wired into Scanner workspace')
+
+const today = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'utf8')
+assert.match(today, /const UNIVERSES = \['ai', 'semis', 'growth', 'quality'\]/, 'Today radar must scan all four built-in universes')
+assert.match(today, /FINALIST_LIMIT = 6/, 'Today radar must cap live Stock Check validation to six finalists')
+assert.match(today, /\/api\/scanner\?universe=/, 'Today radar must reuse deterministic scanner data')
+assert.match(today, /\/api\/stock-check\?symbol=/, 'Today radar finalists must be revalidated with live Stock Check')
+assert.match(today, /isStructuralPullback/, 'Today radar must surface controlled EMA50 pullback candidates')
 
 const scannerPage = fs.readFileSync('app/scanner/page.tsx', 'utf8')
 assert.match(scannerPage, /ScannerWorkspace/, 'Dedicated scanner page must render the combined workspace')

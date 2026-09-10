@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import OpportunityHub from './OpportunityHub'
 import StockCheckPanel from './StockCheckPanel'
+import TodayOpportunities from './TodayOpportunities'
 
 export default function ScannerWorkspace({ holdingSymbols }: { holdingSymbols: string[] }) {
-  const [view, setView] = useState<'opportunities' | 'check'>('opportunities')
+  const [view, setView] = useState<'opportunities' | 'today' | 'check'>('opportunities')
 
   return (
     <div className="space-y-4">
@@ -17,6 +18,11 @@ export default function ScannerWorkspace({ holdingSymbols }: { holdingSymbols: s
         >🔎 Scanner / ⭐ Watchlist</button>
         <button
           type="button"
+          onClick={() => setView('today')}
+          className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${view === 'today' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}
+        >🔥 โอกาสซื้อวันนี้</button>
+        <button
+          type="button"
           onClick={() => setView('check')}
           className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${view === 'check' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}
         >🔬 เช็กหุ้น</button>
@@ -24,7 +30,9 @@ export default function ScannerWorkspace({ holdingSymbols }: { holdingSymbols: s
 
       {view === 'opportunities'
         ? <OpportunityHub holdingSymbols={holdingSymbols} />
-        : <StockCheckPanel heldSymbols={holdingSymbols} />}
+        : view === 'today'
+          ? <TodayOpportunities holdingSymbols={holdingSymbols} />
+          : <StockCheckPanel heldSymbols={holdingSymbols} />}
     </div>
   )
 }
