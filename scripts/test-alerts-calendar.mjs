@@ -138,7 +138,7 @@ assert.match(versioning, /package-lock\.json.*track/i, 'Versioning guide must re
 assert.doesNotMatch(versioning, /ไม่ track package-lock\.json/, 'Versioning guide must not claim the lockfile is untracked')
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(pkg.version, '1.25.0', 'Functional hotfix Preview must keep Production metadata at v1.25.0 until finalization')
+assert.equal(pkg.version, '1.25.1', 'Finalized hotfix candidate must expose v1.25.1 metadata')
 assert.match(pkg.scripts['test:critical'], /test-alerts-calendar\.mjs/, 'Alerts/Calendar regression must be part of critical build gate')
 
 console.log('✓ Alerts + Calendar regression tests passed')
