@@ -1,0 +1,108 @@
+name: Finalize Risk v1.24.0
+
+on:
+  push:
+    branches:
+      - feat/risk-v1.24.0
+    paths:
+      - .github/workflows/finalize-risk-v1240.yml
+
+permissions:
+  contents: write
+
+env:
+  NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+  SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role
+  SUPABASE_ENCRYPTION_KEY: ci-placeholder-encryption-key-32-bytes-minimum
+  FINNHUB_API_KEY: ci-placeholder-finnhub
+  GROQ_API_KEY: ci-placeholder-groq
+  CRON_SECRET: ci-placeholder-cron-secret
+  PIN_PEPPER: ci-placeholder-pin-pepper
+  PIN_SESSION_SECRET: ci-placeholder-pin-session-secret-at-least-32-bytes
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feat/risk-v1.24.0
+          fetch-depth: 2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Verify release base
+        run: |
+          set -euo pipefail
+          EXPECTED_PARENT="0fc4578d1c11b410c3e50b89a507d68a8ebada1e"
+          EXPECTED_MAIN="3a8be0d4924685742ef233958ab5f9ca234584db"
+          ACTUAL_PARENT="$(git rev-parse HEAD^)"
+          git fetch origin main --depth=1
+          ACTUAL_MAIN="$(git rev-parse origin/main)"
+          test "$ACTUAL_PARENT" = "$EXPECTED_PARENT"
+          test "$ACTUAL_MAIN" = "$EXPECTED_MAIN"
+      - name: Finalize v1.24.0 metadata
+        run: |
+          set -euo pipefail
+          npm version 1.24.0 --no-git-tag-version
+          node <<'NODE'
+          const fs = require('fs')
+
+          const tsconfigPath = 'tsconfig.json'
+          let tsconfig = fs.readFileSync(tsconfigPath, 'utf8')
+          if (!tsconfig.includes('./config/changelog-v123')) throw new Error('Expected v123 changelog alias not found')
+          tsconfig = tsconfig.replace('./config/changelog-v123', './config/changelog-v124')
+          fs.writeFileSync(tsconfigPath, tsconfig)
+
+          const criticalPath = 'scripts/test-critical.mjs'
+          let critical = fs.readFileSync(criticalPath, 'utf8')
+          critical = critical.replace('// v1.23.0 finalized after approved Trade Plan Preview smoke.', '// v1.24.0 finalized after approved Portfolio Risk Preview smoke.')
+          critical = critical.replace("assert.equal(packageJson.version, '1.23.0', 'Package version must be finalized as v1.23.0 after Trade Plan Preview smoke')", "assert.equal(packageJson.version, '1.24.0', 'Package version must be finalized as v1.24.0 after Portfolio Risk Preview smoke')")
+          const v123Line = "  ['config/changelog-v123.ts', '2026-09-10 15:38 ICT'],"
+          if (!critical.includes(v123Line)) throw new Error('Expected v123 changelog gate not found')
+          critical = critical.replace(v123Line, `${v123Line}\n  ['config/changelog-v124.ts', '2026-09-10 16:50 ICT'],`)
+          critical = critical.replace("assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v123'])", "assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v124'])")
+          fs.writeFileSync(criticalPath, critical)
+
+          const tradePlanPath = 'scripts/test-trade-plan.mjs'
+          let tradePlan = fs.readFileSync(tradePlanPath, 'utf8')
+          tradePlan = tradePlan.replace("assert.equal(pkg.version, '1.23.0', 'Final v1.23.0 release metadata must match Trade Plan release')\n", '')
+          fs.writeFileSync(tradePlanPath, tradePlan)
+          NODE
+          cat > config/changelog-v124.ts <<'EOF'
+          import { changelog as previousChangelog } from './changelog-v123'
+          import type { ChangelogEntry } from './changelog'
+
+          const v1240: ChangelogEntry = {
+            version: 'v1.24.0',
+            date: '2026-09-10 16:50 ICT',
+            changes: [
+              'Portfolio Risk Workspace: เพิ่มเมนู 🛡️ ความเสี่ยง สำหรับดู Position Concentration, Sector / Industry Concentration, Cash Buffer, Stop Coverage และความเสี่ยงรายหุ้นในหน้าเดียว',
+              'Stop Risk: คำนวณ Loss → Stop และ Risk Contribution จาก Trade Plan สถานะ ENTERED เฉพาะ Stop ที่ต่ำกว่าราคาปัจจุบัน; หุ้นที่ไม่มี Stop หรือ Stop ถูกทะลุจะแสดงว่า Risk ยังวัดไม่ครบแทนการตีเป็นศูนย์',
+              'Stress Scenario: จำลองผลกระทบต่อพอร์ตจากการขยับของหุ้นรายตัว พร้อม preset -10%, -20% และ -30% โดยสมมติสินทรัพย์อื่นคงที่',
+              'Deterministic Risk Flags: เพิ่มคำเตือน concentration / cash buffer / stop coverage และ rebalance heuristics แบบ deterministic โดยไม่ใช้ AI ตัดสินซื้อขายและไม่ส่งคำสั่งอัตโนมัติ',
+              'Data Provenance: ใช้ Holdings และราคาปัจจุบันจริง, cash_balance และ Finnhub profile2 finnhubIndustry; Dime แสดงแยกและไม่รวมในฐาน Risk เพื่อหลีกเลี่ยงการนับซ้ำ',
+              'Regression & Safety: เพิ่ม Portfolio Risk regression เข้า critical build gate; Risk API เป็น read-only ไม่แก้ Holdings, Cost Basis, Cash, Transactions, Trade Plan, AI, Scanner, Cron หรือ Track Record และ v1.24.0 ไม่ต้องใช้ Supabase Migration เพิ่ม',
+            ],
+          }
+
+          export const changelog: ChangelogEntry[] = [v1240, ...previousChangelog]
+          export const CURRENT_VERSION = changelog[0]?.version ?? 'v1.0.0'
+          EOF
+          sed -i 's/^          //' config/changelog-v124.ts
+          git rm .github/workflows/finalize-risk-v1240.yml
+      - name: Verify finalized tree
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run ci
+      - name: Commit finalized release candidate
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json tsconfig.json scripts/test-critical.mjs scripts/test-trade-plan.mjs config/changelog-v124.ts .github/workflows/finalize-risk-v1240.yml
+          git commit -m "chore: finalize v1.24.0 Portfolio Risk release candidate"
+          git push origin HEAD:feat/risk-v1.24.0
