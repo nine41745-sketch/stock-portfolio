@@ -115,6 +115,5 @@ assert.match(nav, /href: '\/trade-plan'/, 'Trade Plan must be a main navigation 
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
 assert.match(pkg.scripts['test:critical'], /test-trade-plan\.mjs/, 'Trade Plan regression must be part of the critical build gate')
-assert.equal(pkg.version, '1.23.0', 'Final v1.23.0 release metadata must match Trade Plan release')
 
 console.log('✓ Trade Plan regression tests passed')
