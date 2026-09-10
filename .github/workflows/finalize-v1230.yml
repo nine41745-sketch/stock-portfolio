@@ -1,0 +1,98 @@
+name: Finalize v1.23.0
+
+on:
+  push:
+    branches:
+      - feat/trade-plan-v1.23.0
+    paths:
+      - .github/workflows/finalize-v1230.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify approved source and finalize release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_PARENT="fd7aed34064c56ff2aa106df5f094a7fd95eaf6e"
+          ACTUAL_PARENT="$(git rev-parse HEAD^)"
+          if [ "$ACTUAL_PARENT" != "$EXPECTED_PARENT" ]; then
+            echo "Refusing: workflow parent is $ACTUAL_PARENT, expected $EXPECTED_PARENT"
+            exit 1
+          fi
+
+          npm version 1.23.0 --no-git-tag-version
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          test = Path('scripts/test-trade-plan.mjs')
+          text = test.read_text()
+          old = "assert.equal(pkg.version, '1.22.0', 'Feature branch must not claim v1.23.0 release before final Preview approval')"
+          new = "assert.equal(pkg.version, '1.23.0', 'Final v1.23.0 release metadata must match Trade Plan release')"
+          if old not in text:
+              raise SystemExit('expected pre-finalization Trade Plan version assertion not found')
+          test.write_text(text.replace(old, new))
+
+          tsconfig = Path('tsconfig.json')
+          text = tsconfig.read_text()
+          old = '"./config/changelog-v122"'
+          new = '"./config/changelog-v123"'
+          if old not in text:
+              raise SystemExit('expected changelog-v122 alias not found')
+          tsconfig.write_text(text.replace(old, new))
+          PY
+
+          cat > config/changelog-v123.ts <<'EOF'
+          import { changelog as previousChangelog } from './changelog-v122'
+          import type { ChangelogEntry } from './changelog'
+
+          const v1230: ChangelogEntry = {
+            version: 'v1.23.0',
+            date: '2026-09-10 15:38 ICT',
+            changes: [
+              'Trade Plan Workspace: เพิ่มเมนู 🎯 แผน สำหรับวาง Planned Entry, Add Zone, Stop Loss, Target 1/2, Budget, จำนวนหุ้น และสถานะ WAITING / ENTERED / CANCELLED / CLOSED ก่อนส่งคำสั่งซื้อจริง',
+              'Risk Planning: คำนวณราคาเข้ากลางโซน, จำนวนหุ้นตามงบ, Risk ต่อหุ้น, Max Loss @ Stop และ R:R Target 1/2 แบบ deterministic โดยไม่พึ่ง AI',
+              'Stock Check Integration: เพิ่มทางส่งผลจาก 🔬 Stock Check เข้า Trade Plan เพื่อ prefill Entry / Stop / Target / Budget และให้ผู้ใช้ตรวจแก้ก่อนบันทึก',
+              'Data Safety: Trade Plan แยกจาก Holdings และ Transaction Ledger; การสร้าง แก้ไข เปลี่ยนสถานะ หรือลบแผนไม่เปลี่ยนจำนวนหุ้น Cost Basis เงินสด และไม่สร้าง BUY/SELL อัตโนมัติ',
+              'Security & Persistence: เพิ่ม trade_plans พร้อม RLS, หนึ่ง Active Plan ต่อ Symbol และเข้ารหัส Entry/Stop/Target/Budget/Shares/Notes at rest ผ่าน service-role-only RPCs; Preview CRUD ผ่านหลังติดตั้ง Migration ที่ได้รับอนุมัติแยก',
+              'Regression Safety: เพิ่ม Trade Plan regression เข้า critical build gate และคง Portfolio, Scanner, Stock Check, Transactions, Performance, Daily Cron และ Track Record เดิมไว้',
+            ],
+          }
+
+          export const changelog: ChangelogEntry[] = [v1230, ...previousChangelog]
+          export const CURRENT_VERSION = changelog[0]?.version ?? 'v1.0.0'
+          EOF
+
+          rm .github/workflows/finalize-v1230.yml
+
+      - name: Verify final release candidate
+        run: |
+          npm ci
+          npm run ci
+
+      - name: Commit finalized v1.23.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json scripts/test-trade-plan.mjs tsconfig.json config/changelog-v123.ts .github/workflows/finalize-v1230.yml
+          git diff --cached --check
+          git commit -m "chore: finalize v1.23.0 Trade Plan release candidate"
+          git push origin HEAD:feat/trade-plan-v1.23.0
