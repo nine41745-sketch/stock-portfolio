@@ -82,10 +82,14 @@ export default function RiskDashboard() {
   const [scenarioSymbol, setScenarioSymbol] = useState('')
   const [shockPct, setShockPct] = useState(-20)
 
-  useEffect(() => {
-    let cancelled = false
+  const reload = () => {
     setLoading(true)
     setError(null)
+    setReloadKey(key => key + 1)
+  }
+
+  useEffect(() => {
+    let cancelled = false
 
     fetch('/api/risk', { cache: 'no-store' })
       .then(async response => {
@@ -131,7 +135,7 @@ export default function RiskDashboard() {
       <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-5">
         <p className="font-semibold text-red-300">โหลด Risk ไม่สำเร็จ</p>
         <p className="mt-1 text-sm text-gray-300">{error ?? 'ไม่พบข้อมูล'}</p>
-        <button type="button" onClick={() => setReloadKey(key => key + 1)} className="mt-4 rounded-lg bg-gray-800 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700">ลองใหม่</button>
+        <button type="button" onClick={reload} className="mt-4 rounded-lg bg-gray-800 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700">ลองใหม่</button>
       </div>
     )
   }
@@ -147,7 +151,7 @@ export default function RiskDashboard() {
           <h1 className="text-2xl font-bold text-white">🛡️ Portfolio Risk</h1>
           <p className="mt-1 text-sm text-gray-400">Concentration, Cash Buffer, Stop Risk และ Stress Scenario แบบ deterministic</p>
         </div>
-        <button type="button" onClick={() => setReloadKey(key => key + 1)} className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-gray-800">↻ รีเฟรช</button>
+        <button type="button" onClick={reload} className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-gray-800">↻ รีเฟรช</button>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
