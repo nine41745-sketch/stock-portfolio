@@ -31,8 +31,43 @@ const buyNow = stockCheck.buildStockCheck({
   earningsDays: 20, pe: 25,
 })
 assert.equal(buyNow.decision, 'BUY_NOW', 'Strong near-support setup should permit BUY_NOW')
-assert.ok((buyNow.riskRewardAtEntry ?? 0) >= 1.5, 'BUY_NOW plan must have acceptable R:R')
+assert.equal(buyNow.buyMode, 'STANDARD', 'Classic in-zone BUY_NOW must remain the standard buy mode')
+assert.ok((buyNow.riskRewardAtEntry ?? 0) >= 1.5, 'Standard BUY_NOW plan must have acceptable R:R')
 assert.ok((buyNow.stopLoss ?? 999) < (buyNow.entryZone?.low ?? 0), 'Stop must stay below planned entry')
+
+const firstTranche = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'PULLBACK', score: 80,
+  price: 103, ema50: 100, ema200: 90, atr14: 2,
+  support: 98, resistance: 120, rsi14: 56, weeklyRsi14: 59,
+  macdHistogram: 0.8, volumeRatio: 1.1, relativeStrength20: 4,
+  relativeStrength60: 9, week52High: 125, week52Low: 72,
+  earningsDays: 20, pe: 26,
+})
+assert.equal(firstTranche.decision, 'BUY_NOW', 'Strong uptrend slightly above entry may permit a first tranche')
+assert.equal(firstTranche.buyMode, 'FIRST_TRANCHE', 'First-tranche BUY_NOW must be explicitly labeled')
+assert.match(firstTranche.decisionLabel, /ไม้แรก/, 'First-tranche label must be visible to the user')
+assert.ok((firstTranche.riskRewardNow ?? 0) >= 1.25, 'First tranche must use acceptable R:R from the live price')
+
+const insideButPoorRr = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 77,
+  price: 100, ema50: 99.5, ema200: 90, atr14: 2,
+  support: 99, resistance: 103, rsi14: 54, weeklyRsi14: 57,
+  macdHistogram: 0.4, volumeRatio: 1.1, relativeStrength20: 3,
+  relativeStrength60: 7, week52High: 110, week52Low: 75,
+  earningsDays: 20, pe: 24,
+})
+assert.equal(insideButPoorRr.decision, 'WATCH', 'Being inside Entry Zone with poor live R:R must not say wait for a pullback')
+assert.match(insideButPoorRr.summary, /Entry Zone/, 'In-zone WATCH should explain that price is already in the Entry Zone')
+
+const chasedTarget = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'MOMENTUM', score: 82,
+  price: 95.9, ema50: 90, ema200: 83, atr14: 1.5,
+  support: 89, resistance: 96.3, rsi14: 68, weeklyRsi14: 64,
+  macdHistogram: 0.2, volumeRatio: 0.95, relativeStrength20: 8,
+  relativeStrength60: 15, week52High: 100, week52Low: 70,
+  earningsDays: 30, pe: 16,
+})
+assert.notEqual(chasedTarget.decision, 'BUY_NOW', 'Price near Target 1 must not become first-tranche BUY_NOW just because planned-entry R:R is strong')
 
 const avoid = stockCheck.buildStockCheck({
   trend: 'DOWNTREND', setup: 'AVOID', score: 30,
@@ -74,6 +109,23 @@ const eventRisk = stockCheck.buildStockCheck({
   earningsDays: 2, pe: 25,
 })
 assert.equal(eventRisk.decision, 'WATCH', 'Earnings within 3 days must block BUY_NOW')
+
+const nearEventFirstTranche = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'PULLBACK', score: 82,
+  price: 103, ema50: 100, ema200: 90, atr14: 2,
+  support: 98, resistance: 120, rsi14: 56, weeklyRsi14: 59,
+  macdHistogram: 0.8, volumeRatio: 1.1, relativeStrength20: 4,
+  relativeStrength60: 9, week52High: 125, week52Low: 72,
+  earningsDays: 5, pe: 26,
+})
+assert.notEqual(nearEventFirstTranche.buyMode, 'FIRST_TRANCHE', 'First-tranche BUY_NOW must stay blocked inside the 7-day earnings window')
+
+const saneTechnicalRange = stockCheck.sanitizeWeek52Range(429.32, 445, 160, 2535, 1160)
+assert.deepEqual(saneTechnicalRange, { high: 445, low: 160 }, 'Same-ticker historical 52W range must override absurd provider-scale metrics')
+const rejectedProviderRange = stockCheck.sanitizeWeek52Range(95.93, null, null, 3591, 2554)
+assert.deepEqual(rejectedProviderRange, { high: null, low: null }, 'Implausible provider-only 52W range must fail closed instead of creating absurd targets')
+const acceptedProviderRange = stockCheck.sanitizeWeek52Range(100, null, null, 130, 75)
+assert.deepEqual(acceptedProviderRange, { high: 130, low: 75 }, 'Plausible provider 52W range should remain a valid fallback')
 
 const scannerWait = stockScanner.scoreScannerCandidate({
   trend: 'DOWNTREND',
@@ -131,6 +183,7 @@ assert.match(data, /getTechnicalIndicators\('SPY'\)/, 'Stock Check must compare 
 assert.match(data, /scannerSupport/, 'Stock Check must use scanner-safe support')
 assert.match(data, /scannerVolumeRatio/, 'Stock Check must use scanner-safe volume ratio')
 assert.match(data, /getAtr14/, 'Stock Check must use ATR14 for volatility-aware planning')
+assert.match(data, /sanitizeWeek52Range/, 'Stock Check must sanitize 52W range before scoring or target planning')
 
 const atr = fs.readFileSync('lib/atr.ts', 'utf8')
 assert.match(atr, /ATR\.calculate/, 'ATR14 must use the technical indicator implementation')
