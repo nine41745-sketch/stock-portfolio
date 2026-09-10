@@ -2,7 +2,7 @@ import { getQuote, getStockMetrics, getUpcomingEarnings } from '@/lib/finnhub'
 import { getTechnicalIndicators } from '@/lib/indicators'
 import { getAtr14 } from '@/lib/atr'
 import { scoreScannerCandidate } from '@/lib/stock-scanner'
-import { buildStockCheck, StockCheckPlan, StockCheckSetup } from '@/lib/stock-check'
+import { buildStockCheck, sanitizeWeek52Range, StockCheckPlan, StockCheckSetup } from '@/lib/stock-check'
 
 function diffOrNull(a: number | null, b: number | null): number | null {
   if (a === null || b === null) return null
@@ -54,8 +54,19 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
   const dayChangePct = quote?.dp ?? technical.return1dPct
   const relativeStrength20 = diffOrNull(technical.return20dPct, spy.return20dPct)
   const relativeStrength60 = diffOrNull(technical.return60dPct, spy.return60dPct)
-  const week52High = metrics.week52High ?? technical.week52High
-  const week52Low = metrics.week52Low ?? technical.week52Low
+
+  // v1.26.0: Finnhub basic-financial 52W values can occasionally be on a different
+  // listing/currency scale for ADR-like symbols. Prefer the same-ticker historical range
+  // used by our technical engine and only fall back to provider metrics if they pass sanity checks.
+  const week52Range = sanitizeWeek52Range(
+    price,
+    technical.week52High,
+    technical.week52Low,
+    metrics.week52High,
+    metrics.week52Low,
+  )
+  const week52High = week52Range.high
+  const week52Low = week52Range.low
 
   const scored = scoreScannerCandidate({
     trend: technical.trend,
