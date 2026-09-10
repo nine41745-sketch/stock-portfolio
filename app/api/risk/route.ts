@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { getMultipleQuotes } from '@/lib/finnhub'
-import { getCompanyProfiles } from '@/lib/company-profile'
+import { getCompanyProfiles, type CompanyProfileLite } from '@/lib/company-profile'
 import { calculateRiskSnapshot, type RiskHoldingInput } from '@/lib/risk'
 
 export const maxDuration = 60
@@ -59,7 +59,7 @@ export async function GET() {
   const symbols = Array.from(new Set(rows.map(row => String(row.symbol ?? '').toUpperCase()).filter(Boolean)))
   const [quotes, profiles] = await Promise.all([
     symbols.length ? getMultipleQuotes(symbols) : Promise.resolve({} as Record<string, number>),
-    symbols.length ? getCompanyProfiles(symbols) : Promise.resolve({}),
+    symbols.length ? getCompanyProfiles(symbols) : Promise.resolve({} as Record<string, CompanyProfileLite>),
   ])
 
   const enteredStops = new Map<string, number>()
