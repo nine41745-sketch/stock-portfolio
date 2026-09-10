@@ -68,7 +68,7 @@ function decisionLabel(decision: StockCheckDecision): string {
   if (decision === 'BUY_ON_PULLBACK') return 'รอย่อแล้วค่อยซื้อ'
   if (decision === 'WAIT_FOR_BREAKOUT') return 'รอ Breakout ยืนยัน'
   if (decision === 'AVOID') return 'หลีกเลี่ยงตอนนี้'
-  return 'เฝ้าดูต่อ'
+  return 'ยังไม่ใช่จุดซื้อ'
 }
 
 export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
@@ -145,7 +145,17 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   const supportDistance = pctDistance(price, support)
   const insideEntry = price >= entryLow && price <= entryHigh
   const aboveEntry = price > entryHigh
-  const belowSupport = support !== null && price < support
+
+  // v1.26.0: AVOID ต้องเป็น "โครงสร้างเสียจริง" ไม่ใช่แค่เห็น DOWNTREND ครั้งเดียวแล้วปิดประตูทันที.
+  // การหลุดแนวรับเล็กน้อยอาจเป็น noise ของราคา live เทียบกับ historical bar จึงใช้ -2% เป็น material breakdown.
+  const materialBreakdown = supportDistance !== null && supportDistance <= -2
+  const severeWeakness =
+    input.trend === 'DOWNTREND' &&
+    input.score < 48 &&
+    (input.macdHistogram ?? 0) < 0 &&
+    (input.relativeStrength20 ?? 0) <= -5 &&
+    (input.relativeStrength60 ?? 0) <= -8
+
   const highEventRisk = input.earningsDays !== null && input.earningsDays <= 3
   const nearEventRisk = input.earningsDays !== null && input.earningsDays <= 7
   const overextended = (ema50Distance !== null && ema50Distance > 10) || (input.rsi14 ?? 0) > 74
@@ -162,7 +172,12 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   if (input.volumeRatio !== null && input.volumeRatio >= 1.2) reasons.push('Volume สูงกว่าค่าเฉลี่ยและช่วยยืนยันแรงซื้อ')
   if (goodRiskReward) reasons.push(`R:R ที่จุดเข้าประมาณ ${rrAtEntry!.toFixed(2)}:1`)
 
-  if (highEventRisk) warnings.push(`Earnings ใน ${input.earningsDays} วัน — Event Risk สูง`) 
+  if (input.trend === 'DOWNTREND' && !materialBreakdown && !severeWeakness) {
+    warnings.push('แนวโน้มยังเป็นขาลง — ยังไม่ใช่จุดซื้อ รอการฟื้นตัวหรือ Breakout ยืนยัน')
+  }
+  if (materialBreakdown) warnings.push(`ราคาหลุดแนวรับ ${Math.abs(supportDistance!).toFixed(1)}% — โครงสร้างราคาเสีย`)
+  if (severeWeakness) warnings.push('Downtrend + Momentum/Relative Strength อ่อนพร้อมกัน — ความเสี่ยงสูง')
+  if (highEventRisk) warnings.push(`Earnings ใน ${input.earningsDays} วัน — Event Risk สูง`)
   else if (nearEventRisk) warnings.push(`Earnings ใน ${input.earningsDays} วัน — ควรลดขนาดสถานะหรือรอหลังงบ`)
   if ((input.rsi14 ?? 0) > 72) warnings.push(`RSI ${input.rsi14!.toFixed(1)} ค่อนข้างร้อน`)
   if (ema50Distance !== null && ema50Distance > 10) warnings.push(`ราคายืดจาก EMA50 +${ema50Distance.toFixed(1)}%`)
@@ -170,7 +185,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   if (rrAtEntry !== null && rrAtEntry < 1.5) warnings.push(`R:R ที่จุดเข้าเพียง ${rrAtEntry.toFixed(2)}:1`)
 
   let decision: StockCheckDecision = 'WATCH'
-  if (belowSupport || input.trend === 'DOWNTREND' || input.setup === 'AVOID') {
+  if (materialBreakdown || severeWeakness || input.setup === 'AVOID') {
     decision = 'AVOID'
   } else if (highEventRisk) {
     decision = 'WATCH'
@@ -203,8 +218,8 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   if (decision === 'BUY_NOW') summary = 'เงื่อนไขทางเทคนิคและ R:R อยู่ในจุดที่รับความเสี่ยงได้สำหรับการเข้าตามแผน'
   else if (decision === 'BUY_ON_PULLBACK') summary = 'หุ้นยังน่าสนใจ แต่ราคาปัจจุบันไม่ใช่จุดได้เปรียบ ควรรอย่อเข้า Entry Zone'
   else if (decision === 'WAIT_FOR_BREAKOUT') summary = 'ยังไม่ควรไล่ราคา รอทะลุแนวต้านพร้อม Volume ยืนยันก่อน'
-  else if (decision === 'AVOID') summary = 'โครงสร้างราคาหรือแนวโน้มยังไม่เหมาะกับการเปิดสถานะใหม่'
-  else summary = 'สัญญาณยังผสมกัน ควรเฝ้าดูและรอเงื่อนไขที่ชัดเจนขึ้นก่อนซื้อ'
+  else if (decision === 'AVOID') summary = 'มีหลักฐานโครงสร้างราคาเสียหรือความอ่อนแอหลายด้านพร้อมกัน จึงควรหลีกเลี่ยงการเปิดสถานะใหม่ตอนนี้'
+  else summary = 'ยังไม่ใช่จุดซื้อในตอนนี้ แต่ยังไม่ถึงขั้นต้องหลีกเลี่ยง รอให้โครงสร้างและสัญญาณยืนยันชัดขึ้น'
 
   return {
     decision,
