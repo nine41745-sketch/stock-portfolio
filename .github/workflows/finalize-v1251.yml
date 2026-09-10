@@ -60,6 +60,14 @@ jobs:
             "assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1251'])"
           )
           fs.writeFileSync(criticalPath, critical)
+
+          const alertsTestPath = 'scripts/test-alerts-calendar.mjs'
+          let alertsTest = fs.readFileSync(alertsTestPath, 'utf8')
+          alertsTest = alertsTest.replace(
+            "assert.equal(pkg.version, '1.25.0', 'Functional hotfix Preview must keep Production metadata at v1.25.0 until finalization')",
+            "assert.equal(pkg.version, '1.25.1', 'Finalized hotfix candidate must expose v1.25.1 metadata')"
+          )
+          fs.writeFileSync(alertsTestPath, alertsTest)
           NODE
 
           cat > config/changelog-v1251.ts <<'EOF'
@@ -94,6 +102,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/finalize-v1251.yml
-          git add package.json package-lock.json tsconfig.json scripts/test-critical.mjs config/changelog-v1251.ts
+          git add package.json package-lock.json tsconfig.json scripts/test-critical.mjs scripts/test-alerts-calendar.mjs config/changelog-v1251.ts
           git commit -m "chore: finalize v1.25.1 hotfix release candidate"
           git push origin HEAD:hotfix/v1.25.1
