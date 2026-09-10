@@ -42,19 +42,27 @@ Never expose service-role, encryption, Groq, Cron, PIN pepper, or PIN session se
 
 ### Existing deployed project
 
-Do **not** rerun the full schema. Apply only migrations that have not yet been applied. The latest schema migration currently required by Production is:
+Do **not** rerun the full schema and do **not** rerun migrations that are already applied. Apply only a migration that is genuinely missing from the target Supabase project.
 
-`supabase/migration_analysis_freshness_v1.16.0.sql`
+The latest schema migration required by current Production is:
 
-It adds portfolio/cash freshness timestamps and a holdings trigger used only to identify when an existing AI result became stale.
+`supabase/migration_trade_plan_v1.23.0.sql`
 
-**v1.17.0 has no SQL migration.**
+Release-era migrations after the v1.16 freshness work are:
+
+- `supabase/migration_watchlist_v1.18.0.sql`
+- `supabase/migration_transactions_v1.21.0.sql`
+- `supabase/migration_trade_plan_v1.23.0.sql`
+
+**v1.17.0, v1.19.0, v1.20.0, v1.22.0, v1.24.0 and v1.25.0 have no SQL migration.**
+
+If the project is already running current Production, these migrations should already be present; verify first rather than executing them again.
 
 ### Fresh project
 
 1. Create a Supabase project.
 2. Run `supabase/schema.sql`.
-3. Apply the migration files required by the current release in their release order. Do not skip security/PIN/latest-analysis/data-integrity migrations.
+3. Apply the migration files required by the current release in their release order. Do not skip security/PIN/latest-analysis/data-integrity migrations, and include Watchlist v1.18.0, Transactions v1.21.0 and Trade Plan v1.23.0 when they are not already represented by the fresh baseline you are using.
 4. Create the intended user through Supabase Auth.
 5. Configure the same environment values in Vercel.
 
@@ -97,4 +105,4 @@ Use this sequence for every release:
 
 **branch → GitHub CI + Vercel Preview → required migration → Preview smoke test → PR review → explicit merge/Production approval → Production smoke test → Git tag**
 
-Do not merge a feature branch or promote it to Production before CI/Preview verification and explicit approval.
+Do not merge a feature/hotfix branch or promote it to Production before CI/Preview verification and explicit approval.

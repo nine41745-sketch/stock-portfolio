@@ -46,6 +46,20 @@ const fifo = perf.calculatePerformance([
 assert.equal(fifo.summary.realized_pnl, 50, 'Realized P/L must use FIFO lots')
 assert.equal(fifo.closed_trades[0].cost, 400)
 
+const oversell = perf.calculatePerformance([
+  { id: 'o1', transaction_type: 'OPENING_POSITION', symbol: 'MSFT', shares: 2, price: 100, fee: null, amount: null, trade_date: '2026-01-01' },
+  { id: 'o2', transaction_type: 'SELL', symbol: 'MSFT', shares: 3, price: 150, fee: 0, amount: null, trade_date: '2026-01-02' },
+  { id: 'o3', transaction_type: 'SELL', symbol: 'MSFT', shares: 1, price: 160, fee: 0, amount: null, trade_date: '2026-01-03' },
+], [{ symbol: 'MSFT', shares: 1, cost_basis: 100, current_price: 170 }])
+assert.equal(oversell.summary.realized_pnl, 60, 'Rejected over-sell must not consume FIFO lots needed by later valid sells')
+assert.equal(oversell.summary.net_sells, 160, 'Rejected over-sell must not inflate aggregate sell proceeds')
+assert.equal(oversell.closed_trades.length, 1)
+assert.equal(oversell.closed_trades[0].shares, 1)
+assert.equal(oversell.by_symbol[0].ledger_shares, 1)
+assert.equal(oversell.by_symbol[0].is_match, true)
+assert.equal(oversell.summary.ledger_complete, false, 'Rejected over-sell must still mark the ledger incomplete')
+assert.match(oversell.summary.warnings.join('\n'), /ขายมากกว่าจำนวนหุ้นใน Ledger/)
+
 const mismatch = perf.calculatePerformance(baseTransactions, [
   { symbol: 'NVDA', shares: 7, cost_basis: 100, current_price: 130 },
 ])

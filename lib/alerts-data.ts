@@ -1,5 +1,5 @@
 import { createServiceClient } from '@/lib/supabase/server'
-import { getMultipleQuotes, getUpcomingEarnings, type UpcomingEarnings } from '@/lib/finnhub'
+import { getMultipleQuotes, getUpcomingEarningsForSymbols, type UpcomingEarnings } from '@/lib/finnhub'
 import { getTechnicalIndicators } from '@/lib/indicators'
 import { buildAlerts, summarizeAlerts, type AlertInput, type AlertItem } from '@/lib/alerts'
 import {
@@ -120,22 +120,30 @@ export async function loadAlertsCalendarData(userId: string): Promise<AlertsCale
     ? getMultipleQuotes(trackedSymbols)
     : Promise.resolve({} as Record<string, number>)
 
-  const marketDataPromise = Promise.all(trackedSymbols.map(async symbol => {
-    const [technical, earnings] = await Promise.all([
-      getTechnicalIndicators(symbol),
-      getUpcomingEarnings(symbol),
-    ])
-    return { symbol, technical, earnings }
-  }))
+  // Technical indicators use historical market data while earnings are fetched in one
+  // shared Finnhub calendar request. Avoid one Finnhub earnings call per ticker.
+  const technicalsPromise = Promise.all(trackedSymbols.map(async symbol => ({
+    symbol,
+    technical: await getTechnicalIndicators(symbol),
+  })))
 
-  const [quotes, marketData] = await Promise.all([quotesPromise, marketDataPromise])
+  const earningsPromise = trackedSymbols.length
+    ? getUpcomingEarningsForSymbols(trackedSymbols)
+    : Promise.resolve({} as Record<string, UpcomingEarnings | null>)
+
+  const [quotes, marketData, earningsBySymbol] = await Promise.all([
+    quotesPromise,
+    technicalsPromise,
+    earningsPromise,
+  ])
+
   const alertInputs: AlertInput[] = []
   const earningsEvents: MarketCalendarEvent[] = []
 
   for (const entry of marketData) {
     const levels = planLevels.get(entry.symbol) ?? emptyLevels()
     const price = quotes[entry.symbol] ?? entry.technical.lastClose ?? null
-    const earnings: UpcomingEarnings | null = entry.earnings
+    const earnings: UpcomingEarnings | null = earningsBySymbol[entry.symbol] ?? null
 
     alertInputs.push({
       symbol: entry.symbol,
@@ -177,7 +185,7 @@ export async function loadAlertsCalendarData(userId: string): Promise<AlertsCale
       stopTarget: 'Stop alert uses ENTERED Trade Plan stop only; Target uses active WAITING/ENTERED Trade Plan targets.',
       supportResistance: 'Near Support and Breakout use scanner support/resistance derived from completed historical bars.',
       breakout: 'Breakout means current price is above scanner resistance; Volume Ratio >= 1.20x is highlighted but not required.',
-      earnings: 'Upcoming earnings are sourced from Finnhub and alerts fire inside 7 days; calendar includes up to 60 days.',
+      earnings: 'Upcoming earnings are sourced from one batched Finnhub calendar request and alerts fire inside 7 days; calendar includes up to 60 days.',
       persistence: 'Live derived Notification Center only; v1.25.0 does not persist read/unread or custom alert thresholds.',
       macroCalendar: 'CPI/FOMC dates use a static snapshot of official published BLS/Federal Reserve schedules.',
       sideEffects: 'Read-only; does not mutate Holdings, Transactions, Trade Plans, Cash, AI, Scanner, Cron, or Track Record.',

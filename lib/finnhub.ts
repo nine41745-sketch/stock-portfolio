@@ -3,9 +3,15 @@ import { FinnhubQuote } from '@/types'
 const BASE = 'https://finnhub.io/api/v1'
 const KEY  = process.env.FINNHUB_API_KEY!
 
-// Finnhub free tier limit: 30 calls/min — ยิงพร้อมกันทีละ chunk กันโดน rate limit
+// Keep bursts bounded. Alerts/Calendar additionally use one shared earnings-calendar
+// request instead of one earnings request per symbol.
 const CHUNK_SIZE = 6
 const CHUNK_DELAY_MS = 250
+const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+function normalizeSymbols(symbols: string[]): string[] {
+  return Array.from(new Set(symbols.map(symbol => symbol.trim().toUpperCase()).filter(Boolean)))
+}
 
 export interface StockMetrics {
   pe: number | null
@@ -43,19 +49,29 @@ export async function getStockMetrics(symbol: string): Promise<StockMetrics> {
 }
 
 export async function getMultipleQuotes(symbols: string[]): Promise<Record<string, number>> {
-  const results = await Promise.allSettled(
-    symbols.map(async sym => {
-      const q = await getQuote(sym)
-      return { sym, price: q?.c ?? null }
-    })
-  )
-  return results.reduce((acc, r) => {
-    if (r.status === 'fulfilled' && r.value.price !== null) acc[r.value.sym] = r.value.price
-    return acc
-  }, {} as Record<string, number>)
-}
+  const result: Record<string, number> = {}
+  const uniqueSymbols = normalizeSymbols(symbols)
 
-const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
+  for (let i = 0; i < uniqueSymbols.length; i += CHUNK_SIZE) {
+    const chunk = uniqueSymbols.slice(i, i + CHUNK_SIZE)
+    const settled = await Promise.allSettled(
+      chunk.map(async sym => {
+        const q = await getQuote(sym)
+        return { sym, price: q?.c ?? null }
+      })
+    )
+
+    for (const item of settled) {
+      if (item.status === 'fulfilled' && item.value.price !== null) {
+        result[item.value.sym] = item.value.price
+      }
+    }
+
+    if (i + CHUNK_SIZE < uniqueSymbols.length) await delay(CHUNK_DELAY_MS)
+  }
+
+  return result
+}
 
 type QuoteWithMetrics = { price: number | null; dayChange: number | null } & StockMetrics
 
@@ -86,18 +102,19 @@ async function fetchOneWithMetrics(sym: string): Promise<QuoteWithMetrics> {
 }
 
 // ดึงราคา + metrics แบบ parallel เป็น chunk ๆ ละ CHUNK_SIZE ตัว
-// เร็วกว่า sequential loop เดิมมาก และยังกัน rate limit ของ Finnhub free tier
+// เร็วกว่า sequential loop เดิมมาก และช่วยลด request burst ไปยัง Finnhub
 export async function getMultipleQuotesWithMetrics(
   symbols: string[]
 ): Promise<Record<string, QuoteWithMetrics>> {
   const result: Record<string, QuoteWithMetrics> = {}
+  const uniqueSymbols = normalizeSymbols(symbols)
 
-  for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
-    const chunk = symbols.slice(i, i + CHUNK_SIZE)
+  for (let i = 0; i < uniqueSymbols.length; i += CHUNK_SIZE) {
+    const chunk = uniqueSymbols.slice(i, i + CHUNK_SIZE)
     const chunkResults = await Promise.all(chunk.map(sym => fetchOneWithMetrics(sym)))
     chunk.forEach((sym, idx) => { result[sym] = chunkResults[idx] })
 
-    if (i + CHUNK_SIZE < symbols.length) await delay(CHUNK_DELAY_MS)
+    if (i + CHUNK_SIZE < uniqueSymbols.length) await delay(CHUNK_DELAY_MS)
   }
 
   return result
@@ -109,8 +126,28 @@ export interface UpcomingEarnings {
   hour: string | null    // 'bmo' (before market open) | 'amc' (after close) | 'dmh' (during hours) | null
 }
 
+interface EarningsCalendarRow {
+  symbol?: string
+  date?: string
+  hour?: string
+}
+
 function fmtDate(d: Date): string {
   return d.toISOString().split('T')[0]
+}
+
+function daysUntilDate(date: string, today: Date): number {
+  const [year, month, day] = date.split('-').map(Number)
+  const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())
+  const eventUtc = Date.UTC(year, month - 1, day)
+  return Math.round((eventUtc - todayUtc) / 86400000)
+}
+
+function toUpcomingEarnings(row: EarningsCalendarRow, today: Date): UpcomingEarnings | null {
+  if (!row.date || !/^\d{4}-\d{2}-\d{2}$/.test(row.date)) return null
+  const daysUntil = daysUntilDate(row.date, today)
+  if (daysUntil < 0) return null
+  return { date: row.date, daysUntil, hour: row.hour ?? null }
 }
 
 // เช็ควันประกาศผลประกอบการที่ใกล้ที่สุด — ใช้เตือนความเสี่ยงก่อน AI วิเคราะห์
@@ -119,24 +156,59 @@ export async function getUpcomingEarnings(symbol: string): Promise<UpcomingEarni
   try {
     const today = new Date()
     const to = new Date(today)
-    to.setDate(to.getDate() + 60) // มองล่วงหน้า 60 วัน ครอบคลุมรอบประกาศงบไตรมาสถัดไปแน่นอน
+    to.setDate(to.getDate() + 60)
 
     const url = `${BASE}/calendar/earnings?from=${fmtDate(today)}&to=${fmtDate(to)}&symbol=${symbol}&token=${KEY}`
-    const res = await fetch(url, { next: { revalidate: 21600 } }) // cache 6 ชม. — วันประกาศงบไม่เปลี่ยนบ่อย
+    const res = await fetch(url, { next: { revalidate: 21600 } })
     if (!res.ok) return null
 
     const data = await res.json()
-    const list: Array<{ date: string; hour?: string }> = data?.earningsCalendar ?? []
+    const list: EarningsCalendarRow[] = data?.earningsCalendar ?? []
     if (!list.length) return null
 
-    // เอาอันที่ใกล้วันนี้ที่สุด (Finnhub มักเรียงมาให้แล้ว แต่ sort กันเหนียวไว้)
-    const sorted = [...list].sort((a, b) => a.date.localeCompare(b.date))
-    const next = sorted[0]
-    const daysUntil = Math.ceil((new Date(next.date).getTime() - today.getTime()) / 86400000)
-
-    return { date: next.date, daysUntil, hour: next.hour ?? null }
+    const sorted = [...list].sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')))
+    return toUpcomingEarnings(sorted[0], today)
   } catch (e) {
     console.error(`[finnhub] getUpcomingEarnings error for ${symbol}:`, e)
     return null
+  }
+}
+
+// Alerts/Calendar needs earnings for many tracked symbols at once. Finnhub's calendar
+// endpoint can return the date range in one response, so filter that response locally
+// instead of issuing one request per ticker.
+export async function getUpcomingEarningsForSymbols(
+  symbols: string[]
+): Promise<Record<string, UpcomingEarnings | null>> {
+  const uniqueSymbols = normalizeSymbols(symbols)
+  const result = Object.fromEntries(uniqueSymbols.map(symbol => [symbol, null])) as Record<string, UpcomingEarnings | null>
+  if (!uniqueSymbols.length) return result
+
+  try {
+    const today = new Date()
+    const to = new Date(today)
+    to.setDate(to.getDate() + 60)
+
+    const url = `${BASE}/calendar/earnings?from=${fmtDate(today)}&to=${fmtDate(to)}&token=${KEY}`
+    const res = await fetch(url, { next: { revalidate: 21600 } })
+    if (!res.ok) {
+      console.warn(`[finnhub] batch earnings calendar HTTP ${res.status}`)
+      return result
+    }
+
+    const data = await res.json()
+    const rows: EarningsCalendarRow[] = data?.earningsCalendar ?? []
+    const wanted = new Set(uniqueSymbols)
+
+    for (const row of [...rows].sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')))) {
+      const symbol = String(row.symbol ?? '').trim().toUpperCase()
+      if (!wanted.has(symbol) || result[symbol] !== null) continue
+      result[symbol] = toUpcomingEarnings(row, today)
+    }
+
+    return result
+  } catch (e) {
+    console.error('[finnhub] getUpcomingEarningsForSymbols error:', e)
+    return result
   }
 }
