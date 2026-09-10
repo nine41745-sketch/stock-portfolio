@@ -60,13 +60,18 @@ function classifySetup(input: ScannerTechnicalInput): ScannerSetup {
   // v1.26.0: AVOID ต้องมีโครงสร้างเสียจริงหรือ weakness หลายตัวพร้อมกัน.
   // ไม่ใช้ DOWNTREND ตัวเดียวเป็นเหตุ AVOID เพื่อแยก "ยังไม่ใช่จุดซื้อ" ออกจาก "ควรหลีกเลี่ยง".
   const materialBreakdown = supportDistance !== null && supportDistance <= -2
-  const severeWeakness =
+  const relativeWeakness =
     input.trend === 'DOWNTREND' &&
     (input.macdHistogram ?? 0) < 0 &&
     (input.relativeStrength20 ?? 0) <= -5 &&
     (input.relativeStrength60 ?? 0) <= -8
+  const momentumStress =
+    input.trend === 'DOWNTREND' &&
+    (input.macdHistogram ?? 0) < 0 &&
+    (input.rsi14 ?? 0) > 75 &&
+    (input.weeklyRsi14 ?? 0) > 75
 
-  if (materialBreakdown || severeWeakness) return 'AVOID'
+  if (materialBreakdown || relativeWeakness || momentumStress) return 'AVOID'
   if (breakout && (input.volumeRatio ?? 0) >= 1.2) return 'BREAKOUT'
   if (input.trend === 'DOWNTREND') return 'WAIT'
   if (
