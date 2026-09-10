@@ -1,3 +1,4 @@
+// Final Preview retrigger approved: 2026-09-10 14:36 ICT
 import { changelog as previousChangelog } from './changelog-v121'
 import type { ChangelogEntry } from './changelog'
 
