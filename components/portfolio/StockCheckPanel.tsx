@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { FormEvent, useMemo, useState } from 'react'
 
 type Decision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAKOUT' | 'WATCH' | 'AVOID'
@@ -202,6 +203,24 @@ export default function StockCheckPanel({
     }
   }, [budget, result])
 
+  const tradePlanHref = useMemo(() => {
+    if (!result) return '/trade-plan'
+    const params = new URLSearchParams({ symbol: result.symbol, source: 'STOCK_CHECK' })
+    if (result.plan.entryZone) {
+      params.set('entryLow', String(result.plan.entryZone.low))
+      params.set('entryHigh', String(result.plan.entryZone.high))
+    } else if (result.price !== null) {
+      params.set('entryLow', String(result.price))
+      params.set('entryHigh', String(result.price))
+    }
+    if (result.plan.stopLoss !== null) params.set('stop', String(result.plan.stopLoss))
+    if (result.plan.target1 !== null) params.set('target1', String(result.plan.target1))
+    if (result.plan.target2 !== null) params.set('target2', String(result.plan.target2))
+    const amount = Number(budget)
+    if (Number.isFinite(amount) && amount > 0) params.set('budget', String(amount))
+    return `/trade-plan?${params.toString()}`
+  }, [budget, result])
+
   return (
     <div>
       <div className="mb-4 rounded-xl border border-gray-800 bg-gray-950/40 p-4">
@@ -311,6 +330,7 @@ export default function StockCheckPanel({
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => void runAi()} disabled={aiLoading} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-50">{aiLoading ? 'AI กำลังวิเคราะห์...' : '✨ วิเคราะห์เชิงลึกด้วย AI'}</button>
             <button type="button" onClick={() => void addToWatchlist()} disabled={watchlistSaving || watchlistSaved} className="rounded-lg border border-gray-700 px-4 py-2 text-sm font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-50">{watchlistSaved ? '✓ อยู่ใน Watchlist แล้ว' : watchlistSaving ? 'กำลังบันทึก...' : '⭐ เพิ่มเข้า Watchlist'}</button>
+            <Link href={tradePlanHref} className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-300 hover:bg-blue-500/20">🎯 ส่งเข้า Trade Plan</Link>
           </div>
 
           {aiError && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">⚠️ {aiError}</p>}

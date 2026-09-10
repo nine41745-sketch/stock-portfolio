@@ -1,0 +1,13 @@
+'use client'
+
+export default function TradePlanError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  return (
+    <div className="min-h-screen bg-gray-950 p-6 text-gray-100">
+      <div className="mx-auto max-w-xl rounded-xl border border-red-500/30 bg-red-500/10 p-5">
+        <h1 className="text-lg font-bold text-red-300">Trade Plan เปิดไม่สำเร็จ</h1>
+        <p className="mt-2 text-sm text-gray-300">ข้อมูล Holdings และ Transaction Ledger เดิมไม่ได้ถูกลบหรือแก้ไขจาก error นี้</p>
+        <button type="button" onClick={reset} className="mt-4 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500">ลองใหม่</button>
+      </div>
+    </div>
+  )
+}
