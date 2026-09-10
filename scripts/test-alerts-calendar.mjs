@@ -101,8 +101,14 @@ assert.match(dataLoader, /get_decrypted_holdings/, 'Alerts must track real Holdi
 assert.match(dataLoader, /get_decrypted_trade_plans/, 'Alerts must use active Trade Plan levels')
 assert.match(dataLoader, /getMultipleQuotes/, 'Alerts must use current prices')
 assert.match(dataLoader, /getTechnicalIndicators/, 'Support/Resistance alerts must use technical data')
-assert.match(dataLoader, /getUpcomingEarnings/, 'Earnings alerts must use Finnhub calendar')
+assert.match(dataLoader, /getUpcomingEarningsForSymbols/, 'Alerts must batch Finnhub earnings calendar access')
+assert.doesNotMatch(dataLoader, /getUpcomingEarnings\(symbol\)/, 'Alerts must not issue one Finnhub earnings call per ticker')
 assert.doesNotMatch(dataLoader, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/, 'Alerts/Calendar loader must remain read-only')
+
+const finnhub = fs.readFileSync('lib/finnhub.ts', 'utf8')
+assert.match(finnhub, /export async function getUpcomingEarningsForSymbols/, 'Finnhub helper must support one shared earnings-calendar request')
+assert.match(finnhub, /for \(let i = 0; i < uniqueSymbols\.length; i \+= CHUNK_SIZE\)/, 'Multi-quote requests must be chunked instead of one unbounded Promise.all')
+assert.match(finnhub, /calendar\/earnings\?from=.*&to=.*&token=/, 'Batch earnings helper must use one date-range calendar endpoint')
 
 const alertsUi = fs.readFileSync('components/portfolio/AlertsCenter.tsx', 'utf8')
 assert.match(alertsUi, /🔔 Notification Center/)
@@ -123,8 +129,16 @@ assert.match(nav, /href: '\/calendar'/)
 const mainTabsSection = nav.split('const PLAN_SUBTABS')[0]
 assert.equal((mainTabsSection.match(/href: '\/(dashboard|scanner|transactions|performance|trade-plan|risk)'/g) ?? []).length, 6, 'Keep six main tabs')
 
+const setup = fs.readFileSync('SETUP.md', 'utf8')
+assert.match(setup, /migration_trade_plan_v1\.23\.0\.sql/, 'Setup must identify the latest Production schema migration')
+assert.match(setup, /v1\.24\.0.*v1\.25\.0.*no SQL migration/i, 'Setup must document no-SQL releases after Trade Plan')
+
+const versioning = fs.readFileSync('VERSIONING.md', 'utf8')
+assert.match(versioning, /package-lock\.json.*track/i, 'Versioning guide must reflect that package-lock.json is tracked')
+assert.doesNotMatch(versioning, /ไม่ track package-lock\.json/, 'Versioning guide must not claim the lockfile is untracked')
+
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(pkg.version, '1.25.0', 'Final Preview must use finalized v1.25.0 metadata')
+assert.equal(pkg.version, '1.25.0', 'Functional hotfix Preview must keep Production metadata at v1.25.0 until finalization')
 assert.match(pkg.scripts['test:critical'], /test-alerts-calendar\.mjs/, 'Alerts/Calendar regression must be part of critical build gate')
 
 console.log('✓ Alerts + Calendar regression tests passed')

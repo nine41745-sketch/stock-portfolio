@@ -45,9 +45,9 @@ sync ให้ตรงกับค่านี้เสมอ (ตัด prefix
 3. ตัดสินใจ PATCH/MINOR/MAJOR ตามกฎด้านบน ต่อจาก version ล่าสุดที่ตรวจพบจริงเท่านั้น
 4. เพิ่ม entry ใหม่ไว้บนสุดของ `changelog` array ใน `config/changelog.ts` (วันที่จาก `git log`
    ของ commit ที่กำลังจะสร้าง — ใช้เวลาปัจจุบัน ณ ตอน commit)
-5. อัปเดต `package.json` `"version"` ให้ตรงกับ version ใหม่ (ตัด `v` prefix) — sync `package-lock.json`
-   ด้วยถ้ามี root package version ผูกอยู่ในไฟล์นั้น (โปรเจกต์นี้ไม่ track package-lock.json ใน git จึง
-   ไม่มีจุดที่ต้อง sync เพิ่ม)
+5. อัปเดต `package.json` `"version"` ให้ตรงกับ version ใหม่ (ตัด `v` prefix) และ sync root package
+   version ใน `package-lock.json` ด้วย — โปรเจกต์นี้ **track `package-lock.json` ใน Git** และ CI ใช้
+   `npm ci` จาก lockfile ที่ commit ไว้ ดังนั้น package/lock version ต้องตรงกันทุก release
 6. commit พร้อมกันในรอบเดียว (หรือ commit แยกเฉพาะ version/changelog ถ้ากำลังทำ hotfix แยกจากงานหลัก
    ตามที่ตกลงในแต่ละครั้ง)
 7. สร้าง git tag ตรงกับ version (เช่น `v1.10.1`) หลังยืนยันว่า commit ที่จะขึ้น production ถูกต้องแล้ว

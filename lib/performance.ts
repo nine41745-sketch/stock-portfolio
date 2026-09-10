@@ -160,6 +160,14 @@ function addLot(state: LedgerState, symbol: string, shares: number, totalCost: n
 
 function consumeLots(state: LedgerState, symbol: string, requestedShares: number): { cost: number; complete: boolean } {
   const lots = state.lots.get(symbol) ?? []
+  const availableShares = round(lots.reduce((sum, lot) => sum + lot.shares, 0))
+
+  // Reject an over-sell before mutating FIFO lots. This keeps the rejected
+  // transaction atomic: later valid SELL rows still see the original lots.
+  if (requestedShares - availableShares > EPS) {
+    return { cost: 0, complete: false }
+  }
+
   let remaining = requestedShares
   let cost = 0
 
@@ -211,13 +219,14 @@ function applyTransaction(state: LedgerState, item: PerformanceTransaction) {
 
   if (type === 'SELL') {
     const proceeds = gross - fee
-    state.netSells += proceeds
     const consumed = consumeLots(state, symbol, shares)
     if (!consumed.complete) {
       state.warnings.push(`${symbol}: มีรายการขายมากกว่าจำนวนหุ้นใน Ledger จึงไม่รวมรายการขายวันที่ ${item.trade_date} ใน Realized P/L`)
       return
     }
 
+    // Only a valid SELL is allowed to affect aggregate proceeds.
+    state.netSells += proceeds
     const pnl = proceeds - consumed.cost
     const trade: ClosedTrade = {
       symbol,
