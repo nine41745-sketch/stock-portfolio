@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED_PARENT="f346532830456870325b317810b4aa9c25eb157f"
+          EXPECTED_PARENT="ab1fe39123b6b4ddf0c34add873c215288e8fd97"
           ACTUAL_PARENT="$(git rev-parse HEAD^)"
           if [ "$ACTUAL_PARENT" != "$EXPECTED_PARENT" ]; then
             echo "Refusing: workflow parent is $ACTUAL_PARENT, expected $EXPECTED_PARENT"
@@ -51,13 +51,29 @@ jobs:
 
           critical = Path('scripts/test-critical.mjs')
           text = critical.read_text()
-          old_comment = '// v1.22.0 finalized after approved Performance Preview smoke.'
-          new_comment = '// v1.23.0 finalized after approved Trade Plan Preview smoke.'
-          old_assert = "assert.equal(packageJson.version, '1.22.0', 'Package version must be finalized as v1.22.0 after Preview smoke')"
-          new_assert = "assert.equal(packageJson.version, '1.23.0', 'Package version must be finalized as v1.23.0 after Trade Plan Preview smoke')"
-          if old_comment not in text or old_assert not in text:
-              raise SystemExit('expected v1.22.0 critical version assertion not found')
-          critical.write_text(text.replace(old_comment, new_comment).replace(old_assert, new_assert))
+          replacements = [
+              (
+                  '// v1.22.0 finalized after approved Performance Preview smoke.',
+                  '// v1.23.0 finalized after approved Trade Plan Preview smoke.',
+              ),
+              (
+                  "assert.equal(packageJson.version, '1.22.0', 'Package version must be finalized as v1.22.0 after Preview smoke')",
+                  "assert.equal(packageJson.version, '1.23.0', 'Package version must be finalized as v1.23.0 after Trade Plan Preview smoke')",
+              ),
+              (
+                  "  ['config/changelog-v122.ts', '2026-09-10 03:58 ICT'],\n]",
+                  "  ['config/changelog-v122.ts', '2026-09-10 03:58 ICT'],\n  ['config/changelog-v123.ts', '2026-09-10 15:38 ICT'],\n]",
+              ),
+              (
+                  "assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v122'])",
+                  "assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v123'])",
+              ),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f'expected critical release gate text not found: {old[:80]}')
+              text = text.replace(old, new)
+          critical.write_text(text)
 
           tsconfig = Path('tsconfig.json')
           text = tsconfig.read_text()
