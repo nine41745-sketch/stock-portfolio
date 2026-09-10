@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED_PARENT="fd7aed34064c56ff2aa106df5f094a7fd95eaf6e"
+          EXPECTED_PARENT="f346532830456870325b317810b4aa9c25eb157f"
           ACTUAL_PARENT="$(git rev-parse HEAD^)"
           if [ "$ACTUAL_PARENT" != "$EXPECTED_PARENT" ]; then
             echo "Refusing: workflow parent is $ACTUAL_PARENT, expected $EXPECTED_PARENT"
@@ -48,6 +48,16 @@ jobs:
           if old not in text:
               raise SystemExit('expected pre-finalization Trade Plan version assertion not found')
           test.write_text(text.replace(old, new))
+
+          critical = Path('scripts/test-critical.mjs')
+          text = critical.read_text()
+          old_comment = '// v1.22.0 finalized after approved Performance Preview smoke.'
+          new_comment = '// v1.23.0 finalized after approved Trade Plan Preview smoke.'
+          old_assert = "assert.equal(packageJson.version, '1.22.0', 'Package version must be finalized as v1.22.0 after Preview smoke')"
+          new_assert = "assert.equal(packageJson.version, '1.23.0', 'Package version must be finalized as v1.23.0 after Trade Plan Preview smoke')"
+          if old_comment not in text or old_assert not in text:
+              raise SystemExit('expected v1.22.0 critical version assertion not found')
+          critical.write_text(text.replace(old_comment, new_comment).replace(old_assert, new_assert))
 
           tsconfig = Path('tsconfig.json')
           text = tsconfig.read_text()
@@ -92,7 +102,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json scripts/test-trade-plan.mjs tsconfig.json config/changelog-v123.ts .github/workflows/finalize-v1230.yml
+          git add package.json package-lock.json scripts/test-critical.mjs scripts/test-trade-plan.mjs tsconfig.json config/changelog-v123.ts .github/workflows/finalize-v1230.yml
           git diff --cached --check
           git commit -m "chore: finalize v1.23.0 Trade Plan release candidate"
           git push origin HEAD:feat/trade-plan-v1.23.0
