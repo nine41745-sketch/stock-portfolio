@@ -33,10 +33,10 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Verify release base
+      - name: Verify recovery base
         run: |
           set -euo pipefail
-          EXPECTED_PARENT="0fc4578d1c11b410c3e50b89a507d68a8ebada1e"
+          EXPECTED_PARENT="c30cc04920f822f06d48086c7e40b35d33f5e84b"
           EXPECTED_MAIN="3a8be0d4924685742ef233958ab5f9ca234584db"
           ACTUAL_PARENT="$(git rev-parse HEAD^)"
           git fetch origin main --depth=1
@@ -103,6 +103,6 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json tsconfig.json scripts/test-critical.mjs scripts/test-trade-plan.mjs config/changelog-v124.ts .github/workflows/finalize-risk-v1240.yml
+          git add -A
           git commit -m "chore: finalize v1.24.0 Portfolio Risk release candidate"
           git push origin HEAD:feat/risk-v1.24.0
