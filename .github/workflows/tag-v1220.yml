@@ -1,0 +1,39 @@
+name: Tag v1.22.0
+
+on:
+  push:
+    branches:
+      - feat/performance-v1.22.0
+    paths:
+      - .github/workflows/tag-v1220.yml
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create annotated production tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET="9bc95bdc1647f2ca8be2f1b496a7110d24de4ecd"
+          MAIN_SHA="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          if [ "$MAIN_SHA" != "$TARGET" ]; then
+            echo "Refusing: origin/main is $MAIN_SHA, expected $TARGET"
+            exit 1
+          fi
+          if git ls-remote --exit-code origin refs/tags/v1.22.0 >/dev/null 2>&1; then
+            echo "Refusing: tag v1.22.0 already exists"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a v1.22.0 "$TARGET" -m "v1.22.0 — Performance workspace"
+          git push origin refs/tags/v1.22.0
