@@ -1,3 +1,4 @@
+// Final Preview retrigger after v1.24.0 release metadata finalization.
 import { changelog as previousChangelog } from './changelog-v123'
 import type { ChangelogEntry } from './changelog'
 
