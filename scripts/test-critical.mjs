@@ -176,9 +176,9 @@ assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic 
 assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
 assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
 
-// v1.22.0 finalized after approved Performance Preview smoke.
+// v1.23.0 finalized after approved Trade Plan Preview smoke.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.22.0', 'Package version must be finalized as v1.22.0 after Preview smoke')
+assert.equal(packageJson.version, '1.23.0', 'Package version must be finalized as v1.23.0 after Trade Plan Preview smoke')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.4', 'Patched Next.js release must stay pinned')
 assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
@@ -230,12 +230,13 @@ const changelogReleaseTimes = [
   ['config/changelog-v120.ts', '2026-09-10 00:48 ICT'],
   ['config/changelog-v121.ts', '2026-09-10 02:16 ICT'],
   ['config/changelog-v122.ts', '2026-09-10 03:58 ICT'],
+  ['config/changelog-v123.ts', '2026-09-10 15:38 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v122'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v123'])
 
 console.log('✓ Critical regression tests passed')
