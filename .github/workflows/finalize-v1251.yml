@@ -10,6 +10,17 @@ on:
 permissions:
   contents: write
 
+env:
+  NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+  SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role
+  SUPABASE_ENCRYPTION_KEY: ci-placeholder-encryption-key-32-bytes-minimum
+  FINNHUB_API_KEY: ci-placeholder-finnhub
+  GROQ_API_KEY: ci-placeholder-groq
+  CRON_SECRET: ci-placeholder-cron-secret
+  PIN_PEPPER: ci-placeholder-pin-pepper
+  PIN_SESSION_SECRET: ci-placeholder-pin-session-secret-at-least-32-bytes
+
 jobs:
   finalize:
     if: github.actor != 'github-actions[bot]'
