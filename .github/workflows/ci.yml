@@ -1,14 +1,22 @@
-name: Release Metadata Helper
+name: CI
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
-      - feat/decision-global-ai-v1.26.0
+      - main
+      - feat/production-standard-v1.17.0
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
+  # Build-only placeholders. They are intentionally non-secret and must never be used at runtime.
   NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
   NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
   SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role
@@ -20,63 +28,26 @@ env:
   PIN_SESSION_SECRET: ci-placeholder-pin-session-secret-at-least-32-bytes
 
 jobs:
-  finalize:
+  verify:
+    name: verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
         with:
-          fetch-depth: 0
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Finalize v1.26.0 metadata
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
+      - name: Install exact dependencies
+        run: npm ci
 
-          lock_path = Path('package-lock.json')
-          lock_text = lock_path.read_text()
-          old_version = '"version": "1.25.1"'
-          new_version = '"version": "1.26.0"'
-          if lock_text.count(old_version) < 2:
-              raise SystemExit('Expected at least two v1.25.1 lockfile version fields')
-          lock_path.write_text(lock_text.replace(old_version, new_version, 2))
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
 
-          test_path = Path('scripts/test-critical.mjs')
-          test_text = test_path.read_text()
-          replacements = [
-              ('// v1.25.1 finalized after approved Hotfix functional Preview smoke.',
-               '// v1.26.0 release metadata must stay synchronized across changelog/package/lockfile.'),
-              ("assert.equal(packageJson.version, '1.25.1', 'Package version must be finalized as v1.25.1 after Hotfix Preview smoke')",
-               "assert.equal(packageJson.version, '1.26.0', 'Package version must be finalized as v1.26.0 for this release')"),
-              ("assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1251'])",
-               "assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v126'])"),
-              ("  ['config/changelog-v1251.ts', '2026-09-11 00:39 ICT'],\n]",
-               "  ['config/changelog-v1251.ts', '2026-09-11 00:39 ICT'],\n  ['config/changelog-v126.ts', '2026-09-13 02:10 ICT'],\n]"),
-          ]
-          for old, new in replacements:
-              if test_text.count(old) != 1:
-                  raise SystemExit(f'Expected release assertion exactly once: {old}')
-              test_text = test_text.replace(old, new)
-          test_path.write_text(test_text)
-          PY
-
-          git show 22df587e3c0ccb67e792c7d00204e1c6f98815ec:.github/workflows/ci.yml > .github/workflows/ci.yml
-          git diff --exit-code 22df587e3c0ccb67e792c7d00204e1c6f98815ec -- .github/workflows/ci.yml
-          git diff --check
-
-      - name: Verify exact dependencies and full CI
-        shell: bash
-        run: |
-          npm ci
-          npm run ci
-
-      - name: Commit finalized metadata and restore normal CI
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json scripts/test-critical.mjs .github/workflows/ci.yml
-          git commit -m "chore: finalize v1.26.0 release metadata"
-          git push origin HEAD:${GITHUB_REF_NAME}
+      - name: Typecheck, regression tests and production build
+        run: npm run ci
