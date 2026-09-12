@@ -1,5 +1,6 @@
 export type StockCheckDecision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAKOUT' | 'WATCH' | 'AVOID'
 export type StockCheckSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
+export type StockCheckBuyMode = 'STANDARD' | 'FIRST_TRANCHE'
 
 export interface StockCheckInput {
   trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS' | 'UNKNOWN'
@@ -28,9 +29,15 @@ export interface PriceZone {
   high: number
 }
 
+export interface Week52Range {
+  high: number | null
+  low: number | null
+}
+
 export interface StockCheckPlan {
   decision: StockCheckDecision
   decisionLabel: string
+  buyMode: StockCheckBuyMode | null
   summary: string
   entryZone: PriceZone | null
   stopLoss: number | null
@@ -56,6 +63,40 @@ function validPositive(value: number | null): value is number {
   return value !== null && Number.isFinite(value) && value > 0
 }
 
+function validRange(high: number | null, low: number | null): high is number {
+  return validPositive(high) && validPositive(low) && high >= low
+}
+
+function providerRangePlausible(price: number | null, high: number, low: number): boolean {
+  if (!validPositive(price)) return true
+  // Provider metrics occasionally arrive in a different listing/currency scale for ADRs.
+  // Reject ranges that cannot plausibly describe the same instrument as the live quote.
+  return low <= price * 1.5 && high >= price * 0.67 && high <= price * 5
+}
+
+export function sanitizeWeek52Range(
+  price: number | null,
+  technicalHigh: number | null,
+  technicalLow: number | null,
+  providerHigh: number | null,
+  providerLow: number | null,
+): Week52Range {
+  // Historical Yahoo/Stooq bars use the same ticker/currency as the technical engine,
+  // so prefer them over provider fundamentals when both are available.
+  if (validRange(technicalHigh, technicalLow)) {
+    return { high: round2(technicalHigh), low: round2(technicalLow) }
+  }
+
+  if (
+    validRange(providerHigh, providerLow) &&
+    providerRangePlausible(price, providerHigh, providerLow!)
+  ) {
+    return { high: round2(providerHigh), low: round2(providerLow) }
+  }
+
+  return { high: null, low: null }
+}
+
 function ratio(entry: number, stop: number, target: number): number | null {
   const risk = entry - stop
   const reward = target - entry
@@ -63,12 +104,12 @@ function ratio(entry: number, stop: number, target: number): number | null {
   return round2(reward / risk)
 }
 
-function decisionLabel(decision: StockCheckDecision): string {
-  if (decision === 'BUY_NOW') return 'ซื้อได้ตอนนี้'
+function decisionLabel(decision: StockCheckDecision, buyMode: StockCheckBuyMode | null = null): string {
+  if (decision === 'BUY_NOW') return buyMode === 'FIRST_TRANCHE' ? 'ซื้อได้ตอนนี้ — ไม้แรก' : 'ซื้อได้ตอนนี้'
   if (decision === 'BUY_ON_PULLBACK') return 'รอย่อแล้วค่อยซื้อ'
   if (decision === 'WAIT_FOR_BREAKOUT') return 'รอ Breakout ยืนยัน'
   if (decision === 'AVOID') return 'หลีกเลี่ยงตอนนี้'
-  return 'เฝ้าดูต่อ'
+  return 'ยังไม่ใช่จุดซื้อ'
 }
 
 export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
@@ -77,6 +118,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
     return {
       decision: 'WATCH',
       decisionLabel: decisionLabel('WATCH'),
+      buyMode: null,
       summary: 'ข้อมูลราคายังไม่ครบ จึงยังไม่ควรตัดสินใจเข้าซื้อ',
       entryZone: null,
       stopLoss: null,
@@ -95,6 +137,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   const support = validPositive(input.support) ? input.support : null
   const resistance = validPositive(input.resistance) ? input.resistance : null
   const ema50 = validPositive(input.ema50) ? input.ema50 : null
+  const ema200 = validPositive(input.ema200) ? input.ema200 : null
 
   const anchors = [support, ema50]
     .filter((value): value is number => value !== null && value <= price * 1.03)
@@ -145,15 +188,54 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   const supportDistance = pctDistance(price, support)
   const insideEntry = price >= entryLow && price <= entryHigh
   const aboveEntry = price > entryHigh
-  const belowSupport = support !== null && price < support
+  const belowEntry = price < entryLow
+  const entryOvershootPct = aboveEntry ? ((price - entryHigh) / entryHigh) * 100 : 0
+  const entryUndershootPct = belowEntry ? ((entryLow - price) / entryLow) * 100 : 0
+
+  // v1.26.0: AVOID ต้องเป็น "โครงสร้างเสียจริง" ไม่ใช่แค่เห็น DOWNTREND ครั้งเดียวแล้วปิดประตูทันที.
+  // การหลุดแนวรับเล็กน้อยอาจเป็น noise ของราคา live เทียบกับ historical bar จึงใช้ -2% เป็น material breakdown.
+  const materialBreakdown = supportDistance !== null && supportDistance <= -2
+  const severeWeakness =
+    input.trend === 'DOWNTREND' &&
+    input.score < 48 &&
+    (input.macdHistogram ?? 0) < 0 &&
+    (input.relativeStrength20 ?? 0) <= -5 &&
+    (input.relativeStrength60 ?? 0) <= -8
+
   const highEventRisk = input.earningsDays !== null && input.earningsDays <= 3
   const nearEventRisk = input.earningsDays !== null && input.earningsDays <= 7
   const overextended = (ema50Distance !== null && ema50Distance > 10) || (input.rsi14 ?? 0) > 74
   const goodRiskReward = rrAtEntry !== null && rrAtEntry >= 1.5
+  const firstTrancheRiskReward = rrNow !== null && rrNow >= 1.25
+
+  // A controlled dip under EMA50 is reported as SIDEWAYS by the strict trend classifier even when
+  // EMA50 remains safely above EMA200. Treat only this narrow, support-intact case as a structural
+  // uptrend pullback for FIRST_TRANCHE; STANDARD BUY_NOW still requires strict UPTREND.
+  const structuralUptrendPullback =
+    input.trend === 'SIDEWAYS' &&
+    ema50 !== null &&
+    ema200 !== null &&
+    ema50 >= ema200 * 1.01 &&
+    ema50Distance !== null &&
+    ema50Distance >= -3 &&
+    ema50Distance <= 0 &&
+    supportDistance !== null &&
+    supportDistance >= 0 &&
+    supportDistance <= 8
+
+  const belowEntryDipOk = belowEntry && entryUndershootPct <= 3 && structuralUptrendPullback
+  const firstTranchePriceOk = insideEntry || (aboveEntry && entryOvershootPct <= 5) || belowEntryDipOk
+  const firstTrancheTrendOk = input.trend === 'UPTREND' || structuralUptrendPullback
+  const effectiveFirstTrancheScore = Math.min(100, input.score + (structuralUptrendPullback ? 13 : 0))
+  const supportedBuySetup = ['BREAKOUT', 'PULLBACK', 'NEAR_SUPPORT'].includes(input.setup)
+  const supportedFirstTrancheSetup =
+    ['BREAKOUT', 'PULLBACK', 'NEAR_SUPPORT', 'MOMENTUM'].includes(input.setup) ||
+    (structuralUptrendPullback && input.setup === 'WAIT')
 
   const reasons: string[] = []
   const warnings: string[] = []
   if (input.trend === 'UPTREND') reasons.push('แนวโน้มหลักเป็นขาขึ้น')
+  if (structuralUptrendPullback) reasons.push('EMA50 ยังอยู่เหนือ EMA200 และราคาย่อใต้ EMA50 ไม่เกิน 3% โดยแนวรับยังไม่เสีย')
   if (input.setup === 'BREAKOUT') reasons.push('ราคา Breakout เหนือแนวต้านอ้างอิง')
   if (input.setup === 'PULLBACK') reasons.push('ราคาอยู่ในลักษณะ Pullback ของขาขึ้น')
   if (input.setup === 'NEAR_SUPPORT') reasons.push('ราคาอยู่ใกล้แนวรับสำคัญ')
@@ -162,7 +244,12 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   if (input.volumeRatio !== null && input.volumeRatio >= 1.2) reasons.push('Volume สูงกว่าค่าเฉลี่ยและช่วยยืนยันแรงซื้อ')
   if (goodRiskReward) reasons.push(`R:R ที่จุดเข้าประมาณ ${rrAtEntry!.toFixed(2)}:1`)
 
-  if (highEventRisk) warnings.push(`Earnings ใน ${input.earningsDays} วัน — Event Risk สูง`) 
+  if (input.trend === 'DOWNTREND' && !materialBreakdown && !severeWeakness) {
+    warnings.push('แนวโน้มยังเป็นขาลง — ยังไม่ใช่จุดซื้อ รอการฟื้นตัวหรือ Breakout ยืนยัน')
+  }
+  if (materialBreakdown) warnings.push(`ราคาหลุดแนวรับ ${Math.abs(supportDistance!).toFixed(1)}% — โครงสร้างราคาเสีย`)
+  if (severeWeakness) warnings.push('Downtrend + Momentum/Relative Strength อ่อนพร้อมกัน — ความเสี่ยงสูง')
+  if (highEventRisk) warnings.push(`Earnings ใน ${input.earningsDays} วัน — Event Risk สูง`)
   else if (nearEventRisk) warnings.push(`Earnings ใน ${input.earningsDays} วัน — ควรลดขนาดสถานะหรือรอหลังงบ`)
   if ((input.rsi14 ?? 0) > 72) warnings.push(`RSI ${input.rsi14!.toFixed(1)} ค่อนข้างร้อน`)
   if (ema50Distance !== null && ema50Distance > 10) warnings.push(`ราคายืดจาก EMA50 +${ema50Distance.toFixed(1)}%`)
@@ -170,7 +257,8 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   if (rrAtEntry !== null && rrAtEntry < 1.5) warnings.push(`R:R ที่จุดเข้าเพียง ${rrAtEntry.toFixed(2)}:1`)
 
   let decision: StockCheckDecision = 'WATCH'
-  if (belowSupport || input.trend === 'DOWNTREND' || input.setup === 'AVOID') {
+  let buyMode: StockCheckBuyMode | null = null
+  if (materialBreakdown || severeWeakness || input.setup === 'AVOID') {
     decision = 'AVOID'
   } else if (highEventRisk) {
     decision = 'WATCH'
@@ -180,9 +268,25 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
     goodRiskReward &&
     !overextended &&
     insideEntry &&
-    ['BREAKOUT', 'PULLBACK', 'NEAR_SUPPORT'].includes(input.setup)
+    supportedBuySetup
   ) {
     decision = 'BUY_NOW'
+    buyMode = 'STANDARD'
+  } else if (
+    firstTrancheTrendOk &&
+    effectiveFirstTrancheScore >= 72 &&
+    !nearEventRisk &&
+    !overextended &&
+    firstTranchePriceOk &&
+    firstTrancheRiskReward &&
+    supportedFirstTrancheSetup
+  ) {
+    // ไม้แรก: ยอมให้ราคาเลย Entry Zone ได้เล็กน้อย หรือย่อต่ำกว่า Zone ใน structural uptrend ที่แนวรับยังอยู่.
+    // ใช้ R:R จากราคาที่ซื้อจริง ณ ตอนนี้เสมอ เพื่อไม่ให้ไล่ซื้อเพราะ R:R @ Entry ในอดีตดูดี.
+    decision = 'BUY_NOW'
+    buyMode = 'FIRST_TRANCHE'
+    if (belowEntryDipOk) reasons.push(`ราคาย่อต่ำกว่า Entry Zone ${entryUndershootPct.toFixed(1)}% แต่ยังยืนเหนือแนวรับ`)
+    reasons.push(`R:R จากราคาปัจจุบันประมาณ ${rrNow!.toFixed(2)}:1 ผ่านเกณฑ์ไม้แรก`)
   } else if (
     input.trend === 'UPTREND' &&
     input.score >= 68 &&
@@ -195,20 +299,33 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
     ['WAIT', 'MOMENTUM'].includes(input.setup)
   ) {
     decision = 'WAIT_FOR_BREAKOUT'
-  } else if (input.trend === 'UPTREND' && input.score >= 58) {
-    decision = 'BUY_ON_PULLBACK'
   }
 
   let summary: string
-  if (decision === 'BUY_NOW') summary = 'เงื่อนไขทางเทคนิคและ R:R อยู่ในจุดที่รับความเสี่ยงได้สำหรับการเข้าตามแผน'
-  else if (decision === 'BUY_ON_PULLBACK') summary = 'หุ้นยังน่าสนใจ แต่ราคาปัจจุบันไม่ใช่จุดได้เปรียบ ควรรอย่อเข้า Entry Zone'
-  else if (decision === 'WAIT_FOR_BREAKOUT') summary = 'ยังไม่ควรไล่ราคา รอทะลุแนวต้านพร้อม Volume ยืนยันก่อน'
-  else if (decision === 'AVOID') summary = 'โครงสร้างราคาหรือแนวโน้มยังไม่เหมาะกับการเปิดสถานะใหม่'
-  else summary = 'สัญญาณยังผสมกัน ควรเฝ้าดูและรอเงื่อนไขที่ชัดเจนขึ้นก่อนซื้อ'
+  if (decision === 'BUY_NOW' && buyMode === 'FIRST_TRANCHE' && belowEntryDipOk) {
+    summary = 'ราคาย่อต่ำกว่า Entry Zone เล็กน้อย แต่โครงสร้าง EMA50 > EMA200 และแนวรับยังไม่เสีย พร้อม R:R จากราคาปัจจุบันที่ผ่านเกณฑ์ จึงเหมาะกับการช้อนไม้แรกบางส่วน'
+  } else if (decision === 'BUY_NOW' && buyMode === 'FIRST_TRANCHE') {
+    summary = 'สัญญาณหลักยังแข็งและ R:R จากราคาปัจจุบันผ่านเกณฑ์ไม้แรก เหมาะกับการเริ่มสถานะบางส่วนโดยยังไม่ทุ่มเต็มไม้'
+  } else if (decision === 'BUY_NOW') {
+    summary = 'เงื่อนไขทางเทคนิคและ R:R อยู่ในจุดที่รับความเสี่ยงได้สำหรับการเข้าตามแผน'
+  } else if (decision === 'BUY_ON_PULLBACK') {
+    summary = 'หุ้นยังน่าสนใจ แต่ราคาปัจจุบันอยู่เหนือจุดได้เปรียบ ควรรอย่อกลับเข้า Entry Zone'
+  } else if (decision === 'WAIT_FOR_BREAKOUT') {
+    summary = 'ยังไม่ควรไล่ราคา รอทะลุแนวต้านพร้อม Volume ยืนยันก่อน'
+  } else if (decision === 'AVOID') {
+    summary = 'มีหลักฐานโครงสร้างราคาเสียหรือความอ่อนแอหลายด้านพร้อมกัน จึงควรหลีกเลี่ยงการเปิดสถานะใหม่ตอนนี้'
+  } else if (insideEntry && !firstTrancheRiskReward) {
+    summary = `ราคาอยู่ใน Entry Zone แล้ว แต่ R:R จากราคาปัจจุบัน${rrNow === null ? 'ยังคำนวณไม่เป็นบวก' : `เพียง ${rrNow.toFixed(2)}:1`} ยังไม่คุ้มสำหรับการเปิดสถานะ`
+  } else if (price < entryLow) {
+    summary = 'ราคาต่ำกว่า Entry Zone ที่คำนวณไว้ จึงควรรอสัญญาณฟื้นตัวหรือการยืนยันแนวรับก่อนเข้าซื้อ'
+  } else {
+    summary = 'ยังไม่ใช่จุดซื้อในตอนนี้ แต่ยังไม่ถึงขั้นต้องหลีกเลี่ยง รอให้โครงสร้างและสัญญาณยืนยันชัดขึ้น'
+  }
 
   return {
     decision,
-    decisionLabel: decisionLabel(decision),
+    decisionLabel: decisionLabel(decision, buyMode),
+    buyMode,
     summary,
     entryZone,
     stopLoss: round2(stopLoss),

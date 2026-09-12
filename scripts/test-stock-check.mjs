@@ -20,6 +20,7 @@ async function importTsModule(filePath) {
 }
 
 const stockCheck = await importTsModule('lib/stock-check.ts')
+const stockScanner = await importTsModule('lib/stock-scanner.ts')
 
 const buyNow = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 82,
@@ -30,8 +31,66 @@ const buyNow = stockCheck.buildStockCheck({
   earningsDays: 20, pe: 25,
 })
 assert.equal(buyNow.decision, 'BUY_NOW', 'Strong near-support setup should permit BUY_NOW')
-assert.ok((buyNow.riskRewardAtEntry ?? 0) >= 1.5, 'BUY_NOW plan must have acceptable R:R')
+assert.equal(buyNow.buyMode, 'STANDARD', 'Classic in-zone BUY_NOW must remain the standard buy mode')
+assert.ok((buyNow.riskRewardAtEntry ?? 0) >= 1.5, 'Standard BUY_NOW plan must have acceptable R:R')
 assert.ok((buyNow.stopLoss ?? 999) < (buyNow.entryZone?.low ?? 0), 'Stop must stay below planned entry')
+
+const firstTranche = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'PULLBACK', score: 80,
+  price: 103, ema50: 100, ema200: 90, atr14: 2,
+  support: 98, resistance: 120, rsi14: 56, weeklyRsi14: 59,
+  macdHistogram: 0.8, volumeRatio: 1.1, relativeStrength20: 4,
+  relativeStrength60: 9, week52High: 125, week52Low: 72,
+  earningsDays: 20, pe: 26,
+})
+assert.equal(firstTranche.decision, 'BUY_NOW', 'Strong uptrend slightly above entry may permit a first tranche')
+assert.equal(firstTranche.buyMode, 'FIRST_TRANCHE', 'First-tranche BUY_NOW must be explicitly labeled')
+assert.match(firstTranche.decisionLabel, /ไม้แรก/, 'First-tranche label must be visible to the user')
+assert.ok((firstTranche.riskRewardNow ?? 0) >= 1.25, 'First tranche must use acceptable R:R from the live price')
+
+const structuralDipFirstTranche = stockCheck.buildStockCheck({
+  trend: 'SIDEWAYS', setup: 'NEAR_SUPPORT', score: 64,
+  price: 98, ema50: 100, ema200: 90, atr14: 2,
+  support: 95, resistance: 115, rsi14: 52, weeklyRsi14: 55,
+  macdHistogram: -0.1, volumeRatio: 0.9, relativeStrength20: 1,
+  relativeStrength60: 8, week52High: 120, week52Low: 70,
+  earningsDays: 20, pe: 24,
+})
+assert.equal(structuralDipFirstTranche.decision, 'BUY_NOW', 'Controlled dip under EMA50 with intact support should permit a first tranche')
+assert.equal(structuralDipFirstTranche.buyMode, 'FIRST_TRANCHE', 'Controlled structural dip must be labeled as first tranche, never standard BUY_NOW')
+assert.match(structuralDipFirstTranche.summary, /ช้อนไม้แรก/, 'Structural dip first tranche should explain the dip-buy intent')
+assert.ok((structuralDipFirstTranche.riskRewardNow ?? 0) >= 1.25, 'Structural dip first tranche must keep live R:R gate')
+
+const brokenSupportDip = stockCheck.buildStockCheck({
+  trend: 'SIDEWAYS', setup: 'WAIT', score: 70,
+  price: 96, ema50: 100, ema200: 90, atr14: 2,
+  support: 97, resistance: 115, rsi14: 50, weeklyRsi14: 54,
+  macdHistogram: -0.1, volumeRatio: 0.9, relativeStrength20: 1,
+  relativeStrength60: 7, week52High: 120, week52Low: 70,
+  earningsDays: 20, pe: 24,
+})
+assert.notEqual(brokenSupportDip.decision, 'BUY_NOW', 'A dip below support must not qualify as first-tranche BUY_NOW')
+
+const insideButPoorRr = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 77,
+  price: 100, ema50: 99.5, ema200: 90, atr14: 2,
+  support: 99, resistance: 103, rsi14: 54, weeklyRsi14: 57,
+  macdHistogram: 0.4, volumeRatio: 1.1, relativeStrength20: 3,
+  relativeStrength60: 7, week52High: 110, week52Low: 75,
+  earningsDays: 20, pe: 24,
+})
+assert.equal(insideButPoorRr.decision, 'WATCH', 'Being inside Entry Zone with poor live R:R must not say wait for a pullback')
+assert.match(insideButPoorRr.summary, /Entry Zone/, 'In-zone WATCH should explain that price is already in the Entry Zone')
+
+const chasedTarget = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'MOMENTUM', score: 82,
+  price: 95.9, ema50: 90, ema200: 83, atr14: 1.5,
+  support: 89, resistance: 96.3, rsi14: 68, weeklyRsi14: 64,
+  macdHistogram: 0.2, volumeRatio: 0.95, relativeStrength20: 8,
+  relativeStrength60: 15, week52High: 100, week52Low: 70,
+  earningsDays: 30, pe: 16,
+})
+assert.notEqual(chasedTarget.decision, 'BUY_NOW', 'Price near Target 1 must not become first-tranche BUY_NOW just because planned-entry R:R is strong')
 
 const avoid = stockCheck.buildStockCheck({
   trend: 'DOWNTREND', setup: 'AVOID', score: 30,
@@ -41,7 +100,28 @@ const avoid = stockCheck.buildStockCheck({
   relativeStrength60: -15, week52High: 130, week52Low: 80,
   earningsDays: 20, pe: 20,
 })
-assert.equal(avoid.decision, 'AVOID', 'Downtrend/breakdown must fail closed to AVOID')
+assert.equal(avoid.decision, 'AVOID', 'Material breakdown plus broad weakness must remain AVOID')
+
+const ordinaryDowntrend = stockCheck.buildStockCheck({
+  trend: 'DOWNTREND', setup: 'WAIT', score: 52,
+  price: 100, ema50: 104, ema200: 110, atr14: 2.5,
+  support: 98, resistance: 108, rsi14: 43, weeklyRsi14: 47,
+  macdHistogram: -0.2, volumeRatio: 1.0, relativeStrength20: -2,
+  relativeStrength60: -3, week52High: 125, week52Low: 85,
+  earningsDays: 20, pe: 23,
+})
+assert.notEqual(ordinaryDowntrend.decision, 'AVOID', 'A normal downtrend without breakdown/severe weakness must not be auto-AVOID')
+assert.equal(ordinaryDowntrend.decision, 'WAIT_FOR_BREAKOUT', 'Downtrend with intact support should wait for confirmation')
+
+const slightSupportDip = stockCheck.buildStockCheck({
+  trend: 'DOWNTREND', setup: 'WAIT', score: 50,
+  price: 98.8, ema50: 103, ema200: 108, atr14: 2.3,
+  support: 100, resistance: 107, rsi14: 42, weeklyRsi14: 46,
+  macdHistogram: -0.1, volumeRatio: 1.0, relativeStrength20: -2,
+  relativeStrength60: -4, week52High: 122, week52Low: 84,
+  earningsDays: 20, pe: 22,
+})
+assert.notEqual(slightSupportDip.decision, 'AVOID', 'A sub-2% support dip must not be treated as material breakdown')
 
 const eventRisk = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 85,
@@ -53,11 +133,66 @@ const eventRisk = stockCheck.buildStockCheck({
 })
 assert.equal(eventRisk.decision, 'WATCH', 'Earnings within 3 days must block BUY_NOW')
 
+const nearEventFirstTranche = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'PULLBACK', score: 82,
+  price: 103, ema50: 100, ema200: 90, atr14: 2,
+  support: 98, resistance: 120, rsi14: 56, weeklyRsi14: 59,
+  macdHistogram: 0.8, volumeRatio: 1.1, relativeStrength20: 4,
+  relativeStrength60: 9, week52High: 125, week52Low: 72,
+  earningsDays: 5, pe: 26,
+})
+assert.notEqual(nearEventFirstTranche.buyMode, 'FIRST_TRANCHE', 'First-tranche BUY_NOW must stay blocked inside the 7-day earnings window')
+
+const saneTechnicalRange = stockCheck.sanitizeWeek52Range(429.32, 445, 160, 2535, 1160)
+assert.deepEqual(saneTechnicalRange, { high: 445, low: 160 }, 'Same-ticker historical 52W range must override absurd provider-scale metrics')
+const rejectedProviderRange = stockCheck.sanitizeWeek52Range(95.93, null, null, 3591, 2554)
+assert.deepEqual(rejectedProviderRange, { high: null, low: null }, 'Implausible provider-only 52W range must fail closed instead of creating absurd targets')
+const acceptedProviderRange = stockCheck.sanitizeWeek52Range(100, null, null, 130, 75)
+assert.deepEqual(acceptedProviderRange, { high: 130, low: 75 }, 'Plausible provider 52W range should remain a valid fallback')
+
+const scannerWait = stockScanner.scoreScannerCandidate({
+  trend: 'DOWNTREND',
+  rsi14: 43,
+  weeklyRsi14: 47,
+  macdHistogram: -0.2,
+  lastClose: 100,
+  ema50: 104,
+  support: 98,
+  resistance: 108,
+  volumeRatio: 1,
+  week52High: 125,
+  week52Low: 85,
+  relativeStrength20: -2,
+  relativeStrength60: -3,
+  earningsDays: 20,
+})
+assert.equal(scannerWait.setup, 'WAIT', 'Scanner must distinguish ordinary downtrend from true AVOID')
+
+const scannerAvoid = stockScanner.scoreScannerCandidate({
+  trend: 'DOWNTREND',
+  rsi14: 37,
+  weeklyRsi14: 39,
+  macdHistogram: -1,
+  lastClose: 90,
+  ema50: 100,
+  support: 95,
+  resistance: 105,
+  volumeRatio: 0.8,
+  week52High: 130,
+  week52Low: 80,
+  relativeStrength20: -8,
+  relativeStrength60: -15,
+  earningsDays: 20,
+})
+assert.equal(scannerAvoid.setup, 'AVOID', 'Scanner must keep AVOID for material breakdown / severe weakness')
+
 for (const path of [
   'app/api/stock-check/route.ts',
   'app/api/stock-check/ai/route.ts',
   'components/portfolio/StockCheckPanel.tsx',
   'components/portfolio/ScannerWorkspace.tsx',
+  'components/portfolio/TodayOpportunities.tsx',
+  'components/navigation/AppTabs.tsx',
   'lib/stock-check-data.ts',
   'lib/stock-check-ai.ts',
   'lib/atr.ts',
@@ -72,6 +207,7 @@ assert.match(data, /getTechnicalIndicators\('SPY'\)/, 'Stock Check must compare 
 assert.match(data, /scannerSupport/, 'Stock Check must use scanner-safe support')
 assert.match(data, /scannerVolumeRatio/, 'Stock Check must use scanner-safe volume ratio')
 assert.match(data, /getAtr14/, 'Stock Check must use ATR14 for volatility-aware planning')
+assert.match(data, /sanitizeWeek52Range/, 'Stock Check must sanitize 52W range before scoring or target planning')
 
 const atr = fs.readFileSync('lib/atr.ts', 'utf8')
 assert.match(atr, /ATR\.calculate/, 'ATR14 must use the technical indicator implementation')
@@ -86,8 +222,29 @@ assert.match(ui, /\/api\/watchlist/, 'Stock Check must reuse the existing Watchl
 const workspace = fs.readFileSync('components/portfolio/ScannerWorkspace.tsx', 'utf8')
 assert.match(workspace, /🔬 เช็กหุ้น/, 'Scanner workspace must expose the Stock Check view')
 assert.match(workspace, /OpportunityHub/, 'Existing Scanner/Watchlist workspace must remain intact')
+assert.match(workspace, /🔥 โอกาสซื้อวันนี้/, 'Scanner workspace must expose the Today Opportunity Radar')
+assert.match(workspace, /TodayOpportunities/, 'Today Opportunity Radar must be wired into Scanner workspace')
+
+const today = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'utf8')
+assert.match(today, /const UNIVERSES = \['ai', 'semis', 'growth', 'quality'\]/, 'Today radar must scan all four built-in universes')
+assert.match(today, /FINALIST_LIMIT = 6/, 'Today radar must cap live Stock Check validation to six finalists')
+assert.match(today, /\/api\/scanner\?universe=/, 'Today radar must reuse deterministic scanner data')
+assert.match(today, /\/api\/stock-check\?symbol=/, 'Today radar finalists must be revalidated with live Stock Check')
+assert.match(today, /isStructuralPullback/, 'Today radar must surface controlled EMA50 pullback candidates')
 
 const scannerPage = fs.readFileSync('app/scanner/page.tsx', 'utf8')
 assert.match(scannerPage, /ScannerWorkspace/, 'Dedicated scanner page must render the combined workspace')
 
-console.log('✓ Stock Check regression tests passed')
+const globalNav = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')
+assert.match(globalNav, /data-app-shell-nav/, 'Authenticated navigation must expose the global utility shell')
+assert.match(globalNav, /stock-portfolio-theme/, 'Theme toggle must persist the existing global theme preference')
+assert.match(globalNav, /\/api\/pin\/change/, 'Change PIN must be available from the global account menu')
+assert.match(globalNav, /\/api\/pin\/lock/, 'Global controls must support immediate PIN lock')
+assert.match(globalNav, /auth\.signOut/, 'Global account menu must support logout')
+
+const ai = fs.readFileSync('lib/stock-check-ai.ts', 'utf8')
+assert.match(ai, /model === PRIMARY_MODEL \? 'high' : 'medium'/, 'Deep Stock Check must use high reasoning on the primary 120B model')
+assert.match(ai, /const PRIMARY_MODEL = 'openai\/gpt-oss-120b'/, 'Deep Stock Check primary model must remain GPT-OSS 120B')
+assert.match(ai, /temperature: 0\.2/, 'Deep Stock Check should keep analysis temperature conservative')
+
+console.log('✓ Stock Check v1.26.0 regression tests passed')

@@ -56,10 +56,24 @@ function classifySetup(input: ScannerTechnicalInput): ScannerSetup {
   const supportDistance = distancePct(price, input.support)
   const ema50Distance = distancePct(price, input.ema50)
   const breakout = price !== null && input.resistance !== null && input.resistance > 0 && price > input.resistance
-  const breakdown = price !== null && input.support !== null && input.support > 0 && price < input.support
 
-  if (breakdown || input.trend === 'DOWNTREND') return 'AVOID'
+  // v1.26.0: AVOID ต้องมีโครงสร้างเสียจริงหรือ weakness หลายตัวพร้อมกัน.
+  // ไม่ใช้ DOWNTREND ตัวเดียวเป็นเหตุ AVOID เพื่อแยก "ยังไม่ใช่จุดซื้อ" ออกจาก "ควรหลีกเลี่ยง".
+  const materialBreakdown = supportDistance !== null && supportDistance <= -2
+  const relativeWeakness =
+    input.trend === 'DOWNTREND' &&
+    (input.macdHistogram ?? 0) < 0 &&
+    (input.relativeStrength20 ?? 0) <= -5 &&
+    (input.relativeStrength60 ?? 0) <= -8
+  const momentumStress =
+    input.trend === 'DOWNTREND' &&
+    (input.macdHistogram ?? 0) < 0 &&
+    (input.rsi14 ?? 0) > 75 &&
+    (input.weeklyRsi14 ?? 0) > 75
+
+  if (materialBreakdown || relativeWeakness || momentumStress) return 'AVOID'
   if (breakout && (input.volumeRatio ?? 0) >= 1.2) return 'BREAKOUT'
+  if (input.trend === 'DOWNTREND') return 'WAIT'
   if (
     input.trend === 'UPTREND' &&
     ema50Distance !== null && ema50Distance >= -1 && ema50Distance <= 4 &&
@@ -89,7 +103,7 @@ export function scoreScannerCandidate(input: ScannerTechnicalInput): ScannerScor
     reasons.push('แนวโน้มยังแกว่งออกข้าง')
   } else if (input.trend === 'DOWNTREND') {
     trendScore = 0
-    warnings.push('แนวโน้มหลักยังเป็นขาลง')
+    warnings.push('แนวโน้มหลักยังเป็นขาลง — รอการฟื้นตัวก่อนพิจารณาซื้อ')
   }
 
   // Momentum — 20 points

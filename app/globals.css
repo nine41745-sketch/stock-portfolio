@@ -70,3 +70,13 @@
 [data-theme="light"] select,
 [data-theme="light"] input,
 [data-theme="light"] textarea { color: #0f172a; }
+
+/* v1.26.0: global Theme / PIN / Lock / Logout now live in AppTabs on every authenticated tab.
+   Dashboard keeps Refresh + Add Stock locally. Hide the legacy utility buttons there to prevent duplicates
+   until the large dashboard component is split into smaller modules in a future refactor. */
+[data-app-shell-nav] + .max-w-7xl.mx-auto.space-y-5
+  > .flex.items-start.justify-between.flex-wrap.gap-3
+  > .flex.gap-2.flex-wrap
+  > button:nth-child(n+3) {
+  display: none;
+}
