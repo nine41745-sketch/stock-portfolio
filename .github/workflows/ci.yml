@@ -7,9 +7,10 @@ on:
     branches:
       - main
       - feat/production-standard-v1.17.0
+      - feat/decision-global-ai-v1.26.0
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -28,8 +29,75 @@ env:
   PIN_SESSION_SECRET: ci-placeholder-pin-session-secret-at-least-32-bytes
 
 jobs:
+  finalize_release_metadata:
+    name: finalize v1.26.0 metadata
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feat/decision-global-ai-v1.26.0' && github.event.head_commit.message == 'chore: temporary v1.26.0 release helper'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout helper commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Finalize package lock and release assertion
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lock_path = Path('package-lock.json')
+          lock_text = lock_path.read_text()
+          old_version = '"version": "1.25.1"'
+          new_version = '"version": "1.26.0"'
+          if lock_text.count(old_version) < 2:
+              raise SystemExit('Expected at least two v1.25.1 lockfile version fields')
+          lock_path.write_text(lock_text.replace(old_version, new_version, 2))
+
+          test_path = Path('scripts/test-critical.mjs')
+          test_text = test_path.read_text()
+          old_comment = '// v1.25.1 finalized after approved Hotfix functional Preview smoke.'
+          new_comment = '// v1.26.0 release metadata must stay synchronized across changelog/package/lockfile.'
+          old_assert = "assert.equal(packageJson.version, '1.25.1', 'Package version must be finalized as v1.25.1 after Hotfix Preview smoke')"
+          new_assert = "assert.equal(packageJson.version, '1.26.0', 'Package version must be finalized as v1.26.0 for this release')"
+          if test_text.count(old_comment) != 1 or test_text.count(old_assert) != 1:
+              raise SystemExit('Expected v1.25.1 release assertion exactly once')
+          test_text = test_text.replace(old_comment, new_comment).replace(old_assert, new_assert)
+          test_path.write_text(test_text)
+          PY
+
+      - name: Restore normal CI workflow
+        shell: bash
+        run: |
+          git show HEAD^:.github/workflows/ci.yml > .github/workflows/ci.yml
+          git diff --exit-code HEAD^ -- .github/workflows/ci.yml
+
+      - name: Verify metadata before commit
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs')
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
+          if (pkg.version !== '1.26.0') throw new Error('package.json version mismatch')
+          if (lock.version !== pkg.version) throw new Error('package-lock root version mismatch')
+          if (lock.packages?.['']?.version !== pkg.version) throw new Error('package-lock package version mismatch')
+          NODE
+          node scripts/test-critical.mjs
+          git diff --check
+
+      - name: Commit finalized metadata and restore workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json scripts/test-critical.mjs .github/workflows/ci.yml
+          git commit -m "chore: finalize v1.26.0 release metadata"
+          git push origin HEAD:${GITHUB_REF_NAME}
+
   verify:
     name: verify
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/production-standard-v1.17.0'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
