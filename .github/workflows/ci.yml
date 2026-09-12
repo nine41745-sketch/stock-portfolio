@@ -45,13 +45,21 @@ jobs:
 
           test_path = Path('scripts/test-critical.mjs')
           test_text = test_path.read_text()
-          old_comment = '// v1.25.1 finalized after approved Hotfix functional Preview smoke.'
-          new_comment = '// v1.26.0 release metadata must stay synchronized across changelog/package/lockfile.'
-          old_assert = "assert.equal(packageJson.version, '1.25.1', 'Package version must be finalized as v1.25.1 after Hotfix Preview smoke')"
-          new_assert = "assert.equal(packageJson.version, '1.26.0', 'Package version must be finalized as v1.26.0 for this release')"
-          if test_text.count(old_comment) != 1 or test_text.count(old_assert) != 1:
-              raise SystemExit('Expected v1.25.1 release assertion exactly once')
-          test_path.write_text(test_text.replace(old_comment, new_comment).replace(old_assert, new_assert))
+          replacements = [
+              ('// v1.25.1 finalized after approved Hotfix functional Preview smoke.',
+               '// v1.26.0 release metadata must stay synchronized across changelog/package/lockfile.'),
+              ("assert.equal(packageJson.version, '1.25.1', 'Package version must be finalized as v1.25.1 after Hotfix Preview smoke')",
+               "assert.equal(packageJson.version, '1.26.0', 'Package version must be finalized as v1.26.0 for this release')"),
+              ("assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1251'])",
+               "assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v126'])"),
+              ("  ['config/changelog-v1251.ts', '2026-09-11 00:39 ICT'],\n]",
+               "  ['config/changelog-v1251.ts', '2026-09-11 00:39 ICT'],\n  ['config/changelog-v126.ts', '2026-09-13 02:10 ICT'],\n]"),
+          ]
+          for old, new in replacements:
+              if test_text.count(old) != 1:
+                  raise SystemExit(f'Expected release assertion exactly once: {old}')
+              test_text = test_text.replace(old, new)
+          test_path.write_text(test_text)
           PY
 
           git show 22df587e3c0ccb67e792c7d00204e1c6f98815ec:.github/workflows/ci.yml > .github/workflows/ci.yml
