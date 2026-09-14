@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { resolveActivePortfolio } from '@/lib/portfolio-context'
 import { getMultipleQuotesWithMetrics } from '@/lib/finnhub'
 import {
   calculatePerformance,
@@ -52,22 +53,26 @@ export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const portfolio = await resolveActivePortfolio(user.id, supabase)
 
   const serviceClient = createServiceClient()
+  const transactionArgs = portfolio.mode === 'portfolio'
+    ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+    : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+  const holdingArgs = portfolio.mode === 'portfolio'
+    ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+    : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+
+  let settingsQuery = supabase
+    .from('user_settings')
+    .select('cash_balance, dime_balance, initial_capital')
+    .eq('user_id', user.id)
+  if (portfolio.mode === 'portfolio') settingsQuery = settingsQuery.eq('portfolio_id', portfolio.portfolioId)
+
   const [transactionsResult, holdingsResult, settingsResult] = await Promise.all([
-    serviceClient.rpc('get_decrypted_portfolio_transactions', {
-      p_user_id: user.id,
-      p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-    }),
-    serviceClient.rpc('get_decrypted_holdings', {
-      p_user_id: user.id,
-      p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-    }),
-    supabase
-      .from('user_settings')
-      .select('cash_balance, dime_balance, initial_capital')
-      .eq('user_id', user.id)
-      .maybeSingle(),
+    serviceClient.rpc('get_decrypted_portfolio_transactions', transactionArgs),
+    serviceClient.rpc('get_decrypted_holdings', holdingArgs),
+    settingsQuery.maybeSingle(),
   ])
 
   if (transactionsResult.error) {
@@ -127,6 +132,9 @@ export async function GET() {
   return NextResponse.json({
     ...performance,
     history,
+    portfolio: portfolio.mode === 'portfolio'
+      ? { id: portfolio.portfolioId, name: portfolio.portfolio.name }
+      : null,
     balances: {
       cash_balance: cashBalance,
       dime_balance: dimeBalance,

@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { resolveActivePortfolio } from '@/lib/portfolio-context'
 import { isAnalysisStale, latestPortfolioChangeTimestamp } from '@/lib/analysis-freshness'
 import { getResultTimestamp, shouldReplaceAnalysis } from '@/lib/latest-analysis'
 import { DetailedAnalysisResult } from '@/types'
 
-// วันที่ตามเวลาไทย (ICT = UTC+7)
 function getThaiDateString(): string {
   const now = new Date()
   const thai = new Date(now.getTime() + 7 * 60 * 60 * 1000)
@@ -16,21 +16,20 @@ function getThaiDateForTimestamp(timestampMs: number): string {
   return thai.toISOString().split('T')[0]
 }
 
-// GET /api/daily-analyses/today — คืนผลล่าสุดจริงเฉพาะหุ้นที่ยังถืออยู่ในพอร์ต
-// พร้อม freshness metadata เพื่อเตือนเมื่อหุ้น/ต้นทุน/เงินสดเปลี่ยนหลังผลวิเคราะห์ล่าสุด
+// GET /api/daily-analyses/today — latest analysis for holdings in the selected portfolio.
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const portfolio = await resolveActivePortfolio(user.id, supabase)
 
-  // ประวัติ daily_analyses ถูกเก็บไว้เพื่อ Track Record แม้ขายหุ้นไปแล้ว
-  // แต่ Dashboard/stale banner ต้องสนใจเฉพาะ holdings ที่ shares > 0 เท่านั้น
-  // เพื่อไม่ให้หุ้นที่ขายแล้วหรือคง row ไว้ที่ 0 หุ้นยังเตือนให้วิเคราะห์ใหม่
-  const { data: holdingRows, error: holdingsError } = await supabase
+  let holdingsQuery = supabase
     .from('holdings')
     .select('symbol')
     .eq('user_id', user.id)
     .gt('shares', 0)
+  if (portfolio.mode === 'portfolio') holdingsQuery = holdingsQuery.eq('portfolio_id', portfolio.portfolioId)
+  const { data: holdingRows, error: holdingsError } = await holdingsQuery
 
   if (holdingsError) {
     console.error('[daily-analyses] holdings query failed:', holdingsError)
@@ -48,37 +47,44 @@ export async function GET() {
     })
   }
 
+  let dailyQuery = supabase
+    .from('daily_analyses')
+    .select('symbol, result, analysis_date')
+    .eq('user_id', user.id)
+    .in('symbol', activeSymbols)
+    .is('error', null)
+    .order('analysis_date', { ascending: false })
+    .limit(500)
+  let manualQuery = supabase
+    .from('manual_latest_analyses')
+    .select('symbol, result, analysed_at')
+    .eq('user_id', user.id)
+    .in('symbol', activeSymbols)
+  let settingsQuery = supabase
+    .from('user_settings')
+    .select('portfolio_updated_at, cash_updated_at')
+    .eq('user_id', user.id)
+
+  if (portfolio.mode === 'portfolio') {
+    dailyQuery = dailyQuery.eq('portfolio_id', portfolio.portfolioId)
+    manualQuery = manualQuery.eq('portfolio_id', portfolio.portfolioId)
+    settingsQuery = settingsQuery.eq('portfolio_id', portfolio.portfolioId)
+  }
+
   const [dailyResponse, manualResponse, settingsResponse] = await Promise.all([
-    supabase
-      .from('daily_analyses')
-      .select('symbol, result, analysis_date')
-      .eq('user_id', user.id)
-      .in('symbol', activeSymbols)
-      .is('error', null)
-      .order('analysis_date', { ascending: false })
-      .limit(500),
-    supabase
-      .from('manual_latest_analyses')
-      .select('symbol, result, analysed_at')
-      .eq('user_id', user.id)
-      .in('symbol', activeSymbols),
-    supabase
-      .from('user_settings')
-      .select('portfolio_updated_at, cash_updated_at')
-      .eq('user_id', user.id)
-      .maybeSingle(),
+    dailyQuery,
+    manualQuery,
+    settingsQuery.maybeSingle(),
   ])
 
   if (dailyResponse.error) {
     console.error('[daily-analyses] daily query failed:', dailyResponse.error)
     return NextResponse.json({ error: 'โหลดผลวิเคราะห์ไม่สำเร็จ' }, { status: 500 })
   }
-
   if (manualResponse.error) {
     console.warn('[daily-analyses] manual_latest_analyses unavailable:', manualResponse.error.message)
   }
   if (settingsResponse.error) {
-    // ก่อน apply migration v1.16.0 endpoint ยังทำงานแบบเดิมได้ เพียงยังไม่แสดง stale warning
     console.warn('[daily-analyses] freshness clock unavailable:', settingsResponse.error.message)
   }
 
@@ -128,5 +134,5 @@ export async function GET() {
     analysisDate: getThaiDateString(),
     staleSymbols,
     latestPortfolioChangeAt: latestChangeMs > 0 ? new Date(latestChangeMs).toISOString() : null,
-  })
+  }, { headers: { 'Cache-Control': 'no-store' } })
 }

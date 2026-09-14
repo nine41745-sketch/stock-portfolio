@@ -65,17 +65,20 @@ function emptyLevels(): ActivePlanLevels {
   return { stopLoss: null, target1: null, target2: null }
 }
 
-export async function loadAlertsCalendarData(userId: string): Promise<AlertsCalendarPayload> {
+export async function loadAlertsCalendarData(
+  userId: string,
+  portfolioId: string | null = null,
+): Promise<AlertsCalendarPayload> {
   const serviceClient = createServiceClient()
+  const holdingArgs = portfolioId
+    ? { p_user_id: userId, p_portfolio_id: portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+    : { p_user_id: userId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+  const planArgs = portfolioId
+    ? { p_user_id: userId, p_portfolio_id: portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+    : { p_user_id: userId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
   const [holdingsResult, plansResult] = await Promise.all([
-    serviceClient.rpc('get_decrypted_holdings', {
-      p_user_id: userId,
-      p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-    }),
-    serviceClient.rpc('get_decrypted_trade_plans', {
-      p_user_id: userId,
-      p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-    }),
+    serviceClient.rpc('get_decrypted_holdings', holdingArgs),
+    serviceClient.rpc('get_decrypted_trade_plans', planArgs),
   ])
 
   if (holdingsResult.error) {
@@ -101,7 +104,6 @@ export async function loadAlertsCalendarData(userId: string): Promise<AlertsCale
       const target1 = asNumber(row.target1)
       const target2 = asNumber(row.target2)
 
-      // Stop is operational only after entry. Targets can be watched while WAITING or ENTERED.
       planLevels.set(symbol, {
         stopLoss: status === 'ENTERED' && stop !== null && stop > 0 ? stop : levels.stopLoss,
         target1: target1 !== null && target1 > 0 ? target1 : levels.target1,
@@ -119,14 +121,10 @@ export async function loadAlertsCalendarData(userId: string): Promise<AlertsCale
   const quotesPromise = trackedSymbols.length
     ? getMultipleQuotes(trackedSymbols)
     : Promise.resolve({} as Record<string, number>)
-
-  // Technical indicators use historical market data while earnings are fetched in one
-  // shared Finnhub calendar request. Avoid one Finnhub earnings call per ticker.
   const technicalsPromise = Promise.all(trackedSymbols.map(async symbol => ({
     symbol,
     technical: await getTechnicalIndicators(symbol),
   })))
-
   const earningsPromise = trackedSymbols.length
     ? getUpcomingEarningsForSymbols(trackedSymbols)
     : Promise.resolve({} as Record<string, UpcomingEarnings | null>)
@@ -160,10 +158,7 @@ export async function loadAlertsCalendarData(userId: string): Promise<AlertsCale
     if (earnings && earnings.daysUntil >= 0 && earnings.daysUntil <= 60) {
       earningsEvents.push(makeEarningsEvent(entry.symbol, earnings))
     }
-
-    if (price === null) {
-      warnings.push(`${entry.symbol}: ไม่มีราคาปัจจุบัน จึงข้าม Price-level alerts`)
-    }
+    if (price === null) warnings.push(`${entry.symbol}: ไม่มีราคาปัจจุบัน จึงข้าม Price-level alerts`)
   }
 
   const alerts = buildAlerts(alertInputs)
@@ -181,7 +176,9 @@ export async function loadAlertsCalendarData(userId: string): Promise<AlertsCale
     events,
     warnings,
     methodology: {
-      scope: 'Tracks current Holdings plus active WAITING/ENTERED Trade Plans, capped at 25 symbols per request.',
+      scope: portfolioId
+        ? 'Tracks Holdings plus active WAITING/ENTERED Trade Plans in the selected portfolio, capped at 25 symbols per request.'
+        : 'Tracks current Holdings plus active WAITING/ENTERED Trade Plans, capped at 25 symbols per request.',
       stopTarget: 'Stop alert uses ENTERED Trade Plan stop only; Target uses active WAITING/ENTERED Trade Plan targets.',
       supportResistance: 'Near Support and Breakout use scanner support/resistance derived from completed historical bars.',
       breakout: 'Breakout means current price is above scanner resistance; Volume Ratio >= 1.20x is highlighted but not required.',

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { isPortfolioFoundationMissing } from '@/lib/portfolio-context'
 import { analyzePortfolioBatch, PortfolioBatchHoldingInput } from '@/lib/portfolio-batch'
 import { getTechnicalIndicators } from '@/lib/indicators'
 import { getMultipleQuotesWithMetrics, getUpcomingEarnings } from '@/lib/finnhub'
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { HoldingWithPrice, NewsItem } from '@/types'
 
-// Cron รันทุกวัน 01:15 UTC (~08:15 เวลาไทย / ICT) — ตั้งค่าใน vercel.json
-// วิเคราะห์หุ้นที่ยังไม่มีผลสำเร็จของวันนี้เป็น Portfolio Batch เดียวต่อ user
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
@@ -17,8 +16,22 @@ function getThaiDateString(): string {
   return thai.toISOString().split('T')[0]
 }
 
+type AnalysisScope = { userId: string; portfolioId: string | null }
+
+function uniqueScopes(rows: Array<{ user_id: unknown; portfolio_id?: unknown }>, portfolioMode: boolean): AnalysisScope[] {
+  const map = new Map<string, AnalysisScope>()
+  for (const row of rows) {
+    const userId = String(row.user_id ?? '')
+    if (!userId) continue
+    const portfolioId = portfolioMode ? String(row.portfolio_id ?? '') : null
+    if (portfolioMode && !portfolioId) continue
+    const key = `${userId}:${portfolioId ?? 'legacy'}`
+    if (!map.has(key)) map.set(key, { userId, portfolioId })
+  }
+  return [...map.values()]
+}
+
 export async function GET(request: NextRequest) {
-  // Fail closed: route นี้ใช้ service_role และเขียนผลลงฐานข้อมูล ห้ามเปิดทางผ่านกรณี CRON_SECRET ไม่ได้ตั้งค่า
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) {
     console.error('[cron] CRON_SECRET is not configured')
@@ -33,19 +46,34 @@ export async function GET(request: NextRequest) {
   const supabase = createServiceClient()
   const analysisDate = getThaiDateString()
 
-  const { data: holdingRows, error: holdingsErr } = await supabase
+  // Code-first rollout compatibility: before v1.27.0 migration, portfolio_id does not exist.
+  let portfolioMode = true
+  let holdingRows: Array<{ user_id: unknown; portfolio_id?: unknown }> = []
+  const scopedRows = await supabase
     .from('holdings')
-    .select('user_id')
+    .select('user_id, portfolio_id')
     .gt('shares', 0)
 
-  if (holdingsErr) {
-    console.error('[cron] failed to list users:', holdingsErr)
-    return NextResponse.json({ error: 'ไม่สามารถโหลดรายชื่อพอร์ตได้' }, { status: 500 })
+  if (scopedRows.error) {
+    if (!isPortfolioFoundationMissing(scopedRows.error)) {
+      console.error('[cron] failed to list portfolio scopes:', scopedRows.error)
+      return NextResponse.json({ error: 'ไม่สามารถโหลดรายชื่อพอร์ตได้' }, { status: 500 })
+    }
+    portfolioMode = false
+    const legacyRows = await supabase.from('holdings').select('user_id').gt('shares', 0)
+    if (legacyRows.error) {
+      console.error('[cron] failed to list users:', legacyRows.error)
+      return NextResponse.json({ error: 'ไม่สามารถโหลดรายชื่อพอร์ตได้' }, { status: 500 })
+    }
+    holdingRows = legacyRows.data ?? []
+  } else {
+    holdingRows = scopedRows.data ?? []
   }
 
-  const userIds = Array.from(new Set((holdingRows ?? []).map(r => r.user_id as string)))
+  const scopes = uniqueScopes(holdingRows, portfolioMode)
   const summary: {
     userId: string
+    portfolioId: string | null
     processed: number
     skipped: number
     failed: number
@@ -53,7 +81,8 @@ export async function GET(request: NextRequest) {
     errors: string[]
   }[] = []
 
-  for (const userId of userIds) {
+  for (const scope of scopes) {
+    const { userId, portfolioId } = scope
     const errors: string[] = []
     let processed = 0
     let skipped = 0
@@ -61,37 +90,39 @@ export async function GET(request: NextRequest) {
     let rateLimited = 0
 
     try {
-      const { data: decrypted, error: decErr } = await supabase.rpc('get_decrypted_holdings', {
-        p_user_id: userId,
-        p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-      })
+      const holdingArgs = portfolioId
+        ? { p_user_id: userId, p_portfolio_id: portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+        : { p_user_id: userId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+      const { data: decrypted, error: decErr } = await supabase.rpc('get_decrypted_holdings', holdingArgs)
       if (decErr) throw new Error(`decrypt holdings: ${decErr.message}`)
 
       const rawHoldings = (decrypted ?? []).filter((h: any) => Number(h.shares) > 0)
       if (!rawHoldings.length) {
-        summary.push({ userId, processed: 0, skipped: 0, failed: 0, rateLimited: 0, errors: [] })
+        summary.push({ userId, portfolioId, processed: 0, skipped: 0, failed: 0, rateLimited: 0, errors: [] })
         continue
       }
 
       const symbols: string[] = rawHoldings.map((h: any) => h.symbol)
 
-      const { data: existingToday, error: existingTodayError } = await supabase
+      let existingQuery = supabase
         .from('daily_analyses')
         .select('symbol')
         .eq('user_id', userId)
         .eq('analysis_date', analysisDate)
         .is('error', null)
+      if (portfolioId) existingQuery = existingQuery.eq('portfolio_id', portfolioId)
+      const { data: existingToday, error: existingTodayError } = await existingQuery
       if (existingTodayError) throw new Error(`load existing analyses: ${existingTodayError.message}`)
 
       const alreadyAnalyzedSymbols = new Set((existingToday ?? []).map((r: any) => r.symbol as string))
 
+      let settingsQuery = supabase.from('user_settings').select('cash_balance').eq('user_id', userId)
+      if (portfolioId) settingsQuery = settingsQuery.eq('portfolio_id', portfolioId)
       const [settingsResponse, quotes] = await Promise.all([
-        supabase.from('user_settings').select('cash_balance').eq('user_id', userId).maybeSingle(),
+        settingsQuery.maybeSingle(),
         getMultipleQuotesWithMetrics(symbols),
       ])
-      if (settingsResponse.error) {
-        throw new Error(`load user settings: ${settingsResponse.error.message}`)
-      }
+      if (settingsResponse.error) throw new Error(`load user settings: ${settingsResponse.error.message}`)
       const cashBalance = Number(settingsResponse.data?.cash_balance ?? 0)
 
       const holdings: HoldingWithPrice[] = rawHoldings.map((h: any) => {
@@ -131,12 +162,11 @@ export async function GET(request: NextRequest) {
       const holdingsToAnalyze = holdings.filter(h => !alreadyAnalyzedSymbols.has(h.symbol))
       skipped = holdings.length - holdingsToAnalyze.length
       if (!holdingsToAnalyze.length) {
-        summary.push({ userId, processed, skipped, failed, rateLimited, errors })
+        summary.push({ userId, portfolioId, processed, skipped, failed, rateLimited, errors })
         continue
       }
 
       const newsBySymbol = await fetchNewsForSymbols(holdingsToAnalyze.map(h => h.symbol))
-
       const batchInputs: PortfolioBatchHoldingInput[] = await Promise.all(
         holdingsToAnalyze.map(async holding => {
           const [technical, earnings] = await Promise.all([
@@ -157,7 +187,7 @@ export async function GET(request: NextRequest) {
         if (batch.error === 'RATE_LIMIT') rateLimited += holdingsToAnalyze.length
         else failed += holdingsToAnalyze.length
         errors.push(batch.message ?? `portfolio batch failed: ${batch.error}`)
-        console.error(`[cron] portfolio batch ${userId} failed: ${batch.error}`)
+        console.error(`[cron] portfolio batch ${userId}/${portfolioId ?? 'legacy'} failed: ${batch.error}`)
       } else {
         for (const holding of holdingsToAnalyze) {
           const result = batch.results[holding.symbol]
@@ -167,18 +197,23 @@ export async function GET(request: NextRequest) {
             continue
           }
 
+          const row = {
+            user_id: userId,
+            ...(portfolioId ? { portfolio_id: portfolioId } : {}),
+            symbol: holding.symbol,
+            analysis_date: analysisDate,
+            price_at_analysis: holding.current_price,
+            action: result.recommendation.action,
+            result,
+            used_model: result.usedModel ?? null,
+            error: null,
+          }
+          const onConflict = portfolioId
+            ? 'user_id,portfolio_id,symbol,analysis_date'
+            : 'user_id,symbol,analysis_date'
           const { error: upsertErr } = await supabase
             .from('daily_analyses')
-            .upsert({
-              user_id: userId,
-              symbol: holding.symbol,
-              analysis_date: analysisDate,
-              price_at_analysis: holding.current_price,
-              action: result.recommendation.action,
-              result,
-              used_model: result.usedModel ?? null,
-              error: null,
-            }, { onConflict: 'user_id,symbol,analysis_date' })
+            .upsert(row, { onConflict })
 
           if (upsertErr) {
             failed++
@@ -190,15 +225,15 @@ export async function GET(request: NextRequest) {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      console.error(`[cron] user ${userId} failed:`, error)
+      console.error(`[cron] scope ${userId}/${portfolioId ?? 'legacy'} failed:`, error)
       errors.push(message)
       failed++
     }
 
-    summary.push({ userId, processed, skipped, failed, rateLimited, errors })
+    summary.push({ userId, portfolioId, processed, skipped, failed, rateLimited, errors })
   }
 
-  return NextResponse.json({ analysisDate, users: summary })
+  return NextResponse.json({ analysisDate, portfolioMode, users: summary })
 }
 
 async function fetchNewsForSymbols(symbols: string[]): Promise<Record<string, NewsItem[]>> {

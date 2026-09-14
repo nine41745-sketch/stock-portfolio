@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { resolveActivePortfolio } from '@/lib/portfolio-context'
 import { InputValidationError, parseSettingAmount } from '@/lib/portfolio-validation'
 
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const portfolio = await resolveActivePortfolio(user.id, supabase)
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('user_settings')
     .select('cash_balance, dime_balance, initial_capital, dime_updated_at, capital_updated_at, cash_updated_at, portfolio_updated_at')
     .eq('user_id', user.id)
-    .maybeSingle()
+  if (portfolio.mode === 'portfolio') query = query.eq('portfolio_id', portfolio.portfolioId)
+  const { data, error } = await query.maybeSingle()
 
   if (error) {
     console.error('[user-settings:GET] query failed:', error)
@@ -26,13 +29,14 @@ export async function GET() {
     capital_updated_at:    data?.capital_updated_at    ?? null,
     cash_updated_at:       data?.cash_updated_at       ?? null,
     portfolio_updated_at:  data?.portfolio_updated_at  ?? null,
-  })
+  }, { headers: { 'Cache-Control': 'no-store' } })
 }
 
 export async function PUT(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const portfolio = await resolveActivePortfolio(user.id, supabase)
 
   let body: Record<string, unknown>
   try {
@@ -45,7 +49,6 @@ export async function PUT(request: NextRequest) {
 
   const update: Record<string, number | string> = {}
   const now = new Date().toISOString()
-
   try {
     if (body.cash_balance !== undefined) {
       update.cash_balance = parseSettingAmount(body.cash_balance, 'เงินในธนาคาร')
@@ -70,14 +73,15 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'ไม่มีข้อมูลที่ต้องอัปเดต' }, { status: 400 })
   }
 
-  const { error } = await supabase
-    .from('user_settings')
-    .upsert({ user_id: user.id, ...update }, { onConflict: 'user_id' })
+  const payload = portfolio.mode === 'portfolio'
+    ? { user_id: user.id, portfolio_id: portfolio.portfolioId, ...update }
+    : { user_id: user.id, ...update }
+  const onConflict = portfolio.mode === 'portfolio' ? 'user_id,portfolio_id' : 'user_id'
+  const { error } = await supabase.from('user_settings').upsert(payload, { onConflict })
 
   if (error) {
     console.error('[user-settings:PUT] upsert failed:', error)
     return NextResponse.json({ error: 'บันทึกข้อมูลเงินไม่สำเร็จ' }, { status: 500 })
   }
-
   return NextResponse.json({ ok: true })
 }
