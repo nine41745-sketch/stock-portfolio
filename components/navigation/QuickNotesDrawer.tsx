@@ -59,7 +59,8 @@ export default function QuickNotesDrawer() {
 
   useEffect(() => {
     if (suppressedByLegacyDashboard) return
-    void loadScratchpad()
+    const timer = window.setTimeout(() => void loadScratchpad(), 0)
+    return () => window.clearTimeout(timer)
   }, [loadScratchpad, suppressedByLegacyDashboard])
 
   useEffect(() => {
