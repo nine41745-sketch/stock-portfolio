@@ -43,13 +43,13 @@ export default function QuickNotesDrawer() {
   const [exported, setExported] = useState(false)
 
   const loadScratchpad = useCallback(async () => {
-    setLoadFailed(false)
     try {
       const res = await fetch('/api/scratchpad')
       await requireOk(res, 'โหลดโน้ตไม่สำเร็จ')
       const d = await res.json() as { content?: unknown }
       setContent(typeof d.content === 'string' ? d.content : '')
       setLoaded(true)
+      setLoadFailed(false)
     } catch {
       // สำคัญ: ถ้าอ่านไม่สำเร็จ ห้ามเปิด auto-save เพราะข้อความว่างอาจทับโน้ตเดิม
       setLoaded(false)
@@ -64,8 +64,8 @@ export default function QuickNotesDrawer() {
 
   useEffect(() => {
     if (suppressedByLegacyDashboard || !loaded) return
-    setSaveStatus('saving')
     const timer = setTimeout(async () => {
+      setSaveStatus('saving')
       try {
         const res = await fetch('/api/scratchpad', {
           method: 'PUT',

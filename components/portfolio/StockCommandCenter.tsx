@@ -82,22 +82,29 @@ export default function StockCommandCenter({
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
-    fetch(`/api/portfolio-command?symbol=${encodeURIComponent(symbol)}`, { cache: 'no-store' })
-      .then(async response => {
-        if (!response.ok) throw new Error(await readError(response, 'โหลด Command Center ไม่สำเร็จ'))
-        return response.json() as Promise<CommandPayload>
-      })
-      .then(payload => { if (!cancelled) setData(payload) })
-      .catch(err => {
-        if (!cancelled) {
-          setData(null)
-          setError(err instanceof Error ? err.message : 'โหลด Command Center ไม่สำเร็จ')
-        }
-      })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+    const timer = window.setTimeout(() => {
+      if (cancelled) return
+      setLoading(true)
+      setError(null)
+      fetch(`/api/portfolio-command?symbol=${encodeURIComponent(symbol)}`, { cache: 'no-store' })
+        .then(async response => {
+          if (!response.ok) throw new Error(await readError(response, 'โหลด Command Center ไม่สำเร็จ'))
+          return response.json() as Promise<CommandPayload>
+        })
+        .then(payload => { if (!cancelled) setData(payload) })
+        .catch(err => {
+          if (!cancelled) {
+            setData(null)
+            setError(err instanceof Error ? err.message : 'โหลด Command Center ไม่สำเร็จ')
+          }
+        })
+        .finally(() => { if (!cancelled) setLoading(false) })
+    }, 0)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
   }, [symbol])
 
   const simulation = useMemo(() => {
