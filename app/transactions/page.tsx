@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import AppTabs from '@/components/navigation/AppTabs'
 import TransactionLedger from '@/components/portfolio/TransactionLedger'
+import AutoTradeEntry from '@/components/portfolio/AutoTradeEntry'
 import InvestingSinceBadge from '@/components/portfolio/InvestingSinceBadge'
 import InactivityPinLock from '@/components/auth/InactivityPinLock'
 
@@ -17,7 +18,10 @@ export default async function TransactionsPage() {
       <InactivityPinLock />
       <InvestingSinceBadge />
       <AppTabs />
-      <TransactionLedger />
+      <AutoTradeEntry />
+      <div className="mt-6">
+        <TransactionLedger />
+      </div>
     </div>
   )
 }
