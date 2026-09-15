@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { resolveActivePortfolio } from '@/lib/portfolio-context'
 import { analyzeHoldingDetailed, translateAndClassifyNews, summarizeOtherHoldings } from '@/lib/groq'
 import { getTechnicalIndicators, TechnicalIndicators } from '@/lib/indicators'
 import { getMultipleQuotesWithMetrics, getMultipleQuotes, getUpcomingEarnings, UpcomingEarnings } from '@/lib/finnhub'
@@ -116,6 +117,7 @@ export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const portfolio = await resolveActivePortfolio(user.id, supabase)
 
   let body: Record<string, unknown>
   try {
@@ -148,6 +150,7 @@ export async function POST(request: NextRequest) {
       }
       const { error: saveErr } = await serviceClient.rpc('save_latest_manual_analysis', {
         p_user_id: user.id,
+        ...(portfolio.mode === 'portfolio' ? { p_portfolio_id: portfolio.portfolioId } : {}),
         p_symbol: symbol,
         p_result: analysis,
         p_analysed_at: new Date(parsed).toISOString(),
@@ -155,15 +158,17 @@ export async function POST(request: NextRequest) {
       if (saveErr) console.error('[analyze] latest manual persistence failed:', saveErr)
     }
 
+    const holdingArgs = portfolio.mode === 'portfolio'
+      ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+      : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
     const [{ data: allHoldings, error: holdErr }, { data: settings, error: settingsErr }] = await Promise.all([
-      serviceClient.rpc('get_decrypted_holdings', {
-        p_user_id: user.id,
-        p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-      }),
+      serviceClient.rpc('get_decrypted_holdings', holdingArgs),
       supabase
         .from('user_settings')
         .select('cash_balance')
-        .eq('user_id', user.id)
+        .match(portfolio.mode === 'portfolio'
+          ? { user_id: user.id, portfolio_id: portfolio.portfolioId }
+          : { user_id: user.id })
         .maybeSingle(),
     ])
 
@@ -171,8 +176,6 @@ export async function POST(request: NextRequest) {
       console.error('[analyze] holdings lookup failed:', holdErr)
       return NextResponse.json({ error: 'โหลดข้อมูลพอร์ตไม่สำเร็จ' }, { status: 500 })
     }
-    // เงินสดเป็น input ที่มีผลต่อ deterministic BUY sizing โดยตรง
-    // DB query ล้มเหลวต้อง fail closed แทนการสมมติว่าผู้ใช้มีเงินสด $0 แล้วสร้างคำแนะนำจากข้อมูลผิด
     if (settingsErr) {
       console.error('[analyze] user_settings lookup failed:', settingsErr)
       return NextResponse.json({ error: 'โหลดข้อมูลเงินสดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง' }, { status: 503 })
@@ -262,7 +265,8 @@ export async function POST(request: NextRequest) {
       otherHoldings: otherHoldingsForPrompt,
     })
 
-    const cacheKey = `analyze:${user.id}:${symbol}:${fingerprint}`
+    const portfolioCacheScope = portfolio.mode === 'portfolio' ? portfolio.portfolioId : 'legacy'
+    const cacheKey = `analyze:${user.id}:${portfolioCacheScope}:${symbol}:${fingerprint}`
     const cached = cacheGet<DetailedAnalysisResult>(cacheKey)
     if (cached) {
       await saveManualLatest(cached)

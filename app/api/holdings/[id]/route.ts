@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { resolveActivePortfolio } from '@/lib/portfolio-context'
 import {
   assertUuid,
   InputValidationError,
@@ -8,13 +9,12 @@ import {
   parseShares,
 } from '@/lib/portfolio-validation'
 
-// PUT /api/holdings/[id] — อัปเดต shares + cost_basis + notes
+// PUT /api/holdings/[id] — อัปเดต shares + cost_basis + notes เฉพาะ active portfolio
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-
   try {
     assertUuid(id)
   } catch (error) {
@@ -24,6 +24,7 @@ export async function PUT(
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const portfolio = await resolveActivePortfolio(user.id, supabase)
 
   let body: Record<string, unknown>
   try {
@@ -34,18 +35,17 @@ export async function PUT(
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  // PUT endpoint นี้ใช้ full holding edit semantics: shares เป็นค่าบังคับเสมอ
-  // ป้องกัน request ที่ส่งเฉพาะ notes/cost_basis แล้ว parseShares(undefined) กลายเป็น 0 โดยไม่ตั้งใจ
   if (!Object.prototype.hasOwnProperty.call(body, 'shares')) {
     return NextResponse.json({ error: 'จำนวนหุ้นจำเป็นสำหรับการอัปเดต' }, { status: 400 })
   }
 
-  const { data: existing, error: existingError } = await supabase
+  let existingQuery = supabase
     .from('holdings')
     .select('id, symbol')
     .eq('id', id)
     .eq('user_id', user.id)
-    .maybeSingle()
+  if (portfolio.mode === 'portfolio') existingQuery = existingQuery.eq('portfolio_id', portfolio.portfolioId)
+  const { data: existing, error: existingError } = await existingQuery.maybeSingle()
 
   if (existingError) {
     console.error('[holdings:PUT] lookup failed:', existingError)
@@ -67,8 +67,6 @@ export async function PUT(
   }
 
   const hasNewCostBasis = body.cost_basis !== undefined && body.cost_basis !== null && body.cost_basis !== ''
-
-  // มี cost_basis ใหม่ -> encrypt ผ่าน service-role RPC
   if (hasNewCostBasis) {
     let cleanCostBasis: number
     try {
@@ -81,15 +79,27 @@ export async function PUT(
     }
 
     const serviceClient = createServiceClient()
-    const { error } = await serviceClient.rpc('upsert_holding', {
-      p_user_id: user.id,
-      p_symbol: existing.symbol,
-      p_shares: cleanShares,
-      p_cost_basis: cleanCostBasis,
-      p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-      p_notes: notesProvided ? cleanNotes ?? null : null,
-      p_notes_provided: notesProvided,
-    })
+    const rpcArgs = portfolio.mode === 'portfolio'
+      ? {
+          p_user_id: user.id,
+          p_portfolio_id: portfolio.portfolioId,
+          p_symbol: existing.symbol,
+          p_shares: cleanShares,
+          p_cost_basis: cleanCostBasis,
+          p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
+          p_notes: notesProvided ? cleanNotes ?? null : null,
+          p_notes_provided: notesProvided,
+        }
+      : {
+          p_user_id: user.id,
+          p_symbol: existing.symbol,
+          p_shares: cleanShares,
+          p_cost_basis: cleanCostBasis,
+          p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
+          p_notes: notesProvided ? cleanNotes ?? null : null,
+          p_notes_provided: notesProvided,
+        }
+    const { error } = await serviceClient.rpc('upsert_holding', rpcArgs)
     if (error) {
       console.error('[holdings:PUT] upsert_holding failed:', error)
       return NextResponse.json({ error: 'บันทึกหุ้นไม่สำเร็จ' }, { status: 500 })
@@ -97,21 +107,23 @@ export async function PUT(
     return NextResponse.json({ success: true })
   }
 
-  // ไม่มี cost_basis ใหม่ -> คงต้นทุนเดิมไว้ เว้นแต่ client ส่ง null/'' เพื่อล้างต้นทุนโดยตั้งใจ
   const updateData: Record<string, unknown> = { shares: cleanShares }
   if (body.cost_basis === null || body.cost_basis === '') updateData.cost_basis_enc = null
   if (notesProvided) updateData.notes = cleanNotes ?? null
 
-  const { error } = await supabase
+  let updateQuery = supabase
     .from('holdings')
     .update(updateData)
     .eq('id', id)
     .eq('user_id', user.id)
+  if (portfolio.mode === 'portfolio') updateQuery = updateQuery.eq('portfolio_id', portfolio.portfolioId)
+  const { data: updated, error } = await updateQuery.select('id').maybeSingle()
 
   if (error) {
     console.error('[holdings:PUT] direct update failed:', error)
     return NextResponse.json({ error: 'บันทึกหุ้นไม่สำเร็จ' }, { status: 500 })
   }
+  if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json({ success: true })
 }
 
@@ -121,7 +133,6 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-
   try {
     assertUuid(id)
   } catch (error) {
@@ -131,22 +142,20 @@ export async function DELETE(
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const portfolio = await resolveActivePortfolio(user.id, supabase)
 
-  const { data: deleted, error } = await supabase
+  let deleteQuery = supabase
     .from('holdings')
     .delete()
     .eq('id', id)
     .eq('user_id', user.id)
-    .select('id')
-    .maybeSingle()
+  if (portfolio.mode === 'portfolio') deleteQuery = deleteQuery.eq('portfolio_id', portfolio.portfolioId)
+  const { data: deleted, error } = await deleteQuery.select('id').maybeSingle()
 
   if (error) {
     console.error('[holdings:DELETE] delete failed:', error)
     return NextResponse.json({ error: 'ลบหุ้นไม่สำเร็จ' }, { status: 500 })
   }
   if (!deleted) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-  // v1.15.1: migration เพิ่ม FK manual_latest_analyses -> holdings แบบ ON DELETE CASCADE
-  // ทำให้ผล manual AI เก่าถูกลบใน transaction เดียวกับ holding โดยไม่เกิด stale result เมื่อเพิ่ม ticker เดิมกลับมา
   return NextResponse.json({ success: true })
 }

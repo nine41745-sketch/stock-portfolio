@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { resolveActivePortfolio } from '@/lib/portfolio-context'
 import {
   parseTradePlanId,
   parseTradePlanInput,
@@ -76,18 +77,20 @@ function normalizeRows(data: any[] | null): TradePlanRow[] {
 async function requireUser() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  return { user }
+  if (!user) return { user: null, portfolio: null }
+  const portfolio = await resolveActivePortfolio(user.id, supabase)
+  return { user, portfolio }
 }
 
 export async function GET() {
-  const { user } = await requireUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { user, portfolio } = await requireUser()
+  if (!user || !portfolio) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const serviceClient = createServiceClient()
-  const { data, error } = await serviceClient.rpc('get_decrypted_trade_plans', {
-    p_user_id: user.id,
-    p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-  })
+  const rpcArgs = portfolio.mode === 'portfolio'
+    ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+    : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+  const { data, error } = await serviceClient.rpc('get_decrypted_trade_plans', rpcArgs)
 
   if (error) {
     if (isMigrationMissing(error)) return migrationRequired()
@@ -101,8 +104,8 @@ export async function GET() {
 }
 
 async function saveTradePlan(request: NextRequest, id: string | null) {
-  const { user } = await requireUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { user, portfolio } = await requireUser()
+  if (!user || !portfolio) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let input: TradePlanInput
   try {
@@ -119,7 +122,7 @@ async function saveTradePlan(request: NextRequest, id: string | null) {
   }
 
   const serviceClient = createServiceClient()
-  const { data, error } = await serviceClient.rpc('save_trade_plan', {
+  const baseArgs = {
     p_user_id: user.id,
     p_id: id,
     p_symbol: input.symbol,
@@ -136,12 +139,16 @@ async function saveTradePlan(request: NextRequest, id: string | null) {
     p_planned_shares: input.planned_shares,
     p_note: input.note,
     p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-  })
+  }
+  const rpcArgs = portfolio.mode === 'portfolio'
+    ? { ...baseArgs, p_portfolio_id: portfolio.portfolioId }
+    : baseArgs
+  const { data, error } = await serviceClient.rpc('save_trade_plan', rpcArgs)
 
   if (error) {
     if (isMigrationMissing(error)) return migrationRequired()
     if (String(error.code ?? '') === '23505') {
-      return NextResponse.json({ error: `มี Trade Plan ที่กำลังใช้งานสำหรับ ${input.symbol} อยู่แล้ว` }, { status: 409 })
+      return NextResponse.json({ error: `มี Trade Plan ที่กำลังใช้งานสำหรับ ${input.symbol} อยู่แล้วในพอร์ตนี้` }, { status: 409 })
     }
     console.error(`[trade-plans:${id ? 'PUT' : 'POST'}] save failed:`, error)
     return NextResponse.json({ error: 'บันทึก Trade Plan ไม่สำเร็จ' }, { status: 500 })
@@ -167,8 +174,8 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { user } = await requireUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { user, portfolio } = await requireUser()
+  if (!user || !portfolio) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let id: string
   try {
@@ -181,17 +188,20 @@ export async function DELETE(request: NextRequest) {
   }
 
   const serviceClient = createServiceClient()
-  const { error } = await serviceClient
+  let query = serviceClient
     .from('trade_plans')
     .delete()
     .eq('id', id)
     .eq('user_id', user.id)
+  if (portfolio.mode === 'portfolio') query = query.eq('portfolio_id', portfolio.portfolioId)
+  const { data: deleted, error } = await query.select('id').maybeSingle()
 
   if (error) {
     if (isMigrationMissing(error)) return migrationRequired()
     console.error('[trade-plans:DELETE] failed:', error)
     return NextResponse.json({ error: 'ลบ Trade Plan ไม่สำเร็จ' }, { status: 500 })
   }
+  if (!deleted) return NextResponse.json({ error: 'ไม่พบ Trade Plan ในพอร์ตนี้' }, { status: 404 })
 
   return NextResponse.json({ ok: true })
 }

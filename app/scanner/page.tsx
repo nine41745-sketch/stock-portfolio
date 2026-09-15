@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { resolveActivePortfolio } from '@/lib/portfolio-context'
 import AppTabs from '@/components/navigation/AppTabs'
 import ScannerWorkspace from '@/components/portfolio/ScannerWorkspace'
 import InvestingSinceBadge from '@/components/portfolio/InvestingSinceBadge'
@@ -11,12 +12,15 @@ export default async function ScannerPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+  const portfolio = await resolveActivePortfolio(user.id, supabase)
 
-  const { data: holdings, error } = await supabase
+  let holdingsQuery = supabase
     .from('holdings')
     .select('symbol, shares')
     .eq('user_id', user.id)
     .gt('shares', 0)
+  if (portfolio.mode === 'portfolio') holdingsQuery = holdingsQuery.eq('portfolio_id', portfolio.portfolioId)
+  const { data: holdings, error } = await holdingsQuery
 
   if (error) {
     console.error('[scanner-page] holdings lookup failed:', error)

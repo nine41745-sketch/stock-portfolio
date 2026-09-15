@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { FormEvent, useMemo, useState } from 'react'
+import StockCommandCenter from './StockCommandCenter'
 
 type Decision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAKOUT' | 'WATCH' | 'AVOID'
 type Setup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
@@ -37,6 +38,7 @@ type StockCheckResult = {
   plan: {
     decision: Decision
     decisionLabel: string
+    buyMode: 'STANDARD' | 'FIRST_TRANCHE' | null
     summary: string
     entryZone: { low: number; high: number } | null
     stopLoss: number | null
@@ -326,6 +328,19 @@ export default function StockCheckPanel({
               </div>
             ) : <p className="text-sm text-gray-500">กรอก “งบที่จะซื้อ $” ด้านบนเพื่อคำนวณจำนวนหุ้นและความเสี่ยงตาม Stop อัตโนมัติ</p>}
           </div>
+
+          <StockCommandCenter
+            symbol={result.symbol}
+            decision={result.plan.decision}
+            buyMode={result.plan.buyMode}
+            currentPrice={result.price}
+            entryLow={result.plan.entryZone?.low ?? null}
+            entryHigh={result.plan.entryZone?.high ?? null}
+            stopLoss={result.plan.stopLoss}
+            target1={result.plan.target1}
+            target2={result.plan.target2}
+            budget={budget}
+          />
 
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => void runAi()} disabled={aiLoading} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-50">{aiLoading ? 'AI กำลังวิเคราะห์...' : '✨ วิเคราะห์เชิงลึกด้วย AI'}</button>

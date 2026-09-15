@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { resolveActivePortfolio } from '@/lib/portfolio-context'
 import {
   parseTransactionId,
   parseTransactionInput,
@@ -57,15 +58,7 @@ function normalizeRows(data: any[] | null): TransactionRow[] {
 }
 
 function buildSummary(items: TransactionRow[]) {
-  const summary = {
-    buy: 0,
-    sell: 0,
-    opening: 0,
-    dividend: 0,
-    deposit: 0,
-    withdraw: 0,
-  }
-
+  const summary = { buy: 0, sell: 0, opening: 0, dividend: 0, deposit: 0, withdraw: 0 }
   for (const item of items) {
     const gross = (item.shares ?? 0) * (item.price ?? 0)
     const fee = item.fee ?? 0
@@ -78,7 +71,6 @@ function buildSummary(items: TransactionRow[]) {
       case 'WITHDRAW': summary.withdraw += item.amount ?? 0; break
     }
   }
-
   return summary
 }
 
@@ -96,7 +88,6 @@ function buildReconciliation(items: TransactionRow[], holdings: Array<{ symbol: 
 
   const holdingMap = new Map(holdings.map(row => [row.symbol.toUpperCase(), row.shares]))
   const symbols = [...new Set([...holdingMap.keys(), ...ledger.keys()])].sort()
-
   return symbols.map(symbol => {
     const holdingShares = roundShares(holdingMap.get(symbol) ?? 0)
     const ledgerShares = roundShares(ledger.get(symbol) ?? 0)
@@ -114,18 +105,20 @@ function buildReconciliation(items: TransactionRow[], holdings: Array<{ symbol: 
 async function requireUser() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  return { supabase, user }
+  if (!user) return { supabase, user: null, portfolio: null }
+  const portfolio = await resolveActivePortfolio(user.id, supabase)
+  return { supabase, user, portfolio }
 }
 
 export async function GET() {
-  const { supabase, user } = await requireUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { supabase, user, portfolio } = await requireUser()
+  if (!user || !portfolio) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const serviceClient = createServiceClient()
-  const { data, error } = await serviceClient.rpc('get_decrypted_portfolio_transactions', {
-    p_user_id: user.id,
-    p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-  })
+  const rpcArgs = portfolio.mode === 'portfolio'
+    ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+    : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+  const { data, error } = await serviceClient.rpc('get_decrypted_portfolio_transactions', rpcArgs)
 
   if (error) {
     if (isMigrationMissing(error)) {
@@ -139,10 +132,12 @@ export async function GET() {
     return NextResponse.json({ error: 'โหลดธุรกรรมไม่สำเร็จ' }, { status: 500 })
   }
 
-  const { data: holdingRows, error: holdingsError } = await supabase
+  let holdingsQuery = supabase
     .from('holdings')
     .select('symbol, shares')
     .eq('user_id', user.id)
+  if (portfolio.mode === 'portfolio') holdingsQuery = holdingsQuery.eq('portfolio_id', portfolio.portfolioId)
+  const { data: holdingRows, error: holdingsError } = await holdingsQuery
 
   if (holdingsError) {
     console.error('[transactions:GET] holdings reconciliation failed:', holdingsError)
@@ -163,8 +158,8 @@ export async function GET() {
 }
 
 async function saveTransaction(request: NextRequest, id: string | null) {
-  const { user } = await requireUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { user, portfolio } = await requireUser()
+  if (!user || !portfolio) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let input: TransactionInput
   try {
@@ -181,7 +176,7 @@ async function saveTransaction(request: NextRequest, id: string | null) {
   }
 
   const serviceClient = createServiceClient()
-  const { data, error } = await serviceClient.rpc('save_portfolio_transaction', {
+  const baseArgs = {
     p_user_id: user.id,
     p_id: id,
     p_type: input.transaction_type,
@@ -193,7 +188,11 @@ async function saveTransaction(request: NextRequest, id: string | null) {
     p_trade_date: input.trade_date,
     p_note: input.note,
     p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-  })
+  }
+  const rpcArgs = portfolio.mode === 'portfolio'
+    ? { ...baseArgs, p_portfolio_id: portfolio.portfolioId }
+    : baseArgs
+  const { data, error } = await serviceClient.rpc('save_portfolio_transaction', rpcArgs)
 
   if (error) {
     if (isMigrationMissing(error)) {
@@ -217,8 +216,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   let id: string
   try {
-    const rawId = request.nextUrl.searchParams.get('id')
-    id = parseTransactionId(rawId)
+    id = parseTransactionId(request.nextUrl.searchParams.get('id'))
   } catch (error) {
     if (error instanceof TransactionValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 })
@@ -229,8 +227,8 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { user } = await requireUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { user, portfolio } = await requireUser()
+  if (!user || !portfolio) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let id: string
   try {
@@ -243,11 +241,13 @@ export async function DELETE(request: NextRequest) {
   }
 
   const serviceClient = createServiceClient()
-  const { error } = await serviceClient
+  let query = serviceClient
     .from('portfolio_transactions')
     .delete()
     .eq('id', id)
     .eq('user_id', user.id)
+  if (portfolio.mode === 'portfolio') query = query.eq('portfolio_id', portfolio.portfolioId)
+  const { data: deleted, error } = await query.select('id').maybeSingle()
 
   if (error) {
     if (isMigrationMissing(error)) {
@@ -260,6 +260,7 @@ export async function DELETE(request: NextRequest) {
     console.error('[transactions:DELETE] failed:', error)
     return NextResponse.json({ error: 'ลบธุรกรรมไม่สำเร็จ' }, { status: 500 })
   }
+  if (!deleted) return NextResponse.json({ error: 'ไม่พบธุรกรรมในพอร์ตนี้' }, { status: 404 })
 
   return NextResponse.json({ ok: true })
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { resolveActivePortfolio } from '@/lib/portfolio-context'
 
 interface TrackRecordRow {
   symbol: string
@@ -12,42 +13,42 @@ interface TrackRecordRow {
   is_correct: boolean
 }
 
-// GET /api/track-record?days=7|30 — win rate ของสัญญาณ AI ย้อนหลัง เทียบราคาจริงที่เกิดขึ้น
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const portfolio = await resolveActivePortfolio(user.id, supabase)
 
   const daysParam = request.nextUrl.searchParams.get('days')
-  const days = daysParam === '30' ? 30 : 7 // จำกัดแค่ 7 หรือ 30 กัน RPC โดนยิงค่าแปลกๆ
-
-  const { data, error } = await supabase.rpc('get_track_record', {
-    p_user_id: user.id,
-    p_days: days,
-  })
+  const days = daysParam === '30' ? 30 : 7
+  const rpcArgs = portfolio.mode === 'portfolio'
+    ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_days: days }
+    : { p_user_id: user.id, p_days: days }
+  const { data, error } = await supabase.rpc('get_track_record', rpcArgs)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
   const rows = (data ?? []) as TrackRecordRow[]
-
+  const correct = rows.filter(row => row.is_correct).length
   const overall = {
     total: rows.length,
-    correct: rows.filter(r => r.is_correct).length,
-    winRatePct: rows.length ? Math.round((rows.filter(r => r.is_correct).length / rows.length) * 1000) / 10 : null,
+    correct,
+    winRatePct: rows.length ? Math.round((correct / rows.length) * 1000) / 10 : null,
   }
 
   const bySymbolMap: Record<string, { total: number; correct: number }> = {}
-  for (const r of rows) {
-    if (!bySymbolMap[r.symbol]) bySymbolMap[r.symbol] = { total: 0, correct: 0 }
-    bySymbolMap[r.symbol].total++
-    if (r.is_correct) bySymbolMap[r.symbol].correct++
+  for (const row of rows) {
+    if (!bySymbolMap[row.symbol]) bySymbolMap[row.symbol] = { total: 0, correct: 0 }
+    bySymbolMap[row.symbol].total++
+    if (row.is_correct) bySymbolMap[row.symbol].correct++
   }
   const bySymbol = Object.entries(bySymbolMap)
-    .map(([symbol, v]) => ({
-      symbol, total: v.total, correct: v.correct,
-      winRatePct: Math.round((v.correct / v.total) * 1000) / 10,
+    .map(([symbol, value]) => ({
+      symbol,
+      total: value.total,
+      correct: value.correct,
+      winRatePct: Math.round((value.correct / value.total) * 1000) / 10,
     }))
     .sort((a, b) => b.winRatePct - a.winRatePct)
 
-  return NextResponse.json({ days, overall, bySymbol, rows })
+  return NextResponse.json({ days, overall, bySymbol, rows }, { headers: { 'Cache-Control': 'no-store' } })
 }

@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { FormEvent, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import QuickNotesDrawer from '@/components/navigation/QuickNotesDrawer'
+import PortfolioSwitcher from '@/components/navigation/PortfolioSwitcher'
 
 const TABS = [
   { href: '/dashboard', label: 'พอร์ต', icon: '📊' },
@@ -125,6 +127,7 @@ export default function AppTabs() {
 
   return (
     <div data-app-shell-nav>
+      <PortfolioSwitcher />
       <div className="mb-2 flex items-center justify-end gap-2">
         <button
           type="button"
@@ -227,6 +230,8 @@ export default function AppTabs() {
           })}
         </nav>
       ) : <div className="mb-3" />}
+
+      <QuickNotesDrawer />
 
       {showChangePin && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
