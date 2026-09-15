@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { resolveActivePortfolio } from '@/lib/portfolio-context'
@@ -62,13 +63,29 @@ export default async function DashboardPage() {
   })
 
   const userName = user.email?.split('@')[0] ?? 'User'
+  const activePortfolioName = portfolio.mode === 'portfolio' ? portfolio.portfolio.name : 'เจน'
+  const portfolioTitleStyle = {
+    '--active-portfolio-title': JSON.stringify(`📈 พอร์ต${activePortfolioName}`),
+  } as CSSProperties
 
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8">
       <InactivityPinLock />
       <InvestingSinceBadge />
       <AppTabs />
-      <PortfolioDashboard holdings={holdingsWithPrices} userName={userName} />
+      <div className="portfolio-dashboard-title-scope" style={portfolioTitleStyle}>
+        <PortfolioDashboard holdings={holdingsWithPrices} userName={userName} />
+      </div>
+      <style>{`
+        .portfolio-dashboard-title-scope h1:first-of-type {
+          font-size: 0;
+        }
+        .portfolio-dashboard-title-scope h1:first-of-type::after {
+          content: var(--active-portfolio-title);
+          font-size: 1.5rem;
+          line-height: 2rem;
+        }
+      `}</style>
     </div>
   )
 }
