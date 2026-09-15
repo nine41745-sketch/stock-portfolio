@@ -1,22 +1,18 @@
-name: CI
+name: Release Metadata Helper v1.27.0
 
 on:
-  pull_request:
-    branches: [main]
   push:
     branches:
-      - main
-      - feat/production-standard-v1.17.0
+      - feat/portfolio-platform-v1.27.0
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: release-metadata-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # Build-only placeholders. They are intentionally non-secret and must never be used at runtime.
   NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
   NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
   SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role
@@ -28,13 +24,14 @@ env:
   PIN_SESSION_SECRET: ci-placeholder-pin-session-secret-at-least-32-bytes
 
 jobs:
-  verify:
-    name: verify
+  finalize:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -43,11 +40,81 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      - name: Finalize v1.27.0 metadata
+        shell: bash
+        run: |
+          export RELEASE_TIME="$(TZ=Asia/Bangkok date '+%Y-%m-%d %H:%M ICT')"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          release_time = os.environ['RELEASE_TIME']
+
+          package_path = Path('package.json')
+          package = json.loads(package_path.read_text())
+          if package.get('version') != '1.26.0':
+              raise SystemExit(f"Unexpected package.json version: {package.get('version')}")
+          package['version'] = '1.27.0'
+          package_path.write_text(json.dumps(package, ensure_ascii=False, indent=2) + '\n')
+
+          lock_path = Path('package-lock.json')
+          lock_text = lock_path.read_text()
+          old_version = '"version": "1.26.0"'
+          new_version = '"version": "1.27.0"'
+          if lock_text.count(old_version) < 2:
+              raise SystemExit('Expected at least two v1.26.0 lockfile version fields')
+          lock_path.write_text(lock_text.replace(old_version, new_version, 2))
+
+          tsconfig_path = Path('tsconfig.json')
+          tsconfig_text = tsconfig_path.read_text()
+          old_alias = './config/changelog-v126'
+          new_alias = './config/changelog-v127'
+          if tsconfig_text.count(old_alias) != 1:
+              raise SystemExit('Expected changelog-v126 alias exactly once')
+          tsconfig_path.write_text(tsconfig_text.replace(old_alias, new_alias))
+
+          changelog_path = Path('config/changelog-v127.ts')
+          if changelog_path.exists():
+              raise SystemExit('config/changelog-v127.ts already exists')
+          changelog_path.write_text(f"""import {{ changelog as previousChangelog }} from './changelog-v126'\nimport type {{ ChangelogEntry }} from './changelog'\n\nconst v127: ChangelogEntry = {{\n  version: 'v1.27.0',\n  date: '{release_time}',\n  changes: [\n    'Global Quick Notes & Investing Since: ย้าย Quick Notes ไปเป็น shared global drawer ผ่าน AppTabs และปรับระยะเวลาตั้งแต่เริ่มลงทุนให้แสดงแบบ ปี/เดือน/วัน โดยยึด Asia/Bangkok',\n    'Multi-Portfolio Foundation: เพิ่มตัวเลือกพอร์ตและแยก Holdings, Transactions, Trade Plans, balances, Performance, Risk, AI, Alerts/Calendar, Cron และ Track Record ตาม portfolio_id พร้อม migration/verification SQL และ legacy fallback ก่อนติดตั้ง schema ใหม่',\n    'Data Isolation & Safety: เพิ่ม portfolio-scoped RPC/RLS/API plumbing, backfill/default portfolio design และ regression coverage เพื่อป้องกันข้อมูลของแต่ละพอร์ตปะปนกัน; migration ถูกเตรียมไว้แต่ยังไม่ได้รันบน Supabase Production',\n    'Stock Command Center: เพิ่มมุมมองพอร์ตที่เลือกพร้อมสถานะเงินสด, position weight และ Trade Plan เพื่อให้การตัดสินใจอ้างอิงพอร์ตจริงที่กำลังใช้งาน',\n    'Buy / Tranche Simulator: เพิ่มการจำลองแบ่ง 1-3 ไม้โดยจำกัดวงเงินตามเงินสดจริง คำนวณราคาเฉลี่ย, Stop risk, Target gain และ concentration หลังซื้อ โดยไม่ส่งคำสั่งซื้อหรือแก้ Holdings อัตโนมัติ',\n    'Verification: เพิ่ม regression สำหรับ Multi-Portfolio และ Command Center พร้อม CI lint/typecheck/tests/build และ Final Preview; release metadata นี้ไม่รัน SQL Production, ไม่ Merge และไม่ Deploy Production',\n  ],\n}}\n\nexport const changelog: ChangelogEntry[] = [v127, ...previousChangelog]\nexport const CURRENT_VERSION = changelog[0]?.version ?? 'v1.0.0'\n""")
+
+          test_path = Path('scripts/test-critical.mjs')
+          test_text = test_path.read_text()
+          replacements = [
+              ('// v1.26.0 release metadata must stay synchronized across changelog/package/lockfile.',
+               '// v1.27.0 release metadata must stay synchronized across changelog/package/lockfile.'),
+              ("assert.equal(packageJson.version, '1.26.0', 'Package version must be finalized as v1.26.0 for this release')",
+               "assert.equal(packageJson.version, '1.27.0', 'Package version must be finalized as v1.27.0 for this release')"),
+              ("  ['config/changelog-v126.ts', '2026-09-13 02:10 ICT'],\n]",
+               f"  ['config/changelog-v126.ts', '2026-09-13 02:10 ICT'],\n  ['config/changelog-v127.ts', '{release_time}'],\n]"),
+              ("assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v126'])",
+               "assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v127'])"),
+          ]
+          for old, new in replacements:
+              if test_text.count(old) != 1:
+                  raise SystemExit(f'Expected release assertion exactly once: {old}')
+              test_text = test_text.replace(old, new)
+          test_path.write_text(test_text)
+          PY
+
+          git show HEAD^:.github/workflows/ci.yml > .github/workflows/ci.yml
+          git diff --check
+
       - name: Install exact dependencies
         run: npm ci
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 
-      - name: Typecheck, regression tests and production build
+      - name: Full CI before metadata push
         run: npm run ci
+
+      - name: Commit finalized metadata and restore normal CI
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json tsconfig.json config/changelog-v127.ts scripts/test-critical.mjs .github/workflows/ci.yml
+          git commit -m "chore: finalize v1.27.0 release metadata"
+          git push origin HEAD:${GITHUB_REF_NAME}
