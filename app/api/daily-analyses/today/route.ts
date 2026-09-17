@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { resolveActivePortfolio } from '@/lib/portfolio-context'
-import { isAnalysisStale, latestPortfolioChangeTimestamp } from '@/lib/analysis-freshness'
+import { isAnalysisStale, latestPortfolioChangeTimestamp, parseOptionalTimestamp } from '@/lib/analysis-freshness'
 import { getResultTimestamp, shouldReplaceAnalysis } from '@/lib/latest-analysis'
 import { DetailedAnalysisResult } from '@/types'
 
@@ -25,7 +25,7 @@ export async function GET() {
 
   let holdingsQuery = supabase
     .from('holdings')
-    .select('symbol')
+    .select('symbol, updated_at')
     .eq('user_id', user.id)
     .gt('shares', 0)
   if (portfolio.mode === 'portfolio') holdingsQuery = holdingsQuery.eq('portfolio_id', portfolio.portfolioId)
@@ -37,6 +37,13 @@ export async function GET() {
   }
 
   const activeSymbols = [...new Set((holdingRows ?? []).map(row => row.symbol as string).filter(Boolean))]
+  const holdingUpdatedAtBySymbol = new Map<string, number>()
+  for (const row of holdingRows ?? []) {
+    const symbol = String(row.symbol ?? '').toUpperCase()
+    if (!symbol) continue
+    holdingUpdatedAtBySymbol.set(symbol, parseOptionalTimestamp(row.updated_at as string | null))
+  }
+
   if (activeSymbols.length === 0) {
     return NextResponse.json({
       analyses: {},
@@ -119,14 +126,23 @@ export async function GET() {
     }
   }
 
+  // Hard-stale only the holding that actually changed. Portfolio/cash clocks remain available as
+  // context metadata, but a SOFI trade must not invalidate every unrelated symbol in the portfolio.
+  const staleSymbols = Object.keys(analyses)
+    .filter(symbol => {
+      if (!activeSet.has(symbol)) return false
+      const holdingChangedAt = holdingUpdatedAtBySymbol.get(symbol) ?? 0
+      return isAnalysisStale(latestTimes[symbol] ?? 0, holdingChangedAt)
+    })
+    .sort()
+
   const freshnessData = settingsResponse.error ? null : settingsResponse.data
-  const latestChangeMs = latestPortfolioChangeTimestamp(
+  const latestContextChangeMs = latestPortfolioChangeTimestamp(
     freshnessData?.portfolio_updated_at ?? null,
     freshnessData?.cash_updated_at ?? null
   )
-  const staleSymbols = Object.keys(analyses)
-    .filter(symbol => activeSet.has(symbol) && isAnalysisStale(latestTimes[symbol] ?? 0, latestChangeMs))
-    .sort()
+  const latestHoldingChangeMs = Math.max(0, ...holdingUpdatedAtBySymbol.values())
+  const latestChangeMs = Math.max(latestContextChangeMs, latestHoldingChangeMs)
 
   return NextResponse.json({
     analyses,
