@@ -4,6 +4,7 @@ import fs from 'node:fs'
 for (const path of [
   'app/api/trades/route.ts',
   'app/api/analyze/route.ts',
+  'app/api/cron/daily-analyze/route.ts',
   'app/api/daily-analyses/today/route.ts',
   'components/portfolio/AutoTradeEntry.tsx',
   'supabase/migration_transaction_autosync_v1.27.1.sql',
@@ -48,6 +49,11 @@ assert.match(analyzeRoute, /RECENT_TRADE_GUARD_MS = 24 \* 60 \* 60 \* 1000/, 'Re
 assert.match(analyzeRoute, /blocksRepeatedBuy/, 'A recent BUY must guard against an immediate duplicate BUY recommendation')
 assert.match(analyzeRoute, /blocksRepeatedPartialSell/, 'A recent SELL must guard against an immediate duplicate SELL_PARTIAL recommendation')
 assert.match(analyzeRoute, /recentTradeFingerprint/, 'Analysis cache must vary when the latest executed trade changes')
+
+const cronRoute = fs.readFileSync('app/api/cron/daily-analyze/route.ts', 'utf8')
+assert.match(cronRoute, /select\('dime_balance'\)/, 'Daily analysis must use Dime as investable buying power')
+assert.doesNotMatch(cronRoute, /select\('cash_balance'\)/, 'Daily analysis must not use bank cash as stock buying power')
+assert.match(cronRoute, /analyzePortfolioBatch\(batchInputs, buyingPower, totalPortfolioValue\)/, 'Daily portfolio review must pass Dime buying power to the model')
 
 const latestAnalysisRoute = fs.readFileSync('app/api/daily-analyses/today/route.ts', 'utf8')
 assert.match(latestAnalysisRoute, /select\('symbol, updated_at'\)/, 'Freshness must read per-holding update timestamps')
