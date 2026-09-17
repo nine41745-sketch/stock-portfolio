@@ -116,14 +116,14 @@ export async function GET(request: NextRequest) {
 
       const alreadyAnalyzedSymbols = new Set((existingToday ?? []).map((r: any) => r.symbol as string))
 
-      let settingsQuery = supabase.from('user_settings').select('cash_balance').eq('user_id', userId)
+      let settingsQuery = supabase.from('user_settings').select('dime_balance').eq('user_id', userId)
       if (portfolioId) settingsQuery = settingsQuery.eq('portfolio_id', portfolioId)
       const [settingsResponse, quotes] = await Promise.all([
         settingsQuery.maybeSingle(),
         getMultipleQuotesWithMetrics(symbols),
       ])
       if (settingsResponse.error) throw new Error(`load user settings: ${settingsResponse.error.message}`)
-      const cashBalance = Number(settingsResponse.data?.cash_balance ?? 0)
+      const buyingPower = Number(settingsResponse.data?.dime_balance ?? 0)
 
       const holdings: HoldingWithPrice[] = rawHoldings.map((h: any) => {
         const q = quotes[h.symbol]
@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
         })
       )
 
-      const batch = await analyzePortfolioBatch(batchInputs, cashBalance, totalPortfolioValue)
+      const batch = await analyzePortfolioBatch(batchInputs, buyingPower, totalPortfolioValue)
       if (batch.error) {
         if (batch.error === 'RATE_LIMIT') rateLimited += holdingsToAnalyze.length
         else failed += holdingsToAnalyze.length
