@@ -3,6 +3,9 @@ import fs from 'node:fs'
 
 for (const path of [
   'app/api/trades/route.ts',
+  'app/api/analyze/route.ts',
+  'app/api/cron/daily-analyze/route.ts',
+  'app/api/daily-analyses/today/route.ts',
   'components/portfolio/AutoTradeEntry.tsx',
   'supabase/migration_transaction_autosync_v1.27.1.sql',
   'supabase/verify_transaction_autosync_v1.27.1.sql',
@@ -38,4 +41,24 @@ const dashboard = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
 assert.match(dashboard, /portfolio\.portfolio\.name/, 'Dashboard title must follow the active portfolio')
 assert.match(dashboard, /--active-portfolio-title/, 'Dynamic portfolio title must replace the old hardcoded visual title')
 
-console.log('✓ Auto trade + active portfolio title regression tests passed')
+const analyzeRoute = fs.readFileSync('app/api/analyze/route.ts', 'utf8')
+assert.match(analyzeRoute, /select\('dime_balance'\)/, 'Manual analysis must use Dime as investable buying power')
+assert.doesNotMatch(analyzeRoute, /select\('cash_balance'\)/, 'Manual analysis must not use bank cash as stock buying power')
+assert.match(analyzeRoute, /\.eq\('sync_portfolio', true\)/, 'Analysis must read the latest Auto Sync trade')
+assert.match(analyzeRoute, /RECENT_TRADE_GUARD_MS = 24 \* 60 \* 60 \* 1000/, 'Repeated execution guard must have an explicit 24h window')
+assert.match(analyzeRoute, /blocksRepeatedBuy/, 'A recent BUY must guard against an immediate duplicate BUY recommendation')
+assert.match(analyzeRoute, /blocksRepeatedPartialSell/, 'A recent SELL must guard against an immediate duplicate SELL_PARTIAL recommendation')
+assert.match(analyzeRoute, /recentTradeFingerprint/, 'Analysis cache must vary when the latest executed trade changes')
+
+const cronRoute = fs.readFileSync('app/api/cron/daily-analyze/route.ts', 'utf8')
+assert.match(cronRoute, /select\('dime_balance'\)/, 'Daily analysis must use Dime as investable buying power')
+assert.doesNotMatch(cronRoute, /select\('cash_balance'\)/, 'Daily analysis must not use bank cash as stock buying power')
+assert.match(cronRoute, /analyzePortfolioBatch\(batchInputs, buyingPower, totalPortfolioValue\)/, 'Daily portfolio review must pass Dime buying power to the model')
+
+const latestAnalysisRoute = fs.readFileSync('app/api/daily-analyses/today/route.ts', 'utf8')
+assert.match(latestAnalysisRoute, /select\('symbol, updated_at'\)/, 'Freshness must read per-holding update timestamps')
+assert.match(latestAnalysisRoute, /holdingUpdatedAtBySymbol/, 'Freshness must track changes per symbol')
+assert.match(latestAnalysisRoute, /isAnalysisStale\(latestTimes\[symbol\] \?\? 0, holdingChangedAt\)/, 'Only the changed holding should become hard-stale')
+assert.doesNotMatch(latestAnalysisRoute, /isAnalysisStale\(latestTimes\[symbol\] \?\? 0, latestChangeMs\)/, 'A portfolio-wide clock must not stale every symbol')
+
+console.log('✓ Auto trade + trade-aware analysis regression tests passed')
