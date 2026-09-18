@@ -166,7 +166,35 @@ export async function GET(request: NextRequest) {
         continue
       }
 
-      const newsBySymbol = await fetchNewsForSymbols(holdingsToAnalyze.map(h => h.symbol))
+      const analyzedSymbols = holdingsToAnalyze.map(h => h.symbol)
+      const recentTradeCutoff = new Date(Date.now() - RECENT_TRADE_GUARD_MS).toISOString()
+      let recentTradeQuery = supabase
+        .from('portfolio_transactions')
+        .select('symbol, transaction_type, shares, trade_date, created_at')
+        .eq('user_id', userId)
+        .eq('sync_portfolio', true)
+        .in('transaction_type', ['BUY', 'SELL'])
+        .in('symbol', analyzedSymbols)
+        .gte('created_at', recentTradeCutoff)
+        .order('created_at', { ascending: false })
+      if (portfolioId) recentTradeQuery = recentTradeQuery.eq('portfolio_id', portfolioId)
+
+      const { data: recentTradeRows, error: recentTradeError } = await recentTradeQuery
+      if (recentTradeError) throw new Error(`load recent synced trades: ${recentTradeError.message}`)
+
+      const recentTradeBySymbol = new Map<string, RecentSyncedTrade>()
+      for (const row of recentTradeRows ?? []) {
+        const symbol = String(row.symbol ?? '').toUpperCase()
+        if (!symbol || recentTradeBySymbol.has(symbol)) continue
+        recentTradeBySymbol.set(symbol, {
+          transaction_type: String(row.transaction_type).toUpperCase() as 'BUY' | 'SELL',
+          shares: row.shares == null ? null : Number(row.shares),
+          trade_date: String(row.trade_date),
+          created_at: String(row.created_at),
+        })
+      }
+
+      const newsBySymbol = await fetchNewsForSymbols(analyzedSymbols)
       const batchInputs: PortfolioBatchHoldingInput[] = await Promise.all(
         holdingsToAnalyze.map(async holding => {
           const [technical, earnings] = await Promise.all([
@@ -190,12 +218,17 @@ export async function GET(request: NextRequest) {
         console.error(`[cron] portfolio batch ${userId}/${portfolioId ?? 'legacy'} failed: ${batch.error}`)
       } else {
         for (const holding of holdingsToAnalyze) {
-          const result = batch.results[holding.symbol]
-          if (!result) {
+          const rawResult = batch.results[holding.symbol]
+          if (!rawResult) {
             failed++
             errors.push(`${holding.symbol}: missing/invalid item in portfolio batch response`)
             continue
           }
+
+          const result = applyRecentTradeExecutionGuard(
+            rawResult,
+            recentTradeBySymbol.get(holding.symbol) ?? null
+          )
 
           const row = {
             user_id: userId,
