@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import ts from 'typescript'
 
 for (const path of [
   'app/api/trades/route.ts',
@@ -55,6 +56,60 @@ assert.match(executionGuard, /blocksRepeatedBuy/, 'A recent BUY must guard again
 assert.match(executionGuard, /blocksRepeatedPartialSell/, 'A recent SELL must guard against an immediate duplicate SELL_PARTIAL recommendation')
 assert.match(executionGuard, /action: 'HOLD'/, 'Blocked repeated execution must become HOLD')
 assert.doesNotMatch(executionGuard, /action === 'SELL_ALL'/, 'Execution guard must never block SELL_ALL')
+
+
+// Runtime execution-guard behavior — proves Manual and Daily share the same 24h semantics.
+const transpiledGuard = ts.transpileModule(executionGuard, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText
+const guardModule = { exports: {} }
+new Function('exports', 'module', transpiledGuard)(guardModule.exports, guardModule)
+const { applyRecentTradeExecutionGuard } = guardModule.exports
+
+const nowMs = Date.parse('2026-09-18T08:17:45+07:00')
+const baseResult = action => ({
+  recommendation: { action, buyConditions: 'buy', sellConditions: 'sell' },
+  summary: 'base summary',
+  risksAndOpportunities: { caution: '', opportunity: 'opportunity' },
+})
+
+const recentBuy = {
+  transaction_type: 'BUY',
+  shares: 11.811889,
+  trade_date: '2026-09-17',
+  created_at: '2026-09-17T23:01:13+07:00',
+}
+const recentSell = {
+  transaction_type: 'SELL',
+  shares: 5,
+  trade_date: '2026-09-18',
+  created_at: '2026-09-18T02:00:00+07:00',
+}
+const oldBuy = {
+  ...recentBuy,
+  created_at: '2026-09-17T06:00:00+07:00',
+}
+
+assert.equal(
+  applyRecentTradeExecutionGuard(baseResult('BUY'), recentBuy, nowMs).recommendation.action,
+  'HOLD',
+  'Recent Auto Sync BUY must block repeated Daily/Manual BUY within 24h'
+)
+assert.equal(
+  applyRecentTradeExecutionGuard(baseResult('SELL_PARTIAL'), recentSell, nowMs).recommendation.action,
+  'HOLD',
+  'Recent Auto Sync SELL must block repeated SELL_PARTIAL within 24h'
+)
+assert.equal(
+  applyRecentTradeExecutionGuard(baseResult('SELL_ALL'), recentSell, nowMs).recommendation.action,
+  'SELL_ALL',
+  'SELL_ALL must remain available even inside the 24h guard window'
+)
+assert.equal(
+  applyRecentTradeExecutionGuard(baseResult('BUY'), oldBuy, nowMs).recommendation.action,
+  'BUY',
+  'BUY must be allowed again after the 24h guard window expires'
+)
 
 const cronRoute = fs.readFileSync('app/api/cron/daily-analyze/route.ts', 'utf8')
 assert.match(cronRoute, /select\('dime_balance'\)/, 'Daily analysis must use Dime as investable buying power')
