@@ -19,6 +19,53 @@ interface RawNewsItem {
   url: string
 }
 
+async function fetchRawNewsForSymbol(symbol: string): Promise<RawNewsItem[]> {
+  const today = new Date()
+  const from = new Date(today)
+  from.setDate(from.getDate() - 3)
+  const fromStr = from.toISOString().split('T')[0]
+  const toStr = today.toISOString().split('T')[0]
+
+  try {
+    const res = await fetch(
+      `https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${fromStr}&to=${toStr}&token=${process.env.FINNHUB_API_KEY}`,
+      { cache: 'no-store' }
+    )
+    const news = await res.json()
+    if (!Array.isArray(news)) return []
+
+    const items: RawNewsItem[] = []
+    for (const item of news.slice(0, 8)) {
+      if (items.length >= 2) break
+      if (!item.headline || !isNewsRelevantToTarget(item.headline, symbol)) continue
+      items.push({
+        symbol,
+        headline: item.headline,
+        source: item.source ?? '',
+        datetime: item.datetime ?? 0,
+        url: item.url ?? '',
+      })
+    }
+    return items
+  } catch {
+    return []
+  }
+}
+
+const OTHER_SYMBOLS_CHUNK_SIZE = 6
+const OTHER_SYMBOLS_CHUNK_DELAY_MS = 250
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+async function getOtherSymbolPricesChunked(symbols: string[]): Promise<Record<string, number>> {
+  const result: Record<string, number> = {}
+  for (let i = 0; i < symbols.length; i += OTHER_SYMBOLS_CHUNK_SIZE) {
+    const chunk = symbols.slice(i, i + OTHER_SYMBOLS_CHUNK_SIZE)
+    Object.assign(result, await getMultipleQuotes(chunk))
+    if (i + OTHER_SYMBOLS_CHUNK_SIZE < symbols.length) await delay(OTHER_SYMBOLS_CHUNK_DELAY_MS)
+  }
+  return result
+}
+
 function buildAnalysisFingerprint(input: {
   symbol: string
   shares: number
