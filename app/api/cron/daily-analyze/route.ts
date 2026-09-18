@@ -6,6 +6,7 @@ import { getTechnicalIndicators } from '@/lib/indicators'
 import { getMultipleQuotesWithMetrics, getUpcomingEarnings } from '@/lib/finnhub'
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { HoldingWithPrice, NewsItem } from '@/types'
+import { applyRecentTradeExecutionGuard, RECENT_TRADE_GUARD_MS, RecentSyncedTrade } from '@/lib/analysis-execution-guard'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
