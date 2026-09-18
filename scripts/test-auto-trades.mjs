@@ -6,6 +6,7 @@ for (const path of [
   'app/api/analyze/route.ts',
   'app/api/cron/daily-analyze/route.ts',
   'app/api/daily-analyses/today/route.ts',
+  'lib/analysis-execution-guard.ts',
   'components/portfolio/AutoTradeEntry.tsx',
   'supabase/migration_transaction_autosync_v1.27.1.sql',
   'supabase/verify_transaction_autosync_v1.27.1.sql',
