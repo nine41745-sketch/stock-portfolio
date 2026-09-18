@@ -10,6 +10,7 @@ import { ANALYZE_CACHE_TTL_SEC } from '@/lib/constants'
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { InputValidationError, parseSymbol } from '@/lib/portfolio-validation'
 import { HoldingWithPrice, DetailedAnalysisResult, NewsItem } from '@/types'
+import { applyRecentTradeExecutionGuard, recentTradeFingerprint, RecentSyncedTrade } from '@/lib/analysis-execution-guard'
 
 interface RawNewsItem {
   symbol: string
