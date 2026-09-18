@@ -1,4 +1,4 @@
-import { DetailedAnalysisResult } from '@/types'
+import type { DetailedAnalysisResult } from '@/types'
 
 export interface RecentSyncedTrade {
   transaction_type: 'BUY' | 'SELL'
