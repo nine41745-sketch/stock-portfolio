@@ -64,6 +64,9 @@ export interface TechnicalSnapshot {
   ema200: number | null
   rsi14: number | null
   atr14?: number | null
+  scannerSupport?: number | null
+  scannerResistance?: number | null
+  scannerVolumeRatio?: number | null
   // RSI(14) รายสัปดาห์ — เพิ่มเข้ามาคู่กับ rsi14 (รายวัน) ให้เห็นภาพ momentum ทั้งระยะสั้นและระยะยาว
   weeklyRsi14: number | null
   macd: { macd: number | null; signal: number | null; histogram: number | null }
