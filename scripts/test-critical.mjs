@@ -176,11 +176,12 @@ assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic 
 assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
 assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
 
-// v1.27.4 release metadata must stay synchronized across changelog/package/lockfile.
+// v1.27.5 release metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.27.4', 'Package version must be finalized as v1.27.4 for this release')
+assert.equal(packageJson.version, '1.27.5', 'Package version must be finalized as v1.27.5 for this release')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.4', 'Patched Next.js release must stay pinned')
+assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.27.5 must expose the audited Supabase SSR dependency')
 assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
 assert.equal(packageJson.scripts?.lint, 'eslint .', 'Next.js 16 must use the ESLint CLI')
 assert.equal(packageJson.scripts?.typecheck, 'tsc --noEmit', 'CI must expose an explicit TypeScript check')
@@ -192,6 +193,8 @@ assert.equal(packageLock.version, packageJson.version, 'package-lock version mus
 assert.equal(packageLock.packages?.['']?.version, packageJson.version, 'lockfile root package version must match package.json')
 assert.equal(packageLock.packages?.['']?.engines?.node, '22.x', 'lockfile must preserve the Node 22 runtime pin')
 assert.equal(packageLock.packages?.['']?.dependencies?.next, '16.3.4', 'lockfile must preserve the patched Next.js version')
+assert.equal(packageLock.packages?.['node_modules/@supabase/ssr']?.version, '0.12.7', 'lockfile must resolve audited @supabase/ssr 0.12.7')
+assert.equal(packageLock.packages?.['node_modules/@supabase/supabase-js']?.version, '2.116.0', 'lockfile must resolve compatible @supabase/supabase-js 2.116.0')
 assert.equal(packageLock.packages?.['']?.dependencies?.['@anthropic-ai/sdk'], undefined, 'Removed dependencies must not remain in lockfile root')
 
 assert.equal(fs.existsSync('.github/workflows/ci.yml'), true, 'GitHub Actions CI workflow is required')
@@ -240,12 +243,13 @@ const changelogReleaseTimes = [
   ['config/changelog-v1272.ts', '2026-09-17 01:35 ICT'],
   ['config/changelog-v1273.ts', '2026-09-18 03:42 ICT'],
   ['config/changelog-v1274.ts', '2026-09-19 16:02 ICT'],
+  ['config/changelog-v1275.ts', '2026-09-19 19:51 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1274'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1275'])
 
 console.log('✓ Critical regression tests passed')
