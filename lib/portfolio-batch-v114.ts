@@ -16,6 +16,9 @@ export async function analyzePortfolioBatch(
   if (outcome.error || Object.keys(outcome.results).length === 0) return outcome
 
   let remainingCash = Math.max(0, cashBalance)
+  const investablePortfolioValue = totalPortfolioValue === null
+    ? null
+    : Math.max(0, totalPortfolioValue) + Math.max(0, cashBalance)
   const sizedResults = { ...outcome.results }
 
   for (const input of inputs as PortfolioBatchHoldingInput[]) {
@@ -31,6 +34,7 @@ export async function analyzePortfolioBatch(
       totalPortfolioValue,
       input.earnings,
       remainingCash,
+      investablePortfolioValue,
     )
     sizedResults[symbol] = sized.result
     remainingCash = Math.max(0, remainingCash - sized.buyCashUsed)

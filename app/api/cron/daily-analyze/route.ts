@@ -6,7 +6,8 @@ import { getTechnicalIndicators } from '@/lib/indicators'
 import { getMultipleQuotesWithMetrics, getUpcomingEarnings } from '@/lib/finnhub'
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { HoldingWithPrice, NewsItem } from '@/types'
-import { applyRecentTradeExecutionGuard, RECENT_TRADE_GUARD_MS, type RecentSyncedTrade } from '@/lib/analysis-execution-guard'
+import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
+import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -160,6 +161,10 @@ export async function GET(request: NextRequest) {
         ? null
         : holdings.reduce((sum, h) => sum + (h.market_value ?? 0), 0)
 
+      const investablePortfolioValue = totalPortfolioValue === null
+        ? null
+        : totalPortfolioValue + Math.max(0, buyingPower)
+
       const holdingsToAnalyze = holdings.filter(h => !alreadyAnalyzedSymbols.has(h.symbol))
       skipped = holdings.length - holdingsToAnalyze.length
       if (!holdingsToAnalyze.length) {
@@ -168,32 +173,12 @@ export async function GET(request: NextRequest) {
       }
 
       const analyzedSymbols = holdingsToAnalyze.map(h => h.symbol)
-      const recentTradeCutoff = new Date(Date.now() - RECENT_TRADE_GUARD_MS).toISOString()
-      let recentTradeQuery = supabase
-        .from('portfolio_transactions')
-        .select('symbol, transaction_type, shares, trade_date, created_at')
-        .eq('user_id', userId)
-        .eq('sync_portfolio', true)
-        .in('transaction_type', ['BUY', 'SELL'])
-        .in('symbol', analyzedSymbols)
-        .gte('created_at', recentTradeCutoff)
-        .order('created_at', { ascending: false })
-      if (portfolioId) recentTradeQuery = recentTradeQuery.eq('portfolio_id', portfolioId)
-
-      const { data: recentTradeRows, error: recentTradeError } = await recentTradeQuery
-      if (recentTradeError) throw new Error(`load recent synced trades: ${recentTradeError.message}`)
-
-      const recentTradeBySymbol = new Map<string, RecentSyncedTrade>()
-      for (const row of recentTradeRows ?? []) {
-        const symbol = String(row.symbol ?? '').toUpperCase()
-        if (!symbol || recentTradeBySymbol.has(symbol)) continue
-        recentTradeBySymbol.set(symbol, {
-          transaction_type: String(row.transaction_type).toUpperCase() as 'BUY' | 'SELL',
-          shares: row.shares == null ? null : Number(row.shares),
-          trade_date: String(row.trade_date),
-          created_at: String(row.created_at),
-        })
-      }
+      const recentTradeBySymbol = await loadLatestSyncedTrades(supabase, {
+        userId,
+        portfolioId,
+        symbols: analyzedSymbols,
+        encryptionKey: process.env.SUPABASE_ENCRYPTION_KEY!,
+      })
 
       const newsBySymbol = await fetchNewsForSymbols(analyzedSymbols)
       const batchInputs: PortfolioBatchHoldingInput[] = await Promise.all(
@@ -211,6 +196,7 @@ export async function GET(request: NextRequest) {
         })
       )
 
+      const technicalBySymbol = new Map(batchInputs.map(input => [input.holding.symbol, input.technical]))
       const batch = await analyzePortfolioBatch(batchInputs, buyingPower, totalPortfolioValue)
       if (batch.error) {
         if (batch.error === 'RATE_LIMIT') rateLimited += holdingsToAnalyze.length
@@ -226,9 +212,23 @@ export async function GET(request: NextRequest) {
             continue
           }
 
+          const technical = technicalBySymbol.get(holding.symbol)
           const result = applyRecentTradeExecutionGuard(
             rawResult,
-            recentTradeBySymbol.get(holding.symbol) ?? null
+            recentTradeBySymbol.get(holding.symbol) ?? null,
+            technical
+              ? {
+                  currentPrice: holding.current_price,
+                  currentMarketValue: holding.market_value,
+                  investablePortfolioValue,
+                  atr14: technical.atr14,
+                  completedSupport: technical.scannerSupport,
+                  completedResistance: technical.scannerResistance,
+                  completedVolumeRatio: technical.scannerVolumeRatio,
+                  trend: technical.trend,
+                  macdHistogram: technical.macd.histogram,
+                }
+              : null
           )
 
           const row = {

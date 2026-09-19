@@ -5,9 +5,11 @@ const v1274: ChangelogEntry = {
   version: 'v1.27.4',
   date: '2026-09-19 16:02 ICT',
   changes: [
-    'Daily Execution Guard Parity: Daily Portfolio Analysis อ่าน Auto Sync BUY/SELL ล่าสุดแยกตาม symbol และใช้ Execution Guard 24 ชั่วโมงตัวเดียวกับ Manual AI ก่อนบันทึกผล เพื่อไม่ให้รอบ Daily สั่งทำไม้เดิมซ้ำหลังพอร์ตเพิ่งเปลี่ยน',
-    'Guard Semantics: BUY ล่าสุด + AI BUY จะพักเป็น HOLD; SELL ล่าสุด + AI SELL_PARTIAL จะพักเป็น HOLD; SELL_ALL ยังคงไม่ถูกบล็อก และเมื่อพ้น 24 ชั่วโมงคำแนะนำเดิมจะกลับมาทำงานตามปกติ',
-    'Shared Guard + Regression Coverage: แยก logic เป็น helper กลางที่ Manual/Daily ใช้ร่วมกัน พร้อม runtime regression ครอบคลุม BUY, SELL_PARTIAL, SELL_ALL และกรณีเกิน 24 ชั่วโมง เพื่อป้องกันสองเส้นทาง drift กันอีก',
+    'Position-Aware Scale-in Guard: Manual AI และ Daily Portfolio Analysis ใช้ policy เดียวกัน — เวลาครบ 24 ชั่วโมงเพียงอย่างเดียวไม่ปลดล็อก BUY ซ้ำอีกต่อไป ต้องมี New Trigger ที่ตรวจจากข้อมูลจริงหลัง Auto Sync BUY ล่าสุด',
+    'Deterministic New Trigger: BUY ซ้ำผ่านได้เมื่อราคาขยับจากราคาซื้อจริงมากพอและถึง prior support ใหม่ หรือเกิด breakout/ขาขึ้นต่อเนื่องที่มี Volume + trend/MACD confirmation; มี anti-loop 4 ชั่วโมงและ SELL_ALL ยังคง bypass guard',
+    'Portfolio Capacity: deterministic sizing คิด concentration จากมูลค่าหุ้น + เงินใน Dime และใช้เพดาน 30% ให้สอดคล้องกับ Risk heuristic เดิม; position 20%+ อยู่ในโซนเฝ้าระวังและ sizing จะลดขนาดตามกฎเดิม',
+    'Audit/Cache Safety: Guard อ่านราคาซื้อจริงจาก Auto Sync Transaction Ledger, Manual/Daily ใช้ shared loader และ Manual cache เก็บ raw AI result เพื่อ re-evaluate guard ทุกครั้งแทนการ cache HOLD ที่เกิดจากเงื่อนไขชั่วคราว',
+    'Regression Coverage: ครอบคลุมกรณีแบบ SOFI ที่พ้น 24 ชั่วโมงแต่ไม่มีข้อมูลใหม่ = HOLD, support ใหม่ = BUY, breakout/momentum ใหม่ = BUY, anti-loop <4h = HOLD, concentration 30% = HOLD, repeated SELL_PARTIAL 24h และ SELL_ALL bypass',
   ],
 }
 

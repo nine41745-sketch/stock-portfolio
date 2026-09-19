@@ -1,4 +1,5 @@
 import { DetailedAnalysisResult, EarningsInfo, HoldingWithPrice, TechnicalSnapshot } from '@/types'
+import { MAX_POSITION_WEIGHT_PCT } from '@/lib/analysis-execution-guard'
 
 const PARTIAL_LEVELS = [5, 10, 15, 20, 25, 33, 50] as const
 
@@ -127,6 +128,7 @@ export function applyPositionSizing(
   totalPortfolioValue: number | null,
   earnings: EarningsInfo | null = null,
   availableBuyCash = cashBalance,
+  investablePortfolioValue: number | null = totalPortfolioValue,
 ): PositionSizingOutcome {
   if (analysis.error) return { result: analysis, buyCashUsed: 0 }
 
@@ -135,6 +137,7 @@ export function applyPositionSizing(
   const recommendation = { ...analysis.recommendation }
   let finalAction: Action = action
   let buyCashUsed = 0
+  const sizingPortfolioValue = investablePortfolioValue ?? totalPortfolioValue
 
   if (action === 'BUY') {
     if (shares <= 0) {
@@ -143,12 +146,19 @@ export function applyPositionSizing(
         recommendation.buyConditions,
       )
     } else {
-      const desiredPct = chooseBuyPct(holding, technical, totalPortfolioValue)
+      const desiredPct = chooseBuyPct(holding, technical, sizingPortfolioValue)
+      const positionCapacityCash =
+        sizingPortfolioValue !== null &&
+        sizingPortfolioValue > 0 &&
+        holding.market_value !== null
+          ? Math.max(0, (MAX_POSITION_WEIGHT_PCT / 100) * sizingPortfolioValue - holding.market_value)
+          : Number.POSITIVE_INFINITY
+      const effectiveBuyCash = Math.min(Math.max(0, availableBuyCash), positionCapacityCash)
       const fitted = fitBuyPctToCash(
         desiredPct,
         shares,
         holding.current_price,
-        Math.max(0, availableBuyCash),
+        effectiveBuyCash,
       )
 
       if (fitted.pct === 0 && holding.current_price != null && holding.current_price > 0) {
@@ -157,7 +167,12 @@ export function applyPositionSizing(
         recommendation.action = 'HOLD'
         recommendation.buyConditions = ''
         recommendation.sellConditions = ''
-        const cashNote = `ระบบปรับ BUY เป็น HOLD: เงินสดที่พร้อมใช้ $${Math.max(0, availableBuyCash).toFixed(2)} ไม่พอช้อนขั้นต่ำ 5% ของจำนวนหุ้นที่ถือ`
+        const minimumBuyCash = holding.current_price * shares * 0.05
+        const capacityBlocked = Number.isFinite(positionCapacityCash)
+          && positionCapacityCash + 0.000001 < minimumBuyCash
+        const cashNote = capacityBlocked
+          ? `ระบบปรับ BUY เป็น HOLD: capacity ก่อนชนเพดาน concentration ${MAX_POSITION_WEIGHT_PCT}% ไม่พอสำหรับไม้ขั้นต่ำ 5% ของจำนวนหุ้นที่ถือ`
+          : `ระบบปรับ BUY เป็น HOLD: เงินใน Dime ที่พร้อมใช้ $${Math.max(0, availableBuyCash).toFixed(2)} ไม่พอช้อนขั้นต่ำ 5% ของจำนวนหุ้นที่ถือ`
         analysis = {
           ...analysis,
           risksAndOpportunities: {
@@ -179,7 +194,7 @@ export function applyPositionSizing(
       }
     }
   } else if (action === 'SELL_PARTIAL') {
-    const pct = chooseSellPartialPct(holding, technical, totalPortfolioValue)
+    const pct = chooseSellPartialPct(holding, technical, sizingPortfolioValue)
     const sharesToSell = shares * pct / 100
     const label = (holding.pnl_pct ?? 0) > 0 ? 'ขายทำกำไร' : 'ลดพอร์ต'
     recommendation.sellConditions = prependPlan(

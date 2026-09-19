@@ -11,6 +11,7 @@ import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { InputValidationError, parseSymbol } from '@/lib/portfolio-validation'
 import { HoldingWithPrice, DetailedAnalysisResult, NewsItem } from '@/types'
 import { applyRecentTradeExecutionGuard, recentTradeFingerprint, type RecentSyncedTrade } from '@/lib/analysis-execution-guard'
+import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
 
 interface RawNewsItem {
   symbol: string
@@ -90,6 +91,7 @@ function buildAnalysisFingerprint(input: {
     t.macd.macd, t.macd.signal, t.macd.histogram,
     t.bollinger.upper, t.bollinger.middle, t.bollinger.lower,
     t.trend, t.lastClose, t.support, t.resistance, t.volumeRatio,
+    t.atr14, t.scannerSupport, t.scannerResistance, t.scannerVolumeRatio,
   ].join(',')
   const earningsFp = input.earnings
     ? `${input.earnings.date}|${input.earnings.daysUntil}|${input.earnings.hour}`
@@ -165,21 +167,17 @@ export async function POST(request: NextRequest) {
       ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
       : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
 
-    let recentTradeQuery = serviceClient
-      .from('portfolio_transactions')
-      .select('transaction_type, shares, trade_date, created_at')
-      .eq('user_id', user.id)
-      .eq('symbol', symbol)
-      .eq('sync_portfolio', true)
-      .in('transaction_type', ['BUY', 'SELL'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-    if (portfolio.mode === 'portfolio') recentTradeQuery = recentTradeQuery.eq('portfolio_id', portfolio.portfolioId)
+    const recentTradesPromise = loadLatestSyncedTrades(serviceClient, {
+      userId: user.id,
+      portfolioId: portfolio.mode === 'portfolio' ? portfolio.portfolioId : null,
+      symbols: [symbol],
+      encryptionKey: process.env.SUPABASE_ENCRYPTION_KEY!,
+    })
 
     const [
       { data: allHoldings, error: holdErr },
       { data: settings, error: settingsErr },
-      { data: recentTradeRows, error: recentTradeErr },
+      recentTradeBySymbol,
     ] = await Promise.all([
       serviceClient.rpc('get_decrypted_holdings', holdingArgs),
       supabase
@@ -189,7 +187,7 @@ export async function POST(request: NextRequest) {
           ? { user_id: user.id, portfolio_id: portfolio.portfolioId }
           : { user_id: user.id })
         .maybeSingle(),
-      recentTradeQuery,
+      recentTradesPromise,
     ])
 
     if (holdErr) {
@@ -200,19 +198,8 @@ export async function POST(request: NextRequest) {
       console.error('[analyze] user_settings lookup failed:', settingsErr)
       return NextResponse.json({ error: 'โหลดข้อมูลเงินใน Dime ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง' }, { status: 503 })
     }
-    if (recentTradeErr) {
-      console.warn('[analyze] recent synced trade lookup failed:', recentTradeErr.message)
-    }
 
-    const recentTradeRow = recentTradeErr ? null : recentTradeRows?.[0]
-    const recentTrade: RecentSyncedTrade | null = recentTradeRow
-      ? {
-          transaction_type: String(recentTradeRow.transaction_type).toUpperCase() as 'BUY' | 'SELL',
-          shares: recentTradeRow.shares == null ? null : Number(recentTradeRow.shares),
-          trade_date: String(recentTradeRow.trade_date),
-          created_at: String(recentTradeRow.created_at),
-        }
-      : null
+    const recentTrade: RecentSyncedTrade | null = recentTradeBySymbol.get(symbol) ?? null
 
     const own = (allHoldings ?? []).find((h: { symbol: string }) => h.symbol === symbol) as
       { id: string; symbol: string; shares: number; cost_basis: number | null; notes: string | null; created_at: string; updated_at: string } | undefined
@@ -271,6 +258,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const investablePortfolioValue = totalPortfolioValue === null
+      ? null
+      : totalPortfolioValue + Math.max(0, buyingPower)
+
+    const executionGuardContext = {
+      currentPrice: cp,
+      currentMarketValue: marketValue,
+      investablePortfolioValue,
+      atr14: technical.atr14,
+      completedSupport: technical.scannerSupport,
+      completedResistance: technical.scannerResistance,
+      completedVolumeRatio: technical.scannerVolumeRatio,
+      trend: technical.trend,
+      macdHistogram: technical.macd.histogram,
+    }
+
     const otherHoldingsForPrompt = summarizeOtherHoldings(
       symbol,
       ((allHoldings ?? []) as Array<{ symbol: string; shares: number }>)
@@ -303,7 +306,7 @@ export async function POST(request: NextRequest) {
     const cacheKey = `analyze:${user.id}:${portfolioCacheScope}:${symbol}:${fingerprint}`
     const cached = cacheGet<DetailedAnalysisResult>(cacheKey)
     if (cached) {
-      const guardedCached = applyRecentTradeExecutionGuard(cached, recentTrade)
+      const guardedCached = applyRecentTradeExecutionGuard(cached, recentTrade, executionGuardContext)
       await saveManualLatest(guardedCached)
       return NextResponse.json(guardedCached)
     }
@@ -324,10 +327,14 @@ export async function POST(request: NextRequest) {
       earnings,
       otherHoldingsForPrompt
     )
-    const result = applyRecentTradeExecutionGuard(rawResult, recentTrade)
+    if (!rawResult.error && rawResult.technicalSummary && rawResult.summary) {
+      // Cache raw AI output; position/time-aware guard must be re-evaluated on every request.
+      cacheSet(cacheKey, rawResult, ANALYZE_CACHE_TTL_SEC)
+    }
+
+    const result = applyRecentTradeExecutionGuard(rawResult, recentTrade, executionGuardContext)
 
     if (!result.error && result.technicalSummary && result.summary) {
-      cacheSet(cacheKey, result, ANALYZE_CACHE_TTL_SEC)
       await saveManualLatest(result)
     }
 
