@@ -1,6 +1,6 @@
 {
   "name": "stock-portfolio",
-  "version": "1.27.4",
+  "version": "1.27.5",
   "private": true,
   "engines": {
     "node": "22.x"
@@ -15,7 +15,7 @@
     "start": "next start"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.5.1",
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.45.4",
     "next": "16.3.4",
     "react": "19.2.8",
