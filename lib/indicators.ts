@@ -8,7 +8,7 @@
 // session ให้อัตโนมัติ ลดความเสี่ยงโดน anti-scraping block บน Vercel serverless
 // เทียบกับการยิง fetch ตรงๆ ไปที่ query1.finance.yahoo.com
 // ============================================================
-import { EMA, RSI, MACD, BollingerBands } from 'technicalindicators'
+import { EMA, RSI, MACD, BollingerBands, ATR } from 'technicalindicators'
 import YahooFinance from 'yahoo-finance2'
 
 const yahooFinance = new YahooFinance()
@@ -25,6 +25,7 @@ export interface TechnicalIndicators {
   ema100: number | null
   ema200: number | null
   rsi14: number | null
+  atr14: number | null
   weeklyRsi14: number | null
   macd: { macd: number | null; signal: number | null; histogram: number | null }
   bollinger: { upper: number | null; middle: number | null; lower: number | null }
@@ -49,6 +50,7 @@ export interface TechnicalIndicators {
 const EMPTY_INDICATORS: TechnicalIndicators = {
   ema50: null, ema100: null, ema200: null,
   rsi14: null,
+  atr14: null,
   weeklyRsi14: null,
   macd: { macd: null, signal: null, histogram: null },
   bollinger: { upper: null, middle: null, lower: null },
@@ -287,6 +289,14 @@ export async function getTechnicalIndicators(symbol: string): Promise<TechnicalI
   const ema100arr = closes.length >= 100 ? EMA.calculate({ period: 100, values: closes }) : []
   const ema200arr = closes.length >= 200 ? EMA.calculate({ period: 200, values: closes }) : []
   const rsiArr    = closes.length >= 15  ? RSI.calculate({ period: 14, values: closes })  : []
+  const atrArr    = bars.length >= 15
+    ? ATR.calculate({
+        period: 14,
+        high: bars.map(b => b.high),
+        low: bars.map(b => b.low),
+        close: closes,
+      })
+    : []
 
   const macdArr = closes.length >= 35
     ? MACD.calculate({
@@ -316,6 +326,7 @@ export async function getTechnicalIndicators(symbol: string): Promise<TechnicalI
     ema100: round2(last(ema100arr)),
     ema200,
     rsi14: round2(last(rsiArr)),
+    atr14: round2(last(atrArr)),
     weeklyRsi14,
     macd: {
       macd: round2(macdLast?.MACD ?? null),

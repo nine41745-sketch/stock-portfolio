@@ -6,6 +6,8 @@ import { getTechnicalIndicators } from '@/lib/indicators'
 import { getMultipleQuotesWithMetrics, getUpcomingEarnings } from '@/lib/finnhub'
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { HoldingWithPrice, NewsItem } from '@/types'
+import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
+import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -159,6 +161,10 @@ export async function GET(request: NextRequest) {
         ? null
         : holdings.reduce((sum, h) => sum + (h.market_value ?? 0), 0)
 
+      const investablePortfolioValue = totalPortfolioValue === null
+        ? null
+        : totalPortfolioValue + Math.max(0, buyingPower)
+
       const holdingsToAnalyze = holdings.filter(h => !alreadyAnalyzedSymbols.has(h.symbol))
       skipped = holdings.length - holdingsToAnalyze.length
       if (!holdingsToAnalyze.length) {
@@ -166,7 +172,15 @@ export async function GET(request: NextRequest) {
         continue
       }
 
-      const newsBySymbol = await fetchNewsForSymbols(holdingsToAnalyze.map(h => h.symbol))
+      const analyzedSymbols = holdingsToAnalyze.map(h => h.symbol)
+      const recentTradeBySymbol = await loadLatestSyncedTrades(supabase, {
+        userId,
+        portfolioId,
+        symbols: analyzedSymbols,
+        encryptionKey: process.env.SUPABASE_ENCRYPTION_KEY!,
+      })
+
+      const newsBySymbol = await fetchNewsForSymbols(analyzedSymbols)
       const batchInputs: PortfolioBatchHoldingInput[] = await Promise.all(
         holdingsToAnalyze.map(async holding => {
           const [technical, earnings] = await Promise.all([
@@ -182,6 +196,7 @@ export async function GET(request: NextRequest) {
         })
       )
 
+      const technicalBySymbol = new Map(batchInputs.map(input => [input.holding.symbol, input.technical]))
       const batch = await analyzePortfolioBatch(batchInputs, buyingPower, totalPortfolioValue)
       if (batch.error) {
         if (batch.error === 'RATE_LIMIT') rateLimited += holdingsToAnalyze.length
@@ -190,12 +205,31 @@ export async function GET(request: NextRequest) {
         console.error(`[cron] portfolio batch ${userId}/${portfolioId ?? 'legacy'} failed: ${batch.error}`)
       } else {
         for (const holding of holdingsToAnalyze) {
-          const result = batch.results[holding.symbol]
-          if (!result) {
+          const rawResult = batch.results[holding.symbol]
+          if (!rawResult) {
             failed++
             errors.push(`${holding.symbol}: missing/invalid item in portfolio batch response`)
             continue
           }
+
+          const technical = technicalBySymbol.get(holding.symbol)
+          const result = applyRecentTradeExecutionGuard(
+            rawResult,
+            recentTradeBySymbol.get(holding.symbol) ?? null,
+            technical
+              ? {
+                  currentPrice: holding.current_price,
+                  currentMarketValue: holding.market_value,
+                  investablePortfolioValue,
+                  atr14: technical.atr14 ?? null,
+                  completedSupport: technical.scannerSupport ?? null,
+                  completedResistance: technical.scannerResistance ?? null,
+                  completedVolumeRatio: technical.scannerVolumeRatio ?? null,
+                  trend: technical.trend,
+                  macdHistogram: technical.macd.histogram,
+                }
+              : null
+          )
 
           const row = {
             user_id: userId,

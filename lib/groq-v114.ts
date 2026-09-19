@@ -11,6 +11,9 @@ export async function analyzeHoldingDetailed(
 ) {
   const result = await analyzeHoldingDetailedBase(...args)
   const [holding, technical, cashBalance = 0, totalPortfolioValue = 0, , earnings = null] = args
+  const investablePortfolioValue = totalPortfolioValue === null
+    ? null
+    : Math.max(0, totalPortfolioValue) + Math.max(0, cashBalance)
 
   return applyPositionSizing(
     result,
@@ -20,5 +23,6 @@ export async function analyzeHoldingDetailed(
     totalPortfolioValue,
     earnings,
     cashBalance,
+    investablePortfolioValue,
   ).result
 }

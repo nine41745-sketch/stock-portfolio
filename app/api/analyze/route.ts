@@ -10,6 +10,8 @@ import { ANALYZE_CACHE_TTL_SEC } from '@/lib/constants'
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { InputValidationError, parseSymbol } from '@/lib/portfolio-validation'
 import { HoldingWithPrice, DetailedAnalysisResult, NewsItem } from '@/types'
+import { applyRecentTradeExecutionGuard, recentTradeFingerprint, type RecentSyncedTrade } from '@/lib/analysis-execution-guard'
+import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
 
 interface RawNewsItem {
   symbol: string
@@ -18,15 +20,6 @@ interface RawNewsItem {
   datetime: number
   url: string
 }
-
-interface RecentSyncedTrade {
-  transaction_type: 'BUY' | 'SELL'
-  shares: number | null
-  trade_date: string
-  created_at: string
-}
-
-const RECENT_TRADE_GUARD_MS = 24 * 60 * 60 * 1000
 
 async function fetchRawNewsForSymbol(symbol: string): Promise<RawNewsItem[]> {
   const today = new Date()
@@ -75,54 +68,6 @@ async function getOtherSymbolPricesChunked(symbols: string[]): Promise<Record<st
   return result
 }
 
-function recentTradeFingerprint(trade: RecentSyncedTrade | null): string {
-  if (!trade) return 'none'
-  return [trade.transaction_type, trade.shares ?? 'null', trade.trade_date, trade.created_at].join('|')
-}
-
-function isRecentTradeGuardActive(trade: RecentSyncedTrade | null): boolean {
-  if (!trade) return false
-  const tradeMs = Date.parse(trade.created_at)
-  if (!Number.isFinite(tradeMs)) return false
-  const ageMs = Date.now() - tradeMs
-  return ageMs >= -5 * 60 * 1000 && ageMs <= RECENT_TRADE_GUARD_MS
-}
-
-function applyRecentTradeExecutionGuard(
-  result: DetailedAnalysisResult,
-  trade: RecentSyncedTrade | null
-): DetailedAnalysisResult {
-  if (result.error || !isRecentTradeGuardActive(trade) || !trade) return result
-
-  const action = result.recommendation.action
-  const blocksRepeatedBuy = trade.transaction_type === 'BUY' && action === 'BUY'
-  const blocksRepeatedPartialSell = trade.transaction_type === 'SELL' && action === 'SELL_PARTIAL'
-  if (!blocksRepeatedBuy && !blocksRepeatedPartialSell) return result
-
-  const sharesText = trade.shares == null
-    ? ''
-    : ` ${Number(trade.shares).toLocaleString('en-US', { maximumFractionDigits: 6 })} หุ้น`
-  const executedSide = trade.transaction_type === 'BUY' ? 'ซื้อ' : 'ขาย'
-  const repeatedAction = blocksRepeatedBuy ? 'BUY' : 'SELL_PARTIAL'
-  const guardNote = `Execution Guard: เพิ่ง${executedSide}${sharesText}ผ่าน Auto Sync ภายใน 24 ชั่วโมง จึงพักคำแนะนำ ${repeatedAction} ซ้ำในรอบนี้ เพื่อไม่ให้ผลวิเคราะห์หลังพอร์ตเปลี่ยนสั่งทำไม้เดิมซ้ำทันที`
-  const currentCaution = result.risksAndOpportunities?.caution ?? ''
-
-  return {
-    ...result,
-    recommendation: {
-      ...result.recommendation,
-      action: 'HOLD',
-      buyConditions: blocksRepeatedBuy ? guardNote : result.recommendation.buyConditions,
-      sellConditions: blocksRepeatedPartialSell ? guardNote : result.recommendation.sellConditions,
-    },
-    summary: `${guardNote}\n${result.summary}`,
-    risksAndOpportunities: {
-      caution: [guardNote, currentCaution].filter(Boolean).join(' | '),
-      opportunity: result.risksAndOpportunities?.opportunity ?? '',
-    },
-  }
-}
-
 function buildAnalysisFingerprint(input: {
   symbol: string
   shares: number
@@ -146,6 +91,7 @@ function buildAnalysisFingerprint(input: {
     t.macd.macd, t.macd.signal, t.macd.histogram,
     t.bollinger.upper, t.bollinger.middle, t.bollinger.lower,
     t.trend, t.lastClose, t.support, t.resistance, t.volumeRatio,
+    t.atr14, t.scannerSupport, t.scannerResistance, t.scannerVolumeRatio,
   ].join(',')
   const earningsFp = input.earnings
     ? `${input.earnings.date}|${input.earnings.daysUntil}|${input.earnings.hour}`
@@ -221,21 +167,17 @@ export async function POST(request: NextRequest) {
       ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
       : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
 
-    let recentTradeQuery = serviceClient
-      .from('portfolio_transactions')
-      .select('transaction_type, shares, trade_date, created_at')
-      .eq('user_id', user.id)
-      .eq('symbol', symbol)
-      .eq('sync_portfolio', true)
-      .in('transaction_type', ['BUY', 'SELL'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-    if (portfolio.mode === 'portfolio') recentTradeQuery = recentTradeQuery.eq('portfolio_id', portfolio.portfolioId)
+    const recentTradesPromise = loadLatestSyncedTrades(serviceClient, {
+      userId: user.id,
+      portfolioId: portfolio.mode === 'portfolio' ? portfolio.portfolioId : null,
+      symbols: [symbol],
+      encryptionKey: process.env.SUPABASE_ENCRYPTION_KEY!,
+    })
 
     const [
       { data: allHoldings, error: holdErr },
       { data: settings, error: settingsErr },
-      { data: recentTradeRows, error: recentTradeErr },
+      recentTradeBySymbol,
     ] = await Promise.all([
       serviceClient.rpc('get_decrypted_holdings', holdingArgs),
       supabase
@@ -245,7 +187,7 @@ export async function POST(request: NextRequest) {
           ? { user_id: user.id, portfolio_id: portfolio.portfolioId }
           : { user_id: user.id })
         .maybeSingle(),
-      recentTradeQuery,
+      recentTradesPromise,
     ])
 
     if (holdErr) {
@@ -256,19 +198,8 @@ export async function POST(request: NextRequest) {
       console.error('[analyze] user_settings lookup failed:', settingsErr)
       return NextResponse.json({ error: 'โหลดข้อมูลเงินใน Dime ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง' }, { status: 503 })
     }
-    if (recentTradeErr) {
-      console.warn('[analyze] recent synced trade lookup failed:', recentTradeErr.message)
-    }
 
-    const recentTradeRow = recentTradeErr ? null : recentTradeRows?.[0]
-    const recentTrade: RecentSyncedTrade | null = recentTradeRow
-      ? {
-          transaction_type: String(recentTradeRow.transaction_type).toUpperCase() as 'BUY' | 'SELL',
-          shares: recentTradeRow.shares == null ? null : Number(recentTradeRow.shares),
-          trade_date: String(recentTradeRow.trade_date),
-          created_at: String(recentTradeRow.created_at),
-        }
-      : null
+    const recentTrade: RecentSyncedTrade | null = recentTradeBySymbol.get(symbol) ?? null
 
     const own = (allHoldings ?? []).find((h: { symbol: string }) => h.symbol === symbol) as
       { id: string; symbol: string; shares: number; cost_basis: number | null; notes: string | null; created_at: string; updated_at: string } | undefined
@@ -327,6 +258,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const investablePortfolioValue = totalPortfolioValue === null
+      ? null
+      : totalPortfolioValue + Math.max(0, buyingPower)
+
+    const executionGuardContext = {
+      currentPrice: cp,
+      currentMarketValue: marketValue,
+      investablePortfolioValue,
+      atr14: technical.atr14,
+      completedSupport: technical.scannerSupport,
+      completedResistance: technical.scannerResistance,
+      completedVolumeRatio: technical.scannerVolumeRatio,
+      trend: technical.trend,
+      macdHistogram: technical.macd.histogram,
+    }
+
     const otherHoldingsForPrompt = summarizeOtherHoldings(
       symbol,
       ((allHoldings ?? []) as Array<{ symbol: string; shares: number }>)
@@ -359,7 +306,7 @@ export async function POST(request: NextRequest) {
     const cacheKey = `analyze:${user.id}:${portfolioCacheScope}:${symbol}:${fingerprint}`
     const cached = cacheGet<DetailedAnalysisResult>(cacheKey)
     if (cached) {
-      const guardedCached = applyRecentTradeExecutionGuard(cached, recentTrade)
+      const guardedCached = applyRecentTradeExecutionGuard(cached, recentTrade, executionGuardContext)
       await saveManualLatest(guardedCached)
       return NextResponse.json(guardedCached)
     }
@@ -380,10 +327,14 @@ export async function POST(request: NextRequest) {
       earnings,
       otherHoldingsForPrompt
     )
-    const result = applyRecentTradeExecutionGuard(rawResult, recentTrade)
+    if (!rawResult.error && rawResult.technicalSummary && rawResult.summary) {
+      // Cache raw AI output; position/time-aware guard must be re-evaluated on every request.
+      cacheSet(cacheKey, rawResult, ANALYZE_CACHE_TTL_SEC)
+    }
+
+    const result = applyRecentTradeExecutionGuard(rawResult, recentTrade, executionGuardContext)
 
     if (!result.error && result.technicalSummary && result.summary) {
-      cacheSet(cacheKey, result, ANALYZE_CACHE_TTL_SEC)
       await saveManualLatest(result)
     }
 
