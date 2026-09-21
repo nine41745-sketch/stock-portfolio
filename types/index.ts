@@ -123,6 +123,11 @@ export interface DetailedAnalysisResult {
   thesisBroken?: boolean
   sellAllEvidenceTypes?: string[]
   sellAllEvidence?: string[]
+  analysisMode?: 'DAILY_POST_CLOSE' | 'PREMARKET_TRIGGER' | 'MANUAL'
+  priceSource?: 'Finnhub' | 'Yahoo Finance' | 'Yahoo Finance Pre-Market'
+  triggerReasons?: string[]
+  baselineAction?: 'BUY' | 'HOLD' | 'SELL_PARTIAL' | 'SELL_ALL'
+  baselineAnalysedAt?: string
 }
 
 export interface HoldingFormData {

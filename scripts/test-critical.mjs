@@ -82,7 +82,9 @@ assert.equal(
 )
 
 const vercel = JSON.parse(fs.readFileSync('vercel.json', 'utf8'))
-assert.equal(vercel.crons?.[0]?.schedule, '15 1 * * *', 'Daily cron schedule must remain 01:15 UTC (~08:15 ICT)')
+assert.ok(vercel.crons?.some(c => c.path === '/api/cron/daily-analyze' && c.schedule === '15 1 * * 2-6'), 'Post-close cron must remain ~08:15 ICT for US Mon-Fri sessions')
+assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 12 * * 1-5'), 'Pre-market cron must include EDT candidate 12:45 UTC')
+assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 13 * * 1-5'), 'Pre-market cron must include EST candidate 13:45 UTC')
 
 for (const route of [
   'app/api/analyze/route.ts',
@@ -93,10 +95,38 @@ for (const route of [
   assert.match(source, /@\/lib\/news-relevance/, `${route} must use the shared news relevance helper`)
 }
 
+const marketStatus = await importTsModule('lib/market-status.ts')
+const edtPreOpen = marketStatus.getUsMarketClock(new Date('2026-09-21T12:45:00Z'))
+assert.equal(edtPreOpen.hour, 8)
+assert.equal(edtPreOpen.minute, 45)
+assert.equal(edtPreOpen.isTradingDay, true)
+const estPreOpen = marketStatus.getUsMarketClock(new Date('2026-12-07T13:45:00Z'))
+assert.equal(estPreOpen.hour, 8)
+assert.equal(estPreOpen.minute, 45)
+assert.equal(estPreOpen.isTradingDay, true)
+const thanksgiving = marketStatus.getUsMarketClock(new Date('2026-11-26T13:45:00Z'))
+assert.equal(thanksgiving.isTradingDay, false)
+assert.equal(thanksgiving.isHoliday, true)
+
+const premarketTrigger = await importTsModule('lib/premarket-trigger.ts')
+assert.ok(premarketTrigger.evaluatePremarketTriggers({ price: 102.1, changePct: 2.1, support: 95, resistance: 110, earningsDaysUntil: 10, newRelevantNewsCount: 0 }).length > 0)
+assert.ok(premarketTrigger.evaluatePremarketTriggers({ price: 100.5, changePct: 0.5, support: 100, resistance: 110, earningsDaysUntil: 10, newRelevantNewsCount: 0 }).some(x => x.includes('แนวรับ')))
+assert.equal(premarketTrigger.evaluatePremarketTriggers({ price: 105, changePct: 0.5, support: 95, resistance: 115, earningsDaysUntil: 10, newRelevantNewsCount: 0 }).length, 0)
+
 const cronSource = fs.readFileSync('app/api/cron/daily-analyze/route.ts', 'utf8')
 assert.match(cronSource, /const cronSecret = process\.env\.CRON_SECRET/, 'Cron must read CRON_SECRET into an explicit guard')
 assert.match(cronSource, /if \(!cronSecret\)/, 'Cron must fail closed when CRON_SECRET is missing')
 assert.match(cronSource, /settingsResponse\.error/, 'Cron must fail instead of treating a settings DB error as zero cash')
+assert.match(cronSource, /getUsMarketClock/, 'Post-close cron must respect US trading-day calendar')
+
+assert.equal(fs.existsSync('app/api/cron/premarket-analyze/route.ts'), true, 'Pre-market trigger cron route is required')
+const premarketCronSource = fs.readFileSync('app/api/cron/premarket-analyze/route.ts', 'utf8')
+assert.match(premarketCronSource, /getPreMarketSnapshots/, 'Pre-market cron must use explicit pre-market market data')
+assert.match(premarketCronSource, /evaluatePremarketTriggers/, 'Pre-market cron must gate Groq behind deterministic triggers')
+assert.match(premarketCronSource, /save_latest_manual_analysis/, 'Pre-market update must write latest analysis without creating Track Record rows')
+assert.match(premarketCronSource, /analysisMode:\s*'PREMARKET_TRIGGER'/, 'Pre-market results must be visibly tagged')
+assert.match(premarketCronSource, /marketClock\.hour !== 8/, 'Only the active DST pre-market candidate may execute')
+assert.match(premarketCronSource, /getUpcomingEarningsForSymbols/, 'Pre-market trigger should batch earnings calendar access')
 
 const analyzeSource = fs.readFileSync('app/api/analyze/route.ts', 'utf8')
 assert.match(analyzeSource, /if \(settingsErr\)/, 'Manual Analyze must handle user-settings query failure')
@@ -176,12 +206,12 @@ assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic 
 assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
 assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
 
-// v1.27.5 release metadata must stay synchronized across changelog/package/lockfile.
+// v1.28.0 release metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.27.5', 'Package version must be finalized as v1.27.5 for this release')
+assert.equal(packageJson.version, '1.28.0', 'Package version must be finalized as v1.28.0 for this release')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.4', 'Patched Next.js release must stay pinned')
-assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.27.5 must expose the audited Supabase SSR dependency')
+assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.28.0 must preserve the audited Supabase SSR dependency')
 assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
 assert.equal(packageJson.scripts?.lint, 'eslint .', 'Next.js 16 must use the ESLint CLI')
 assert.equal(packageJson.scripts?.typecheck, 'tsc --noEmit', 'CI must expose an explicit TypeScript check')
@@ -244,12 +274,13 @@ const changelogReleaseTimes = [
   ['config/changelog-v1273.ts', '2026-09-18 03:42 ICT'],
   ['config/changelog-v1274.ts', '2026-09-19 16:02 ICT'],
   ['config/changelog-v1275.ts', '2026-09-19 19:51 ICT'],
+  ['config/changelog-v1280.ts', '2026-09-22 03:17 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1275'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1280'])
 
 console.log('✓ Critical regression tests passed')

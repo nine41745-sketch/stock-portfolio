@@ -8,6 +8,7 @@ import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { HoldingWithPrice, NewsItem } from '@/types'
 import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
 import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
+import { getUsMarketClock } from '@/lib/market-status'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -43,6 +44,15 @@ export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const marketClock = getUsMarketClock()
+  if (!marketClock.isTradingDay) {
+    return NextResponse.json({
+      skipped: true,
+      reason: 'US market is not a trading day',
+      marketDate: marketClock.date,
+    })
   }
 
   const supabase = createServiceClient()

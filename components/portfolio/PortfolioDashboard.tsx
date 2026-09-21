@@ -227,7 +227,7 @@ function TrackRecordCard() {
         <p className="text-red-400 text-sm">โหลด Track Record ไม่สำเร็จ — ข้อมูลเดิมไม่ได้ถูกลบ กรุณาลองใหม่ภายหลัง</p>
       ) : !data || data.overall.total === 0 ? (
         <p className="text-gray-600 text-sm">
-          ยังไม่มีข้อมูลย้อนหลังพอ ({days} วัน) — ระบบวิเคราะห์อัตโนมัติรันทุกวันประมาณ 08:15 น. เก็บข้อมูลสะสมไปเรื่อยๆ รอสักพักแล้วกลับมาดูอีกครั้งครับ
+          ยังไม่มีข้อมูลย้อนหลังพอ ({days} วัน) — Track Record ใช้รอบ Post-close ประมาณ 08:15 น. ของวันทำการตลาดสหรัฐเป็น baseline และเก็บข้อมูลสะสมไปเรื่อยๆ
         </p>
       ) : (
         <>
@@ -471,7 +471,7 @@ useEffect(() => {
       .finally(() => setNewsLoading(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // โหลดผลวิเคราะห์ AI ที่ cron รันไว้ให้วันนี้แล้ว (~08:15 ICT) — โชว์ทันทีไม่ต้องกด "วิเคราะห์" เอง
+  // โหลดผลล่าสุด: Post-close ~08:15 ICT หรือ Pre-market trigger update ที่ใหม่กว่า — โชว์ทันทีไม่ต้องกดเอง
   useEffect(() => {
     fetch('/api/daily-analyses/today').then(r => r.json()).then(d => {
       if (d.analyses && Object.keys(d.analyses).length) {
@@ -767,6 +767,18 @@ useEffect(() => {
           <button onClick={() => setAnalyses(prev => { const n = { ...prev }; delete n[analysis.symbol]; return n })} className="opacity-50 hover:opacity-100 text-sm">✕</button>
         </div>
 
+        {analysis.analysisMode === 'PREMARKET_TRIGGER' && (
+          <div className="mb-3 rounded-lg border border-purple-500/30 bg-purple-500/10 p-3">
+            <p className="text-xs font-semibold text-purple-300">🌆 Pre-market Update — ตรวจว่าแผนรอบเช้ายังใช้ได้หรือไม่</p>
+            {analysis.baselineAction && (
+              <p className="mt-1 text-[11px] opacity-75">แผนรอบเช้า: {SIGNAL_LABEL[analysis.baselineAction] ?? analysis.baselineAction}</p>
+            )}
+            {analysis.triggerReasons?.length ? (
+              <p className="mt-1 text-[11px] opacity-75">Trigger: {analysis.triggerReasons.join(' · ')}</p>
+            ) : null}
+          </div>
+        )}
+
         {analysis.disclaimer && (
           <p className="text-[11px] opacity-50 mb-3 italic">⚠️ {analysis.disclaimer}</p>
         )}
@@ -865,7 +877,7 @@ useEffect(() => {
           <p className="text-xs opacity-40 font-medium uppercase tracking-wide">📊 ข้อมูลที่ใช้วิเคราะห์</p>
           <div className="flex flex-wrap gap-1.5">
             <span className="text-xs opacity-60 bg-black/20 rounded px-2 py-0.5">
-              💹 ราคา ${analysis.usedPrice?.toFixed(2) ?? '—'} — Finnhub
+              💹 ราคา ${analysis.usedPrice?.toFixed(2) ?? '—'} — ${analysis.priceSource ?? 'Finnhub'}
             </span>
             <span className="text-xs opacity-60 bg-black/20 rounded px-2 py-0.5">
               📈 Technical จาก Yahoo Finance (ราคาปิดย้อนหลัง 1 ปี)
