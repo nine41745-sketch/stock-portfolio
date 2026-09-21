@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
       if (baselineResponse.error) throw new Error(baselineResponse.error.message)
 
       const rawHoldings = (holdingsResponse.data ?? []).filter((h: any) => Number(h.shares) > 0)
-      const symbols = rawHoldings.map((h: any) => String(h.symbol).toUpperCase())
+      const symbols: string[] = rawHoldings.map((h: any) => String(h.symbol).toUpperCase())
       const baselineBySymbol = new Map<string, DetailedAnalysisResult>()
       const baselineTime = new Map<string, number>()
       for (const row of baselineResponse.data ?? []) {
@@ -117,8 +117,20 @@ export async function GET(request: NextRequest) {
         getUpcomingEarningsForSymbols(symbols),
         getPreMarketSnapshots(symbols),
       ])
-      const newsEntries = await Promise.all(symbols.map(async symbol => [symbol, await fetchNewRelevantNews(symbol, baselineTime.get(symbol) ?? 0)] as const))
-      const news = Object.fromEntries(newsEntries) as Record<string, NewsItem[]>
+      const news: Record<string, NewsItem[]> = {}
+      const newsChunkSize = 6
+      for (let i = 0; i < symbols.length; i += newsChunkSize) {
+        const chunk = symbols.slice(i, i + newsChunkSize)
+        const settled = await Promise.allSettled(
+          chunk.map(async symbol => [symbol, await fetchNewRelevantNews(symbol, baselineTime.get(symbol) ?? 0)] as const)
+        )
+        settled.forEach((item, index) => {
+          news[chunk[index]] = item.status === 'fulfilled' ? item.value[1] : []
+        })
+        if (i + newsChunkSize < symbols.length) {
+          await new Promise(resolve => setTimeout(resolve, 250))
+        }
+      }
       const buyingPower = Number(settingsResponse.data?.dime_balance ?? 0)
 
       const priceMap = new Map<string, number | null>()
