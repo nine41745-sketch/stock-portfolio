@@ -130,6 +130,30 @@ function isTradingDay(et: ETParts): boolean {
   return isWeekday && !FULL_HOLIDAYS.has(dateKey(et))
 }
 
+export interface UsMarketClock {
+  date: string
+  weekday: string
+  hour: number
+  minute: number
+  isTradingDay: boolean
+  isHoliday: boolean
+  isEarlyClose: boolean
+}
+
+export function getUsMarketClock(now: Date = new Date()): UsMarketClock {
+  const et = getETParts(now)
+  const key = dateKey(et)
+  return {
+    date: key,
+    weekday: et.weekday,
+    hour: et.hour,
+    minute: et.minute,
+    isTradingDay: isTradingDay(et),
+    isHoliday: FULL_HOLIDAYS.has(key),
+    isEarlyClose: EARLY_CLOSE_DAYS.has(key),
+  }
+}
+
 // คำนวณสถานะตลาด US ปัจจุบัน + countdown ไปยัง event ถัดไป (เปิด/ปิด)
 // รองรับวันหยุดเต็มวัน + วันปิดเร็ว (13:00 ET) ตามปฏิทินทางการ NYSE ด้านบน
 export function getMarketStatus(now: Date = new Date()): MarketStatus {

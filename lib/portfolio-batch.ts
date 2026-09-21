@@ -26,6 +26,14 @@ export interface PortfolioBatchHoldingInput {
   technical: TechnicalSnapshot
   earnings: EarningsInfo | null
   news: NewsItem[]
+  context?: {
+    mode: 'DAILY_POST_CLOSE' | 'PREMARKET_TRIGGER'
+    triggerReasons?: string[]
+    baselineAction?: AnalysisAction
+    baselineSummary?: string
+    baselineAnalysedAt?: string
+    priceSource?: 'Finnhub' | 'Yahoo Finance' | 'Yahoo Finance Pre-Market'
+  }
 }
 
 export interface PortfolioBatchOutcome {
@@ -241,6 +249,15 @@ function compactInput(
     },
     earn: earnings ? { d: earnings.daysUntil, date: earnings.date } : null,
     news: news.slice(0, 2).map(n => n.headline.slice(0, 90)),
+    ctx: input.context?.mode === 'PREMARKET_TRIGGER'
+      ? {
+          m: 'PREMARKET_TRIGGER',
+          tr: input.context.triggerReasons?.slice(0, 4) ?? [],
+          ba: input.context.baselineAction ?? null,
+          bs: input.context.baselineSummary?.slice(0, 180) ?? '',
+          bt: input.context.baselineAnalysedAt ?? null,
+        }
+      : undefined,
   }
 }
 
@@ -318,7 +335,11 @@ export async function analyzePortfolioBatch(
     .join(',')
 
   const payload = inputs.map(input => compactInput(input, totalPortfolioValue))
-  const prompt = `คุณเป็น Institutional Portfolio Manager ทำ Daily Portfolio Review ของหุ้นทุกตัวในพอร์ตพร้อมกัน
+  const isPremarketUpdate = inputs.some(input => input.context?.mode === 'PREMARKET_TRIGGER')
+  const reviewMode = isPremarketUpdate
+    ? 'Pre-Market Risk Update: เทียบข้อมูลใหม่กับแผน post-close เดิม คง action เดิมถ้ายังไม่มีหลักฐานใหม่มากพอ และเปลี่ยน action เฉพาะเมื่อ trigger/news/price ทำให้ risk-reward เปลี่ยนอย่างมีนัยสำคัญ'
+    : 'Daily Portfolio Review หลังตลาดปิด: สร้าง baseline ของวันจากข้อมูลปิดล่าสุด'
+  const prompt = `คุณเป็น Institutional Portfolio Manager ทำ ${reviewMode} ของหุ้นในพอร์ตพร้อมกัน
 
 กติกา action:
 1) SELL_ALL เฉพาะ thesis-breaking เฉพาะบริษัทจริง และต้อง tb=true + et อย่างน้อย 1 ค่าใน allowlist: FUNDAMENTAL_DETERIORATION,FRAUD_GOVERNANCE,SOLVENCY_LIQUIDITY,STRUCTURAL_COMPETITIVE_LOSS,SEVERE_REGULATORY_LEGAL,BUSINESS_MODEL_IMPAIRMENT,OTHER_PERMANENT_IMPAIRMENT ห้ามใช้ EMA/MACD/RSI/downtrend/P&L/macro/sector เป็นเหตุ SELL_ALL เพียงลำพัง
@@ -436,6 +457,11 @@ INPUT=${JSON.stringify(payload)}`
       thesisBroken,
       sellAllEvidenceTypes: evidenceTypes,
       sellAllEvidence: evidenceText,
+      analysisMode: input.context?.mode ?? 'DAILY_POST_CLOSE',
+      priceSource: input.context?.priceSource ?? (input.context?.mode === 'PREMARKET_TRIGGER' ? 'Yahoo Finance Pre-Market' : 'Finnhub'),
+      triggerReasons: input.context?.triggerReasons,
+      baselineAction: input.context?.baselineAction,
+      baselineAnalysedAt: input.context?.baselineAnalysedAt,
     }
   })
 

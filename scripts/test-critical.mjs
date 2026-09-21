@@ -82,7 +82,9 @@ assert.equal(
 )
 
 const vercel = JSON.parse(fs.readFileSync('vercel.json', 'utf8'))
-assert.equal(vercel.crons?.[0]?.schedule, '15 1 * * *', 'Daily cron schedule must remain 01:15 UTC (~08:15 ICT)')
+assert.ok(vercel.crons?.some(c => c.path === '/api/cron/daily-analyze' && c.schedule === '15 1 * * 2-6'), 'Post-close cron must remain ~08:15 ICT for US Mon-Fri sessions')
+assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 12 * * 1-5'), 'Pre-market cron must include EDT candidate 12:45 UTC')
+assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 13 * * 1-5'), 'Pre-market cron must include EST candidate 13:45 UTC')
 
 for (const route of [
   'app/api/analyze/route.ts',
@@ -93,10 +95,38 @@ for (const route of [
   assert.match(source, /@\/lib\/news-relevance/, `${route} must use the shared news relevance helper`)
 }
 
+const marketStatus = await importTsModule('lib/market-status.ts')
+const edtPreOpen = marketStatus.getUsMarketClock(new Date('2026-09-21T12:45:00Z'))
+assert.equal(edtPreOpen.hour, 8)
+assert.equal(edtPreOpen.minute, 45)
+assert.equal(edtPreOpen.isTradingDay, true)
+const estPreOpen = marketStatus.getUsMarketClock(new Date('2026-12-07T13:45:00Z'))
+assert.equal(estPreOpen.hour, 8)
+assert.equal(estPreOpen.minute, 45)
+assert.equal(estPreOpen.isTradingDay, true)
+const thanksgiving = marketStatus.getUsMarketClock(new Date('2026-11-26T13:45:00Z'))
+assert.equal(thanksgiving.isTradingDay, false)
+assert.equal(thanksgiving.isHoliday, true)
+
+const premarketTrigger = await importTsModule('lib/premarket-trigger.ts')
+assert.ok(premarketTrigger.evaluatePremarketTriggers({ price: 102.1, changePct: 2.1, support: 95, resistance: 110, earningsDaysUntil: 10, newRelevantNewsCount: 0 }).length > 0)
+assert.ok(premarketTrigger.evaluatePremarketTriggers({ price: 100.5, changePct: 0.5, support: 100, resistance: 110, earningsDaysUntil: 10, newRelevantNewsCount: 0 }).some(x => x.includes('แนวรับ')))
+assert.equal(premarketTrigger.evaluatePremarketTriggers({ price: 105, changePct: 0.5, support: 95, resistance: 115, earningsDaysUntil: 10, newRelevantNewsCount: 0 }).length, 0)
+
 const cronSource = fs.readFileSync('app/api/cron/daily-analyze/route.ts', 'utf8')
 assert.match(cronSource, /const cronSecret = process\.env\.CRON_SECRET/, 'Cron must read CRON_SECRET into an explicit guard')
 assert.match(cronSource, /if \(!cronSecret\)/, 'Cron must fail closed when CRON_SECRET is missing')
 assert.match(cronSource, /settingsResponse\.error/, 'Cron must fail instead of treating a settings DB error as zero cash')
+assert.match(cronSource, /getUsMarketClock/, 'Post-close cron must respect US trading-day calendar')
+
+assert.equal(fs.existsSync('app/api/cron/premarket-analyze/route.ts'), true, 'Pre-market trigger cron route is required')
+const premarketCronSource = fs.readFileSync('app/api/cron/premarket-analyze/route.ts', 'utf8')
+assert.match(premarketCronSource, /getPreMarketSnapshots/, 'Pre-market cron must use explicit pre-market market data')
+assert.match(premarketCronSource, /evaluatePremarketTriggers/, 'Pre-market cron must gate Groq behind deterministic triggers')
+assert.match(premarketCronSource, /save_latest_manual_analysis/, 'Pre-market update must write latest analysis without creating Track Record rows')
+assert.match(premarketCronSource, /analysisMode:\s*'PREMARKET_TRIGGER'/, 'Pre-market results must be visibly tagged')
+assert.match(premarketCronSource, /marketClock\.hour !== 8/, 'Only the active DST pre-market candidate may execute')
+assert.match(premarketCronSource, /getUpcomingEarningsForSymbols/, 'Pre-market trigger should batch earnings calendar access')
 
 const analyzeSource = fs.readFileSync('app/api/analyze/route.ts', 'utf8')
 assert.match(analyzeSource, /if \(settingsErr\)/, 'Manual Analyze must handle user-settings query failure')

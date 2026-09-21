@@ -1,5 +1,7 @@
 {
   "crons": [
-    { "path": "/api/cron/daily-analyze", "schedule": "15 1 * * *" }
+    { "path": "/api/cron/daily-analyze", "schedule": "15 1 * * 2-6" },
+    { "path": "/api/cron/premarket-analyze", "schedule": "45 12 * * 1-5" },
+    { "path": "/api/cron/premarket-analyze", "schedule": "45 13 * * 1-5" }
   ]
 }
