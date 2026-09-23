@@ -102,6 +102,8 @@ async function scanOne(symbol: string, spy: TechnicalIndicators) {
     macdHistogram: technical.macd.histogram,
     support,
     resistance,
+    importantSupport: technical.importantSupport,
+    importantSupportTouches: technical.importantSupportTouches,
     volumeRatio: technical.scannerVolumeRatio,
     week52High: technical.week52High,
     week52Low: technical.week52Low,

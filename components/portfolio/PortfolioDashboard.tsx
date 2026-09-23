@@ -10,6 +10,7 @@ import { AUTO_LOGOUT_MS, AUTO_LOGOUT_WARN_MS, FALLBACK_USD_THB_RATE } from '@/li
 import { getMarketStatus, MarketStatus } from '@/lib/market-status'
 import { changelog, CURRENT_VERSION } from '@/config/changelog'
 import { getAthState } from '@/lib/ath'
+import { getImportantSupportState } from '@/lib/important-support'
 
 interface Props {
   holdings: HoldingWithPrice[]
@@ -19,6 +20,11 @@ interface Props {
 interface AthSnapshot {
   allTimeHigh: number | null
   asOf: string | null
+}
+
+interface ImportantSupportSnapshot {
+  importantSupport: number | null
+  touches: number
 }
 
 const SIGNAL_STYLE: Record<string, string> = {
@@ -348,6 +354,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [darkMode, setDarkMode] = useState(true)
   const [themeReady, setThemeReady] = useState(false)
   const [athBySymbol, setAthBySymbol] = useState<Record<string, AthSnapshot>>({})
+  const [importantSupportBySymbol, setImportantSupportBySymbol] = useState<Record<string, ImportantSupportSnapshot>>({})
 
   const [dimeUpdatedAt, setDimeUpdatedAt] = useState<string | null>(null)
   const [capitalUpdatedAt, setCapitalUpdatedAt] = useState<string | null>(null)
@@ -426,6 +433,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   useEffect(() => {
     if (!holdingSymbolsKey) {
       setAthBySymbol({})
+      setImportantSupportBySymbol({})
       return
     }
     let cancelled = false
@@ -437,6 +445,21 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       })
       .catch(() => {
         if (!cancelled) setAthBySymbol({})
+      })
+    return () => { cancelled = true }
+  }, [holdingSymbolsKey])
+
+  useEffect(() => {
+    if (!holdingSymbolsKey) return
+    let cancelled = false
+    fetch(`/api/important-support?symbols=${encodeURIComponent(holdingSymbolsKey)}`, { cache: 'no-store' })
+      .then(r => requireOk(r, 'โหลดแนวรับสำคัญไม่สำเร็จ'))
+      .then(r => r.json())
+      .then((data: { items?: Record<string, ImportantSupportSnapshot> }) => {
+        if (!cancelled) setImportantSupportBySymbol(data.items ?? {})
+      })
+      .catch(() => {
+        if (!cancelled) setImportantSupportBySymbol({})
       })
     return () => { cancelled = true }
   }, [holdingSymbolsKey])
@@ -1220,6 +1243,8 @@ useEffect(() => {
                   const pnlColor = h.pnl === null ? 'text-gray-500' : pnlPos ? 'text-green-400' : 'text-red-400'
                   const athSnapshot = athBySymbol[h.symbol]
                   const athState = getAthState(h.current_price, athSnapshot?.allTimeHigh)
+                  const importantSupportSnapshot = importantSupportBySymbol[h.symbol]
+                  const importantSupportState = getImportantSupportState(h.current_price, importantSupportSnapshot?.importantSupport)
                   return (
                     <React.Fragment key={h.id}>
                       <tr className="border-t border-gray-800 bg-gray-900/40 hover:bg-gray-900/80 transition-colors">
@@ -1228,6 +1253,8 @@ useEffect(() => {
                             <span className="font-bold text-white tracking-wide">{h.symbol}</span>
                             {athState.status === 'ATH' && <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-[10px] text-yellow-300">🏆 ATH</span>}
                             {athState.status === 'NEAR_ATH' && <span className="rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">ใกล้ ATH -{athState.distancePct?.toFixed(1)}%</span>}
+                            {importantSupportState.status === 'NEAR' && <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] text-cyan-300">🛡️ ใกล้แนวรับสำคัญ +{importantSupportState.distancePct?.toFixed(1)}%</span>}
+                            {importantSupportState.status === 'BROKEN' && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-300">⚠️ หลุดแนวรับสำคัญ {importantSupportState.distancePct?.toFixed(1)}%</span>}
                           </div>
                           {athState.status === 'BELOW_ATH' && <p className="text-gray-600 text-[10px] mt-0.5">ห่าง ATH {athState.distancePct?.toFixed(1)}%</p>}
                           {h.notes && <p className="text-gray-500 text-xs mt-0.5">{h.notes}</p>}
@@ -1290,6 +1317,8 @@ useEffect(() => {
             const isLoading = loadingSymbol === h.symbol
             const athSnapshot = athBySymbol[h.symbol]
             const athState = getAthState(h.current_price, athSnapshot?.allTimeHigh)
+            const importantSupportSnapshot = importantSupportBySymbol[h.symbol]
+            const importantSupportState = getImportantSupportState(h.current_price, importantSupportSnapshot?.importantSupport)
             return (
               <div key={h.id} className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
                 <div className="flex items-start justify-between mb-3">
@@ -1298,6 +1327,8 @@ useEffect(() => {
                     {athState.status === 'ATH' && <span className="ml-2 rounded bg-yellow-500/15 px-1.5 py-0.5 text-[10px] text-yellow-300">🏆 ATH</span>}
                     {athState.status === 'NEAR_ATH' && <span className="ml-2 rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">ใกล้ ATH -{athState.distancePct?.toFixed(1)}%</span>}
                     {athState.status === 'BELOW_ATH' && <span className="ml-2 text-[10px] text-gray-600">ATH -{athState.distancePct?.toFixed(1)}%</span>}
+                    {importantSupportState.status === 'NEAR' && <span className="ml-2 rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] text-cyan-300">🛡️ แนวรับสำคัญ +{importantSupportState.distancePct?.toFixed(1)}%</span>}
+                    {importantSupportState.status === 'BROKEN' && <span className="ml-2 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-300">⚠️ หลุดแนวรับสำคัญ {importantSupportState.distancePct?.toFixed(1)}%</span>}
                     {h.notes && <span className="text-gray-500 text-xs ml-2">{h.notes}</span>}
                     <p className="text-gray-600 text-xs mt-0.5">แก้ไข {fmtDate(h.updated_at)}</p>
                   </div>

@@ -40,6 +40,7 @@ export interface AlertsCalendarPayload {
     scope: string
     stopTarget: string
     supportResistance: string
+    importantSupport: string
     breakout: string
     ath: string
     earnings: string
@@ -153,6 +154,7 @@ export async function loadAlertsCalendarData(
       symbol: entry.symbol,
       price,
       support: entry.technical.scannerSupport,
+      importantSupport: entry.technical.importantSupport,
       resistance: entry.technical.scannerResistance,
       volumeRatio: entry.technical.scannerVolumeRatio,
       stopLoss: levels.stopLoss,
@@ -188,6 +190,7 @@ export async function loadAlertsCalendarData(
         : 'Tracks current Holdings plus active WAITING/ENTERED Trade Plans, capped at 25 symbols per request.',
       stopTarget: 'Stop alert uses ENTERED Trade Plan stop only; Target uses active WAITING/ENTERED Trade Plan targets.',
       supportResistance: 'Near Support and Breakout use scanner support/resistance derived from completed historical bars.',
+      importantSupport: 'Important Support is a repeated swing-low zone: at least 2 touches clustered within 1.5% over up to 120 completed sessions. Near = within 3%; below the level = broken.',
       breakout: 'Breakout means current price is above scanner resistance; Volume Ratio >= 1.20x is highlighted but not required.',
       ath: 'ATH uses Yahoo Finance maximum available monthly High history; the live alert fires only when current price is at/within 0.10% of that level.',
       earnings: 'Upcoming earnings are sourced from one batched Finnhub calendar request and alerts fire inside 7 days; calendar includes up to 60 days.',

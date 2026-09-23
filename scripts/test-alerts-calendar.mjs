@@ -26,6 +26,7 @@ const items = alerts.buildAlerts([
     symbol: 'aaa',
     price: 98,
     support: 99,
+    importantSupport: 99,
     resistance: 110,
     volumeRatio: 1,
     stopLoss: 100,
@@ -38,6 +39,7 @@ const items = alerts.buildAlerts([
     symbol: 'bbb',
     price: 121,
     support: 100,
+    importantSupport: 118,
     resistance: 120,
     volumeRatio: 1.3,
     stopLoss: 90,
@@ -50,6 +52,7 @@ const items = alerts.buildAlerts([
     symbol: 'ccc',
     price: 101,
     support: 100,
+    importantSupport: 100,
     resistance: 110,
     volumeRatio: null,
     stopLoss: 100,
@@ -69,6 +72,8 @@ assert.ok(items.some(item => item.symbol === 'BBB' && item.kind === 'BREAKOUT' &
 assert.ok(items.some(item => item.symbol === 'BBB' && item.kind === 'ATH' && item.title === 'แตะ All-Time High (ATH)'))
 assert.ok(items.some(item => item.symbol === 'CCC' && item.kind === 'STOP' && item.title === 'ใกล้ Stop'))
 assert.ok(items.some(item => item.symbol === 'CCC' && item.kind === 'NEAR_SUPPORT' && item.title === 'ใกล้แนวรับ'))
+assert.ok(items.some(item => item.symbol === 'CCC' && item.kind === 'IMPORTANT_SUPPORT' && item.title === 'ใกล้แนวรับสำคัญ'))
+assert.ok(items.some(item => item.symbol === 'AAA' && item.kind === 'IMPORTANT_SUPPORT' && item.title === 'หลุดแนวรับสำคัญ'))
 
 const summary = alerts.summarizeAlerts(items)
 assert.equal(summary.total, items.length)
@@ -117,7 +122,8 @@ assert.match(finnhub, /calendar\/earnings\?from=.*&to=.*&token=/, 'Batch earning
 
 const alertsUi = fs.readFileSync('components/portfolio/AlertsCenter.tsx', 'utf8')
 assert.match(alertsUi, /🔔 Notification Center/)
-assert.match(alertsUi, /Stop \/ Target \/ Near Support \/ Breakout \/ ATH \/ Earnings/)
+assert.match(alertsUi, /Stop \/ Target \/ Near Support \/ แนวรับสำคัญ \/ Breakout \/ ATH \/ Earnings/)
+assert.match(alertsUi, /value: 'IMPORTANT_SUPPORT'/)
 assert.match(alertsUi, /value: 'ATH'/)
 assert.match(alertsUi, /Live Derived Alerts/)
 assert.match(alertsUi, /ไม่สร้าง BUY\/SELL/)

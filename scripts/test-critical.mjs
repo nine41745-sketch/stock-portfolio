@@ -56,6 +56,15 @@ assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T01:30:00Z'), chang
 assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T02:30:00Z'), change), false)
 assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T02:00:00Z'), change), false)
 
+const importantSupport = await importTsModule('lib/important-support.ts')
+const repeatedSwingLows = [105,104,103,101,100,102,104,103,101.2,100.5,102,105,104,102,100.8,102.5,106]
+const importantLevel = importantSupport.calculateImportantSupport(repeatedSwingLows, 102)
+assert.ok(importantLevel.level !== null, 'Repeated swing lows should create an important support level')
+assert.ok(importantLevel.touches >= 2, 'Important support must require repeated touches')
+assert.equal(importantSupport.getImportantSupportState(102, 100).status, 'NEAR')
+assert.equal(importantSupport.getImportantSupportState(99, 100).status, 'BROKEN')
+assert.equal(importantSupport.getImportantSupportState(110, 100).status, 'FAR')
+
 const ath = await importTsModule('lib/ath.ts')
 assert.deepEqual(ath.getAthState(100, 100), { status: 'ATH', distancePct: 0 })
 assert.equal(ath.getAthState(99.95, 100).status, 'ATH')
@@ -212,6 +221,12 @@ assert.match(indicatorSource, /bars\.slice\(0, -1\)/, 'Scanner support/resistanc
 assert.match(indicatorSource, /bars\.slice\(-\(window \+ 1\), -1\)/, 'Scanner volume average must exclude current-day volume')
 assert.match(indicatorSource, /return20dPct/, 'Scanner market data must expose 20-day returns')
 assert.match(indicatorSource, /week52High/, 'Scanner market data must expose 52-week range')
+assert.match(indicatorSource, /calculateImportantSupport/, 'Technical data must calculate repeated swing-low Important Support')
+assert.match(indicatorSource, /importantSupportTouches/, 'Technical data must expose Important Support touch count')
+assert.equal(fs.existsSync('app/api/important-support/route.ts'), true, 'Dashboard Important Support endpoint is required')
+const importantSupportRouteSource = fs.readFileSync('app/api/important-support/route.ts', 'utf8')
+assert.match(importantSupportRouteSource, /MAX_SYMBOLS_PER_REQUEST/, 'Important Support endpoint must cap provider fan-out')
+assert.match(importantSupportRouteSource, /CHUNK_SIZE = 2/, 'Important Support endpoint must bound Yahoo request concurrency')
 
 const opportunitySource = fs.readFileSync('components/portfolio/OpportunityHub.tsx', 'utf8')
 assert.match(opportunitySource, /Relative Strength/, 'Scanner UI must expose Relative Strength')
@@ -219,9 +234,13 @@ assert.match(opportunitySource, /ซ่อนงบ ≤ 7 วัน/, 'Scanner U
 assert.match(opportunitySource, /BREAKOUT/, 'Scanner UI must expose deterministic setup filtering')
 assert.match(opportunitySource, /เรียง: Score สูงสุด/, 'Scanner UI must provide deterministic sorting controls')
 assert.match(opportunitySource, /ATH \/ ใกล้ ATH ≤ 3%/, 'Scanner UI must expose ATH filtering')
+assert.match(opportunitySource, /ใกล้\/หลุดแนวรับสำคัญ/, 'Scanner UI must expose Important Support filtering')
+assert.match(opportunitySource, /เรียง: ใกล้แนวรับสำคัญ/, 'Scanner UI must sort by Important Support proximity')
 assert.match(opportunitySource, /เรียง: ใกล้ ATH/, 'Scanner UI must sort by ATH distance')
 assert.match(dashboardSource, /\/api\/ath\?symbols=/, 'Dashboard must load ATH data without delaying initial server render')
 assert.match(dashboardSource, /🏆 ATH/, 'Dashboard must display ATH badges for held stocks')
+assert.match(dashboardSource, /\/api\/important-support\?symbols=/, 'Dashboard must load Important Support without blocking initial render')
+assert.match(dashboardSource, /ใกล้แนวรับสำคัญ/, 'Dashboard must display Important Support badges')
 
 const lightModeCss = fs.readFileSync('app/globals.css', 'utf8')
 assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic green text for contrast')

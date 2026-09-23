@@ -1,10 +1,11 @@
-export type AlertKind = 'STOP' | 'TARGET' | 'NEAR_SUPPORT' | 'BREAKOUT' | 'ATH' | 'EARNINGS'
+export type AlertKind = 'STOP' | 'TARGET' | 'NEAR_SUPPORT' | 'IMPORTANT_SUPPORT' | 'BREAKOUT' | 'ATH' | 'EARNINGS'
 export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO'
 
 export interface AlertInput {
   symbol: string
   price: number | null
   support: number | null
+  importantSupport: number | null
   resistance: number | null
   volumeRatio: number | null
   stopLoss: number | null
@@ -140,6 +141,33 @@ export function buildAlerts(inputs: AlertInput[], nearPct = 2): AlertItem[] {
             'ใกล้แนวรับ',
             `ราคาอยู่เหนือแนวรับอ้างอิง ${distance.toFixed(2)}%`,
             input.support,
+            distance,
+          )
+        }
+      }
+
+      if (input.importantSupport !== null && input.importantSupport > 0) {
+        const distance = pctFromLevel(price, input.importantSupport)
+        if (price < input.importantSupport) {
+          push(
+            items,
+            input,
+            'IMPORTANT_SUPPORT',
+            'CRITICAL',
+            'หลุดแนวรับสำคัญ',
+            `ราคาปัจจุบันต่ำกว่าแนวรับสำคัญ ${input.importantSupport.toFixed(2)} อยู่ ${Math.abs(distance).toFixed(2)}%`,
+            input.importantSupport,
+            distance,
+          )
+        } else if (distance <= 3) {
+          push(
+            items,
+            input,
+            'IMPORTANT_SUPPORT',
+            'WARNING',
+            'ใกล้แนวรับสำคัญ',
+            `ราคาอยู่เหนือแนวรับสำคัญเพียง ${distance.toFixed(2)}%`,
+            input.importantSupport,
             distance,
           )
         }

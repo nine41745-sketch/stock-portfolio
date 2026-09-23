@@ -10,6 +10,7 @@
 // ============================================================
 import { EMA, RSI, MACD, BollingerBands, ATR } from 'technicalindicators'
 import YahooFinance from 'yahoo-finance2'
+import { calculateImportantSupport } from '@/lib/important-support'
 
 const yahooFinance = new YahooFinance()
 
@@ -39,6 +40,8 @@ export interface TechnicalIndicators {
   scannerSupport: number | null
   scannerResistance: number | null
   scannerVolumeRatio: number | null
+  importantSupport: number | null
+  importantSupportTouches: number
   return1dPct: number | null
   return20dPct: number | null
   return60dPct: number | null
@@ -62,6 +65,8 @@ const EMPTY_INDICATORS: TechnicalIndicators = {
   scannerSupport: null,
   scannerResistance: null,
   scannerVolumeRatio: null,
+  importantSupport: null,
+  importantSupportTouches: 0,
   return1dPct: null,
   return20dPct: null,
   return60dPct: null,
@@ -319,6 +324,10 @@ export async function getTechnicalIndicators(symbol: string): Promise<TechnicalI
   const bbLast = last(bbArr)
   const { support, resistance } = calcSupportResistance(bars)
   const scannerLevels = calcScannerSupportResistance(bars)
+  const importantSupport = calculateImportantSupport(
+    bars.slice(0, -1).map(bar => bar.low),
+    lastClose,
+  )
   const range52 = calcWeek52Range(bars)
 
   return {
@@ -346,6 +355,8 @@ export async function getTechnicalIndicators(symbol: string): Promise<TechnicalI
     scannerSupport: scannerLevels.support,
     scannerResistance: scannerLevels.resistance,
     scannerVolumeRatio: calcScannerVolumeRatio(bars),
+    importantSupport: importantSupport.level,
+    importantSupportTouches: importantSupport.touches,
     return1dPct: calcReturnPct(closes, 1),
     return20dPct: calcReturnPct(closes, 20),
     return60dPct: calcReturnPct(closes, 60),
@@ -353,4 +364,23 @@ export async function getTechnicalIndicators(symbol: string): Promise<TechnicalI
     week52High: range52.week52High,
     week52Low: range52.week52Low,
   }
+}
+
+
+export interface ImportantSupportSnapshot {
+  symbol: string
+  importantSupport: number | null
+  touches: number
+}
+
+// Dashboard ใช้ daily history อย่างเดียว จึงไม่ต้องโหลด weekly indicators ทั้งชุดซ้ำ.
+export async function getImportantSupportSnapshot(symbol: string): Promise<ImportantSupportSnapshot> {
+  const bars = await fetchHistoricalBars(symbol)
+  if (bars.length < 15) return { symbol, importantSupport: null, touches: 0 }
+  const currentPrice = last(bars.map(bar => bar.close))
+  const support = calculateImportantSupport(
+    bars.slice(0, -1).map(bar => bar.low),
+    currentPrice,
+  )
+  return { symbol, importantSupport: support.level, touches: support.touches }
 }
