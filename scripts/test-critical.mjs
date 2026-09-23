@@ -248,12 +248,12 @@ assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic 
 assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
 assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
 
-// v1.28.0 release metadata must stay synchronized across changelog/package/lockfile.
+// v1.29.0 release metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.28.0', 'Package version must be finalized as v1.28.0 for this release')
+assert.equal(packageJson.version, '1.29.0', 'Package version must be finalized as v1.29.0 for this release')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.4', 'Patched Next.js release must stay pinned')
-assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.28.0 must preserve the audited Supabase SSR dependency')
+assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.29.0 must preserve the audited Supabase SSR dependency')
 assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
 assert.equal(packageJson.scripts?.lint, 'eslint .', 'Next.js 16 must use the ESLint CLI')
 assert.equal(packageJson.scripts?.typecheck, 'tsc --noEmit', 'CI must expose an explicit TypeScript check')
@@ -317,12 +317,13 @@ const changelogReleaseTimes = [
   ['config/changelog-v1274.ts', '2026-09-19 16:02 ICT'],
   ['config/changelog-v1275.ts', '2026-09-19 19:51 ICT'],
   ['config/changelog-v1280.ts', '2026-09-22 03:17 ICT'],
+  ['config/changelog-v1290.ts', '2026-09-23 16:42 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1280'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1290'])
 
 console.log('✓ Critical regression tests passed')
