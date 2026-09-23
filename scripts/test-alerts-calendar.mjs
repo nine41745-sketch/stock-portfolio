@@ -150,7 +150,7 @@ assert.match(versioning, /package-lock\.json.*track/i, 'Versioning guide must re
 assert.doesNotMatch(versioning, /ไม่ track package-lock\.json/, 'Versioning guide must not claim the lockfile is untracked')
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(pkg.version, '1.28.0', 'Finalized release candidate must expose v1.28.0 metadata')
+assert.equal(pkg.version, '1.29.0', 'Finalized release candidate must expose v1.29.0 metadata')
 assert.match(pkg.scripts['test:critical'], /test-alerts-calendar\.mjs/, 'Alerts/Calendar regression must be part of critical build gate')
 
 console.log('✓ Alerts + Calendar regression tests passed')
