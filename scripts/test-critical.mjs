@@ -239,6 +239,7 @@ assert.match(opportunitySource, /เรียง: ใกล้แนวรับ
 assert.match(opportunitySource, /เรียง: ใกล้ ATH/, 'Scanner UI must sort by ATH distance')
 assert.match(dashboardSource, /\/api\/ath\?symbols=/, 'Dashboard must load ATH data without delaying initial server render')
 assert.match(dashboardSource, /🏆 ATH/, 'Dashboard must display ATH badges for held stocks')
+assert.doesNotMatch(dashboardSource, /status === 'BELOW_ATH'/, 'Dashboard must not show noisy far-from-ATH status; only ATH/near-ATH badges belong on the portfolio view')
 assert.match(dashboardSource, /\/api\/important-support\?symbols=/, 'Dashboard must load Important Support without blocking initial render')
 assert.match(dashboardSource, /ใกล้แนวรับสำคัญ/, 'Dashboard must display Important Support badges')
 

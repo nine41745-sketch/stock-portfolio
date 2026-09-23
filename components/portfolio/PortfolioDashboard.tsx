@@ -1256,7 +1256,6 @@ useEffect(() => {
                             {importantSupportState.status === 'NEAR' && <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] text-cyan-300">🛡️ ใกล้แนวรับสำคัญ +{importantSupportState.distancePct?.toFixed(1)}%</span>}
                             {importantSupportState.status === 'BROKEN' && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-300">⚠️ หลุดแนวรับสำคัญ {importantSupportState.distancePct?.toFixed(1)}%</span>}
                           </div>
-                          {athState.status === 'BELOW_ATH' && <p className="text-gray-600 text-[10px] mt-0.5">ห่าง ATH {athState.distancePct?.toFixed(1)}%</p>}
                           {h.notes && <p className="text-gray-500 text-xs mt-0.5">{h.notes}</p>}
                         </td>
                         <td className="px-4 py-3 text-right text-white font-mono">{fmtAmt(h.current_price)}</td>
@@ -1326,7 +1325,6 @@ useEffect(() => {
                     <span className="font-bold text-white text-base tracking-wide">{h.symbol}</span>
                     {athState.status === 'ATH' && <span className="ml-2 rounded bg-yellow-500/15 px-1.5 py-0.5 text-[10px] text-yellow-300">🏆 ATH</span>}
                     {athState.status === 'NEAR_ATH' && <span className="ml-2 rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">ใกล้ ATH -{athState.distancePct?.toFixed(1)}%</span>}
-                    {athState.status === 'BELOW_ATH' && <span className="ml-2 text-[10px] text-gray-600">ATH -{athState.distancePct?.toFixed(1)}%</span>}
                     {importantSupportState.status === 'NEAR' && <span className="ml-2 rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] text-cyan-300">🛡️ แนวรับสำคัญ +{importantSupportState.distancePct?.toFixed(1)}%</span>}
                     {importantSupportState.status === 'BROKEN' && <span className="ml-2 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-300">⚠️ หลุดแนวรับสำคัญ {importantSupportState.distancePct?.toFixed(1)}%</span>}
                     {h.notes && <span className="text-gray-500 text-xs ml-2">{h.notes}</span>}
