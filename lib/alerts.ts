@@ -1,4 +1,3 @@
-import { getAthState } from './ath'
 export type AlertKind = 'STOP' | 'TARGET' | 'NEAR_SUPPORT' | 'BREAKOUT' | 'ATH' | 'EARNINGS'
 export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO'
 
@@ -32,6 +31,12 @@ const round2 = (value: number): number => Math.round(value * 100) / 100
 
 function pctFromLevel(price: number, level: number): number {
   return round2(((price - level) / level) * 100)
+}
+
+const ATH_MATCH_TOLERANCE_PCT = 0.1
+
+function athDistanceBelowPct(price: number, allTimeHigh: number): number {
+  return ((allTimeHigh - price) / allTimeHigh) * 100
 }
 
 function push(
@@ -158,11 +163,11 @@ export function buildAlerts(inputs: AlertInput[], nearPct = 2): AlertItem[] {
       }
 
       if (input.allTimeHigh !== null && input.allTimeHigh > 0) {
-        const ath = getAthState(price, input.allTimeHigh)
-        if (ath.status === 'ATH') {
+        const distanceBelow = athDistanceBelowPct(price, input.allTimeHigh)
+        if (distanceBelow <= ATH_MATCH_TOLERANCE_PCT) {
           const detail = price >= input.allTimeHigh
-            ? `ราคาปัจจุบัน ${price.toFixed(2)} อยู่ที่/เหนือ ATH อ้างอิง ${input.allTimeHigh.toFixed(2)}`
-            : `ราคาปัจจุบัน ${price.toFixed(2)} อยู่ห่าง ATH อ้างอิงเพียง ${ath.distancePct?.toFixed(2) ?? '0.00'}%`
+            ? `ราคาปัจจุบัน $${price.toFixed(2)} อยู่ที่/เหนือ ATH อ้างอิง $${input.allTimeHigh.toFixed(2)}`
+            : `ราคาปัจจุบัน $${price.toFixed(2)} อยู่ห่าง ATH อ้างอิงเพียง ${Math.max(0, distanceBelow).toFixed(2)}%`
           push(
             items,
             input,
