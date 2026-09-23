@@ -26,33 +26,39 @@ const items = alerts.buildAlerts([
     symbol: 'aaa',
     price: 98,
     support: 99,
+    importantSupport: 99,
     resistance: 110,
     volumeRatio: 1,
     stopLoss: 100,
     target1: 120,
     target2: 130,
+    allTimeHigh: 130,
     earnings: { date: '2026-09-11', daysUntil: 1, hour: 'bmo' },
   },
   {
     symbol: 'bbb',
     price: 121,
     support: 100,
+    importantSupport: 118,
     resistance: 120,
     volumeRatio: 1.3,
     stopLoss: 90,
     target1: 115,
     target2: 120,
+    allTimeHigh: 121,
     earnings: null,
   },
   {
     symbol: 'ccc',
     price: 101,
     support: 100,
+    importantSupport: 100,
     resistance: 110,
     volumeRatio: null,
     stopLoss: 100,
     target1: null,
     target2: null,
+    allTimeHigh: 120,
     earnings: null,
   },
 ])
@@ -63,8 +69,11 @@ assert.ok(items.some(item => item.symbol === 'AAA' && item.kind === 'NEAR_SUPPOR
 assert.ok(items.some(item => item.symbol === 'AAA' && item.kind === 'EARNINGS' && item.severity === 'WARNING'))
 assert.ok(items.some(item => item.symbol === 'BBB' && item.kind === 'TARGET' && item.title === 'ถึง Target 2'))
 assert.ok(items.some(item => item.symbol === 'BBB' && item.kind === 'BREAKOUT' && item.title === 'Breakout + Volume'))
+assert.ok(items.some(item => item.symbol === 'BBB' && item.kind === 'ATH' && item.title === 'แตะ All-Time High (ATH)'))
 assert.ok(items.some(item => item.symbol === 'CCC' && item.kind === 'STOP' && item.title === 'ใกล้ Stop'))
 assert.ok(items.some(item => item.symbol === 'CCC' && item.kind === 'NEAR_SUPPORT' && item.title === 'ใกล้แนวรับ'))
+assert.ok(items.some(item => item.symbol === 'CCC' && item.kind === 'IMPORTANT_SUPPORT' && item.title === 'ใกล้แนวรับสำคัญ'))
+assert.ok(items.some(item => item.symbol === 'AAA' && item.kind === 'IMPORTANT_SUPPORT' && item.title === 'หลุดแนวรับสำคัญ'))
 
 const summary = alerts.summarizeAlerts(items)
 assert.equal(summary.total, items.length)
@@ -102,6 +111,7 @@ assert.match(dataLoader, /get_decrypted_trade_plans/, 'Alerts must use active Tr
 assert.match(dataLoader, /getMultipleQuotes/, 'Alerts must use current prices')
 assert.match(dataLoader, /getTechnicalIndicators/, 'Support/Resistance alerts must use technical data')
 assert.match(dataLoader, /getUpcomingEarningsForSymbols/, 'Alerts must batch Finnhub earnings calendar access')
+assert.match(dataLoader, /getMultipleAllTimeHigh/, 'Alerts must load ATH levels with a bounded batch helper')
 assert.doesNotMatch(dataLoader, /getUpcomingEarnings\(symbol\)/, 'Alerts must not issue one Finnhub earnings call per ticker')
 assert.doesNotMatch(dataLoader, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/, 'Alerts/Calendar loader must remain read-only')
 
@@ -112,7 +122,9 @@ assert.match(finnhub, /calendar\/earnings\?from=.*&to=.*&token=/, 'Batch earning
 
 const alertsUi = fs.readFileSync('components/portfolio/AlertsCenter.tsx', 'utf8')
 assert.match(alertsUi, /🔔 Notification Center/)
-assert.match(alertsUi, /Stop \/ Target \/ Near Support \/ Breakout \/ Earnings/)
+assert.match(alertsUi, /Stop \/ Target \/ Near Support \/ แนวรับสำคัญ \/ Breakout \/ ATH \/ Earnings/)
+assert.match(alertsUi, /value: 'IMPORTANT_SUPPORT'/)
+assert.match(alertsUi, /value: 'ATH'/)
 assert.match(alertsUi, /Live Derived Alerts/)
 assert.match(alertsUi, /ไม่สร้าง BUY\/SELL/)
 
@@ -138,7 +150,7 @@ assert.match(versioning, /package-lock\.json.*track/i, 'Versioning guide must re
 assert.doesNotMatch(versioning, /ไม่ track package-lock\.json/, 'Versioning guide must not claim the lockfile is untracked')
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(pkg.version, '1.28.0', 'Finalized release candidate must expose v1.28.0 metadata')
+assert.equal(pkg.version, '1.29.0', 'Finalized release candidate must expose v1.29.0 metadata')
 assert.match(pkg.scripts['test:critical'], /test-alerts-calendar\.mjs/, 'Alerts/Calendar regression must be part of critical build gate')
 
 console.log('✓ Alerts + Calendar regression tests passed')

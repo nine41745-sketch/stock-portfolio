@@ -4,7 +4,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 
 type ScannerUniverse = 'ai' | 'semis' | 'growth' | 'quality' | 'mine'
 type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
-type ScannerSort = 'score' | 'volume' | 'relative' | 'rr' | 'support'
+type ScannerSort = 'score' | 'volume' | 'relative' | 'rr' | 'support' | 'importantSupport' | 'ath'
+type AthFilter = 'all' | 'ath' | 'near'
 
 type ScannerItem = {
   symbol: string
@@ -30,9 +31,14 @@ type ScannerItem = {
   macdHistogram: number | null
   support: number | null
   resistance: number | null
+  importantSupport: number | null
+  importantSupportTouches: number
   volumeRatio: number | null
   week52High: number | null
   week52Low: number | null
+  allTimeHigh: number | null
+  athDistancePct: number | null
+  athStatus: 'ATH' | 'NEAR_ATH' | 'BELOW_ATH' | 'UNKNOWN'
   return20dPct: number | null
   return60dPct: number | null
   relativeStrength20: number | null
@@ -108,6 +114,32 @@ function supportDistance(item: ScannerItem): number | null {
   return ((item.price - item.support) / item.support) * 100
 }
 
+function importantSupportDistance(item: ScannerItem): number | null {
+  if (item.price === null || item.importantSupport === null || item.importantSupport <= 0) return null
+  return ((item.price - item.importantSupport) / item.importantSupport) * 100
+}
+
+function importantSupportLabel(item: ScannerItem): string {
+  const distance = importantSupportDistance(item)
+  if (distance === null) return '—'
+  if (distance < 0) return `หลุด ${Math.abs(distance).toFixed(1)}%`
+  if (distance <= 3) return `ใกล้ +${distance.toFixed(1)}%`
+  return `ห่าง +${distance.toFixed(1)}%`
+}
+
+function athStatusLabel(item: ScannerItem): string {
+  if (item.athStatus === 'ATH') return '🏆 ATH'
+  if (item.athStatus === 'NEAR_ATH' && item.athDistancePct !== null) return `ใกล้ ATH -${item.athDistancePct.toFixed(1)}%`
+  if (item.athDistancePct !== null) return `ห่าง ${item.athDistancePct.toFixed(1)}%`
+  return '—'
+}
+
+function athStatusStyle(item: ScannerItem): string {
+  if (item.athStatus === 'ATH') return 'text-yellow-300'
+  if (item.athStatus === 'NEAR_ATH') return 'text-green-400'
+  return 'text-gray-500'
+}
+
 function earningsLabel(item: ScannerItem): string {
   if (!item.earnings) return '—'
   if (item.earnings.daysUntil <= 0) return 'วันนี้'
@@ -127,6 +159,8 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
   const [setupFilter, setSetupFilter] = useState<'all' | ScannerSetup>('all')
   const [minScore, setMinScore] = useState(0)
   const [minVolume, setMinVolume] = useState(0)
+  const [athFilter, setAthFilter] = useState<AthFilter>('all')
+  const [importantSupportOnly, setImportantSupportOnly] = useState(false)
   const [uptrendOnly, setUptrendOnly] = useState(false)
   const [hideEarnings7d, setHideEarnings7d] = useState(false)
   const [hideHeld, setHideHeld] = useState(false)
@@ -243,6 +277,12 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
       if (setupFilter !== 'all' && item.setup !== setupFilter) return false
       if (item.score < minScore) return false
       if (minVolume > 0 && (item.volumeRatio ?? 0) < minVolume) return false
+      if (athFilter === 'ath' && item.athStatus !== 'ATH') return false
+      if (athFilter === 'near' && item.athStatus !== 'ATH' && item.athStatus !== 'NEAR_ATH') return false
+      if (importantSupportOnly) {
+        const distance = importantSupportDistance(item)
+        if (distance === null || distance > 3 || distance < -5) return false
+      }
       if (uptrendOnly && item.trend !== 'UPTREND') return false
       if (hideEarnings7d && item.earnings && item.earnings.daysUntil <= 7) return false
       if (hideHeld && heldSet.has(item.symbol)) return false
@@ -254,9 +294,11 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
       if (sortBy === 'relative') return (b.relativeStrength20 ?? -999) - (a.relativeStrength20 ?? -999) || b.score - a.score
       if (sortBy === 'rr') return (b.riskReward ?? -1) - (a.riskReward ?? -1) || b.score - a.score
       if (sortBy === 'support') return (supportDistance(a) ?? 999) - (supportDistance(b) ?? 999) || b.score - a.score
+      if (sortBy === 'importantSupport') return Math.abs(importantSupportDistance(a) ?? 999) - Math.abs(importantSupportDistance(b) ?? 999) || b.score - a.score
+      if (sortBy === 'ath') return (a.athDistancePct ?? 999) - (b.athDistancePct ?? 999) || b.score - a.score
       return b.score - a.score || a.symbol.localeCompare(b.symbol)
     })
-  }, [scannerItems, setupFilter, minScore, minVolume, uptrendOnly, hideEarnings7d, hideHeld, heldSet, sortBy])
+  }, [scannerItems, setupFilter, minScore, minVolume, athFilter, importantSupportOnly, uptrendOnly, hideEarnings7d, hideHeld, heldSet, sortBy])
 
   return (
     <section className="rounded-2xl border border-gray-800 bg-gray-900/40 p-4 shadow-sm md:p-5">
@@ -314,7 +356,7 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
             )}
           </div>
 
-          <div className="mb-4 grid gap-2 rounded-xl border border-gray-800 bg-gray-950/40 p-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-4 grid gap-2 rounded-xl border border-gray-800 bg-gray-950/40 p-3 md:grid-cols-2 xl:grid-cols-5">
             <select value={setupFilter} onChange={e => setSetupFilter(e.target.value as 'all' | ScannerSetup)} className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-white">
               <option value="all">Setup: ทั้งหมด</option>
               <option value="BREAKOUT">Breakout</option>
@@ -335,13 +377,21 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
               <option value="1.2">Volume ≥ 1.2x</option>
               <option value="1.5">Volume ≥ 1.5x</option>
             </select>
+            <select value={athFilter} onChange={e => setAthFilter(e.target.value as AthFilter)} className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-white">
+              <option value="all">ATH: ทั้งหมด</option>
+              <option value="ath">ATH เท่านั้น</option>
+              <option value="near">ATH / ใกล้ ATH ≤ 3%</option>
+            </select>
             <select value={sortBy} onChange={e => setSortBy(e.target.value as ScannerSort)} className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-white">
               <option value="score">เรียง: Score สูงสุด</option>
               <option value="volume">เรียง: Volume สูงสุด</option>
               <option value="relative">เรียง: RS20 สูงสุด</option>
               <option value="rr">เรียง: R:R สูงสุด</option>
               <option value="support">เรียง: ใกล้แนวรับ</option>
+              <option value="importantSupport">เรียง: ใกล้แนวรับสำคัญ</option>
+              <option value="ath">เรียง: ใกล้ ATH</option>
             </select>
+            <label className="flex items-center gap-2 text-xs text-gray-400"><input type="checkbox" checked={importantSupportOnly} onChange={e => setImportantSupportOnly(e.target.checked)} />ใกล้/หลุดแนวรับสำคัญ</label>
             <label className="flex items-center gap-2 text-xs text-gray-400"><input type="checkbox" checked={uptrendOnly} onChange={e => setUptrendOnly(e.target.checked)} />เฉพาะ Uptrend</label>
             <label className="flex items-center gap-2 text-xs text-gray-400"><input type="checkbox" checked={hideEarnings7d} onChange={e => setHideEarnings7d(e.target.checked)} />ซ่อนงบ ≤ 7 วัน</label>
             <label className="flex items-center gap-2 text-xs text-gray-400"><input type="checkbox" checked={hideHeld} onChange={e => setHideHeld(e.target.checked)} />ซ่อนหุ้นที่ถืออยู่</label>
@@ -351,6 +401,8 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
                 setSetupFilter('all')
                 setMinScore(0)
                 setMinVolume(0)
+                setAthFilter('all')
+                setImportantSupportOnly(false)
                 setUptrendOnly(false)
                 setHideEarnings7d(false)
                 setHideHeld(false)
@@ -368,7 +420,7 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
             <p className="rounded-lg border border-dashed border-gray-700 px-4 py-8 text-center text-sm text-gray-500">ไม่มีหุ้นที่ผ่าน Filter ชุดนี้</p>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-gray-800">
-              <table className="min-w-[1280px] w-full text-left text-xs">
+              <table className="min-w-[1510px] w-full text-left text-xs">
                 <thead className="bg-gray-950/80 text-gray-500">
                   <tr>
                     <th className="px-3 py-2.5">หุ้น</th>
@@ -379,9 +431,11 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
                     <th className="px-3 py-2.5">RSI D/W</th>
                     <th className="px-3 py-2.5">Vol</th>
                     <th className="px-3 py-2.5">Support</th>
+                    <th className="px-3 py-2.5">แนวรับสำคัญ</th>
                     <th className="px-3 py-2.5">Resistance</th>
                     <th className="px-3 py-2.5">RS20</th>
                     <th className="px-3 py-2.5">52W High</th>
+                    <th className="px-3 py-2.5">All-Time High</th>
                     <th className="px-3 py-2.5">R:R</th>
                     <th className="px-3 py-2.5">Earnings</th>
                     <th className="px-3 py-2.5">จัดการ</th>
@@ -397,6 +451,10 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
                         <td className="px-3 py-3">
                           <button type="button" onClick={() => setSelectedItem(item)} className="font-bold text-white hover:text-blue-400">{item.symbol}</button>
                           {held && <span className="ml-1.5 rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] text-blue-400">ถืออยู่</span>}
+                          {item.athStatus === 'ATH' && <span className="ml-1.5 rounded bg-yellow-500/15 px-1.5 py-0.5 text-[10px] text-yellow-300">🏆 ATH</span>}
+                          {item.athStatus === 'NEAR_ATH' && <span className="ml-1.5 rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">ใกล้ ATH</span>}
+                          {importantSupportDistance(item) !== null && importantSupportDistance(item)! >= 0 && importantSupportDistance(item)! <= 3 && <span className="ml-1.5 rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] text-cyan-300">🛡️ ใกล้แนวรับสำคัญ</span>}
+                          {importantSupportDistance(item) !== null && importantSupportDistance(item)! < 0 && importantSupportDistance(item)! >= -5 && <span className="ml-1.5 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-300">⚠️ หลุดแนวรับสำคัญ</span>}
                         </td>
                         <td className="px-3 py-3"><span className={`rounded-full border px-2 py-1 font-bold ${scoreStyle(item.score)}`}>{item.score}</span></td>
                         <td className="px-3 py-3"><span className={`rounded border px-2 py-1 ${setupStyle(item.setup)}`}>{setupLabel(item.setup)}</span></td>
@@ -405,9 +463,11 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
                         <td className="px-3 py-3">{item.rsi14?.toFixed(1) ?? '—'} / {item.weeklyRsi14?.toFixed(1) ?? '—'}</td>
                         <td className="px-3 py-3">{item.volumeRatio === null ? '—' : `${item.volumeRatio.toFixed(2)}x`}</td>
                         <td className="px-3 py-3">{fmtPrice(item.support)}<div className="text-[10px] text-gray-500">ห่าง {supportDistance(item) === null ? '—' : `${supportDistance(item)!.toFixed(1)}%`}</div></td>
+                        <td className="px-3 py-3"><div>{fmtPrice(item.importantSupport)}</div><div className={`text-[10px] ${importantSupportDistance(item) !== null && importantSupportDistance(item)! < 0 ? 'text-red-400' : 'text-cyan-400'}`}>{importantSupportLabel(item)}{item.importantSupportTouches > 0 ? ` · ${item.importantSupportTouches} touches` : ''}</div></td>
                         <td className="px-3 py-3">{fmtPrice(item.resistance)}</td>
                         <td className={`px-3 py-3 ${(item.relativeStrength20 ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtPct(item.relativeStrength20)}</td>
                         <td className="px-3 py-3">{fmtPrice(item.week52High)}</td>
+                        <td className="px-3 py-3"><div>{fmtPrice(item.allTimeHigh)}</div><div className={`text-[10px] ${athStatusStyle(item)}`}>{athStatusLabel(item)}</div></td>
                         <td className="px-3 py-3">{fmtRatio(item.riskReward)}</td>
                         <td className={`px-3 py-3 ${earningsRisk ? 'font-semibold text-orange-400' : ''}`}>{earningsLabel(item)}</td>
                         <td className="px-3 py-3">
@@ -433,7 +493,7 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
             <div className="mt-4 rounded-xl border border-gray-700 bg-gray-950/60 p-4">
               <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <div className="flex items-center gap-2"><h2 className="text-lg font-bold text-white">{selectedItem.symbol}</h2><span className={`rounded border px-2 py-1 text-xs ${setupStyle(selectedItem.setup)}`}>{setupLabel(selectedItem.setup)}</span></div>
+                  <div className="flex items-center gap-2"><h2 className="text-lg font-bold text-white">{selectedItem.symbol}</h2><span className={`rounded border px-2 py-1 text-xs ${setupStyle(selectedItem.setup)}`}>{setupLabel(selectedItem.setup)}</span>{selectedItem.athStatus === 'ATH' && <span className="rounded border border-yellow-500/30 bg-yellow-500/10 px-2 py-1 text-xs text-yellow-300">🏆 ATH</span>}{selectedItem.athStatus === 'NEAR_ATH' && <span className="rounded border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-400">ใกล้ ATH</span>}</div>
                   <p className="mt-1 text-xs text-gray-500">Score {selectedItem.score}/100 · {selectedItem.label}</p>
                 </div>
                 <button type="button" onClick={() => setSelectedItem(null)} className="text-sm text-gray-500 hover:text-gray-200">✕ ปิด</button>
@@ -444,7 +504,7 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
                 <div className="rounded-lg bg-gray-900 p-3"><p className="text-[10px] uppercase text-gray-500">Momentum</p><p className="mt-1 font-semibold text-gray-200">RSI {selectedItem.rsi14?.toFixed(1) ?? '—'} / W {selectedItem.weeklyRsi14?.toFixed(1) ?? '—'}</p><p className="text-xs text-gray-500">MACD Hist {selectedItem.macdHistogram?.toFixed(2) ?? '—'}</p></div>
                 <div className="rounded-lg bg-gray-900 p-3"><p className="text-[10px] uppercase text-gray-500">Volume</p><p className="mt-1 font-semibold text-gray-200">{selectedItem.volumeRatio === null ? '—' : `${selectedItem.volumeRatio.toFixed(2)}x`}</p><p className="text-xs text-gray-500">เทียบค่าเฉลี่ย 20 วันก่อนหน้า</p></div>
                 <div className="rounded-lg bg-gray-900 p-3"><p className="text-[10px] uppercase text-gray-500">Relative Strength</p><p className="mt-1 font-semibold text-gray-200">20D {fmtPct(selectedItem.relativeStrength20)}</p><p className="text-xs text-gray-500">60D {fmtPct(selectedItem.relativeStrength60)}</p></div>
-                <div className="rounded-lg bg-gray-900 p-3"><p className="text-[10px] uppercase text-gray-500">Price Location</p><p className="mt-1 font-semibold text-gray-200">S {fmtPrice(selectedItem.support)}</p><p className="text-xs text-gray-500">R {fmtPrice(selectedItem.resistance)} · 52W {fmtPrice(selectedItem.week52High)}</p></div>
+                <div className="rounded-lg bg-gray-900 p-3"><p className="text-[10px] uppercase text-gray-500">Price Location</p><p className="mt-1 font-semibold text-gray-200">S {fmtPrice(selectedItem.support)}</p><p className="text-xs text-gray-500">R {fmtPrice(selectedItem.resistance)} · 52W {fmtPrice(selectedItem.week52High)}</p><p className="text-xs text-cyan-400">แนวรับสำคัญ {fmtPrice(selectedItem.importantSupport)} · {importantSupportLabel(selectedItem)}{selectedItem.importantSupportTouches > 0 ? ` · ${selectedItem.importantSupportTouches} touches` : ''}</p><p className={`text-xs ${athStatusStyle(selectedItem)}`}>ATH {fmtPrice(selectedItem.allTimeHigh)} · {athStatusLabel(selectedItem)}</p></div>
                 <div className="rounded-lg bg-gray-900 p-3"><p className="text-[10px] uppercase text-gray-500">Risk / Catalyst</p><p className="mt-1 font-semibold text-gray-200">R:R {fmtRatio(selectedItem.riskReward)}</p><p className={`text-xs ${selectedItem.earnings && selectedItem.earnings.daysUntil <= 7 ? 'text-orange-400' : 'text-gray-500'}`}>Earnings {earningsLabel(selectedItem)}</p></div>
               </div>
 

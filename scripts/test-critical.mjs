@@ -56,6 +56,22 @@ assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T01:30:00Z'), chang
 assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T02:30:00Z'), change), false)
 assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T02:00:00Z'), change), false)
 
+const importantSupport = await importTsModule('lib/important-support.ts')
+const repeatedSwingLows = [105,104,103,101,100,102,104,103,101.2,100.5,102,105,104,102,100.8,102.5,106]
+const importantLevel = importantSupport.calculateImportantSupport(repeatedSwingLows, 102)
+assert.ok(importantLevel.level !== null, 'Repeated swing lows should create an important support level')
+assert.ok(importantLevel.touches >= 2, 'Important support must require repeated touches')
+assert.equal(importantSupport.getImportantSupportState(102, 100).status, 'NEAR')
+assert.equal(importantSupport.getImportantSupportState(99, 100).status, 'BROKEN')
+assert.equal(importantSupport.getImportantSupportState(110, 100).status, 'FAR')
+
+const ath = await importTsModule('lib/ath.ts')
+assert.deepEqual(ath.getAthState(100, 100), { status: 'ATH', distancePct: 0 })
+assert.equal(ath.getAthState(99.95, 100).status, 'ATH')
+assert.equal(ath.getAthState(98, 100).status, 'NEAR_ATH')
+assert.equal(ath.getAthState(90, 100).status, 'BELOW_ATH')
+assert.equal(ath.getAthState(null, 100).status, 'UNKNOWN')
+
 const scanner = await importTsModule('lib/stock-scanner.ts')
 const strongScan = scanner.scoreScannerCandidate({
   trend: 'UPTREND', rsi14: 55, weeklyRsi14: 58, macdHistogram: 1,
@@ -188,30 +204,56 @@ assert.match(scannerRouteSource, /getTechnicalIndicators\('SPY'\)/, 'Scanner mus
 assert.match(scannerRouteSource, /getUpcomingEarnings/, 'Scanner must surface earnings catalyst risk')
 assert.match(scannerRouteSource, /scannerSupport/, 'Scanner must use completed-bar support levels')
 assert.match(scannerRouteSource, /scannerVolumeRatio/, 'Scanner must use scanner-safe volume ratio')
+assert.match(scannerRouteSource, /getAllTimeHigh/, 'Scanner must load true all-time high separately from 52W data')
+assert.match(scannerRouteSource, /athDistancePct/, 'Scanner API must expose ATH distance for filtering')
+
+const athSource = fs.readFileSync('lib/all-time-high.ts', 'utf8')
+assert.match(athSource, /period1:\s*0/, 'ATH source must request maximum available Yahoo history')
+assert.match(athSource, /interval:\s*'1mo'/, 'ATH source must use monthly bars to keep provider load bounded')
+assert.match(athSource, /CHUNK_SIZE/, 'ATH batch requests must be bounded')
+assert.equal(fs.existsSync('app/api/ath/route.ts'), true, 'Authenticated ATH endpoint is required for Dashboard')
+const athRouteSource = fs.readFileSync('app/api/ath/route.ts', 'utf8')
+assert.match(athRouteSource, /MAX_SYMBOLS_PER_REQUEST/, 'ATH endpoint must cap provider fan-out')
+assert.match(athRouteSource, /parseSymbol/, 'ATH endpoint must validate ticker symbols')
 
 const indicatorSource = fs.readFileSync('lib/indicators.ts', 'utf8')
 assert.match(indicatorSource, /bars\.slice\(0, -1\)/, 'Scanner support/resistance must exclude the current bar')
 assert.match(indicatorSource, /bars\.slice\(-\(window \+ 1\), -1\)/, 'Scanner volume average must exclude current-day volume')
 assert.match(indicatorSource, /return20dPct/, 'Scanner market data must expose 20-day returns')
 assert.match(indicatorSource, /week52High/, 'Scanner market data must expose 52-week range')
+assert.match(indicatorSource, /calculateImportantSupport/, 'Technical data must calculate repeated swing-low Important Support')
+assert.match(indicatorSource, /importantSupportTouches/, 'Technical data must expose Important Support touch count')
+assert.equal(fs.existsSync('app/api/important-support/route.ts'), true, 'Dashboard Important Support endpoint is required')
+const importantSupportRouteSource = fs.readFileSync('app/api/important-support/route.ts', 'utf8')
+assert.match(importantSupportRouteSource, /MAX_SYMBOLS_PER_REQUEST/, 'Important Support endpoint must cap provider fan-out')
+assert.match(importantSupportRouteSource, /CHUNK_SIZE = 2/, 'Important Support endpoint must bound Yahoo request concurrency')
 
 const opportunitySource = fs.readFileSync('components/portfolio/OpportunityHub.tsx', 'utf8')
 assert.match(opportunitySource, /Relative Strength/, 'Scanner UI must expose Relative Strength')
 assert.match(opportunitySource, /ซ่อนงบ ≤ 7 วัน/, 'Scanner UI must provide earnings-risk filtering')
 assert.match(opportunitySource, /BREAKOUT/, 'Scanner UI must expose deterministic setup filtering')
 assert.match(opportunitySource, /เรียง: Score สูงสุด/, 'Scanner UI must provide deterministic sorting controls')
+assert.match(opportunitySource, /ATH \/ ใกล้ ATH ≤ 3%/, 'Scanner UI must expose ATH filtering')
+assert.match(opportunitySource, /ใกล้\/หลุดแนวรับสำคัญ/, 'Scanner UI must expose Important Support filtering')
+assert.match(opportunitySource, /เรียง: ใกล้แนวรับสำคัญ/, 'Scanner UI must sort by Important Support proximity')
+assert.match(opportunitySource, /เรียง: ใกล้ ATH/, 'Scanner UI must sort by ATH distance')
+assert.match(dashboardSource, /\/api\/ath\?symbols=/, 'Dashboard must load ATH data without delaying initial server render')
+assert.match(dashboardSource, /🏆 ATH/, 'Dashboard must display ATH badges for held stocks')
+assert.doesNotMatch(dashboardSource, /status === 'BELOW_ATH'/, 'Dashboard must not show noisy far-from-ATH status; only ATH/near-ATH badges belong on the portfolio view')
+assert.match(dashboardSource, /\/api\/important-support\?symbols=/, 'Dashboard must load Important Support without blocking initial render')
+assert.match(dashboardSource, /ใกล้แนวรับสำคัญ/, 'Dashboard must display Important Support badges')
 
 const lightModeCss = fs.readFileSync('app/globals.css', 'utf8')
 assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic green text for contrast')
 assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
 assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
 
-// v1.28.0 release metadata must stay synchronized across changelog/package/lockfile.
+// v1.29.0 release metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.28.0', 'Package version must be finalized as v1.28.0 for this release')
+assert.equal(packageJson.version, '1.29.0', 'Package version must be finalized as v1.29.0 for this release')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.4', 'Patched Next.js release must stay pinned')
-assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.28.0 must preserve the audited Supabase SSR dependency')
+assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.29.0 must preserve the audited Supabase SSR dependency')
 assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
 assert.equal(packageJson.scripts?.lint, 'eslint .', 'Next.js 16 must use the ESLint CLI')
 assert.equal(packageJson.scripts?.typecheck, 'tsc --noEmit', 'CI must expose an explicit TypeScript check')
@@ -275,12 +317,13 @@ const changelogReleaseTimes = [
   ['config/changelog-v1274.ts', '2026-09-19 16:02 ICT'],
   ['config/changelog-v1275.ts', '2026-09-19 19:51 ICT'],
   ['config/changelog-v1280.ts', '2026-09-22 03:17 ICT'],
+  ['config/changelog-v1290.ts', '2026-09-23 16:42 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1280'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1290'])
 
 console.log('✓ Critical regression tests passed')

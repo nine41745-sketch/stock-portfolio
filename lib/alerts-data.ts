@@ -2,6 +2,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getMultipleQuotes, getUpcomingEarningsForSymbols, type UpcomingEarnings } from '@/lib/finnhub'
 import { getTechnicalIndicators } from '@/lib/indicators'
 import { buildAlerts, summarizeAlerts, type AlertInput, type AlertItem } from '@/lib/alerts'
+import { getMultipleAllTimeHigh, type AllTimeHighSnapshot } from '@/lib/all-time-high'
 import {
   getMacroEvents,
   makeEarningsEvent,
@@ -39,7 +40,9 @@ export interface AlertsCalendarPayload {
     scope: string
     stopTarget: string
     supportResistance: string
+    importantSupport: string
     breakout: string
+    ath: string
     earnings: string
     persistence: string
     macroCalendar: string
@@ -128,11 +131,15 @@ export async function loadAlertsCalendarData(
   const earningsPromise = trackedSymbols.length
     ? getUpcomingEarningsForSymbols(trackedSymbols)
     : Promise.resolve({} as Record<string, UpcomingEarnings | null>)
+  const athPromise = trackedSymbols.length
+    ? getMultipleAllTimeHigh(trackedSymbols)
+    : Promise.resolve({} as Record<string, AllTimeHighSnapshot>)
 
-  const [quotes, marketData, earningsBySymbol] = await Promise.all([
+  const [quotes, marketData, earningsBySymbol, athBySymbol] = await Promise.all([
     quotesPromise,
     technicalsPromise,
     earningsPromise,
+    athPromise,
   ])
 
   const alertInputs: AlertInput[] = []
@@ -147,11 +154,13 @@ export async function loadAlertsCalendarData(
       symbol: entry.symbol,
       price,
       support: entry.technical.scannerSupport,
+      importantSupport: entry.technical.importantSupport,
       resistance: entry.technical.scannerResistance,
       volumeRatio: entry.technical.scannerVolumeRatio,
       stopLoss: levels.stopLoss,
       target1: levels.target1,
       target2: levels.target2,
+      allTimeHigh: athBySymbol[entry.symbol]?.allTimeHigh ?? null,
       earnings,
     })
 
@@ -181,7 +190,9 @@ export async function loadAlertsCalendarData(
         : 'Tracks current Holdings plus active WAITING/ENTERED Trade Plans, capped at 25 symbols per request.',
       stopTarget: 'Stop alert uses ENTERED Trade Plan stop only; Target uses active WAITING/ENTERED Trade Plan targets.',
       supportResistance: 'Near Support and Breakout use scanner support/resistance derived from completed historical bars.',
+      importantSupport: 'Important Support is a repeated swing-low zone: at least 2 touches clustered within 1.5% over up to 120 completed sessions. Near = within 3%; below the level = broken.',
       breakout: 'Breakout means current price is above scanner resistance; Volume Ratio >= 1.20x is highlighted but not required.',
+      ath: 'ATH uses Yahoo Finance maximum available monthly High history; the live alert fires only when current price is at/within 0.10% of that level.',
       earnings: 'Upcoming earnings are sourced from one batched Finnhub calendar request and alerts fire inside 7 days; calendar includes up to 60 days.',
       persistence: 'Live derived Notification Center only; v1.25.0 does not persist read/unread or custom alert thresholds.',
       macroCalendar: 'CPI/FOMC dates use a static snapshot of official published BLS/Federal Reserve schedules.',

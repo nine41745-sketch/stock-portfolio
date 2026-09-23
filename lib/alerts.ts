@@ -1,15 +1,17 @@
-export type AlertKind = 'STOP' | 'TARGET' | 'NEAR_SUPPORT' | 'BREAKOUT' | 'EARNINGS'
+export type AlertKind = 'STOP' | 'TARGET' | 'NEAR_SUPPORT' | 'IMPORTANT_SUPPORT' | 'BREAKOUT' | 'ATH' | 'EARNINGS'
 export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO'
 
 export interface AlertInput {
   symbol: string
   price: number | null
   support: number | null
+  importantSupport: number | null
   resistance: number | null
   volumeRatio: number | null
   stopLoss: number | null
   target1: number | null
   target2: number | null
+  allTimeHigh: number | null
   earnings: { date: string; daysUntil: number; hour: string | null } | null
 }
 
@@ -30,6 +32,12 @@ const round2 = (value: number): number => Math.round(value * 100) / 100
 
 function pctFromLevel(price: number, level: number): number {
   return round2(((price - level) / level) * 100)
+}
+
+const ATH_MATCH_TOLERANCE_PCT = 0.1
+
+function athDistanceBelowPct(price: number, allTimeHigh: number): number {
+  return ((allTimeHigh - price) / allTimeHigh) * 100
 }
 
 function push(
@@ -138,6 +146,33 @@ export function buildAlerts(inputs: AlertInput[], nearPct = 2): AlertItem[] {
         }
       }
 
+      if (input.importantSupport !== null && input.importantSupport > 0) {
+        const distance = pctFromLevel(price, input.importantSupport)
+        if (price < input.importantSupport) {
+          push(
+            items,
+            input,
+            'IMPORTANT_SUPPORT',
+            'CRITICAL',
+            'หลุดแนวรับสำคัญ',
+            `ราคาปัจจุบันต่ำกว่าแนวรับสำคัญ ${input.importantSupport.toFixed(2)} อยู่ ${Math.abs(distance).toFixed(2)}%`,
+            input.importantSupport,
+            distance,
+          )
+        } else if (distance <= 3) {
+          push(
+            items,
+            input,
+            'IMPORTANT_SUPPORT',
+            'WARNING',
+            'ใกล้แนวรับสำคัญ',
+            `ราคาอยู่เหนือแนวรับสำคัญเพียง ${distance.toFixed(2)}%`,
+            input.importantSupport,
+            distance,
+          )
+        }
+      }
+
       if (input.resistance !== null && input.resistance > 0 && price > input.resistance) {
         const distance = pctFromLevel(price, input.resistance)
         const volumeText = input.volumeRatio !== null
@@ -153,6 +188,25 @@ export function buildAlerts(inputs: AlertInput[], nearPct = 2): AlertItem[] {
           input.resistance,
           distance,
         )
+      }
+
+      if (input.allTimeHigh !== null && input.allTimeHigh > 0) {
+        const distanceBelow = athDistanceBelowPct(price, input.allTimeHigh)
+        if (distanceBelow <= ATH_MATCH_TOLERANCE_PCT) {
+          const detail = price >= input.allTimeHigh
+            ? `ราคาปัจจุบัน $${price.toFixed(2)} อยู่ที่/เหนือ ATH อ้างอิง $${input.allTimeHigh.toFixed(2)}`
+            : `ราคาปัจจุบัน $${price.toFixed(2)} อยู่ห่าง ATH อ้างอิงเพียง ${Math.max(0, distanceBelow).toFixed(2)}%`
+          push(
+            items,
+            input,
+            'ATH',
+            'INFO',
+            'แตะ All-Time High (ATH)',
+            detail,
+            input.allTimeHigh,
+            pctFromLevel(price, input.allTimeHigh),
+          )
+        }
       }
     }
 
