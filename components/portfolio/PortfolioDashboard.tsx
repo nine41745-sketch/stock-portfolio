@@ -9,10 +9,16 @@ import TradingViewChart from './TradingViewChart'
 import { AUTO_LOGOUT_MS, AUTO_LOGOUT_WARN_MS, FALLBACK_USD_THB_RATE } from '@/lib/constants'
 import { getMarketStatus, MarketStatus } from '@/lib/market-status'
 import { changelog, CURRENT_VERSION } from '@/config/changelog'
+import { getAthState } from '@/lib/ath'
 
 interface Props {
   holdings: HoldingWithPrice[]
   userName: string
+}
+
+interface AthSnapshot {
+  allTimeHigh: number | null
+  asOf: string | null
 }
 
 const SIGNAL_STYLE: Record<string, string> = {
@@ -341,6 +347,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [darkMode, setDarkMode] = useState(true)
   const [themeReady, setThemeReady] = useState(false)
+  const [athBySymbol, setAthBySymbol] = useState<Record<string, AthSnapshot>>({})
 
   const [dimeUpdatedAt, setDimeUpdatedAt] = useState<string | null>(null)
   const [capitalUpdatedAt, setCapitalUpdatedAt] = useState<string | null>(null)
@@ -361,6 +368,10 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [showChangePin, setShowChangePin] = useState(false)  // PIN Lock: เปลี่ยน PIN จาก Settings
   const router = useRouter()
   const supabase = createClient()
+  const holdingSymbolsKey = useMemo(
+    () => holdings.map(h => h.symbol.toUpperCase()).sort().join(','),
+    [holdings],
+  )
 
   // Auto-logout หลัง 30 นาที ไม่มีการใช้งาน
   useEffect(() => {
@@ -411,6 +422,24 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   }
 
   useEffect(() => { void fetchExchangeRate() }, [])
+
+  useEffect(() => {
+    if (!holdingSymbolsKey) {
+      setAthBySymbol({})
+      return
+    }
+    let cancelled = false
+    fetch(`/api/ath?symbols=${encodeURIComponent(holdingSymbolsKey)}`, { cache: 'no-store' })
+      .then(r => requireOk(r, 'โหลด All-Time High ไม่สำเร็จ'))
+      .then(r => r.json())
+      .then((data: { items?: Record<string, AthSnapshot> }) => {
+        if (!cancelled) setAthBySymbol(data.items ?? {})
+      })
+      .catch(() => {
+        if (!cancelled) setAthBySymbol({})
+      })
+    return () => { cancelled = true }
+  }, [holdingSymbolsKey])
 
   // Auto-detect ขนาดจอตอนเปิดหน้าเว็บครั้งแรก — จอมือถือ (< 768px) จะสลับไปโหมด Card Layout ให้อัตโนมัติ
   // ทำแค่ครั้งเดียวตอน mount เท่านั้น (ไม่ผูกกับ resize event) เพื่อไม่ไปแย่งค่าที่ user เลือกเองภายหลังด้วยปุ่ม 💻/📱
@@ -1189,11 +1218,18 @@ useEffect(() => {
                   const isLoading = loadingSymbol === h.symbol
                   const pnlPos = (h.pnl ?? 0) >= 0
                   const pnlColor = h.pnl === null ? 'text-gray-500' : pnlPos ? 'text-green-400' : 'text-red-400'
+                  const athSnapshot = athBySymbol[h.symbol]
+                  const athState = getAthState(h.current_price, athSnapshot?.allTimeHigh)
                   return (
                     <React.Fragment key={h.id}>
                       <tr className="border-t border-gray-800 bg-gray-900/40 hover:bg-gray-900/80 transition-colors">
                         <td className="px-4 py-3">
-                          <span className="font-bold text-white tracking-wide">{h.symbol}</span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-bold text-white tracking-wide">{h.symbol}</span>
+                            {athState.status === 'ATH' && <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-[10px] text-yellow-300">🏆 ATH</span>}
+                            {athState.status === 'NEAR_ATH' && <span className="rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">ใกล้ ATH -{athState.distancePct?.toFixed(1)}%</span>}
+                          </div>
+                          {athState.status === 'BELOW_ATH' && <p className="text-gray-600 text-[10px] mt-0.5">ห่าง ATH {athState.distancePct?.toFixed(1)}%</p>}
                           {h.notes && <p className="text-gray-500 text-xs mt-0.5">{h.notes}</p>}
                         </td>
                         <td className="px-4 py-3 text-right text-white font-mono">{fmtAmt(h.current_price)}</td>
@@ -1252,11 +1288,16 @@ useEffect(() => {
             const pctBadge = pnlPos ? 'bg-green-500/15 text-green-400 border-green-500/20' : 'bg-red-500/15 text-red-400 border-red-500/20'
             const analysis = analyses[h.symbol]
             const isLoading = loadingSymbol === h.symbol
+            const athSnapshot = athBySymbol[h.symbol]
+            const athState = getAthState(h.current_price, athSnapshot?.allTimeHigh)
             return (
               <div key={h.id} className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <span className="font-bold text-white text-base tracking-wide">{h.symbol}</span>
+                    {athState.status === 'ATH' && <span className="ml-2 rounded bg-yellow-500/15 px-1.5 py-0.5 text-[10px] text-yellow-300">🏆 ATH</span>}
+                    {athState.status === 'NEAR_ATH' && <span className="ml-2 rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">ใกล้ ATH -{athState.distancePct?.toFixed(1)}%</span>}
+                    {athState.status === 'BELOW_ATH' && <span className="ml-2 text-[10px] text-gray-600">ATH -{athState.distancePct?.toFixed(1)}%</span>}
                     {h.notes && <span className="text-gray-500 text-xs ml-2">{h.notes}</span>}
                     <p className="text-gray-600 text-xs mt-0.5">แก้ไข {fmtDate(h.updated_at)}</p>
                   </div>

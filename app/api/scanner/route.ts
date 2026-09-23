@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getUpcomingEarnings } from '@/lib/finnhub'
 import { getTechnicalIndicators, TechnicalIndicators } from '@/lib/indicators'
 import { SCANNER_UNIVERSES, ScannerUniverseKey, scoreScannerCandidate } from '@/lib/stock-scanner'
+import { getAllTimeHigh } from '@/lib/all-time-high'
+import { getAthState } from '@/lib/ath'
 
 export const maxDuration = 45
 
@@ -52,9 +54,10 @@ async function getMineSymbols(userId: string): Promise<string[]> {
 async function scanOne(symbol: string, spy: TechnicalIndicators) {
   // Price/day-change/52W are derived from the same historical feed as Technicals so scanner does not
   // consume Finnhub quote/metric quota. Finnhub is reserved here for earnings catalyst risk only.
-  const [technical, earnings] = await Promise.all([
+  const [technical, earnings, athSnapshot] = await Promise.all([
     getTechnicalIndicators(symbol),
     getUpcomingEarnings(symbol),
+    getAllTimeHigh(symbol),
   ])
 
   const relativeStrength20 = diffOrNull(technical.return20dPct, spy.return20dPct)
@@ -80,6 +83,7 @@ async function scanOne(symbol: string, spy: TechnicalIndicators) {
   const price = technical.lastClose
   const support = technical.scannerSupport
   const resistance = technical.scannerResistance
+  const ath = getAthState(price, athSnapshot.allTimeHigh)
 
   return {
     symbol,
@@ -101,6 +105,9 @@ async function scanOne(symbol: string, spy: TechnicalIndicators) {
     volumeRatio: technical.scannerVolumeRatio,
     week52High: technical.week52High,
     week52Low: technical.week52Low,
+    allTimeHigh: athSnapshot.allTimeHigh,
+    athDistancePct: ath.distancePct,
+    athStatus: ath.status,
     return20dPct: technical.return20dPct,
     return60dPct: technical.return60dPct,
     relativeStrength20,

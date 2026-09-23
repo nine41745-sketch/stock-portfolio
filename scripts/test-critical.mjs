@@ -56,6 +56,13 @@ assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T01:30:00Z'), chang
 assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T02:30:00Z'), change), false)
 assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T02:00:00Z'), change), false)
 
+const ath = await importTsModule('lib/ath.ts')
+assert.deepEqual(ath.getAthState(100, 100), { status: 'ATH', distancePct: 0 })
+assert.equal(ath.getAthState(99.95, 100).status, 'ATH')
+assert.equal(ath.getAthState(98, 100).status, 'NEAR_ATH')
+assert.equal(ath.getAthState(90, 100).status, 'BELOW_ATH')
+assert.equal(ath.getAthState(null, 100).status, 'UNKNOWN')
+
 const scanner = await importTsModule('lib/stock-scanner.ts')
 const strongScan = scanner.scoreScannerCandidate({
   trend: 'UPTREND', rsi14: 55, weeklyRsi14: 58, macdHistogram: 1,
@@ -188,6 +195,17 @@ assert.match(scannerRouteSource, /getTechnicalIndicators\('SPY'\)/, 'Scanner mus
 assert.match(scannerRouteSource, /getUpcomingEarnings/, 'Scanner must surface earnings catalyst risk')
 assert.match(scannerRouteSource, /scannerSupport/, 'Scanner must use completed-bar support levels')
 assert.match(scannerRouteSource, /scannerVolumeRatio/, 'Scanner must use scanner-safe volume ratio')
+assert.match(scannerRouteSource, /getAllTimeHigh/, 'Scanner must load true all-time high separately from 52W data')
+assert.match(scannerRouteSource, /athDistancePct/, 'Scanner API must expose ATH distance for filtering')
+
+const athSource = fs.readFileSync('lib/all-time-high.ts', 'utf8')
+assert.match(athSource, /period1:\s*0/, 'ATH source must request maximum available Yahoo history')
+assert.match(athSource, /interval:\s*'1mo'/, 'ATH source must use monthly bars to keep provider load bounded')
+assert.match(athSource, /CHUNK_SIZE/, 'ATH batch requests must be bounded')
+assert.equal(fs.existsSync('app/api/ath/route.ts'), true, 'Authenticated ATH endpoint is required for Dashboard')
+const athRouteSource = fs.readFileSync('app/api/ath/route.ts', 'utf8')
+assert.match(athRouteSource, /MAX_SYMBOLS_PER_REQUEST/, 'ATH endpoint must cap provider fan-out')
+assert.match(athRouteSource, /parseSymbol/, 'ATH endpoint must validate ticker symbols')
 
 const indicatorSource = fs.readFileSync('lib/indicators.ts', 'utf8')
 assert.match(indicatorSource, /bars\.slice\(0, -1\)/, 'Scanner support/resistance must exclude the current bar')
@@ -200,6 +218,10 @@ assert.match(opportunitySource, /Relative Strength/, 'Scanner UI must expose Rel
 assert.match(opportunitySource, /ซ่อนงบ ≤ 7 วัน/, 'Scanner UI must provide earnings-risk filtering')
 assert.match(opportunitySource, /BREAKOUT/, 'Scanner UI must expose deterministic setup filtering')
 assert.match(opportunitySource, /เรียง: Score สูงสุด/, 'Scanner UI must provide deterministic sorting controls')
+assert.match(opportunitySource, /ATH \/ ใกล้ ATH ≤ 3%/, 'Scanner UI must expose ATH filtering')
+assert.match(opportunitySource, /เรียง: ใกล้ ATH/, 'Scanner UI must sort by ATH distance')
+assert.match(dashboardSource, /\/api\/ath\?symbols=/, 'Dashboard must load ATH data without delaying initial server render')
+assert.match(dashboardSource, /🏆 ATH/, 'Dashboard must display ATH badges for held stocks')
 
 const lightModeCss = fs.readFileSync('app/globals.css', 'utf8')
 assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic green text for contrast')

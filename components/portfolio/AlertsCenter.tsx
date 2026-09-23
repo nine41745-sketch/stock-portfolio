@@ -19,6 +19,7 @@ const FILTERS: Array<{ value: 'ALL' | AlertKind; label: string }> = [
   { value: 'TARGET', label: 'Target' },
   { value: 'NEAR_SUPPORT', label: 'Support' },
   { value: 'BREAKOUT', label: 'Breakout' },
+  { value: 'ATH', label: 'ATH' },
   { value: 'EARNINGS', label: 'Earnings' },
 ]
 
@@ -39,6 +40,7 @@ function kindIcon(kind: AlertKind): string {
   if (kind === 'TARGET') return '🎯'
   if (kind === 'NEAR_SUPPORT') return '🧱'
   if (kind === 'BREAKOUT') return '🚀'
+  if (kind === 'ATH') return '🏆'
   return '🧾'
 }
 
@@ -101,7 +103,7 @@ export default function AlertsCenter() {
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">🔔 Notification Center</h1>
-          <p className="mt-1 text-sm text-gray-400">Live Alerts: Stop / Target / Near Support / Breakout / Earnings</p>
+          <p className="mt-1 text-sm text-gray-400">Live Alerts: Stop / Target / Near Support / Breakout / ATH / Earnings</p>
         </div>
         <div className="flex gap-2">
           <Link href="/calendar" className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-gray-800">📅 Calendar</Link>
@@ -185,7 +187,7 @@ export default function AlertsCenter() {
 
       <section className="rounded-xl border border-gray-800 bg-gray-900/30 p-4 text-xs text-gray-500">
         <p className="font-semibold text-gray-300">วิธีอ่าน</p>
-        <p className="mt-2">ติดตาม {data.trackedSymbols.length} Ticker จาก Holdings และ Trade Plan ที่กำลังใช้งาน · Near level = ภายใน 2% · Breakout ใช้แนวต้านจาก completed bars</p>
+        <p className="mt-2">ติดตาม {data.trackedSymbols.length} Ticker จาก Holdings และ Trade Plan ที่กำลังใช้งาน · Near level = ภายใน 2% · Breakout ใช้แนวต้านจาก completed bars · ATH = อยู่ที่/ภายใน 0.10% ของ All-Time High</p>
         <p className="mt-1">รุ่นนี้เป็น Live Derived Alerts — ยังไม่เก็บ read/unread และยังไม่มี Custom Threshold แบบ persistent</p>
         <p className="mt-1">Read-only: ไม่สร้าง BUY/SELL และไม่แก้ Holdings, Transactions หรือ Trade Plan อัตโนมัติ</p>
       </section>

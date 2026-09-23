@@ -1,4 +1,5 @@
-export type AlertKind = 'STOP' | 'TARGET' | 'NEAR_SUPPORT' | 'BREAKOUT' | 'EARNINGS'
+import { getAthState } from './ath'
+export type AlertKind = 'STOP' | 'TARGET' | 'NEAR_SUPPORT' | 'BREAKOUT' | 'ATH' | 'EARNINGS'
 export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO'
 
 export interface AlertInput {
@@ -10,6 +11,7 @@ export interface AlertInput {
   stopLoss: number | null
   target1: number | null
   target2: number | null
+  allTimeHigh: number | null
   earnings: { date: string; daysUntil: number; hour: string | null } | null
 }
 
@@ -153,6 +155,25 @@ export function buildAlerts(inputs: AlertInput[], nearPct = 2): AlertItem[] {
           input.resistance,
           distance,
         )
+      }
+
+      if (input.allTimeHigh !== null && input.allTimeHigh > 0) {
+        const ath = getAthState(price, input.allTimeHigh)
+        if (ath.status === 'ATH') {
+          const detail = price >= input.allTimeHigh
+            ? `ราคาปัจจุบัน ${price.toFixed(2)} อยู่ที่/เหนือ ATH อ้างอิง ${input.allTimeHigh.toFixed(2)}`
+            : `ราคาปัจจุบัน ${price.toFixed(2)} อยู่ห่าง ATH อ้างอิงเพียง ${ath.distancePct?.toFixed(2) ?? '0.00'}%`
+          push(
+            items,
+            input,
+            'ATH',
+            'INFO',
+            'แตะ All-Time High (ATH)',
+            detail,
+            input.allTimeHigh,
+            pctFromLevel(price, input.allTimeHigh),
+          )
+        }
       }
     }
 
