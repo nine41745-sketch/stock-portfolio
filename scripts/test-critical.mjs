@@ -242,6 +242,10 @@ assert.match(dashboardSource, /🏆 ATH/, 'Dashboard must display ATH badges for
 assert.doesNotMatch(dashboardSource, /status === 'BELOW_ATH'/, 'Dashboard must not show noisy far-from-ATH status; only ATH/near-ATH badges belong on the portfolio view')
 assert.match(dashboardSource, /\/api\/important-support\?symbols=/, 'Dashboard must load Important Support without blocking initial render')
 assert.match(dashboardSource, /ใกล้แนวรับสำคัญ/, 'Dashboard must display Important Support badges')
+assert.match(dashboardSource, /เงินสดคงเหลือ \/ Buying Power ใน DIME/, 'Dime card must describe the balance as current buying power, not only unsettled sale proceeds')
+assert.match(dashboardSource, /อัปเดตล่าสุด/, 'Dime card timestamp must cover both Auto Sync and manual balance updates')
+assert.match(dashboardSource, /การบันทึกยอดนี้จะเขียนทับยอด DIME ปัจจุบันที่ Auto Sync คำนวณไว้/, 'Manual Dime edit must warn that it replaces the Auto Sync-calculated balance')
+assert.doesNotMatch(dashboardSource, /เงินจากขายหุ้น ยังไม่โอน/, 'Legacy misleading Dime description must not return')
 
 const lightModeCss = fs.readFileSync('app/globals.css', 'utf8')
 assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic green text for contrast')
