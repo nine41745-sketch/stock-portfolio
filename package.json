@@ -24,7 +24,7 @@
     "yahoo-finance2": "^4.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22",
+    "@types/node": "^26",
     "@types/react": "^19.2.12",
     "@types/react-dom": "^19.2.5",
     "autoprefixer": "^10.4.20",
