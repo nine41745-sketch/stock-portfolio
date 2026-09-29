@@ -242,18 +242,22 @@ assert.match(dashboardSource, /🏆 ATH/, 'Dashboard must display ATH badges for
 assert.doesNotMatch(dashboardSource, /status === 'BELOW_ATH'/, 'Dashboard must not show noisy far-from-ATH status; only ATH/near-ATH badges belong on the portfolio view')
 assert.match(dashboardSource, /\/api\/important-support\?symbols=/, 'Dashboard must load Important Support without blocking initial render')
 assert.match(dashboardSource, /ใกล้แนวรับสำคัญ/, 'Dashboard must display Important Support badges')
+assert.match(dashboardSource, /เงินสดคงเหลือ \/ Buying Power ใน DIME/, 'Dime card must describe the balance as current buying power, not only unsettled sale proceeds')
+assert.match(dashboardSource, /อัปเดตล่าสุด/, 'Dime card timestamp must cover both Auto Sync and manual balance updates')
+assert.match(dashboardSource, /การบันทึกยอดนี้จะเขียนทับยอด DIME ปัจจุบันที่ Auto Sync คำนวณไว้/, 'Manual Dime edit must warn that it replaces the Auto Sync-calculated balance')
+assert.doesNotMatch(dashboardSource, /เงินจากขายหุ้น ยังไม่โอน/, 'Legacy misleading Dime description must not return')
 
 const lightModeCss = fs.readFileSync('app/globals.css', 'utf8')
 assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic green text for contrast')
 assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
 assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
 
-// v1.29.0 release metadata must stay synchronized across changelog/package/lockfile.
+// v1.29.1 release metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.29.0', 'Package version must be finalized as v1.29.0 for this release')
+assert.equal(packageJson.version, '1.29.1', 'Package version must be finalized as v1.29.1 for this release')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.4', 'Patched Next.js release must stay pinned')
-assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.29.0 must preserve the audited Supabase SSR dependency')
+assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.29.1 must preserve the audited Supabase SSR dependency')
 assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
 assert.equal(packageJson.scripts?.lint, 'eslint .', 'Next.js 16 must use the ESLint CLI')
 assert.equal(packageJson.scripts?.typecheck, 'tsc --noEmit', 'CI must expose an explicit TypeScript check')
@@ -318,12 +322,13 @@ const changelogReleaseTimes = [
   ['config/changelog-v1275.ts', '2026-09-19 19:51 ICT'],
   ['config/changelog-v1280.ts', '2026-09-22 03:17 ICT'],
   ['config/changelog-v1290.ts', '2026-09-23 16:42 ICT'],
+  ['config/changelog-v1291.ts', '2026-09-30 04:18 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1290'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1291'])
 
 console.log('✓ Critical regression tests passed')

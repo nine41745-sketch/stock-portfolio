@@ -1100,6 +1100,7 @@ useEffect(() => {
                 <button onClick={() => setEditingCash(false)} className="text-xs bg-gray-700 text-gray-300 rounded px-2 py-1">✕</button>
               </div>
               <p className="text-gray-600 text-xs">กรอกเป็น {currency === 'thb' ? 'บาท (฿)' : 'ดอลลาร์ ($)'}</p>
+              <p className="text-amber-400/90 text-xs leading-relaxed">⚠️ การบันทึกยอดนี้จะเขียนทับยอด DIME ปัจจุบันที่ Auto Sync คำนวณไว้</p>
             </div>
           ) : (
             <div className="flex items-center justify-between">
@@ -1134,8 +1135,8 @@ useEffect(() => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-lg font-bold text-white">{fmtAmt(dimeBalanceUSD)}</p>
-                <p className="text-gray-600 text-xs">เงินจากขายหุ้น ยังไม่โอน</p>
-                {dimeUpdatedAt && <p className="text-gray-700 text-xs mt-1">🕐 แก้ไขล่าสุด {fmtDateTime(dimeUpdatedAt)}</p>}
+                <p className="text-gray-600 text-xs">เงินสดคงเหลือ / Buying Power ใน DIME</p>
+                {dimeUpdatedAt && <p className="text-gray-700 text-xs mt-1">🕐 อัปเดตล่าสุด {fmtDateTime(dimeUpdatedAt)}</p>}
               </div>
               <button onClick={() => { setEditingDime(true); setDimeInput(currency === 'thb' ? String(Math.round(dimeBalanceUSD * exchangeRate)) : String(dimeBalanceUSD)) }}
                 className="text-gray-600 hover:text-white text-xs transition-colors">✏️</button>
