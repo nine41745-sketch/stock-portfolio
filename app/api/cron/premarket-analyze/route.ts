@@ -5,7 +5,7 @@ import { analyzePortfolioBatch, PortfolioBatchHoldingInput } from '@/lib/portfol
 import { getMultipleQuotesWithMetrics, getUpcomingEarningsForSymbols } from '@/lib/finnhub'
 import { getPreMarketSnapshots } from '@/lib/premarket'
 import { evaluatePremarketTriggers } from '@/lib/premarket-trigger'
-import { getUsMarketClock } from '@/lib/market-status'
+import { getUsMarketClock, isPremarketCronWindow, PREMARKET_CRON_WINDOW } from '@/lib/market-status'
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { getResultTimestamp } from '@/lib/latest-analysis'
 import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
@@ -59,9 +59,21 @@ export async function GET(request: NextRequest) {
   if (request.headers.get('authorization') !== `Bearer ${cronSecret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const marketClock = getUsMarketClock()
-  if (!marketClock.isTradingDay || marketClock.hour !== 8) {
-    return NextResponse.json({ skipped: true, reason: marketClock.isTradingDay ? 'Not the active DST pre-market slot' : 'US market is not a trading day', marketDate: marketClock.date, etHour: marketClock.hour })
+  const etTime = `${String(marketClock.hour).padStart(2, '0')}:${String(marketClock.minute).padStart(2, '0')} ET`
+  if (!isPremarketCronWindow(marketClock)) {
+    const reason = marketClock.isTradingDay
+      ? 'Outside active pre-market cron tolerance window'
+      : 'US market is not a trading day'
+    console.info('[premarket-cron] skipped', { marketDate: marketClock.date, etTime, reason, activeWindow: PREMARKET_CRON_WINDOW })
+    return NextResponse.json({
+      skipped: true,
+      reason,
+      marketDate: marketClock.date,
+      etTime,
+      activeWindow: PREMARKET_CRON_WINDOW,
+    })
   }
+  console.info('[premarket-cron] active', { marketDate: marketClock.date, etTime, activeWindow: PREMARKET_CRON_WINDOW })
 
   const supabase = createServiceClient()
   let portfolioMode = true
@@ -236,5 +248,12 @@ export async function GET(request: NextRequest) {
       users.push({ userId, portfolioId, holdings: 0, triggered: Object.keys(triggerReasons).length, processed, failed, rateLimited, triggerReasons, errors })
     }
   }
-  return NextResponse.json({ marketDate: marketClock.date, slot: 'PREMARKET_TRIGGER', portfolioMode, users })
+  return NextResponse.json({
+    marketDate: marketClock.date,
+    slot: 'PREMARKET_TRIGGER',
+    executedAtEt: etTime,
+    activeWindow: PREMARKET_CRON_WINDOW,
+    portfolioMode,
+    users,
+  })
 }
