@@ -116,13 +116,26 @@ const edtPreOpen = marketStatus.getUsMarketClock(new Date('2026-09-21T12:45:00Z'
 assert.equal(edtPreOpen.hour, 8)
 assert.equal(edtPreOpen.minute, 45)
 assert.equal(edtPreOpen.isTradingDay, true)
+assert.equal(marketStatus.isPremarketCronWindow(edtPreOpen), true, 'EDT 08:45 ET must be active')
+const edtDelayed = marketStatus.getUsMarketClock(new Date('2026-09-21T13:44:00Z'))
+assert.equal(marketStatus.isPremarketCronWindow(edtDelayed), true, 'EDT candidate delayed to 09:44 ET must still execute')
+const edtTooLate = marketStatus.getUsMarketClock(new Date('2026-09-21T13:45:00Z'))
+assert.equal(marketStatus.isPremarketCronWindow(edtTooLate), false, 'EDT later candidate at 09:45 ET must not execute')
+
+const estTooEarly = marketStatus.getUsMarketClock(new Date('2026-12-07T13:44:00Z'))
+assert.equal(marketStatus.isPremarketCronWindow(estTooEarly), false, 'EST earlier candidate delayed only to 08:44 ET must not execute')
 const estPreOpen = marketStatus.getUsMarketClock(new Date('2026-12-07T13:45:00Z'))
 assert.equal(estPreOpen.hour, 8)
 assert.equal(estPreOpen.minute, 45)
 assert.equal(estPreOpen.isTradingDay, true)
+assert.equal(marketStatus.isPremarketCronWindow(estPreOpen), true, 'EST 08:45 ET must be active')
+const estDelayed = marketStatus.getUsMarketClock(new Date('2026-12-07T14:44:00Z'))
+assert.equal(marketStatus.isPremarketCronWindow(estDelayed), true, 'EST candidate delayed to 09:44 ET must still execute')
+
 const thanksgiving = marketStatus.getUsMarketClock(new Date('2026-11-26T13:45:00Z'))
 assert.equal(thanksgiving.isTradingDay, false)
 assert.equal(thanksgiving.isHoliday, true)
+assert.equal(marketStatus.isPremarketCronWindow(thanksgiving), false, 'US market holidays must never execute pre-market analysis')
 
 const premarketTrigger = await importTsModule('lib/premarket-trigger.ts')
 assert.ok(premarketTrigger.evaluatePremarketTriggers({ price: 102.1, changePct: 2.1, support: 95, resistance: 110, earningsDaysUntil: 10, newRelevantNewsCount: 0 }).length > 0)
@@ -141,7 +154,9 @@ assert.match(premarketCronSource, /getPreMarketSnapshots/, 'Pre-market cron must
 assert.match(premarketCronSource, /evaluatePremarketTriggers/, 'Pre-market cron must gate Groq behind deterministic triggers')
 assert.match(premarketCronSource, /save_latest_manual_analysis/, 'Pre-market update must write latest analysis without creating Track Record rows')
 assert.match(premarketCronSource, /analysisMode:\s*'PREMARKET_TRIGGER'/, 'Pre-market results must be visibly tagged')
-assert.match(premarketCronSource, /marketClock\.hour !== 8/, 'Only the active DST pre-market candidate may execute')
+assert.match(premarketCronSource, /isPremarketCronWindow\(marketClock\)/, 'Pre-market cron must use the delay-tolerant DST-aware execution window')
+assert.match(premarketCronSource, /PREMARKET_CRON_WINDOW/, 'Pre-market cron responses must expose the active ET tolerance window')
+assert.doesNotMatch(premarketCronSource, /marketClock\.hour !== 8/, 'Brittle exact-hour gate must not return')
 assert.match(premarketCronSource, /getUpcomingEarningsForSymbols/, 'Pre-market trigger should batch earnings calendar access')
 
 const analyzeSource = fs.readFileSync('app/api/analyze/route.ts', 'utf8')
@@ -252,12 +267,12 @@ assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic 
 assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
 assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
 
-// v1.29.1 release metadata must stay synchronized across changelog/package/lockfile.
+// v1.29.2 release metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.29.1', 'Package version must be finalized as v1.29.1 for this release')
+assert.equal(packageJson.version, '1.29.2', 'Package version must be finalized as v1.29.2 for this release')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
-assert.equal(packageJson.dependencies?.next, '16.3.4', 'Patched Next.js release must stay pinned')
-assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.29.1 must preserve the audited Supabase SSR dependency')
+assert.equal(packageJson.dependencies?.next, '16.3.8', 'Patched Next.js release must stay pinned')
+assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.29.2 must preserve the audited Supabase SSR dependency')
 assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
 assert.equal(packageJson.scripts?.lint, 'eslint .', 'Next.js 16 must use the ESLint CLI')
 assert.equal(packageJson.scripts?.typecheck, 'tsc --noEmit', 'CI must expose an explicit TypeScript check')
@@ -268,7 +283,7 @@ const packageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
 assert.equal(packageLock.version, packageJson.version, 'package-lock version must match package.json')
 assert.equal(packageLock.packages?.['']?.version, packageJson.version, 'lockfile root package version must match package.json')
 assert.equal(packageLock.packages?.['']?.engines?.node, '22.x', 'lockfile must preserve the Node 22 runtime pin')
-assert.equal(packageLock.packages?.['']?.dependencies?.next, '16.3.4', 'lockfile must preserve the patched Next.js version')
+assert.equal(packageLock.packages?.['']?.dependencies?.next, '16.3.8', 'lockfile must preserve the patched Next.js version')
 assert.equal(packageLock.packages?.['node_modules/@supabase/ssr']?.version, '0.12.7', 'lockfile must resolve audited @supabase/ssr 0.12.7')
 assert.equal(packageLock.packages?.['node_modules/@supabase/supabase-js']?.version, '2.116.0', 'lockfile must resolve compatible @supabase/supabase-js 2.116.0')
 assert.equal(packageLock.packages?.['']?.dependencies?.['@anthropic-ai/sdk'], undefined, 'Removed dependencies must not remain in lockfile root')
@@ -323,12 +338,13 @@ const changelogReleaseTimes = [
   ['config/changelog-v1280.ts', '2026-09-22 03:17 ICT'],
   ['config/changelog-v1290.ts', '2026-09-23 16:42 ICT'],
   ['config/changelog-v1291.ts', '2026-09-30 04:18 ICT'],
+  ['config/changelog-v1292.ts', '2026-10-04 15:16 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1291'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1292'])
 
 console.log('✓ Critical regression tests passed')

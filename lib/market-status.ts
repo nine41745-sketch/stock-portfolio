@@ -154,6 +154,23 @@ export function getUsMarketClock(now: Date = new Date()): UsMarketClock {
   }
 }
 
+export const PREMARKET_CRON_WINDOW = '08:45-09:44 ET'
+
+// Vercel Hobby cron มี per-hour precision (อาจมาช้าสูงสุด ~59 นาที)
+// เราตั้ง candidate 2 เวลาเพื่อครอบคลุม EDT/EST แล้วเปิดเฉพาะหน้าต่าง 08:45-09:44 ET:
+// - candidate ที่เร็วเกินใน EST จะมาถึงไม่เกิน 08:44 ET
+// - candidate ที่ช้าเกินใน EDT จะเริ่มตั้งแต่ 09:45 ET
+// ทำให้รองรับ DST + delivery delay โดยไม่เปิดให้ candidate ทั้งสองรันซ้ำในวันเดียวกัน
+export function isPremarketCronWindow(
+  clock: Pick<UsMarketClock, 'isTradingDay' | 'hour' | 'minute'>
+): boolean {
+  if (!clock.isTradingDay) return false
+  const minutes = clock.hour * 60 + clock.minute
+  const start = 8 * 60 + 45
+  const end = 9 * 60 + 45
+  return minutes >= start && minutes < end
+}
+
 // คำนวณสถานะตลาด US ปัจจุบัน + countdown ไปยัง event ถัดไป (เปิด/ปิด)
 // รองรับวันหยุดเต็มวัน + วันปิดเร็ว (13:00 ET) ตามปฏิทินทางการ NYSE ด้านบน
 export function getMarketStatus(now: Date = new Date()): MarketStatus {
