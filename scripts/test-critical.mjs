@@ -357,7 +357,7 @@ const changelogReleaseTimes = [
   ['config/changelog-v1290.ts', '2026-09-23 16:42 ICT'],
   ['config/changelog-v1291.ts', '2026-09-30 04:18 ICT'],
   ['config/changelog-v1292.ts', '2026-10-04 15:16 ICT'],
-  ['config/changelog-v1293.ts', '2026-10-05 23:18 ICT'],
+  ['config/changelog-v1293.ts', '2026-10-05 23:19 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
