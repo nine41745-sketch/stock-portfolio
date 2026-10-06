@@ -9,6 +9,7 @@ const v1312: ChangelogEntry = {
     'KPI Hierarchy: จัดการ์ดสรุปเป็น 4 + 4 บน Desktop แยกภาพรวมพอร์ตกับเงินสด/เงินลงทุนให้ชัดเจน',
     'Holdings Table: ลดความหนาแน่นของแถว ปรับปุ่ม Graph/AI hierarchy และทำสถานะ ATH/แนวรับเป็น badge บรรทัดเดียวพร้อม tooltip',
     'AI Analysis Accordion: เปิดรายละเอียดได้ทีละหุ้น สรุปก่อน รายละเอียดข่าว/แหล่งข้อมูลพับไว้ และลดกรอบ/สีที่รบกวนสายตา',
+    'Light Theme: ปรับ contrast ของข้อความ/การ์ด/ฟอร์ม/สถานะให้ชัดขึ้น และให้ปุ่มธีมแสดงสถานะ 🌙 มืด / ☀️ สว่าง ตามโหมดปัจจุบัน',
     'Presentation-only: ไม่เปลี่ยนสูตรคำนวณ, AI decision logic, Trade execution, Authentication, Database, Supabase หรือ Environment',
   ],
 }

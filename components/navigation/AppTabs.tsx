@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import QuickNotesDrawer from '@/components/navigation/QuickNotesDrawer'
@@ -49,11 +49,18 @@ export default function AppTabs() {
   const [pinSaving, setPinSaving] = useState(false)
   const [pinMessage, setPinMessage] = useState<{ ok: boolean; text: string } | null>(null)
   const [utilityError, setUtilityError] = useState<string | null>(null)
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+
+  useEffect(() => {
+    const current = document.documentElement.getAttribute('data-theme')
+    setTheme(current === 'light' ? 'light' : 'dark')
+  }, [])
 
   function toggleTheme() {
     const current = document.documentElement.getAttribute('data-theme')
     const next = current === 'light' ? 'dark' : 'light'
     document.documentElement.setAttribute('data-theme', next)
+    setTheme(next)
     try { window.localStorage.setItem('stock-portfolio-theme', next) } catch { /* storage unavailable */ }
   }
 
@@ -134,9 +141,10 @@ export default function AppTabs() {
               type="button"
               onClick={toggleTheme}
               className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
-              title="สลับโหมดสว่าง/มืด"
+              title={theme === 'light' ? 'โหมดปัจจุบัน: สว่าง · กดเพื่อเปลี่ยนเป็นมืด' : 'โหมดปัจจุบัน: มืด · กดเพื่อเปลี่ยนเป็นสว่าง'}
+              aria-label={theme === 'light' ? 'โหมดสว่าง กดเพื่อเปลี่ยนเป็นโหมดมืด' : 'โหมดมืด กดเพื่อเปลี่ยนเป็นโหมดสว่าง'}
             >
-              🌓 ธีม
+              {theme === 'light' ? '☀️ สว่าง' : '🌙 มืด'}
             </button>
             <button
               type="button"

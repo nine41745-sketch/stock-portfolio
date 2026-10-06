@@ -181,7 +181,7 @@ assert.match(dashboardPageSource, /AppTabs/, 'Dashboard must expose the shared p
 assert.doesNotMatch(dashboardPageSource, /OpportunityHub/, 'Scanner workspace must stay off the main portfolio dashboard')
 assert.equal(fs.existsSync('app/dashboard/error.tsx'), true, 'Dashboard must provide a recovery error boundary')
 
-const scannerWidthPageSource = fs.readFileSync('app/scanner/page.tsx', 'utf8')
+const scannerPageSource = fs.readFileSync('app/scanner/page.tsx', 'utf8')
 assert.match(scannerPageSource, /OpportunityHub/, 'Dedicated scanner page must render the scanner/watchlist workspace')
 assert.match(scannerPageSource, /AppTabs/, 'Dedicated scanner page must expose shared navigation')
 assert.equal(fs.existsSync('app/scanner/error.tsx'), true, 'Scanner must provide a recovery error boundary')
@@ -195,11 +195,10 @@ assert.match(appTabsSource, /<PortfolioSwitcher[\s\S]*actions=/, 'Global utiliti
 assert.match(appTabsSource, /mx-auto w-full max-w-7xl/, 'Navigation shell must align with the dashboard width on desktop')
 assert.match(appTabsSource, /overflow-x-auto[\s\S]*scrollbar-width:none/, 'Primary navigation must remain usable on narrow mobile screens')
 assert.match(portfolioSwitcherSource, /flex w-full flex-col[\s\S]*sm:flex-row/, 'Portfolio controls must stack on phones and share one row on wider screens')
-const scannerPageSource = fs.readFileSync('app/scanner/page.tsx', 'utf8')
 const transactionsWidthPageSource = fs.readFileSync('app/transactions/page.tsx', 'utf8')
 const performanceWidthPageSource = fs.readFileSync('app/performance/page.tsx', 'utf8')
 for (const [name, source] of [
-  ['scanner', scannerWidthPageSource],
+  ['scanner', scannerPageSource],
   ['transactions', transactionsWidthPageSource],
   ['performance', performanceWidthPageSource],
 ]) {
@@ -216,6 +215,9 @@ assert.match(dashboardSource, /whitespace-nowrap[\s\S]*🛡 แนวรับ/,
 assert.match(dashboardSource, /<details className="mt-3 border-t border-gray-800 pt-3">/, 'Secondary AI evidence must stay collapsed by default')
 assert.match(appTabsSource, /stock-portfolio-theme/, 'Shared theme toggle must persist the selected theme')
 assert.match(appTabsSource, /localStorage\.setItem/, 'Shared theme toggle must write browser preference')
+assert.match(appTabsSource, /const \[theme, setTheme\]/, 'Theme toggle must expose the current mode in shared navigation')
+assert.match(appTabsSource, /☀️ สว่าง/, 'Light mode button label must identify the active light theme')
+assert.match(appTabsSource, /🌙 มืด/, 'Dark mode button label must identify the active dark theme')
 const rootLayoutSource = fs.readFileSync('app/layout.tsx', 'utf8')
 assert.match(rootLayoutSource, /localStorage\.getItem\('stock-portfolio-theme'\)/, 'Root layout must restore the saved theme before page interaction')
 assert.match(rootLayoutSource, /beforeInteractive/, 'Saved theme must be restored before hydration to avoid dark-mode reset/flash')
@@ -292,6 +294,10 @@ const lightModeCss = fs.readFileSync('app/globals.css', 'utf8')
 assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic green text for contrast')
 assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
 assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
+assert.match(lightModeCss, /text-blue-300/, 'Light mode must keep blue helper text readable')
+assert.match(lightModeCss, /text-purple-300/, 'Light mode must keep purple AI text readable')
+assert.match(lightModeCss, /bg-blue-600\.text-white/, 'Light mode must preserve white text on primary blue buttons')
+assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native form controls with light color scheme')
 
 // v1.31.2 release metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
