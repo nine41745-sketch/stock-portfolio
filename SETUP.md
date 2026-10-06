@@ -3,7 +3,7 @@
 ## Current stack
 
 - **Node.js 22.x**
-- **Next.js 16.3.4** (App Router) + React 19
+- **Next.js 16.3.8** (App Router) + React 19
 - **Supabase** — Auth, PostgreSQL, RLS, pgcrypto encryption
 - **Finnhub** — current quotes, company metrics, news, earnings
 - **Yahoo Finance / Stooq** — historical data for technical indicators
@@ -46,13 +46,18 @@ Do **not** rerun the full schema and do **not** rerun migrations that are alread
 
 The latest schema migration required by current Production is:
 
-`supabase/migration_trade_plan_v1.23.0.sql`
+`supabase/migration_allocation_targets_v1.31.0.sql`
 
 Release-era migrations after the v1.16 freshness work are:
 
 - `supabase/migration_watchlist_v1.18.0.sql`
 - `supabase/migration_transactions_v1.21.0.sql`
 - `supabase/migration_trade_plan_v1.23.0.sql`
+- `supabase/migration_multi_portfolio_v1.27.0.sql`
+- `supabase/migration_v1_27_0_security_hardening.sql`
+- `supabase/migration_transaction_autosync_v1.27.1.sql`
+- `supabase/migration_trade_plan_autosync_v1.30.0.sql`
+- `supabase/migration_allocation_targets_v1.31.0.sql`
 
 **v1.17.0, v1.19.0, v1.20.0, v1.22.0, v1.24.0 and v1.25.0 have no SQL migration.**
 
@@ -62,7 +67,7 @@ If the project is already running current Production, these migrations should al
 
 1. Create a Supabase project.
 2. Run `supabase/schema.sql`.
-3. Apply the migration files required by the current release in their release order. Do not skip security/PIN/latest-analysis/data-integrity migrations, and include Watchlist v1.18.0, Transactions v1.21.0 and Trade Plan v1.23.0 when they are not already represented by the fresh baseline you are using.
+3. Apply the migration files required by the current release in their release order. Do not skip security/PIN/latest-analysis/data-integrity migrations, and include Watchlist v1.18.0, Transactions v1.21.0, Trade Plan v1.23.0, Multi-Portfolio v1.27.0, Transaction Auto Sync v1.27.1, Trade Plan Auto Sync v1.30.0 and Allocation Targets v1.31.0 when they are not already represented by the fresh baseline you are using.
 4. Create the intended user through Supabase Auth.
 5. Configure the same environment values in Vercel.
 
