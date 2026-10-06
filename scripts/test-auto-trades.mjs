@@ -45,7 +45,7 @@ assert.match(migration, /TO service_role/, 'Atomic RPC must be service-role only
 
 const ui = fs.readFileSync('components/portfolio/AutoTradeEntry.tsx', 'utf8')
 assert.match(ui, /บันทึกซื้อ\/ขายจริง/, 'Transactions page must expose a dedicated real-trade path')
-assert.match(ui, /Holdings \+ เงินใน Dime/, 'UI must explain what is synchronized')
+assert.match(ui, /อัปเดตธุรกรรม หุ้น และเงินสด DIME พร้อมกันแบบ Atomic/, 'UI must explain what is synchronized')
 assert.match(ui, /Rollback ทั้งรายการ/, 'UI must communicate atomic failure behavior')
 
 const transactionPage = fs.readFileSync('app/transactions/page.tsx', 'utf8')
