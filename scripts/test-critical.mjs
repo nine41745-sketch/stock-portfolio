@@ -192,6 +192,10 @@ const appTabsSource = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8
 const portfolioSwitcherSource = fs.readFileSync('components/navigation/PortfolioSwitcher.tsx', 'utf8')
 const investingSinceSource = fs.readFileSync('components/portfolio/InvestingSinceBadge.tsx', 'utf8')
 assert.match(appTabsSource, /<PortfolioSwitcher[\s\S]*actions=/, 'Global utilities must share the portfolio top bar')
+assert.match(appTabsSource, /mx-auto w-full max-w-7xl/, 'Navigation shell must align with the dashboard width on desktop')
+assert.match(appTabsSource, /overflow-x-auto[\s\S]*scrollbar-width:none/, 'Primary navigation must remain usable on narrow mobile screens')
+assert.match(portfolioSwitcherSource, /flex w-full flex-col[\s\S]*sm:flex-row/, 'Portfolio controls must stack on phones and share one row on wider screens')
+
 assert.match(portfolioSwitcherSource, /actions\?: ReactNode/, 'Portfolio switcher must accept shared utility actions')
 assert.match(investingSinceSource, /inline-flex/, 'Investing duration must stay compact instead of a full-width banner')
 assert.match(dashboardSource, /grid grid-cols-2 gap-3 lg:grid-cols-4/, 'Primary KPI hierarchy must stay 4-up on desktop')

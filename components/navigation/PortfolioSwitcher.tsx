@@ -109,7 +109,7 @@ export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) 
   if (!available) return null
 
   return (
-    <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-800 bg-gray-900/50 px-3 py-2">
+    <div className="mb-2 flex w-full flex-col gap-2 rounded-xl border border-gray-800 bg-gray-900/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-2">
         <span className="text-xs font-semibold text-gray-500">📁 พอร์ต</span>
         {loading ? (
@@ -119,7 +119,7 @@ export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) 
             value={activeId}
             disabled={busy || items.length === 0}
             onChange={event => void selectPortfolio(event.target.value)}
-            className="max-w-[180px] rounded-lg border border-gray-700 bg-gray-950 px-2.5 py-1.5 text-xs font-semibold text-gray-200 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+            className="min-h-9 min-w-0 max-w-[180px] flex-1 rounded-lg border border-gray-700 bg-gray-950 px-2.5 py-1.5 text-xs font-semibold text-gray-200 focus:border-blue-500 focus:outline-none disabled:opacity-50 sm:flex-none"
             aria-label="เลือกพอร์ต"
           >
             {items.map(item => (
@@ -128,12 +128,12 @@ export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) 
           </select>
         )}
       </div>
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
         <button
           type="button"
           onClick={() => void createPortfolio()}
           disabled={busy || loading}
-          className="rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-50"
+          className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-50"
         >
           ＋ เพิ่มพอร์ต
         </button>
