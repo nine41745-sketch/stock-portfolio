@@ -271,9 +271,6 @@ assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the st
 // v1.31.1 release metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
 assert.equal(packageJson.version, '1.31.1', 'Package version must be finalized as v1.31.1 for this release')
-const mcpSdkLock = packageLock.packages?.['node_modules/@modelcontextprotocol/sdk']
-assert.equal(mcpSdkLock?.version, '1.31.0', 'v1.31.1 must pin the patched MCP SDK transitive dependency')
-
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.8', 'Patched Next.js release must stay pinned')
 assert.equal(packageJson.dependencies?.react, '19.3.0', 'React and ReactDOM must stay aligned on the same release')
@@ -291,6 +288,8 @@ assert.equal(packageJson.scripts?.ci, 'npm run lint && npm run typecheck && npm 
 assert.equal(fs.existsSync('package-lock.json'), true, 'A committed npm lockfile is required for reproducible builds')
 
 const packageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
+const mcpSdkLock = packageLock.packages?.['node_modules/@modelcontextprotocol/sdk']
+assert.equal(mcpSdkLock?.version, '1.31.0', 'v1.31.1 must pin the patched MCP SDK transitive dependency')
 assert.equal(packageLock.version, packageJson.version, 'package-lock version must match package.json')
 assert.equal(packageLock.packages?.['']?.version, packageJson.version, 'lockfile root package version must match package.json')
 assert.equal(packageLock.packages?.['']?.engines?.node, '22.x', 'lockfile must preserve the Node 22 runtime pin')
