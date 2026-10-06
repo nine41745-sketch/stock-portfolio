@@ -222,7 +222,7 @@ assert.match(ui, /\/api\/watchlist/, 'Stock Check must reuse the existing Watchl
 const workspace = fs.readFileSync('components/portfolio/ScannerWorkspace.tsx', 'utf8')
 assert.match(workspace, /🔬 เช็กหุ้น/, 'Scanner workspace must expose the Stock Check view')
 assert.match(workspace, /OpportunityHub/, 'Existing Scanner/Watchlist workspace must remain intact')
-assert.match(workspace, /🔥 โอกาสซื้อวันนี้/, 'Scanner workspace must expose the Today Opportunity Radar')
+assert.match(workspace, /🔥 โอกาสวันนี้/, 'Scanner workspace must expose the Today Opportunity Radar')
 assert.match(workspace, /TodayOpportunities/, 'Today Opportunity Radar must be wired into Scanner workspace')
 
 const today = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'utf8')
