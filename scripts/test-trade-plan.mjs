@@ -133,7 +133,7 @@ const executionUi = fs.readFileSync('components/portfolio/TradePlanExecutionPane
 assert.match(executionUi, /บันทึกซื้อจริง/, 'WAITING plan must expose explicit real BUY entry')
 assert.match(executionUi, /บันทึกขายจริง/, 'ENTERED plan must expose explicit real SELL entry')
 assert.match(executionUi, /Transaction Ledger \+ Holdings \+ Dime \+ Trade Plan/, 'Confirmation must explain all atomic side effects')
-assert.match(executionUi, /ไม่ใช่ Auto Trading/, 'Real trade execution must require explicit user action')
+assert.match(executionUi, /ไม่มี Auto Trading/, 'Real trade execution must require explicit user action')
 assert.match(executionUi, /\/api\/trade-plans\/execute/, 'Execution UI must call the dedicated endpoint')
 assert.match(ui, /<TradePlanExecutionPanel item=\{item\} onExecuted=\{loadPlans\} \/>/, 'Each active Trade Plan must expose the execution control')
 
