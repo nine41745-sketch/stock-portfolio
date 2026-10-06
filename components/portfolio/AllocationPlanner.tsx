@@ -183,13 +183,13 @@ export default function AllocationPlanner({
           setMigrationRequired(true)
           setMigrationFile(payload.migration ?? 'supabase/migration_allocation_targets_v1.31.0.sql')
         }
-        throw new Error(payload.error || 'บันทึก Target Allocation ไม่สำเร็จ')
+        throw new Error(payload.error || 'บันทึกเป้าหมาย Allocation ไม่สำเร็จ')
       }
 
       setSavedTargets(draftTargets)
-      setMessage('บันทึก Target Allocation แล้ว')
+      setMessage('บันทึกเป้าหมาย Allocation แล้ว')
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'บันทึก Target Allocation ไม่สำเร็จ')
+      setError(reason instanceof Error ? reason.message : 'บันทึกเป้าหมาย Allocation ไม่สำเร็จ')
     } finally {
       setSaving(false)
     }
@@ -199,39 +199,39 @@ export default function AllocationPlanner({
     <section className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h2 className="font-bold text-white">🎯 Target Allocation + Rebalance</h2>
+          <h2 className="font-bold text-white">🎯 เป้าหมายสัดส่วนพอร์ต</h2>
           <p className="mt-1 text-xs text-gray-400">ฐานคำนวณ = มูลค่าหุ้นปัจจุบัน + เงินสดใน DIME เท่านั้น · เงินในธนาคารไม่นำมารวมเพื่อป้องกัน double-counting</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={useCurrentWeights} disabled={loading || migrationRequired}
             className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-gray-800 disabled:opacity-40">
-            ใช้สัดส่วนปัจจุบันเป็น Target
+            ใช้สัดส่วนปัจจุบัน
           </button>
           <button type="button" onClick={saveTargets} disabled={saving || loading || migrationRequired || !draftSnapshot.targets_valid}
             className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">
-            {saving ? 'กำลังบันทึก...' : 'บันทึก Target'}
+            {saving ? 'กำลังบันทึก...' : 'บันทึกเป้าหมาย'}
           </button>
         </div>
       </div>
 
       {migrationRequired && (
         <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
-          ต้อง Apply Migration ก่อนจึงจะบันทึก Target ได้: <span className="font-mono">{migrationFile}</span>
+          ต้อง Apply Migration ก่อนจึงจะบันทึกเป้าหมาย ได้: <span className="font-mono">{migrationFile}</span>
         </div>
       )}
       {error && <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">⚠️ {error}</div>}
       {message && <div className="mt-4 rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-xs text-green-200">✓ {message}</div>}
 
       <div className="mt-4 flex flex-wrap items-end gap-2">
-        <label className="text-xs text-gray-400">เพิ่มหุ้นใน Target
+        <label className="text-xs text-gray-400">เพิ่มหุ้นในเป้าหมาย
           <input value={newSymbol} onChange={event => setNewSymbol(event.target.value.toUpperCase())}
             onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addSymbol() } }}
             placeholder="เช่น NVDA"
             className="mt-1 block w-40 rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white" />
         </label>
-        <button type="button" onClick={addSymbol} className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-gray-800">+ เพิ่ม Symbol</button>
+        <button type="button" onClick={addSymbol} className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-gray-800">+ เพิ่มหุ้น</button>
         <div className="ml-auto rounded-lg bg-gray-950/60 px-3 py-2 text-xs">
-          <span className="text-gray-500">Target รวม </span>
+          <span className="text-gray-500">รวมเป้าหมาย </span>
           <span className={draftSnapshot.targets_valid ? 'font-bold text-green-300' : 'font-bold text-yellow-300'}>{draftSnapshot.target_total_pct.toFixed(2)}%</span>
         </div>
       </div>
@@ -240,10 +240,10 @@ export default function AllocationPlanner({
         <table className="w-full min-w-[920px] text-sm">
           <thead className="border-b border-gray-800 text-left text-xs text-gray-500">
             <tr>
-              <th className="px-2 py-2">Asset</th>
+              <th className="px-2 py-2">สินทรัพย์</th>
               <th className="px-2 py-2 text-right">มูลค่าปัจจุบัน</th>
-              <th className="px-2 py-2 text-right">Current %</th>
-              <th className="px-2 py-2 text-right">Target %</th>
+              <th className="px-2 py-2 text-right">ปัจจุบัน %</th>
+              <th className="px-2 py-2 text-right">เป้าหมาย %</th>
               <th className="px-2 py-2 text-right">Gap $</th>
               <th className="px-2 py-2 text-right">Gap %</th>
               <th className="px-2 py-2">สถานะ</th>
@@ -274,7 +274,7 @@ export default function AllocationPlanner({
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-gray-800 bg-gray-950/50 p-4">
-          <h3 className="font-semibold text-white">⚖️ Full Rebalance Gap</h3>
+          <h3 className="font-semibold text-white">⚖️ Rebalance Gap</h3>
           <p className="mt-1 text-xs text-gray-500">ถ้าจะกลับสู่ Target วันนี้ จำนวนบวก = ควรเพิ่ม, จำนวนลบ = ส่วนที่เกินเป้า — เป็นข้อมูลเท่านั้น ไม่สั่งซื้อ/ขาย</p>
           <div className="mt-3 space-y-2">
             {savedSnapshot.targets_valid ? savedSnapshot.rows.map(row => (
@@ -284,13 +284,13 @@ export default function AllocationPlanner({
                   {row.gap_amount === null ? '—' : `${row.gap_amount >= 0 ? 'เพิ่ม ' : 'เกิน '}${money(Math.abs(row.gap_amount))}`}
                 </span>
               </div>
-            )) : <p className="py-4 text-center text-xs text-gray-600">บันทึก Target รวม 100% ก่อน</p>}
+            )) : <p className="py-4 text-center text-xs text-gray-600">บันทึกเป้าหมายรวม 100% ก่อน</p>}
           </div>
         </div>
 
         <div className="rounded-xl border border-gray-800 bg-gray-950/50 p-4">
           <h3 className="font-semibold text-white">💰 เติมเงินใหม่โดยไม่ขาย</h3>
-          <p className="mt-1 text-xs text-gray-500">กระจายเงินใหม่ไปยังสินทรัพย์ที่ Underweight ตาม deficit เพื่อเข้าใกล้ Target โดยไม่บังคับขายตัว Overweight</p>
+          <p className="mt-1 text-xs text-gray-500">กระจายเงินใหม่ไปยังสินทรัพย์ที่ต่ำกว่าเป้าหมาย เพื่อเข้าใกล้สัดส่วนที่ตั้งไว้โดยไม่บังคับขาย</p>
           <label className="mt-3 block text-xs text-gray-400">เงินใหม่ (USD)
             <input type="number" min="0" step="0.01" value={newMoney}
               onChange={event => setNewMoney(event.target.value)}
@@ -314,7 +314,7 @@ export default function AllocationPlanner({
               </div>
             ))}
             {(!savedSnapshot.targets_valid || newMoneyValue <= 0) && (
-              <p className="py-4 text-center text-xs text-gray-600">บันทึก Target และกรอกเงินใหม่เพื่อดูแผน</p>
+              <p className="py-4 text-center text-xs text-gray-600">บันทึกเป้าหมายและกรอกเงินใหม่เพื่อดูแผน</p>
             )}
           </div>
         </div>

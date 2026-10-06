@@ -242,13 +242,13 @@ export default function PerformanceDashboard() {
   }), [points, data?.summary.total_pnl])
 
   if (loading) {
-    return <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-8 text-center text-gray-500">กำลังคำนวณ Performance และราคาย้อนหลัง...</div>
+    return <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-8 text-center text-gray-500">กำลังคำนวณผลงานและราคาย้อนหลัง...</div>
   }
 
   if (error || !data) {
     return (
       <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-6">
-        <h1 className="text-xl font-bold text-red-300">📈 โหลด Performance ไม่สำเร็จ</h1>
+        <h1 className="text-xl font-bold text-red-300">📈 โหลดผลงานไม่สำเร็จ</h1>
         <p className="mt-2 text-sm text-red-200/80">{error ?? 'ไม่พบข้อมูล'}</p>
       </div>
     )
@@ -262,7 +262,7 @@ export default function PerformanceDashboard() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">📈 ผลงานพอร์ต</h1>
-          <p className="mt-1 text-sm text-gray-500">วัดผลจาก Transaction Ledger + Holdings จริง โดย Realized P/L ใช้ FIFO</p>
+          <p className="mt-1 text-sm text-gray-500">อิงธุรกรรมและหุ้นที่ถือจริง · กำไรที่รับรู้คำนวณแบบ FIFO</p>
         </div>
         <div className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${summary.ledger_complete ? 'border-green-800 bg-green-950/40 text-green-300' : 'border-yellow-800 bg-yellow-950/40 text-yellow-300'}`}>
           {summary.ledger_complete ? '✓ Ledger ตรงกับ Holdings' : '⚠ Ledger ยังไม่ตรงกับ Holdings'}
@@ -286,27 +286,27 @@ export default function PerformanceDashboard() {
       )}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="มูลค่าหุ้นปัจจุบัน" value={money(summary.market_value)} sub={`Open cost ${money(summary.open_cost)}`} />
-        <StatCard label="Total P/L" value={money(summary.total_pnl)} valueClass={pnlClass(summary.total_pnl)} sub="Realized + Unrealized + Dividend" />
-        <StatCard label="Realized P/L" value={money(summary.realized_pnl)} valueClass={pnlClass(summary.realized_pnl)} sub={`FIFO · ${summary.closed_trades} รายการขาย`} />
-        <StatCard label="Unrealized P/L" value={money(summary.unrealized_pnl)} valueClass={pnlClass(summary.unrealized_pnl)} sub="หุ้นที่ยังถืออยู่" />
-        <StatCard label="Dividend" value={money(summary.dividends)} valueClass={pnlClass(summary.dividends)} />
+        <StatCard label="มูลค่าหุ้น" value={money(summary.market_value)} sub={`ต้นทุนคงเหลือ ${money(summary.open_cost)}`} />
+        <StatCard label="P/L รวม" value={money(summary.total_pnl)} valueClass={pnlClass(summary.total_pnl)} sub="รับรู้แล้ว + ยังไม่รับรู้ + ปันผล" />
+        <StatCard label="กำไร/ขาดทุนที่รับรู้" value={money(summary.realized_pnl)} valueClass={pnlClass(summary.realized_pnl)} sub={`FIFO · ${summary.closed_trades} รายการขาย`} />
+        <StatCard label="กำไร/ขาดทุนที่ยังไม่รับรู้" value={money(summary.unrealized_pnl)} valueClass={pnlClass(summary.unrealized_pnl)} sub="หุ้นที่ยังถืออยู่" />
+        <StatCard label="ปันผล" value={money(summary.dividends)} valueClass={pnlClass(summary.dividends)} />
         <StatCard label="Win Rate" value={summary.win_rate_pct === null ? '—' : `${summary.win_rate_pct.toFixed(1)}%`} sub={`${summary.wins} ชนะ / ${summary.losses} แพ้`} />
-        <StatCard label="เงินเข้า - เงินออก" value={money(summary.net_cash_flow)} sub={`ฝาก ${money(summary.deposits)} · ถอน ${money(summary.withdrawals)}`} />
-        <StatCard label="รวมตามค่าที่ตั้งไว้" value={money(data.balances.configured_total_value)} sub={`หุ้น + เงินสด ${money(data.balances.cash_balance)} + Dime ${money(data.balances.dime_balance)}`} />
+        <StatCard label="กระแสเงินสุทธิ" value={money(summary.net_cash_flow)} sub={`ฝาก ${money(summary.deposits)} · ถอน ${money(summary.withdrawals)}`} />
+        <StatCard label="มูลค่ารวมตามระบบ" value={money(data.balances.configured_total_value)} sub={`หุ้น + เงินสด ${money(data.balances.cash_balance)} + Dime ${money(data.balances.dime_balance)}`} />
       </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="P/L วันล่าสุด" value={money(periodStats.today)} valueClass={pnlClass(periodStats.today)} sub="เทียบวันตลาดก่อนหน้า" />
+        <StatCard label="P/L ล่าสุด" value={money(periodStats.today)} valueClass={pnlClass(periodStats.today)} sub="เทียบวันตลาดก่อนหน้า" />
         <StatCard label="P/L เดือนนี้" value={money(periodStats.mtd)} valueClass={pnlClass(periodStats.mtd)} />
         <StatCard label="P/L YTD" value={money(periodStats.ytd)} valueClass={pnlClass(periodStats.ytd)} />
-        <StatCard label="P/L ตั้งแต่เริ่ม Ledger" value={money(periodStats.since)} valueClass={pnlClass(periodStats.since)} />
+        <StatCard label="P/L สะสม" value={money(periodStats.since)} valueClass={pnlClass(periodStats.since)} />
       </section>
 
       <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="font-semibold text-gray-200">Equity / P&L Curve</p>
+            <p className="font-semibold text-gray-200">กราฟ P/L สะสม</p>
             <p className="text-xs text-gray-600">Mark-to-market จากหุ้นใน Ledger ด้วยราคาปิดรายวัน · สูงสุด {data.methodology.history_limit_years} ปี</p>
           </div>
           <div className="flex rounded-lg border border-gray-800 bg-gray-950/60 p-1">
@@ -338,7 +338,7 @@ export default function PerformanceDashboard() {
 
       <section className="grid gap-3 md:grid-cols-2">
         <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-          <p className="text-sm font-semibold text-gray-300">🏆 Best Trade</p>
+          <p className="text-sm font-semibold text-gray-300">🏆 ดีลดีที่สุด</p>
           {summary.best_trade ? (
             <div className="mt-3">
               <p className="text-lg font-bold text-white">{summary.best_trade.symbol}</p>
@@ -348,7 +348,7 @@ export default function PerformanceDashboard() {
           ) : <p className="mt-3 text-sm text-gray-600">ยังไม่มีรายการขายที่คำนวณต้นทุนได้</p>}
         </div>
         <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-          <p className="text-sm font-semibold text-gray-300">📉 Worst Trade</p>
+          <p className="text-sm font-semibold text-gray-300">📉 ดีลแย่ที่สุด</p>
           {summary.worst_trade ? (
             <div className="mt-3">
               <p className="text-lg font-bold text-white">{summary.worst_trade.symbol}</p>
@@ -371,12 +371,12 @@ export default function PerformanceDashboard() {
             <table className="min-w-full text-left text-xs">
               <thead className="bg-gray-950/60 text-gray-500">
                 <tr>
-                  <th className="px-4 py-3">Symbol</th>
+                  <th className="px-4 py-3">หุ้น</th>
                   <th className="px-3 py-3 text-right">หุ้น</th>
-                  <th className="px-3 py-3 text-right">Market Value</th>
-                  <th className="px-3 py-3 text-right">Realized</th>
-                  <th className="px-3 py-3 text-right">Unrealized</th>
-                  <th className="px-3 py-3 text-right">Dividend</th>
+                  <th className="px-3 py-3 text-right">มูลค่า</th>
+                  <th className="px-3 py-3 text-right">รับรู้แล้ว</th>
+                  <th className="px-3 py-3 text-right">ยังไม่รับรู้</th>
+                  <th className="px-3 py-3 text-right">ปันผล</th>
                   <th className="px-3 py-3 text-right">Total P/L</th>
                   <th className="px-4 py-3 text-center">Ledger</th>
                 </tr>

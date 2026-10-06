@@ -215,7 +215,7 @@ assert.match(atr, /ATR\.calculate/, 'ATR14 must use the technical indicator impl
 const ui = fs.readFileSync('components/portfolio/StockCheckPanel.tsx', 'utf8')
 assert.match(ui, /Entry Zone/, 'Stock Check UI must expose Entry Zone')
 assert.match(ui, /Stop Loss/, 'Stock Check UI must expose Stop Loss')
-assert.match(ui, /Position Sizing/, 'Stock Check UI must expose budget-based position sizing')
+assert.match(ui, /ขนาดสถานะจากงบ/, 'Stock Check UI must expose budget-based position sizing')
 assert.match(ui, /วิเคราะห์เชิงลึกด้วย AI/, 'AI analysis must remain an explicit optional action')
 assert.match(ui, /\/api\/watchlist/, 'Stock Check must reuse the existing Watchlist API')
 

@@ -86,13 +86,13 @@ export default function MarketCalendar() {
   }, [data, today, windowDays])
 
   if (loading) {
-    return <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400">กำลังโหลด Earnings / CPI / FOMC Calendar...</div>
+    return <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400">กำลังโหลดปฏิทิน Earnings / CPI / FOMC...</div>
   }
 
   if (error || !data) {
     return (
       <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-5">
-        <p className="font-semibold text-red-300">โหลด Market Calendar ไม่สำเร็จ</p>
+        <p className="font-semibold text-red-300">โหลดปฏิทินตลาดไม่สำเร็จ</p>
         <p className="mt-1 text-sm text-gray-300">{error ?? 'ไม่พบข้อมูล'}</p>
         <button type="button" onClick={reload} className="mt-4 rounded-lg bg-gray-800 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700">ลองใหม่</button>
       </div>
@@ -104,7 +104,7 @@ export default function MarketCalendar() {
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">📅 Market Calendar</h1>
-          <p className="mt-1 text-sm text-gray-400">Earnings ของหุ้นที่ติดตาม + US CPI + FOMC</p>
+          <p className="mt-1 text-sm text-gray-400">Earnings ของหุ้นที่ติดตาม พร้อม US CPI และ FOMC</p>
         </div>
         <div className="flex gap-2">
           <Link href="/alerts" className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-gray-800">🔔 Alerts</Link>
@@ -163,7 +163,7 @@ export default function MarketCalendar() {
         })}
         {visibleEvents.length === 0 && (
           <div className="rounded-xl border border-gray-800 bg-gray-900/30 p-8 text-center">
-            <p className="font-semibold text-gray-300">ไม่มี Event ในช่วง {windowDays} วันข้างหน้า</p>
+            <p className="font-semibold text-gray-300">ไม่มีเหตุการณ์ในช่วง {windowDays} วันข้างหน้า</p>
             <p className="mt-1 text-xs text-gray-500">Earnings จะแสดงเมื่อ Finnhub มีวันที่ประกาศในช่วงที่รองรับ</p>
           </div>
         )}
@@ -174,7 +174,7 @@ export default function MarketCalendar() {
         <p className="mt-2">Earnings: Finnhub · CPI: BLS · FOMC: Federal Reserve</p>
         <p className="mt-1">Macro schedule snapshot ตรวจล่าสุด {data.calendarMetadata.macroScheduleVerifiedAt}; CPI ครอบคลุมถึง {data.calendarMetadata.cpiCoverageThrough}, FOMC ถึง {data.calendarMetadata.fomcCoverageThrough}</p>
         <p className="mt-1">{data.calendarMetadata.note}</p>
-        <p className="mt-1">หน้าปฏิทินเป็น read-only และไม่สร้างคำสั่งซื้อขายอัตโนมัติ</p>
+        <p className="mt-1">หน้าปฏิทินเป็นแบบอ่านอย่างเดียว และไม่สร้างคำสั่งซื้อขายอัตโนมัติ</p>
       </section>
     </main>
   )

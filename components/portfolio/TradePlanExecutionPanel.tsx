@@ -119,7 +119,7 @@ export default function TradePlanExecutionPanel({ item, onExecuted }: {
           {item.status === 'WAITING' ? '⚡ บันทึกซื้อจริง' : '➕ ซื้อเพิ่มตามแผน'}
         </button>
         {item.status === 'ENTERED' && <button type="button" onClick={() => open('SELL')} className="rounded-lg bg-orange-600/20 px-3 py-1.5 text-xs font-semibold text-orange-300 hover:bg-orange-600/30">💵 บันทึกขายจริง</button>}
-        <span className="text-[10px] text-gray-500">ต้องกดยืนยันเองทุกครั้ง — ไม่ใช่ Auto Trading</span>
+        <span className="text-[10px] text-gray-500">ต้องยืนยันเองทุกครั้ง · ไม่มี Auto Trading</span>
       </div>
 
       {tradeType && (
@@ -137,7 +137,7 @@ export default function TradePlanExecutionPanel({ item, onExecuted }: {
             <p className="mb-2 text-[10px] leading-relaxed text-gray-500">BUY → ENTERED · SELL บางส่วน → ENTERED · SELL จน Holdings เหลือ 0 → CLOSED</p>
             {migrationFile && <p className="mb-2 text-xs text-yellow-400">ต้องติดตั้ง Migration ก่อน: <span className="font-mono">{migrationFile}</span></p>}
             {error && <p className="mb-2 text-xs text-red-400">⚠️ {error}</p>}
-            <button type="submit" disabled={saving} className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'กำลังบันทึก...' : 'ยืนยันและ Auto Sync'}</button>
+            <button type="submit" disabled={saving} className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'กำลังบันทึก...' : 'ยืนยันรายการ'}</button>
           </div>
         </form>
       )}

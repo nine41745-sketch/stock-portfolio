@@ -24,7 +24,7 @@ ${body}
 ### 🛡️ กฎเหล็กในการอัปเดตโค้ด (Code Preservation Guidelines):
 1. **Preserve Existing Features (ห้ามลบฟีเจอร์เดิม):**
    - โค้ดใหม่ต้องเป็นแบบ Backward Compatible ทั้งหมด
-   - ห้ามตัด/ลบ Logic เดิมที่ทำเสร็จไปแล้ว (OHLCV Data, Swing High/Low, Volume Ratio, Model Badge, Earnings Calendar Check, Daily Cron Analysis, Weekly RSI, Market Status, Track Record, Fallback Latest Record, Quick Notes Drawer และ Sector/Business แบบนิ่ง)
+   - ห้ามตัด/ลบ Logic เดิมที่ทำเสร็จไปแล้ว (OHLCV Data, Swing High/Low, Volume Ratio, Model Badge, Earnings Calendar Check, Daily Cron Analysis, Weekly RSI, Market Status, Track Record, Fallback Latest Record, โน้ตด่วน Drawer และ Sector/Business แบบนิ่ง)
 2. **Full Code Output (ห้ามละโค้ด):**
    - เมื่อแก้ไขไฟล์ใดก็ตาม ให้เขียนโค้ดเต็มสมบูรณ์ของไฟล์นั้น ห้ามใช้คอมเมนต์ประเภท \`// ... existing code ...\` เพื่อป้องกันไม่ให้เผลอลบส่วนสำคัญออก
 3. **Targeted Changes Only (แก้เฉพาะจุด):**
@@ -113,7 +113,7 @@ export default function QuickNotesDrawer() {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        aria-label="เปิด Quick Notes"
+        aria-label="เปิด โน้ตด่วน"
         className={`fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-purple-600 text-xl shadow-lg transition-all hover:scale-105 hover:bg-purple-500 ${isOpen ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
       >
         📝
@@ -132,11 +132,11 @@ export default function QuickNotesDrawer() {
           ${isOpen ? 'translate-y-0 sm:translate-x-0' : 'translate-y-full sm:translate-y-0 sm:translate-x-full'}`}
         role="dialog"
         aria-modal="true"
-        aria-label="Quick Notes"
+        aria-label="โน้ตด่วน"
       >
         <div className="flex shrink-0 items-center justify-between border-b border-gray-800 px-4 py-3">
-          <span className="text-sm font-semibold text-gray-200">📝 Quick Notes</span>
-          <button type="button" onClick={() => setIsOpen(false)} className="text-sm text-gray-500 hover:text-white" aria-label="ปิด Quick Notes">✕</button>
+          <span className="text-sm font-semibold text-gray-200">📝 โน้ตด่วน</span>
+          <button type="button" onClick={() => setIsOpen(false)} className="text-sm text-gray-500 hover:text-white" aria-label="ปิด โน้ตด่วน">✕</button>
         </div>
 
         <div className="min-h-0 flex-1 p-3">
@@ -159,16 +159,16 @@ export default function QuickNotesDrawer() {
 
         <div className="flex shrink-0 flex-col gap-2 border-t border-gray-800 px-4 py-2.5">
           <button type="button" onClick={handleExportPrompt} disabled={!loaded} className="w-full rounded border border-purple-500/30 bg-purple-600/20 px-2.5 py-1.5 text-xs font-medium text-purple-300 transition-colors hover:bg-purple-600/30 disabled:opacity-40">
-            {exported ? '✓ คัดลอก Prompt แล้ว — ไปวางสั่งงาน AI ได้เลย' : '📤 ส่งโน้ตสั่งงาน AI'}
+            {exported ? '✓ คัดลอก Prompt แล้ว — พร้อมนำไปใช้กับ AI' : '📤 คัดลอก Prompt สำหรับ AI'}
           </button>
           <div className="flex items-center justify-between">
             <span className={`text-xs ${saveStatus === 'error' ? 'text-red-400' : 'text-gray-500'}`}>
               {saveStatus === 'saving' ? '⏳ กำลังบันทึก...' : saveStatus === 'saved' ? '✓ บันทึกอัตโนมัติแล้ว' : saveStatus === 'error' ? '⚠️ บันทึกไม่สำเร็จ' : ''}
             </span>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={handleClear} disabled={!loaded} className="rounded bg-gray-800 px-2.5 py-1 text-xs text-gray-400 transition-colors hover:bg-red-900/40 hover:text-red-300 disabled:opacity-40">🗑️ Clear</button>
+              <button type="button" onClick={handleClear} disabled={!loaded} className="rounded bg-gray-800 px-2.5 py-1 text-xs text-gray-400 transition-colors hover:bg-red-900/40 hover:text-red-300 disabled:opacity-40">🗑️ ล้าง</button>
               <button type="button" onClick={handleCopy} disabled={!loaded} className="rounded bg-gray-800 px-2.5 py-1 text-xs text-gray-300 transition-colors hover:bg-gray-700 disabled:opacity-40">
-                {copied ? '✓ คัดลอกแล้ว' : '📋 Copy'}
+                {copied ? '✓ คัดลอกแล้ว' : '📋 คัดลอก'}
               </button>
             </div>
           </div>

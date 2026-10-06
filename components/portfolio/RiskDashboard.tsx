@@ -149,8 +149,8 @@ export default function RiskDashboard() {
     <main className="mx-auto max-w-7xl space-y-5">
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">🛡️ Portfolio Risk</h1>
-          <p className="mt-1 text-sm text-gray-400">Concentration, Cash Buffer, Stop Risk และ Stress Scenario แบบ deterministic</p>
+          <h1 className="text-2xl font-bold text-white">🛡️ ความเสี่ยงพอร์ต</h1>
+          <p className="mt-1 text-sm text-gray-400">ดูการกระจุกตัว เงินสด Stop Risk และจำลองสถานการณ์แบบ deterministic</p>
         </div>
         <button type="button" onClick={reload} className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-gray-800">↻ รีเฟรช</button>
       </section>
@@ -162,25 +162,25 @@ export default function RiskDashboard() {
           <p className="mt-1 text-xs text-gray-500">หุ้น {money(data.summary.equity_market_value)} + เงินสด {money(data.summary.cash_balance)}</p>
         </div>
         <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
-          <p className="text-xs uppercase tracking-wider text-gray-500">Cash Buffer</p>
+          <p className="text-xs uppercase tracking-wider text-gray-500">สัดส่วนเงินสด</p>
           <p className="mt-1 text-xl font-bold text-white">{percent(data.summary.cash_pct)}</p>
           <p className="mt-1 text-xs text-gray-500">Dime {money(data.balances.dime_balance)} ไม่รวมในฐาน Risk</p>
         </div>
         <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
-          <p className="text-xs uppercase tracking-wider text-gray-500">Largest Position</p>
+          <p className="text-xs uppercase tracking-wider text-gray-500">สัดส่วนหุ้นใหญ่สุด</p>
           <p className="mt-1 text-xl font-bold text-white">{percent(data.summary.largest_position_pct)}</p>
           <p className="mt-1 text-xs text-gray-500">{data.positions[0]?.symbol ?? '—'}</p>
         </div>
         <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
-          <p className="text-xs uppercase tracking-wider text-gray-500">Loss ถ้า Stop ทำงาน</p>
+          <p className="text-xs uppercase tracking-wider text-gray-500">ขาดทุนหากถึง Stop</p>
           <p className="mt-1 text-xl font-bold text-white">{maxLossText}</p>
-          <p className="mt-1 text-xs text-gray-500">Stop coverage {percent(data.summary.stop_coverage_pct)}</p>
+          <p className="mt-1 text-xs text-gray-500">ครอบคลุม Stop {percent(data.summary.stop_coverage_pct)}</p>
         </div>
       </section>
 
       {data.warnings.length > 0 && (
         <section className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4">
-          <p className="text-sm font-semibold text-yellow-200">⚠️ Data Quality</p>
+          <p className="text-sm font-semibold text-yellow-200">⚠️ คุณภาพข้อมูล</p>
           <ul className="mt-2 space-y-1 text-xs text-yellow-100/80">
             {data.warnings.map(warning => <li key={warning}>• {warning}</li>)}
           </ul>
@@ -204,7 +204,7 @@ export default function RiskDashboard() {
                 <th className="px-2 py-2">Sector / Industry</th>
                 <th className="px-2 py-2 text-right">Stop</th>
                 <th className="px-2 py-2 text-right">Loss → Stop</th>
-                <th className="px-2 py-2 text-right">Risk ต่อพอร์ต</th>
+                <th className="px-2 py-2 text-right">ความเสี่ยงต่อพอร์ต</th>
               </tr>
             </thead>
             <tbody>
@@ -229,7 +229,7 @@ export default function RiskDashboard() {
 
       <section className="grid gap-5 lg:grid-cols-2">
         <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-          <h2 className="font-bold text-white">Sector / Industry Concentration</h2>
+          <h2 className="font-bold text-white">การกระจุกตัวตามอุตสาหกรรม</h2>
           <p className="mt-1 text-xs text-gray-500">อิง Finnhub Industry ไม่ได้อ้างว่าเป็น GICS มาตรฐาน</p>
           <div className="mt-4 space-y-3">
             {data.sectors.map(sector => (
@@ -247,7 +247,7 @@ export default function RiskDashboard() {
         </div>
 
         <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-          <h2 className="font-bold text-white">Rebalance / Risk Flags</h2>
+          <h2 className="font-bold text-white">สัญญาณความเสี่ยง</h2>
           <p className="mt-1 text-xs text-gray-500">เป็น heuristic แจ้งความเสี่ยง ไม่ใช่คำสั่งซื้อขาย และระบบไม่แก้พอร์ตอัตโนมัติ</p>
           <div className="mt-4 space-y-2">
             {data.suggestions.map((suggestion, index) => (
@@ -262,7 +262,7 @@ export default function RiskDashboard() {
       <AllocationPlanner positions={data.positions} dimeBalance={data.balances.dime_balance} />
 
       <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-        <h2 className="font-bold text-white">Stress Scenario</h2>
+        <h2 className="font-bold text-white">จำลองสถานการณ์</h2>
         <p className="mt-1 text-xs text-gray-500">จำลองหุ้นตัวเดียวขยับตาม % ที่กำหนด โดยสมมติรายการอื่นคงที่</p>
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="text-xs text-gray-400">หุ้น
@@ -270,7 +270,7 @@ export default function RiskDashboard() {
               {data.positions.map(position => <option key={position.symbol} value={position.symbol}>{position.symbol}</option>)}
             </select>
           </label>
-          <label className="text-xs text-gray-400">Shock %
+          <label className="text-xs text-gray-400">การเปลี่ยนแปลง %
             <input type="number" min="-100" max="100" step="1" value={shockPct} onChange={event => setShockPct(Number(event.target.value))} className="mt-1 block w-28 rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white" />
           </label>
           <div className="flex gap-2">
@@ -283,7 +283,7 @@ export default function RiskDashboard() {
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg bg-gray-950/70 p-3"><p className="text-xs text-gray-500">ผลกระทบเงิน</p><p className={`mt-1 font-bold ${scenario.impact < 0 ? 'text-red-300' : 'text-green-300'}`}>{money(scenario.impact)}</p></div>
             <div className="rounded-lg bg-gray-950/70 p-3"><p className="text-xs text-gray-500">ผลกระทบต่อพอร์ต</p><p className={`mt-1 font-bold ${(scenario.impactPct ?? 0) < 0 ? 'text-red-300' : 'text-green-300'}`}>{scenario.impactPct === null ? '—' : `${scenario.impactPct >= 0 ? '+' : ''}${scenario.impactPct.toFixed(2)}%`}</p></div>
-            <div className="rounded-lg bg-gray-950/70 p-3"><p className="text-xs text-gray-500">มูลค่าพอร์ตหลัง Scenario</p><p className="mt-1 font-bold text-white">{money(scenario.newTotal)}</p></div>
+            <div className="rounded-lg bg-gray-950/70 p-3"><p className="text-xs text-gray-500">มูลค่าพอร์ตหลังจำลอง</p><p className="mt-1 font-bold text-white">{money(scenario.newTotal)}</p></div>
           </div>
         )}
       </section>

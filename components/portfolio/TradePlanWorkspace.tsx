@@ -246,11 +246,11 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payloadFromDraft(draft)),
       })
-      if (!response.ok) throw new Error(await readError(response, 'บันทึก Trade Plan ไม่สำเร็จ'))
+      if (!response.ok) throw new Error(await readError(response, 'บันทึกแผน ไม่สำเร็จ'))
       resetForm()
       await loadPlans()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'บันทึก Trade Plan ไม่สำเร็จ')
+      setError(err instanceof Error ? err.message : 'บันทึกแผน ไม่สำเร็จ')
     } finally {
       setSaving(false)
     }
@@ -294,10 +294,10 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">🎯 Trade Plan</h1>
-          <p className="mt-1 text-sm text-gray-400">วาง Entry / Add Zone / Stop / Target / Budget ก่อนซื้อ และบันทึกซื้อ/ขายจริงจากแผนให้พอร์ต Sync ได้เมื่อยืนยัน</p>
+          <p className="mt-1 text-sm text-gray-400">กำหนด Entry, Add Zone, Stop, Target และงบก่อนซื้อ · รายการจริงต้องยืนยันทุกครั้ง</p>
         </div>
         <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs text-blue-300">
-          Long-only plan · Real Trade ต้องกดยืนยันเอง
+          Long-only · รายการจริงต้องยืนยันเอง
         </div>
       </div>
 
@@ -314,14 +314,14 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4"><p className="text-xs text-gray-500">แผนที่กำลังใช้งาน</p><p className="mt-1 text-2xl font-bold text-white">{summary.active}</p></div>
         <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4"><p className="text-xs text-gray-500">เข้าแล้ว</p><p className="mt-1 text-2xl font-bold text-green-400">{summary.entered}</p></div>
-        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4"><p className="text-xs text-gray-500">งบ Active รวม</p><p className="mt-1 text-2xl font-bold text-white">{fmtMoney(summary.budget)}</p></div>
-        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4"><p className="text-xs text-gray-500">Max Loss ตาม Stop</p><p className="mt-1 text-2xl font-bold text-red-400">{fmtMoney(summary.risk)}</p></div>
+        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4"><p className="text-xs text-gray-500">งบแผนที่ใช้งาน</p><p className="mt-1 text-2xl font-bold text-white">{fmtMoney(summary.budget)}</p></div>
+        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4"><p className="text-xs text-gray-500">ขาดทุนสูงสุดตาม Stop</p><p className="mt-1 text-2xl font-bold text-red-400">{fmtMoney(summary.risk)}</p></div>
       </div>
 
       <form onSubmit={submit} className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="font-bold text-white">{editingId ? 'แก้ไข Trade Plan' : 'สร้าง Trade Plan'}</h2>
+            <h2 className="font-bold text-white">{editingId ? 'แก้ไขแผน' : 'สร้างแผน'}</h2>
             <p className="mt-1 text-xs text-gray-500">Planned Entry จำเป็นต้องมี; Stop/Target/Budget/Add Zone เติมได้ตามแผน</p>
           </div>
           {editingId && <button type="button" onClick={resetForm} className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">ยกเลิกการแก้ไข</button>}
@@ -382,14 +382,14 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button type="submit" disabled={saving || migrationRequired || !draft.symbol.trim() || !draft.entry_low.trim()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">{migrationRequired ? 'รออนุมัติ Migration' : saving ? 'กำลังบันทึก...' : editingId ? 'บันทึกการแก้ไข' : 'บันทึก Trade Plan'}</button>
+          <button type="submit" disabled={saving || migrationRequired || !draft.symbol.trim() || !draft.entry_low.trim()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">{migrationRequired ? 'รออนุมัติ Migration' : saving ? 'กำลังบันทึก...' : editingId ? 'บันทึกการแก้ไข' : 'บันทึกแผน'}</button>
           <span className="text-xs text-gray-600">การบันทึกหรือแก้ไขแผนเพียงอย่างเดียวจะไม่เปลี่ยนจำนวนหุ้น, Cost Basis, Dime หรือ Transaction Ledger</span>
         </div>
       </form>
 
       <section className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div><h2 className="font-bold text-white">รายการ Trade Plan</h2><p className="mt-1 text-xs text-gray-500">หนึ่งหุ้นมี Active Plan (WAITING/ENTERED) ได้ครั้งละ 1 แผน แต่เก็บประวัติ CLOSED/CANCELLED ได้</p></div>
+          <div><h2 className="font-bold text-white">รายการแผน</h2><p className="mt-1 text-xs text-gray-500">หนึ่งหุ้นมี Active Plan (WAITING/ENTERED) ได้ครั้งละ 1 แผน แต่เก็บประวัติ CLOSED/CANCELLED ได้</p></div>
           <div className="flex flex-wrap gap-1.5">
             {(['ACTIVE', 'WAITING', 'ENTERED', 'CLOSED', 'CANCELLED', 'ALL'] as const).map(value => <button key={value} type="button" onClick={() => setFilter(value)} className={`rounded-lg px-2.5 py-1.5 text-xs ${filter === value ? 'bg-blue-600 text-white' : 'bg-gray-900 text-gray-400 hover:text-white'}`}>{value}</button>)}
           </div>
@@ -412,7 +412,7 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
                     <div><p className="text-[10px] text-gray-600">Stop</p><p className="text-sm font-semibold text-red-400">{fmtPrice(item.stop_loss)}</p></div>
                     <div><p className="text-[10px] text-gray-600">Targets</p><p className="text-sm font-semibold text-green-400">{fmtPrice(item.target1)} / {fmtPrice(item.target2)}</p></div>
                     <div><p className="text-[10px] text-gray-600">Budget</p><p className="text-sm font-semibold text-white">{fmtMoney(item.budget)}</p></div>
-                    <div><p className="text-[10px] text-gray-600">Planned Shares</p><p className="text-sm font-semibold text-white">{item.planned_shares?.toFixed(4) ?? 'Auto จาก Budget'}</p></div>
+                    <div><p className="text-[10px] text-gray-600">จำนวนหุ้นตามแผน</p><p className="text-sm font-semibold text-white">{item.planned_shares?.toFixed(4) ?? 'คำนวณจากงบ'}</p></div>
                     <div><p className="text-[10px] text-gray-600">Max Loss</p><p className="text-sm font-semibold text-red-400">{fmtMoney(itemMetrics.risk_amount)}</p></div>
                     <div><p className="text-[10px] text-gray-600">R:R T1 / T2</p><p className="text-sm font-semibold text-white">{itemMetrics.rr_target1?.toFixed(2) ?? '—'} / {itemMetrics.rr_target2?.toFixed(2) ?? '—'}</p></div>
                   </div>

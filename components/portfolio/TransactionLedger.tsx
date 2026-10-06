@@ -269,7 +269,7 @@ export default function TransactionLedger() {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">🧾 ธุรกรรม</h1>
-          <p className="mt-1 text-sm text-gray-400">Transaction Ledger สำหรับ BUY / SELL / ปันผล / เงินเข้าออก โดยยังไม่แก้ Holdings หรือ Cash อัตโนมัติ</p>
+          <p className="mt-1 text-sm text-gray-400">บันทึก BUY / SELL / ปันผล / เงินเข้าออก โดยไม่แก้ Holdings หรือ Cash อัตโนมัติ</p>
         </div>
         <button
           type="button"
@@ -481,7 +481,7 @@ export default function TransactionLedger() {
                   <th className="px-2 py-3 text-right">Fee</th>
                   <th className="px-2 py-3 text-right">มูลค่า</th>
                   <th className="px-2 py-3">หมายเหตุ</th>
-                  <th className="px-2 py-3 text-right">จัดการ</th>
+                  <th className="px-2 py-3 text-right">เครื่องมือ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
@@ -509,8 +509,8 @@ export default function TransactionLedger() {
 
       <section className="rounded-xl border border-gray-800 bg-gray-900 p-4 md:p-5">
         <div className="mb-4">
-          <h2 className="font-semibold text-white">ตรวจเทียบ Holdings</h2>
-          <p className="mt-1 text-xs text-gray-400">Ledger Shares = ยอดตั้งต้น + BUY − SELL เทียบกับจำนวนหุ้นในพอร์ตจริง ระบบยังไม่ Sync ให้อัตโนมัติ</p>
+          <h2 className="font-semibold text-white">ตรวจเทียบพอร์ต</h2>
+          <p className="mt-1 text-xs text-gray-400">เทียบจำนวนหุ้นจาก Ledger กับหุ้นในพอร์ตจริง · ระบบยังไม่ Sync ให้อัตโนมัติ</p>
         </div>
         {reconciliation.length === 0 ? (
           <div className="py-6 text-center text-sm text-gray-400">ยังไม่มีข้อมูลสำหรับตรวจเทียบ</div>

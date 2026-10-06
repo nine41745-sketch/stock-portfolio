@@ -92,7 +92,7 @@ assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.save_portfolio_transa
 
 const ui = fs.readFileSync('components/portfolio/TransactionLedger.tsx', 'utf8')
 assert.match(ui, /ยอดหุ้นตั้งต้น/, 'Existing holdings need an explicit opening-position path')
-assert.match(ui, /ตรวจเทียบ Holdings/, 'UI must surface reconciliation')
+assert.match(ui, /ตรวจเทียบพอร์ต/, 'UI must surface reconciliation')
 assert.match(ui, /จะไม่เปลี่ยนจำนวนหุ้น/, 'UI must make no-auto-sync safety explicit')
 assert.match(ui, /migration_transactions_v1\.21\.0\.sql/, 'Missing migration must have a clear recovery path')
 

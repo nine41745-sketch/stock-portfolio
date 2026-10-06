@@ -305,9 +305,9 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Opportunity Scanner</p>
-          <h1 className="text-xl font-bold text-white md:text-2xl">🔎 สแกนหุ้น & ⭐ หุ้นที่เล็งไว้</h1>
+          <h1 className="text-xl font-bold text-white md:text-2xl">🔎 สแกนหุ้น</h1>
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-500">
-            คัดหุ้นแบบ deterministic จาก Trend, Momentum, Volume, Price Location, Relative Strength เทียบ SPY และ Earnings Risk — ไม่ใช้ AI quota
+            คัดหุ้นจาก Trend, Momentum, Volume, Price Location, Relative Strength เทียบ SPY และ Earnings Risk โดยไม่ใช้ AI
           </p>
         </div>
         <div className="flex rounded-lg border border-gray-700 bg-gray-950/60 p-1">
@@ -315,12 +315,12 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
             type="button"
             onClick={() => setTab('scanner')}
             className={`rounded-md px-3 py-1.5 text-sm font-medium ${tab === 'scanner' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}
-          >🔎 Scanner</button>
+          >🔎 สแกน</button>
           <button
             type="button"
             onClick={() => setTab('watchlist')}
             className={`rounded-md px-3 py-1.5 text-sm font-medium ${tab === 'watchlist' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}
-          >⭐ Watchlist {watchlist.length > 0 ? `(${watchlist.length})` : ''}</button>
+          >⭐ หุ้นที่เล็งไว้ {watchlist.length > 0 ? `(${watchlist.length})` : ''}</button>
         </div>
       </div>
 
@@ -409,7 +409,7 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
                 setSortBy('score')
               }}
               className="rounded-lg border border-gray-700 px-3 py-2 text-xs text-gray-400 hover:bg-gray-800"
-            >ล้าง Filter</button>
+            >ล้างตัวกรอง</button>
           </div>
 
           {scannerError && <p className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">⚠️ {scannerError}</p>}
@@ -417,7 +417,7 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
           {!scannerLoading && !scannerError && scannerItems.length === 0 ? (
             <p className="rounded-lg border border-dashed border-gray-700 px-4 py-8 text-center text-sm text-gray-500">เลือกกลุ่มแล้วกด “เริ่มสแกน” เพื่อจัดอันดับหุ้นที่มี Technical setup เด่นในตอนนี้</p>
           ) : !scannerLoading && scannerItems.length > 0 && filteredItems.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-gray-700 px-4 py-8 text-center text-sm text-gray-500">ไม่มีหุ้นที่ผ่าน Filter ชุดนี้</p>
+            <p className="rounded-lg border border-dashed border-gray-700 px-4 py-8 text-center text-sm text-gray-500">ไม่มีหุ้นที่ผ่านตัวกรองนี้</p>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-gray-800">
               <table className="min-w-[1510px] w-full text-left text-xs">
