@@ -14,7 +14,6 @@ import { getImportantSupportState } from '@/lib/important-support'
 
 interface Props {
   holdings: HoldingWithPrice[]
-  userName: string
 }
 
 interface AthSnapshot {
@@ -335,7 +334,7 @@ function DCACalculator({ holding }: { holding: HoldingWithPrice }) {
   )
 }
 
-export default function PortfolioDashboard({ holdings: initialHoldings, userName }: Props) {
+export default function PortfolioDashboard({ holdings: initialHoldings }: Props) {
   const [holdings, setHoldings] = useState<HoldingWithPrice[]>(initialHoldings)
   const [analyses, setAnalyses] = useState<Record<string, DetailedAnalysisResult>>({})
   const [loadingSymbol, setLoadingSymbol] = useState<string | null>(null)
@@ -345,7 +344,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [currency, setCurrency] = useState<'usd' | 'thb'>('usd')
   const [exchangeRate, setExchangeRate] = useState(FALLBACK_USD_THB_RATE)
   const [exchangeRateSource, setExchangeRateSource] = useState<'loading' | 'live' | 'fallback'>('loading')
-  const [rateUpdatedAt, setRateUpdatedAt] = useState<string | null>(null)
+  const [, setRateUpdatedAt] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop')
   const [cashBalanceUSD, setCashBalanceUSD] = useState(0)
   const [dimeBalanceUSD, setDimeBalanceUSD] = useState(0)
@@ -366,6 +365,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [newsLoading, setNewsLoading] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null)
+  const [expandedAnalysisSymbol, setExpandedAnalysisSymbol] = useState<string | null>(null)
   const [inactiveWarn, setInactiveWarn] = useState(false)
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -610,6 +610,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       await requireOk(res, 'วิเคราะห์ไม่สำเร็จ')
       const result: DetailedAnalysisResult = await res.json()
       setAnalyses(prev => ({ ...prev, [holding.symbol]: result }))
+      setExpandedAnalysisSymbol(holding.symbol)
+      setExpandedSymbol(null)
     } catch {
       showToast('วิเคราะห์ไม่สำเร็จ', false)
     } finally {
@@ -726,24 +728,25 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
     showToast('ลบหุ้นแล้ว')
   }, [])
 
-  // Analysis card — บทวิเคราะห์เชิงลึกแบบสถาบันการเงิน (technical + news + risk/opportunity + แผนเทรด)
+  // Analysis card — compact hierarchy: summary first, secondary evidence collapsed by default.
   function AnalysisCard({ analysis }: { analysis: DetailedAnalysisResult }) {
     const action = analysis.recommendation.action
     const t = analysis.technical
 
-    // วิเคราะห์ไม่สำเร็จจริง (เช่น Groq เกินโควต้ารายวัน) — แสดง warning card แยกจากผลวิเคราะห์จริง
-    // กันไม่ให้ดูเหมือนเป็นคำแนะนำ HOLD ที่ AI วิเคราะห์จริงๆ ทั้งที่จริงๆ ระบบล้มเหลว
     if (analysis.error) {
       return (
-        <div className="rounded-lg border p-4 bg-amber-500/10 border-amber-500/30 text-amber-200">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-bold text-base">⚠️ วิเคราะห์ไม่สำเร็จ</span>
-            <button onClick={() => setAnalyses(prev => { const n = { ...prev }; delete n[analysis.symbol]; return n })} className="opacity-50 hover:opacity-100 text-sm">✕</button>
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-200">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="font-bold">⚠️ วิเคราะห์ไม่สำเร็จ</span>
+            <button onClick={() => setExpandedAnalysisSymbol(null)} className="text-xs opacity-60 hover:opacity-100">ยุบ</button>
           </div>
-          <p className="text-xs leading-relaxed opacity-90 mb-3">{analysis.summary}</p>
+          <p className="text-xs leading-relaxed opacity-90">{analysis.summary}</p>
           <button
-            onClick={() => handleAnalyze({ ...holdings.find(h => h.symbol === analysis.symbol)! })}
-            className="mt-3 text-xs bg-amber-500/20 hover:bg-amber-500/30 rounded px-3 py-1.5 font-medium"
+            onClick={() => {
+              const holding = holdings.find(h => h.symbol === analysis.symbol)
+              if (holding) void handleAnalyze(holding)
+            }}
+            className="mt-3 rounded-md bg-amber-500/20 px-3 py-1.5 text-xs font-medium hover:bg-amber-500/30"
           >
             🔄 ลองวิเคราะห์อีกครั้ง
           </button>
@@ -756,10 +759,10 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       t.ema50 != null ? { label: 'EMA50', value: `$${t.ema50}` } : null,
       t.ema100 != null ? { label: 'EMA100', value: `$${t.ema100}` } : null,
       t.ema200 != null ? { label: 'EMA200', value: `$${t.ema200}` } : null,
-      t.rsi14 != null ? { label: 'RSI(14) Day', value: `${t.rsi14}` } : null,
-      t.weeklyRsi14 != null ? { label: 'RSI(14) Week', value: `${t.weeklyRsi14}` } : null,
-      t.macd.histogram != null ? { label: 'MACD Hist', value: `${t.macd.histogram}` } : null,
-      t.bollinger.upper != null ? { label: 'BB บน/ล่าง', value: `$${t.bollinger.upper} / $${t.bollinger.lower}` } : null,
+      t.rsi14 != null ? { label: 'RSI Day', value: `${t.rsi14}` } : null,
+      t.weeklyRsi14 != null ? { label: 'RSI Week', value: `${t.weeklyRsi14}` } : null,
+      t.macd.histogram != null ? { label: 'MACD', value: `${t.macd.histogram}` } : null,
+      t.bollinger.upper != null ? { label: 'BB', value: `$${t.bollinger.upper} / $${t.bollinger.lower}` } : null,
       t.support != null ? { label: 'แนวรับ', value: `$${t.support}` } : null,
       t.resistance != null ? { label: 'แนวต้าน', value: `$${t.resistance}` } : null,
       t.volumeRatio != null ? { label: 'Volume', value: `${t.volumeRatio}x${t.volumeRatio > 1.5 ? ' 🔥' : ''}` } : null,
@@ -767,58 +770,67 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
 
     const earningsSoon = analysis.earnings != null && analysis.earnings.daysUntil <= 7
     const MODEL_LABELS: Record<string, string> = {
-      'openai/gpt-oss-120b': '🤖 GPT-OSS 120B',
-      'openai/gpt-oss-20b': '⚡ GPT-OSS 20B (Fallback)',
+      'openai/gpt-oss-120b': 'GPT-OSS 120B',
+      'openai/gpt-oss-20b': 'GPT-OSS 20B',
     }
-    const modelLabel = analysis.usedModel ? (MODEL_LABELS[analysis.usedModel] ?? `🤖 ${analysis.usedModel}`) : null
+    const modelLabel = analysis.usedModel ? (MODEL_LABELS[analysis.usedModel] ?? analysis.usedModel) : null
 
     return (
-      <div className={`rounded-lg border p-4 ${SIGNAL_STYLE[action]}`}>
-        <div className="flex items-center justify-between mb-2">
-          <span className="font-bold text-base">{SIGNAL_LABEL[action]}</span>
-          <button onClick={() => setAnalyses(prev => { const n = { ...prev }; delete n[analysis.symbol]; return n })} className="opacity-50 hover:opacity-100 text-sm">✕</button>
+      <div className="rounded-xl border border-gray-800 bg-gray-950/80 p-4 text-gray-200">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`inline-flex items-center whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-semibold ${SIGNAL_STYLE[action]}`}>
+              {SIGNAL_LABEL[action]}
+            </span>
+            {modelLabel && <span className="text-[10px] text-gray-600">{modelLabel}</span>}
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                const holding = holdings.find(h => h.symbol === analysis.symbol)
+                if (holding) void handleAnalyze(holding)
+              }}
+              className="rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-900 hover:text-gray-200"
+            >
+              ↻ วิเคราะห์ใหม่
+            </button>
+            <button onClick={() => setExpandedAnalysisSymbol(null)} className="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-900 hover:text-gray-200">ยุบ</button>
+          </div>
         </div>
 
+        {analysis.summary && <p className="mt-3 text-sm font-medium leading-relaxed text-gray-100">{analysis.summary}</p>}
+        {analysis.disclaimer && <p className="mt-2 text-[11px] italic text-gray-600">⚠️ {analysis.disclaimer}</p>}
+
         {analysis.analysisMode === 'PREMARKET_TRIGGER' && (
-          <div className="mb-3 rounded-lg border border-purple-500/30 bg-purple-500/10 p-3">
+          <div className="mt-3 rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
             <p className="text-xs font-semibold text-purple-300">🌆 Pre-market Update</p>
-            {analysis.baselineAction && (
-              <p className="mt-1 text-[11px] opacity-75">แผนก่อนเปิดตลาด: {SIGNAL_LABEL[analysis.baselineAction] ?? analysis.baselineAction}</p>
-            )}
-            {analysis.triggerReasons?.length ? (
-              <p className="mt-1 text-[11px] opacity-75">Trigger: {analysis.triggerReasons.join(' · ')}</p>
-            ) : null}
+            {analysis.baselineAction && <p className="mt-1 text-[11px] text-gray-500">แผนก่อนเปิดตลาด: {SIGNAL_LABEL[analysis.baselineAction] ?? analysis.baselineAction}</p>}
+            {analysis.triggerReasons?.length ? <p className="mt-1 text-[11px] text-gray-500">Trigger: {analysis.triggerReasons.join(' · ')}</p> : null}
           </div>
         )}
 
-        {analysis.disclaimer && (
-          <p className="text-[11px] opacity-50 mb-3 italic">⚠️ {analysis.disclaimer}</p>
-        )}
-
         {earningsSoon && (
-          <div className="mb-3 p-3 bg-red-500/15 border border-red-500/40 rounded-lg">
-            <p className="text-xs font-bold text-red-300">
-              🚨 ประกาศงบในอีก {analysis.earnings!.daysUntil} วัน ({analysis.earnings!.date}) — ราคาอาจเหวี่ยงแรง เทคนิคัลอาจไม่แม่นช่วงนี้
-            </p>
+          <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+            <p className="text-xs font-semibold text-red-300">🚨 ประกาศงบในอีก {analysis.earnings!.daysUntil} วัน ({analysis.earnings!.date}) · ราคาอาจผันผวนสูง</p>
           </div>
         )}
 
         {(analysis.sector || analysis.business) && (
-          <div className="mb-3 p-3 bg-black/20 rounded-lg text-xs space-y-1 border border-current/10">
-            {analysis.sector && <p><span className="opacity-60">Sector: </span><span className="font-medium">{analysis.sector}</span></p>}
-            {analysis.business && <p><span className="opacity-60">Business: </span>{analysis.business}</p>}
+          <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-gray-500">
+            {analysis.sector && <span className="rounded-md border border-gray-800 bg-gray-900/60 px-2 py-1">Sector: <span className="text-gray-300">{analysis.sector}</span></span>}
+            {analysis.business && <span className="rounded-md border border-gray-800 bg-gray-900/60 px-2 py-1">Business: <span className="text-gray-300">{analysis.business}</span></span>}
           </div>
         )}
 
         {analysis.technicalSummary && (
-          <div className="mb-3 p-3 bg-blue-500/10 border border-blue-500/25 rounded-lg">
-            <p className="text-xs font-semibold mb-1.5 text-blue-300">📊 ภาพรวมเทคนิคัล</p>
-            <p className="text-xs opacity-90 leading-relaxed mb-2">{analysis.technicalSummary}</p>
+          <div className="mt-3 rounded-lg border border-gray-800 bg-gray-900/60 p-3">
+            <p className="mb-1.5 text-xs font-semibold text-blue-300">📊 ภาพรวมเทคนิคัล</p>
+            <p className="text-xs leading-relaxed text-gray-300">{analysis.technicalSummary}</p>
             {techChips.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {techChips.map((c, i) => (
-                  <span key={i} className="text-[11px] bg-black/25 rounded px-2 py-0.5">
-                    <span className="opacity-60">{c.label}: </span><span className="font-medium">{c.value}</span>
+                  <span key={i} className="whitespace-nowrap rounded bg-gray-950/80 px-2 py-0.5 text-[10px] text-gray-400">
+                    {c.label}: <span className="font-medium text-gray-200">{c.value}</span>
                   </span>
                 ))}
               </div>
@@ -826,93 +838,74 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
           </div>
         )}
 
-        {analysis.newsImpact.length > 0 && (
-          <div className="mb-3">
-            <p className="text-xs font-semibold mb-1.5">📰 ผลกระทบจากข่าว</p>
-            <ul className="space-y-1">
-              {analysis.newsImpact.map((n, i) => (
-                <li key={i} className="text-xs opacity-80 flex gap-2"><span className="shrink-0">•</span><span>{n}</span></li>
-              ))}
-            </ul>
-          </div>
-        )}
-
         {(analysis.risksAndOpportunities.caution || analysis.risksAndOpportunities.opportunity) && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {analysis.risksAndOpportunities.caution && (
-              <div className="p-3 bg-orange-500/10 border border-orange-500/25 rounded-lg">
-                <p className="text-xs font-semibold mb-1 text-orange-300">⚠️ ข้อควรระวัง</p>
-                <p className="text-xs opacity-90 leading-relaxed">{analysis.risksAndOpportunities.caution}</p>
+              <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
+                <p className="mb-1 text-xs font-semibold text-orange-300">⚠️ ข้อควรระวัง</p>
+                <p className="text-xs leading-relaxed text-gray-300">{analysis.risksAndOpportunities.caution}</p>
               </div>
             )}
             {analysis.risksAndOpportunities.opportunity && (
-              <div className="p-3 bg-green-500/10 border border-green-500/25 rounded-lg">
-                <p className="text-xs font-semibold mb-1 text-green-300">🌱 โอกาส</p>
-                <p className="text-xs opacity-90 leading-relaxed">{analysis.risksAndOpportunities.opportunity}</p>
+              <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-3">
+                <p className="mb-1 text-xs font-semibold text-green-300">🌱 โอกาส</p>
+                <p className="text-xs leading-relaxed text-gray-300">{analysis.risksAndOpportunities.opportunity}</p>
               </div>
             )}
           </div>
         )}
 
         {(analysis.recommendation.buyConditions || analysis.recommendation.sellConditions) && (
-          <div className="mb-3 p-3 bg-black/20 rounded-lg border border-current/10 space-y-2">
-            <p className="text-xs font-semibold">📌 แผนการเทรด</p>
-            {analysis.recommendation.buyConditions && (
-              <p className="text-xs leading-relaxed"><span className="text-green-400 font-medium">ซื้อเพิ่ม: </span><span className="opacity-90">{analysis.recommendation.buyConditions}</span></p>
-            )}
-            {analysis.recommendation.sellConditions && (
-              <p className="text-xs leading-relaxed"><span className="text-red-400 font-medium">ขาย / Cut Loss: </span><span className="opacity-90">{analysis.recommendation.sellConditions}</span></p>
-            )}
+          <div className="mt-3 rounded-lg border border-gray-800 bg-gray-900/60 p-3">
+            <p className="mb-2 text-xs font-semibold text-gray-300">📌 แผนการเทรด</p>
+            {analysis.recommendation.buyConditions && <p className="text-xs leading-relaxed text-gray-300"><span className="font-medium text-green-400">ซื้อเพิ่ม: </span>{analysis.recommendation.buyConditions}</p>}
+            {analysis.recommendation.sellConditions && <p className="mt-1 text-xs leading-relaxed text-gray-300"><span className="font-medium text-red-400">ขาย / Cut Loss: </span>{analysis.recommendation.sellConditions}</p>}
           </div>
         )}
 
         {analysis.risks.length > 0 && (
-          <div className="mb-3">
-            <p className="text-xs font-semibold mb-1.5 text-red-300">🚩 ความเสี่ยงหลัก</p>
+          <div className="mt-3 rounded-lg border border-red-500/15 bg-red-500/5 p-3">
+            <p className="mb-1.5 text-xs font-semibold text-red-300">🚩 ความเสี่ยงหลัก</p>
             <ul className="space-y-1">
-              {analysis.risks.map((r, i) => <li key={i} className="text-xs opacity-80 flex gap-2"><span className="shrink-0">•</span><span>{r}</span></li>)}
+              {analysis.risks.map((r, i) => <li key={i} className="flex gap-2 text-xs leading-relaxed text-gray-400"><span className="shrink-0">•</span><span>{r}</span></li>)}
             </ul>
           </div>
         )}
 
-        {analysis.summary && (
-          <p className="text-sm font-medium border-t border-current/20 pt-3 mb-1">{analysis.summary}</p>
-        )}
-
         {settingsLoaded && cashBalanceUSD > 0 && action === 'BUY' && (
-          <p className="text-xs opacity-60 mt-2 border-t border-current/20 pt-2">
-            💰 เงินในธนาคาร {fmtAmt(cashBalanceUSD)} · สัดส่วนเงินสด {cashRatioPct}%
-          </p>
+          <p className="mt-3 text-xs text-gray-600">💰 เงินในธนาคาร {fmtAmt(cashBalanceUSD)} · สัดส่วนเงินสด {cashRatioPct}%</p>
         )}
 
-        <div className="border-t border-current/20 pt-3 mt-2 space-y-2">
-          <p className="text-xs opacity-40 font-medium uppercase tracking-wide">📊 ข้อมูลอ้างอิง</p>
-          <div className="flex flex-wrap gap-1.5">
-            <span className="text-xs opacity-60 bg-black/20 rounded px-2 py-0.5">
-              💹 ราคา ${analysis.usedPrice?.toFixed(2) ?? '—'} — ${analysis.priceSource ?? 'Finnhub'}
-            </span>
-            <span className="text-xs opacity-60 bg-black/20 rounded px-2 py-0.5">
-              📈 Technical จาก Yahoo Finance (ราคาปิดย้อนหลัง 1 ปี)
-            </span>
-            <span className="text-xs opacity-60 bg-black/20 rounded px-2 py-0.5">
-              {modelLabel ?? '🤖 Groq AI'}
-            </span>
-          </div>
-          {analysis.usedNews.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs opacity-40">ข่าวที่ AI อ่านก่อนวิเคราะห์</p>
-              {analysis.usedNews.map((n, i) => (
-                <div key={i} className="flex items-start gap-2 bg-black/15 rounded p-2">
-                  <span className="text-xs shrink-0">{n.impact === 'NEGATIVE' ? '🔴' : n.impact === 'POSITIVE' ? '🟢' : n.impact === 'NEUTRAL' ? '🟡' : '⬜'}</span>
-                  <span className="text-xs opacity-70 leading-relaxed">{n.headlineTh || n.headline}</span>
-                </div>
-              ))}
+        {analysis.newsImpact.length > 0 && (
+          <details className="mt-3 border-t border-gray-800 pt-3">
+            <summary className="cursor-pointer text-xs font-medium text-gray-500 hover:text-gray-300">📰 ผลกระทบจากข่าว ({analysis.newsImpact.length})</summary>
+            <ul className="mt-2 space-y-1">
+              {analysis.newsImpact.map((n, i) => <li key={i} className="flex gap-2 text-xs leading-relaxed text-gray-400"><span className="shrink-0">•</span><span>{n}</span></li>)}
+            </ul>
+          </details>
+        )}
+
+        <details className="mt-3 border-t border-gray-800 pt-3">
+          <summary className="cursor-pointer text-xs font-medium text-gray-600 hover:text-gray-300">📊 ข้อมูลอ้างอิง</summary>
+          <div className="mt-2 space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              <span className="rounded bg-gray-900 px-2 py-0.5 text-[10px] text-gray-500">💹 ราคา ${analysis.usedPrice?.toFixed(2) ?? '—'} · {analysis.priceSource ?? 'Finnhub'}</span>
+              <span className="rounded bg-gray-900 px-2 py-0.5 text-[10px] text-gray-500">📈 Technical · Yahoo Finance</span>
+              {modelLabel && <span className="rounded bg-gray-900 px-2 py-0.5 text-[10px] text-gray-500">🤖 {modelLabel}</span>}
             </div>
-          )}
-          {analysis.analysedAt && (
-            <p className="text-xs opacity-35">🕐 วิเคราะห์ล่าสุด {fmtDateTime(analysis.analysedAt)}</p>
-          )}
-        </div>
+            {analysis.usedNews.length > 0 && (
+              <div className="space-y-1">
+                {analysis.usedNews.map((n, i) => (
+                  <div key={i} className="flex items-start gap-2 rounded bg-gray-900/60 p-2">
+                    <span className="shrink-0 text-xs">{n.impact === 'NEGATIVE' ? '🔴' : n.impact === 'POSITIVE' ? '🟢' : n.impact === 'NEUTRAL' ? '🟡' : '⬜'}</span>
+                    <span className="text-xs leading-relaxed text-gray-500">{n.headlineTh || n.headline}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {analysis.analysedAt && <p className="text-[10px] text-gray-600">🕐 วิเคราะห์ล่าสุด {fmtDateTime(analysis.analysedAt)}</p>}
+          </div>
+        </details>
       </div>
     )
   }
@@ -955,14 +948,14 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       </button>
     )
     return (
-      <th className={`px-4 py-3 ${align === 'right' ? 'text-right' : ''}`}>
+      <th className={`px-3 py-2.5 ${align === 'right' ? 'text-right' : ''}`}>
         {tooltip ? <Tooltip text={tooltip}>{btn}</Tooltip> : btn}
       </th>
     )
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-5">
+    <div className="max-w-7xl mx-auto space-y-4">
 
       {toast && (
         <div className={`fixed top-4 right-4 z-50 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
@@ -996,12 +989,11 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
               {CURRENT_VERSION}
             </button>
           </div>
-          <p className="text-gray-500 text-xs mt-1">
+          <p className="mt-1 text-xs text-gray-400">
             {lastUpdate
-              ? `🔄 อัปเดต ${fmtDateTime(lastUpdate)} · 1 USD = ${exchangeRate.toFixed(2)} THB${exchangeRateSource === 'live' ? '' : ' (ประมาณ)'}`
-              : `สวัสดี, ${userName} · กด "รีเฟรชราคา" เพื่ออัปเดต`}
+              ? `อัปเดตล่าสุด ${fmtDateTime(lastUpdate)} · USD/THB ${exchangeRate.toFixed(2)}${exchangeRateSource === 'live' ? '' : ' (ประมาณ)'}`
+              : `ราคายังไม่ได้รีเฟรช · USD/THB ${exchangeRate.toFixed(2)}${exchangeRateSource === 'live' ? '' : ' (ประมาณ)'}`}
           </p>
-          {rateUpdatedAt && <p className="text-gray-700 text-[10px] mt-0.5">FX live: {fmtDateTime(rateUpdatedAt)}</p>}
         </div>
         <div className="flex gap-2 flex-wrap">
           <button onClick={handleRefresh} disabled={refreshing}
@@ -1015,118 +1007,133 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <SummaryCard label="มูลค่าพอร์ต" value={fmtAmt(totalValue)} />
         <SummaryCard label="ต้นทุนรวม" value={fmtAmt(totalCost)} />
         <SummaryCard label="กำไร/ขาดทุน" value={fmtPnl(totalPnl)} sub={fmtPct(totalPnlPct)} color={totalPnl >= 0 ? 'text-green-400' : 'text-red-400'} />
-        <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">สถานะหุ้น · {holdings.length} ตัว</p>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-green-400 text-sm font-bold">{winners} กำไร</span>
+        <div className="min-h-[92px] rounded-xl border border-gray-800 bg-gray-900 p-4">
+          <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">สถานะหุ้น · {holdings.length} ตัว</p>
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-sm font-bold text-green-400">{winners} กำไร</span>
             <span className="text-gray-700">·</span>
-            <span className="text-red-400 text-sm font-bold">{losers} ขาดทุน</span>
+            <span className="text-sm font-bold text-red-400">{losers} ขาดทุน</span>
           </div>
-          <div className="h-1.5 rounded-full bg-gray-800 overflow-hidden">
-            <div className="h-full bg-green-500 rounded-full" style={{ width: `${winPct}%` }} />
+          <div className="h-1.5 overflow-hidden rounded-full bg-gray-800">
+            <div className="h-full rounded-full bg-green-500" style={{ width: `${winPct}%` }} />
           </div>
-        </div>
-        <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินในธนาคาร</p>
-          {!settingsLoaded ? (
-            <p className="text-gray-600 text-sm py-2">กำลังโหลดข้อมูล...</p>
-          ) : editingCash ? (
-            <div className="space-y-1">
-              <div className="flex items-center gap-1">
-                <span className="text-gray-500 text-sm">{currency === 'thb' ? '฿' : '$'}</span>
-                <input type="number" value={cashInput} onChange={e => setCashInput(e.target.value)}
-                  className="flex-1 w-0 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500" />
-                <button onClick={handleSaveCash} className="text-xs bg-green-600 text-white rounded px-2 py-1 hover:bg-green-500">✓</button>
-                <button onClick={() => setEditingCash(false)} className="text-xs bg-gray-700 text-gray-300 rounded px-2 py-1">✕</button>
-              </div>
-              <p className="text-gray-600 text-xs">กรอกเป็น {currency === 'thb' ? 'บาท (฿)' : 'ดอลลาร์ ($)'}</p>
-              <p className="text-amber-400/90 text-xs leading-relaxed">⚠️ การบันทึกยอดนี้จะเขียนทับยอด DIME ปัจจุบันที่ Auto Sync คำนวณไว้</p>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-lg font-bold text-white">{fmtAmt(cashBalanceUSD)}</p>
-                <p className="text-gray-600 text-xs">สัดส่วน {cashRatioPct}% ของพอร์ตรวม</p>
-              </div>
-              <button onClick={() => { setEditingCash(true); setCashInput(currency === 'thb' ? String(Math.round(cashBalanceUSD * exchangeRate)) : String(cashBalanceUSD)) }}
-                className="text-gray-600 hover:text-white text-xs transition-colors">✏️</button>
-            </div>
-          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินสด DIME</p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="relative min-h-[108px] rounded-xl border border-gray-800 bg-gray-900 p-4">
+          <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">เงินในธนาคาร</p>
           {!settingsLoaded ? (
-            <p className="text-gray-600 text-sm py-2">กำลังโหลดข้อมูล...</p>
+            <p className="py-2 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
+          ) : editingCash ? (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1">
+                <span className="text-sm text-gray-500">{currency === 'thb' ? '฿' : '$'}</span>
+                <input type="number" value={cashInput} onChange={e => setCashInput(e.target.value)}
+                  className="w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                <button onClick={handleSaveCash} className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-500">✓</button>
+                <button onClick={() => setEditingCash(false)} className="rounded bg-gray-700 px-2 py-1 text-xs text-gray-300">✕</button>
+              </div>
+              <p className="text-xs text-gray-500">กรอกเป็น {currency === 'thb' ? 'บาท (฿)' : 'ดอลลาร์ ($)'}</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-lg font-bold text-white">{fmtAmt(cashBalanceUSD)}</p>
+              <p className="text-xs text-gray-500">สัดส่วน {cashRatioPct}% ของพอร์ตรวม</p>
+              <button
+                onClick={() => { setEditingCash(true); setCashInput(currency === 'thb' ? String(Math.round(cashBalanceUSD * exchangeRate)) : String(cashBalanceUSD)) }}
+                className="absolute right-3 top-3 rounded-md p-1.5 text-xs text-gray-500 transition-colors hover:bg-gray-800 hover:text-white"
+                title="แก้ไขเงินในธนาคาร"
+              >✏️</button>
+            </>
+          )}
+        </div>
+
+        <div className="relative min-h-[108px] rounded-xl border border-gray-800 bg-gray-900 p-4">
+          <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">เงินสด DIME</p>
+          {!settingsLoaded ? (
+            <p className="py-2 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
           ) : editingDime ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
-                <span className="text-gray-500 text-sm">{currency === 'thb' ? '฿' : '$'}</span>
+                <span className="text-sm text-gray-500">{currency === 'thb' ? '฿' : '$'}</span>
                 <input type="number" value={dimeInput} onChange={e => setDimeInput(e.target.value)}
-                  className="flex-1 w-0 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500" />
-                <button onClick={handleSaveDime} className="text-xs bg-green-600 text-white rounded px-2 py-1 hover:bg-green-500">✓</button>
-                <button onClick={() => setEditingDime(false)} className="text-xs bg-gray-700 text-gray-300 rounded px-2 py-1">✕</button>
+                  className="w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                <button onClick={handleSaveDime} className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-500">✓</button>
+                <button onClick={() => setEditingDime(false)} className="rounded bg-gray-700 px-2 py-1 text-xs text-gray-300">✕</button>
               </div>
-              <p className="text-gray-600 text-xs">กรอกเป็น {currency === 'thb' ? 'บาท (฿)' : 'ดอลลาร์ ($)'}</p>
+              <p className="text-xs text-gray-500">กรอกเป็น {currency === 'thb' ? 'บาท (฿)' : 'ดอลลาร์ ($)'}</p>
+              <p className="text-xs leading-relaxed text-amber-400/90">⚠️ การบันทึกยอดนี้จะเขียนทับยอด DIME ปัจจุบันที่ Auto Sync คำนวณไว้</p>
             </div>
           ) : (
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-lg font-bold text-white">{fmtAmt(dimeBalanceUSD)}</p>
-                <p className="text-gray-600 text-xs">เงินสดคงเหลือ / Buying Power ใน DIME</p>
-                {dimeUpdatedAt && <p className="text-gray-700 text-xs mt-1">🕐 อัปเดตล่าสุด {fmtDateTime(dimeUpdatedAt)}</p>}
-              </div>
-              <button onClick={() => { setEditingDime(true); setDimeInput(currency === 'thb' ? String(Math.round(dimeBalanceUSD * exchangeRate)) : String(dimeBalanceUSD)) }}
-                className="text-gray-600 hover:text-white text-xs transition-colors">✏️</button>
-            </div>
+            <>
+              <p className="text-lg font-bold text-white">{fmtAmt(dimeBalanceUSD)}</p>
+              <p className="text-xs text-gray-500">เงินสดคงเหลือ / Buying Power ใน DIME</p>
+              {dimeUpdatedAt && <p className="mt-1 text-xs text-gray-600">🕐 อัปเดตล่าสุด {fmtDateTime(dimeUpdatedAt)}</p>}
+              <button
+                onClick={() => { setEditingDime(true); setDimeInput(currency === 'thb' ? String(Math.round(dimeBalanceUSD * exchangeRate)) : String(dimeBalanceUSD)) }}
+                className="absolute right-3 top-3 rounded-md p-1.5 text-xs text-gray-500 transition-colors hover:bg-gray-800 hover:text-white"
+                title="แก้ไขเงินสด DIME"
+              >✏️</button>
+            </>
           )}
         </div>
 
-        <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินลงทุนสะสม</p>
+        <div className="relative min-h-[108px] rounded-xl border border-gray-800 bg-gray-900 p-4">
+          <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">เงินลงทุนสะสม</p>
           {!settingsLoaded ? (
-            <p className="text-gray-600 text-sm py-2">กำลังโหลดข้อมูล...</p>
+            <p className="py-2 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
           ) : editingCapital ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
-                <span className="text-gray-500 text-sm">{currency === 'thb' ? '฿' : '$'}</span>
+                <span className="text-sm text-gray-500">{currency === 'thb' ? '฿' : '$'}</span>
                 <input type="number" value={capitalInput} onChange={e => setCapitalInput(e.target.value)}
-                  className="flex-1 w-0 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500" />
-                <button onClick={handleSaveCapital} className="text-xs bg-green-600 text-white rounded px-2 py-1 hover:bg-green-500">✓</button>
-                <button onClick={() => setEditingCapital(false)} className="text-xs bg-gray-700 text-gray-300 rounded px-2 py-1">✕</button>
+                  className="w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                <button onClick={handleSaveCapital} className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-500">✓</button>
+                <button onClick={() => setEditingCapital(false)} className="rounded bg-gray-700 px-2 py-1 text-xs text-gray-300">✕</button>
               </div>
-              <p className="text-gray-600 text-xs">กรอกเป็น {currency === 'thb' ? 'บาท (฿)' : 'ดอลลาร์ ($)'}</p>
+              <p className="text-xs text-gray-500">กรอกเป็น {currency === 'thb' ? 'บาท (฿)' : 'ดอลลาร์ ($)'}</p>
             </div>
           ) : (
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-lg font-bold text-white">{fmtAmt(initialCapital)}</p>
-                <p className="text-gray-600 text-xs">ใส่ครั้งเดียว ไม่เปลี่ยนตาม DCA</p>
-                {capitalUpdatedAt && <p className="text-gray-700 text-xs mt-1">🕐 แก้ไขล่าสุด {fmtDateTime(capitalUpdatedAt)}</p>}
-              </div>
-              <button onClick={() => { setEditingCapital(true); setCapitalInput(currency === 'thb' ? String(Math.round(initialCapital * exchangeRate)) : String(initialCapital)) }}
-                className="text-gray-600 hover:text-white text-xs transition-colors">✏️</button>
-            </div>
+            <>
+              <p className="text-lg font-bold text-white">{fmtAmt(initialCapital)}</p>
+              <p className="text-xs text-gray-500">ใส่ครั้งเดียว ไม่เปลี่ยนตาม DCA</p>
+              {capitalUpdatedAt && <p className="mt-1 text-xs text-gray-600">🕐 แก้ไขล่าสุด {fmtDateTime(capitalUpdatedAt)}</p>}
+              <button
+                onClick={() => { setEditingCapital(true); setCapitalInput(currency === 'thb' ? String(Math.round(initialCapital * exchangeRate)) : String(initialCapital)) }}
+                className="absolute right-3 top-3 rounded-md p-1.5 text-xs text-gray-500 transition-colors hover:bg-gray-800 hover:text-white"
+                title="แก้ไขเงินลงทุนสะสม"
+              >✏️</button>
+            </>
           )}
         </div>
 
-        {settingsLoaded && initialCapital > 0 && (() => {
+        {(() => {
           const totalAll = (totalValue ?? 0) + dimeBalanceUSD
-          const realPnl = totalAll - initialCapital
-          const realPct = (realPnl / initialCapital) * 100
-          const pos = realPnl >= 0
+          const realPnl = initialCapital > 0 ? totalAll - initialCapital : null
+          const realPct = realPnl !== null && initialCapital > 0 ? (realPnl / initialCapital) * 100 : null
+          const pos = (realPnl ?? 0) >= 0
           return (
-            <div className={`rounded-xl border p-4 ${pos ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
-              <p className="text-gray-400 text-xs mb-1 uppercase tracking-wide">ผลตอบแทนจากเงินลงทุน</p>
-              <p className={`text-lg font-bold ${pos ? 'text-green-400' : 'text-red-400'}`}>{pos ? '+' : ''}{fmtAmt(realPnl)}</p>
-              <p className={`text-sm font-medium ${pos ? 'text-green-400' : 'text-red-400'}`}>{pos ? '+' : ''}{realPct.toFixed(2)}%</p>
-              <p className="text-gray-600 text-xs mt-1">คำนวณจากหุ้น + DIME</p>
+            <div className={`min-h-[108px] rounded-xl border bg-gray-900 p-4 ${realPnl === null ? 'border-gray-800' : pos ? 'border-green-500/25' : 'border-red-500/25'}`}>
+              <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">ผลตอบแทนจากเงินลงทุน</p>
+              {!settingsLoaded ? (
+                <p className="py-2 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
+              ) : realPnl === null || realPct === null ? (
+                <>
+                  <p className="text-lg font-bold text-gray-500">—</p>
+                  <p className="text-xs text-gray-500">ตั้งค่าเงินลงทุนสะสมก่อน</p>
+                </>
+              ) : (
+                <>
+                  <p className={`text-lg font-bold ${pos ? 'text-green-400' : 'text-red-400'}`}>{pos ? '+' : ''}{fmtAmt(realPnl)}</p>
+                  <p className={`text-sm font-medium ${pos ? 'text-green-400' : 'text-red-400'}`}>{pos ? '+' : ''}{realPct.toFixed(2)}%</p>
+                  <p className="mt-1 text-xs text-gray-500">คำนวณจากหุ้น + DIME</p>
+                </>
+              )}
             </div>
           )
         })()}
@@ -1159,9 +1166,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       {viewMode === 'desktop' && (
         <div className="rounded-xl border border-gray-800 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-[13px]">
               <thead>
-                <tr className="bg-gray-900 text-gray-400 text-left text-xs uppercase tracking-wider">
+                <tr className="bg-gray-900 text-left text-xs uppercase tracking-wide text-gray-400">
                   <SortTh field="symbol" label="หุ้น" align="left" />
                   <SortTh field="current_price" label="ราคาปัจจุบัน" />
                   <SortTh field="cost_basis" label="ต้นทุน/หุ้น" />
@@ -1173,8 +1180,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                   <SortTh field="pe" label="P/E" tooltip="ใช้ประเมินความถูกหรือแพงของหุ้น เมื่อเทียบกับกำไรต่อหุ้น ค่าสูง = แพง" />
                   <SortTh field="week52High" label="52W High" tooltip="ราคาสูงสุดในรอบ 52 สัปดาห์ที่ผ่านมา" />
                   <SortTh field="week52Low" label="52W Low" tooltip="ราคาต่ำสุดในรอบ 52 สัปดาห์ที่ผ่านมา" />
-                  <th className="px-4 py-3 text-right">อัปเดต</th>
-                  <th className="px-4 py-3 text-center">เครื่องมือ</th>
+                  <th className="px-3 py-2.5 text-right">อัปเดต</th>
+                  <th className="px-3 py-2.5 text-center">เครื่องมือ</th>
                 </tr>
               </thead>
               <tbody>
@@ -1193,39 +1200,54 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                   return (
                     <React.Fragment key={h.id}>
                       <tr className="border-t border-gray-800 bg-gray-900/40 hover:bg-gray-900/80 transition-colors">
-                        <td className="px-4 py-3">
+                        <td className="min-w-[180px] px-3 py-2.5">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span className="font-bold text-white tracking-wide">{h.symbol}</span>
-                            {athState.status === 'ATH' && <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-[10px] text-yellow-300">🏆 ATH</span>}
-                            {athState.status === 'NEAR_ATH' && <span className="rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">ใกล้ ATH -{athState.distancePct?.toFixed(1)}%</span>}
-                            {importantSupportState.status === 'NEAR' && <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] text-cyan-300">🛡️ ใกล้แนวรับสำคัญ +{importantSupportState.distancePct?.toFixed(1)}%</span>}
-                            {importantSupportState.status === 'BROKEN' && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-300">⚠️ หลุดแนวรับสำคัญ {importantSupportState.distancePct?.toFixed(1)}%</span>}
+                            {athState.status === 'ATH' && <span className="inline-flex whitespace-nowrap rounded-md border border-yellow-500/20 bg-yellow-500/10 px-1.5 py-0.5 text-[10px] font-medium text-yellow-300">🏆 ATH</span>}
+                            {athState.status === 'NEAR_ATH' && <span className="inline-flex whitespace-nowrap rounded-md border border-green-500/20 bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium text-green-400">ใกล้ ATH -{athState.distancePct?.toFixed(1)}%</span>}
+                            {importantSupportState.status === 'NEAR' && <span title={`ใกล้แนวรับสำคัญ +${importantSupportState.distancePct?.toFixed(1)}%`} className="inline-flex whitespace-nowrap rounded-md border border-cyan-500/20 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">🛡 แนวรับ +{importantSupportState.distancePct?.toFixed(1)}%</span>}
+                            {importantSupportState.status === 'BROKEN' && <span title={`หลุดแนวรับสำคัญ ${importantSupportState.distancePct?.toFixed(1)}%`} className="inline-flex whitespace-nowrap rounded-md border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-300">⚠ หลุดแนวรับ {importantSupportState.distancePct?.toFixed(1)}%</span>}
                           </div>
                           {h.notes && <p className="text-gray-500 text-xs mt-0.5">{h.notes}</p>}
                         </td>
-                        <td className="px-4 py-3 text-right text-white font-mono">{fmtAmt(h.current_price)}</td>
-                        <td className="px-4 py-3 text-right text-gray-300 font-mono">{fmtAmt(h.cost_basis)}</td>
-                        <td className="px-4 py-3 text-right text-gray-300">{h.shares > 0 ? h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—'}</td>
-                        <td className="px-4 py-3 text-right text-gray-300 font-mono">{fmtAmt(h.market_value)}</td>
-                        <td className={`px-4 py-3 text-right font-mono font-medium ${pnlColor}`}>{fmtPnl(h.pnl)}</td>
-                        <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>{fmtPct(h.pnl_pct)}</td>
-                        <td className={`px-4 py-3 text-right font-mono font-medium ${h.dayChange == null ? 'text-gray-600' : h.dayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        <td className="px-3 py-2.5 text-right text-white font-mono">{fmtAmt(h.current_price)}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-300 font-mono">{fmtAmt(h.cost_basis)}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-300">{h.shares > 0 ? h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—'}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-300 font-mono">{fmtAmt(h.market_value)}</td>
+                        <td className={`px-3 py-2.5 text-right font-mono font-medium ${pnlColor}`}>{fmtPnl(h.pnl)}</td>
+                        <td className={`px-3 py-2.5 text-right font-medium ${pnlColor}`}>{fmtPct(h.pnl_pct)}</td>
+                        <td className={`px-3 py-2.5 text-right font-mono font-medium ${h.dayChange == null ? 'text-gray-600' : h.dayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {h.dayChange != null ? `${h.dayChange >= 0 ? '+' : ''}${h.dayChange.toFixed(2)}%` : <span className="text-gray-600">N/A</span>}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-300 font-mono">{h.pe != null ? h.pe.toFixed(1) : <span className="text-gray-600">N/A</span>}</td>
-                        <td className="px-4 py-3 text-right text-gray-400 font-mono text-xs">{h.week52High != null ? `$${h.week52High.toFixed(2)}` : <span className="text-gray-600">N/A</span>}</td>
-                        <td className="px-4 py-3 text-right text-gray-400 font-mono text-xs">{h.week52Low  != null ? `$${h.week52Low.toFixed(2)}`  : <span className="text-gray-600">N/A</span>}</td>
-                        <td className="px-4 py-3 text-right text-gray-600 text-xs">{fmtDate(h.updated_at)}</td>
-                        <td className="px-4 py-3 text-center whitespace-nowrap">
-                          <button onClick={() => setExpandedSymbol(prev => prev === h.symbol ? null : h.symbol)}
-                            className={`rounded-lg px-3 py-1 text-xs transition-colors mr-1 ${expandedSymbol === h.symbol ? 'bg-blue-600/40 border border-blue-500/50 text-blue-300' : 'bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/40'}`}>
+                        <td className="px-3 py-2.5 text-right text-gray-300 font-mono">{h.pe != null ? h.pe.toFixed(1) : <span className="text-gray-600">N/A</span>}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-400 font-mono text-xs">{h.week52High != null ? `$${h.week52High.toFixed(2)}` : <span className="text-gray-600">N/A</span>}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-400 font-mono text-xs">{h.week52Low  != null ? `$${h.week52Low.toFixed(2)}`  : <span className="text-gray-600">N/A</span>}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-600 text-xs">{fmtDate(h.updated_at)}</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                          <button
+                            onClick={() => {
+                              setExpandedSymbol(prev => prev === h.symbol ? null : h.symbol)
+                              setExpandedAnalysisSymbol(null)
+                            }}
+                            className={`mr-1 rounded-lg border px-2.5 py-1 text-xs transition-colors ${expandedSymbol === h.symbol ? 'border-blue-500/40 bg-blue-500/10 text-blue-300' : 'border-gray-700 bg-gray-900 text-gray-400 hover:bg-gray-800 hover:text-gray-200'}`}
+                          >
                             กราฟ
                           </button>
-                          <button onClick={() => handleAnalyze(h)} disabled={isLoading}
-                            className="rounded-lg bg-purple-600/20 border border-purple-500/30 px-3 py-1 text-purple-400 text-xs hover:bg-purple-600/40 disabled:opacity-50 transition-colors mr-2">
-                            {isLoading ? '⏳...' : 'วิเคราะห์ AI'}
+                          <button
+                            onClick={() => {
+                              if (analysis) {
+                                setExpandedAnalysisSymbol(prev => prev === h.symbol ? null : h.symbol)
+                                setExpandedSymbol(null)
+                              } else {
+                                void handleAnalyze(h)
+                              }
+                            }}
+                            disabled={isLoading}
+                            className={`mr-2 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${analysis ? 'border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20' : 'border-purple-500 bg-purple-600 text-white hover:bg-purple-500'}`}
+                          >
+                            {isLoading ? '⏳...' : analysis ? (expandedAnalysisSymbol === h.symbol ? 'ซ่อน AI' : 'ดู AI') : 'วิเคราะห์ AI'}
                           </button>
-                          <button onClick={() => setModalHolding(h)} className="text-gray-500 hover:text-white text-xs transition-colors">✏️</button>
+                          <button onClick={() => setModalHolding(h)} className="rounded-md p-1 text-xs text-gray-500 transition-colors hover:bg-gray-800 hover:text-white" title="แก้ไขหุ้น">✏️</button>
                         </td>
                       </tr>
                       {expandedSymbol === h.symbol && (
@@ -1236,9 +1258,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                           </td>
                         </tr>
                       )}
-                      {analysis && (
+                      {analysis && expandedAnalysisSymbol === h.symbol && (
                         <tr key={`${h.id}-ai`} className="border-t border-gray-800 bg-gray-950">
-                          <td colSpan={13} className="px-4 py-3"><AnalysisCard analysis={analysis} /></td>
+                          <td colSpan={13} className="px-3 py-3"><AnalysisCard analysis={analysis} /></td>
                         </tr>
                       )}
                     </React.Fragment>
@@ -1268,10 +1290,10 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <span className="font-bold text-white text-base tracking-wide">{h.symbol}</span>
-                    {athState.status === 'ATH' && <span className="ml-2 rounded bg-yellow-500/15 px-1.5 py-0.5 text-[10px] text-yellow-300">🏆 ATH</span>}
-                    {athState.status === 'NEAR_ATH' && <span className="ml-2 rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">ใกล้ ATH -{athState.distancePct?.toFixed(1)}%</span>}
-                    {importantSupportState.status === 'NEAR' && <span className="ml-2 rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] text-cyan-300">🛡️ แนวรับสำคัญ +{importantSupportState.distancePct?.toFixed(1)}%</span>}
-                    {importantSupportState.status === 'BROKEN' && <span className="ml-2 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-300">⚠️ หลุดแนวรับสำคัญ {importantSupportState.distancePct?.toFixed(1)}%</span>}
+                    {athState.status === 'ATH' && <span className="ml-2 inline-flex whitespace-nowrap rounded-md border border-yellow-500/20 bg-yellow-500/10 px-1.5 py-0.5 text-[10px] text-yellow-300">🏆 ATH</span>}
+                    {athState.status === 'NEAR_ATH' && <span className="ml-2 inline-flex whitespace-nowrap rounded-md border border-green-500/20 bg-green-500/10 px-1.5 py-0.5 text-[10px] text-green-400">ใกล้ ATH -{athState.distancePct?.toFixed(1)}%</span>}
+                    {importantSupportState.status === 'NEAR' && <span title={`ใกล้แนวรับสำคัญ +${importantSupportState.distancePct?.toFixed(1)}%`} className="ml-2 inline-flex whitespace-nowrap rounded-md border border-cyan-500/20 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] text-cyan-300">🛡 แนวรับ +{importantSupportState.distancePct?.toFixed(1)}%</span>}
+                    {importantSupportState.status === 'BROKEN' && <span title={`หลุดแนวรับสำคัญ ${importantSupportState.distancePct?.toFixed(1)}%`} className="ml-2 inline-flex whitespace-nowrap rounded-md border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-300">⚠ หลุดแนวรับ {importantSupportState.distancePct?.toFixed(1)}%</span>}
                     {h.notes && <span className="text-gray-500 text-xs ml-2">{h.notes}</span>}
                     <p className="text-gray-600 text-xs mt-0.5">แก้ไข {fmtDate(h.updated_at)}</p>
                   </div>
@@ -1287,13 +1309,28 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                   <div><p className="text-gray-600 text-xs mb-0.5">52W</p><p className="text-gray-500 text-xs font-mono">{h.week52Low != null ? `$${h.week52Low.toFixed(0)}` : '—'}–{h.week52High != null ? `$${h.week52High.toFixed(0)}` : '—'}</p></div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setExpandedSymbol(prev => prev === h.symbol ? null : h.symbol)}
-                    className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${expandedSymbol === h.symbol ? 'bg-blue-600/40 border border-blue-500/50 text-blue-300' : 'bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/40'}`}>
+                  <button
+                    onClick={() => {
+                      setExpandedSymbol(prev => prev === h.symbol ? null : h.symbol)
+                      setExpandedAnalysisSymbol(null)
+                    }}
+                    className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${expandedSymbol === h.symbol ? 'border-blue-500/40 bg-blue-500/10 text-blue-300' : 'border-gray-700 bg-gray-900 text-gray-400'}`}
+                  >
                     📊
                   </button>
-                  <button onClick={() => handleAnalyze(h)} disabled={isLoading}
-                    className="flex-1 rounded-lg bg-purple-600/20 border border-purple-500/30 py-2 text-purple-400 text-xs font-medium hover:bg-purple-600/40 disabled:opacity-50 transition-colors">
-                    {isLoading ? '⏳ กำลังวิเคราะห์...' : 'วิเคราะห์ AI'}
+                  <button
+                    onClick={() => {
+                      if (analysis) {
+                        setExpandedAnalysisSymbol(prev => prev === h.symbol ? null : h.symbol)
+                        setExpandedSymbol(null)
+                      } else {
+                        void handleAnalyze(h)
+                      }
+                    }}
+                    disabled={isLoading}
+                    className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors disabled:opacity-50 ${analysis ? 'border-purple-500/30 bg-purple-500/10 text-purple-300' : 'border-purple-500 bg-purple-600 text-white'}`}
+                  >
+                    {isLoading ? '⏳ กำลังวิเคราะห์...' : analysis ? (expandedAnalysisSymbol === h.symbol ? 'ซ่อน AI' : 'ดู AI') : 'วิเคราะห์ AI'}
                   </button>
                   <button onClick={() => setModalHolding(h)} className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-gray-400 text-xs hover:text-white transition-colors">✏️ แก้ไข</button>
                 </div>
@@ -1303,7 +1340,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
                     {h.cost_basis != null && <DCACalculator holding={h} />}
                   </div>
                 )}
-                {analysis && <div className="mt-3"><AnalysisCard analysis={analysis} /></div>}
+                {analysis && expandedAnalysisSymbol === h.symbol && <div className="mt-3"><AnalysisCard analysis={analysis} /></div>}
               </div>
             )
           })}
@@ -1536,10 +1573,10 @@ function ScratchpadDrawer() {
 
 function SummaryCard({ label, value, sub, color = 'text-white' }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-      <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">{label}</p>
+    <div className="min-h-[92px] rounded-xl border border-gray-800 bg-gray-900 p-4">
+      <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">{label}</p>
       <p className={`text-lg font-bold ${color}`}>{value}</p>
-      {sub && <p className="text-gray-500 text-xs mt-0.5">{sub}</p>}
+      {sub && <p className="mt-0.5 text-xs text-gray-500">{sub}</p>}
     </div>
   )
 }

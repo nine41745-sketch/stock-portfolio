@@ -75,10 +75,12 @@ export default function InvestingSinceBadge() {
   }, [])
 
   return (
-    <div className="mx-auto mb-4 max-w-7xl rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3">
-      <p className="text-sm font-medium text-blue-200">
-        📅 เริ่มเล่นหุ้น 13/11/2567 · ถึงวันนี้ {snapshot.todayThai} · ผ่านมาแล้ว {snapshot.elapsedText}
-      </p>
+    <div className="mx-auto mb-3 max-w-7xl">
+      <div className="inline-flex max-w-full items-center rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2">
+        <p className="text-xs font-medium text-blue-200 sm:text-sm">
+          📅 เริ่มลงทุน 13/11/2567 · วันนี้ {snapshot.todayThai} · อายุพอร์ต {snapshot.elapsedText}
+        </p>
+      </div>
     </div>
   )
 }

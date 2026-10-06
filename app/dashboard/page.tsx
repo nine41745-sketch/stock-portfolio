@@ -62,7 +62,6 @@ export default async function DashboardPage() {
     }
   })
 
-  const userName = user.email?.split('@')[0] ?? 'User'
   const activePortfolioName = portfolio.mode === 'portfolio' ? portfolio.portfolio.name : 'เจน'
   const portfolioTitleStyle = {
     '--active-portfolio-title': JSON.stringify(`📈 พอร์ต${activePortfolioName}`),
@@ -74,7 +73,7 @@ export default async function DashboardPage() {
       <InvestingSinceBadge />
       <AppTabs />
       <div className="portfolio-dashboard-title-scope" style={portfolioTitleStyle}>
-        <PortfolioDashboard holdings={holdingsWithPrices} userName={userName} />
+        <PortfolioDashboard holdings={holdingsWithPrices} />
       </div>
       <style>{`
         .portfolio-dashboard-title-scope h1:first-of-type {

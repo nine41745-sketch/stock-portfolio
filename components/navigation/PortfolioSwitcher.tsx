@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 
 interface PortfolioItem {
   id: string
@@ -24,7 +25,7 @@ async function readError(response: Response, fallback: string): Promise<string> 
   return fallback
 }
 
-export default function PortfolioSwitcher() {
+export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) {
   const [items, setItems] = useState<PortfolioItem[]>([])
   const [activeId, setActiveId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -127,14 +128,17 @@ export default function PortfolioSwitcher() {
           </select>
         )}
       </div>
-      <button
-        type="button"
-        onClick={() => void createPortfolio()}
-        disabled={busy || loading}
-        className="rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-50"
-      >
-        ＋ เพิ่มพอร์ต
-      </button>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => void createPortfolio()}
+          disabled={busy || loading}
+          className="rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-50"
+        >
+          ＋ เพิ่มพอร์ต
+        </button>
+        {actions}
+      </div>
       {error && <p className="basis-full text-xs text-red-400">⚠️ {error}</p>}
     </div>
   )

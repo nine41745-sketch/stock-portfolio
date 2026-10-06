@@ -127,59 +127,62 @@ export default function AppTabs() {
 
   return (
     <div data-app-shell-nav>
-      <PortfolioSwitcher />
-      <div className="mb-2 flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
-          title="สลับโหมดสว่าง/มืด"
-        >
-          🌓 ธีม
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleLock()}
-          className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
-          title="ล็อกพอร์ต โดยยังคง session เข้าสู่ระบบไว้"
-        >
-          🔒 ล็อก
-        </button>
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setAccountOpen(open => !open)}
-            className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
-            aria-expanded={accountOpen}
-            aria-haspopup="menu"
-          >
-            ⚙️ บัญชี
-          </button>
-          {accountOpen && (
-            <div
-              role="menu"
-              className="absolute right-0 z-40 mt-2 w-44 rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl"
+      <PortfolioSwitcher
+        actions={(
+          <>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
+              title="สลับโหมดสว่าง/มืด"
             >
+              🌓 ธีม
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleLock()}
+              className="rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
+              title="ล็อกพอร์ต โดยยังคง session เข้าสู่ระบบไว้"
+            >
+              🔒 ล็อก
+            </button>
+            <div className="relative">
               <button
                 type="button"
-                role="menuitem"
-                onClick={openChangePin}
-                className="w-full rounded-md px-3 py-2 text-left text-xs font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
+                onClick={() => setAccountOpen(open => !open)}
+                className="rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
+                aria-expanded={accountOpen}
+                aria-haspopup="menu"
               >
-                🔑 เปลี่ยน PIN
+                ⚙️ บัญชี
               </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => void handleLogout()}
-                className="w-full rounded-md px-3 py-2 text-left text-xs font-medium text-red-400 hover:bg-gray-800"
-              >
-                ออกจากระบบ
-              </button>
+              {accountOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 z-40 mt-2 w-44 rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={openChangePin}
+                    className="w-full rounded-md px-3 py-2 text-left text-xs font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
+                  >
+                    🔑 เปลี่ยน PIN
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void handleLogout()}
+                    className="w-full rounded-md px-3 py-2 text-left text-xs font-medium text-red-400 hover:bg-gray-800"
+                  >
+                    ออกจากระบบ
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </>
+        )}
+      />
 
       {utilityError && (
         <div className="mb-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
@@ -229,7 +232,7 @@ export default function AppTabs() {
             )
           })}
         </nav>
-      ) : <div className="mb-3" />}
+      ) : <div className="mb-1" />}
 
       <QuickNotesDrawer />
 
