@@ -745,27 +745,6 @@ useEffect(() => {
     showToast('ลบหุ้นแล้ว')
   }, [])
 
-  async function handleLogout() {
-    // PIN Lock: "ออกจากระบบ" ต้องลบทั้ง PIN session และ Supabase Auth session (ต่างจาก "🔒 ล็อก" ที่ลบ
-    // แค่ PIN session อย่างเดียว) — เรียก /api/pin/lock ก่อนเสมอ ไม่สนผล (best-effort เฉยๆ ไม่ต้อง block
-    // การ signOut ถ้า route นี้พลาดด้วยเหตุผลอะไรก็ตาม เพราะ signOut ทำให้ Supabase session หายไปเอง
-    // และ middleware ก็บังคับ PIN ใหม่อยู่ดีเมื่อ login รอบถัดไป)
-    try { await fetch('/api/pin/lock', { method: 'POST' }) } catch { /* best-effort */ }
-    await supabase.auth.signOut(); router.push('/login'); router.refresh()
-  }
-
-  // PIN Lock: กด "🔒 ล็อก" — ต้องยืนยันว่า server ลบ HttpOnly PIN session สำเร็จก่อนค่อยพาไป /pin
-  async function handleLockPortfolio() {
-    try {
-      const res = await fetch('/api/pin/lock', { method: 'POST', cache: 'no-store' })
-      await requireOk(res, 'ล็อกพอร์ตไม่สำเร็จ')
-      router.push('/pin')
-      router.refresh()
-    } catch {
-      showToast('ล็อกพอร์ตไม่สำเร็จ กรุณาลองใหม่', false)
-    }
-  }
-
   // Analysis card — บทวิเคราะห์เชิงลึกแบบสถาบันการเงิน (technical + news + risk/opportunity + แผนเทรด)
   function AnalysisCard({ analysis }: { analysis: DetailedAnalysisResult }) {
     const action = analysis.recommendation.action
