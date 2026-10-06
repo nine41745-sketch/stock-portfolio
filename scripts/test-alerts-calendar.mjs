@@ -129,10 +129,10 @@ assert.match(alertsUi, /Live Alerts/)
 assert.match(alertsUi, /ไม่สร้าง BUY\/SELL/)
 
 const calendarUi = fs.readFileSync('components/portfolio/MarketCalendar.tsx', 'utf8')
-assert.match(calendarUi, /📅 Market Calendar/)
-assert.match(calendarUi, /Earnings ของหุ้นที่ติดตาม \+ US CPI \+ FOMC/)
+assert.match(calendarUi, /📅 ปฏิทินตลาด/)
+assert.match(calendarUi, /Earnings ของหุ้นที่ติดตาม พร้อม US CPI และ FOMC/)
 assert.match(calendarUi, /Source:/)
-assert.match(calendarUi, /read-only/)
+assert.match(calendarUi, /อ่านอย่างเดียว/)
 
 const nav = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')
 assert.match(nav, /PLAN_SUBTABS/, 'Alerts and Calendar should remain nested under Plan')
