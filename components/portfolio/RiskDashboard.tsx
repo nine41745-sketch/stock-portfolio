@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import AllocationPlanner from './AllocationPlanner'
 
 interface RiskPosition {
   symbol: string
@@ -257,6 +258,8 @@ export default function RiskDashboard() {
           </div>
         </div>
       </section>
+
+      <AllocationPlanner positions={data.positions} dimeBalance={data.balances.dime_balance} />
 
       <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
         <h2 className="font-bold text-white">Stress Scenario</h2>
