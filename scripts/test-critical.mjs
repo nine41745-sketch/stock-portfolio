@@ -181,7 +181,7 @@ assert.match(dashboardPageSource, /AppTabs/, 'Dashboard must expose the shared p
 assert.doesNotMatch(dashboardPageSource, /OpportunityHub/, 'Scanner workspace must stay off the main portfolio dashboard')
 assert.equal(fs.existsSync('app/dashboard/error.tsx'), true, 'Dashboard must provide a recovery error boundary')
 
-const scannerPageSource = fs.readFileSync('app/scanner/page.tsx', 'utf8')
+const scannerWidthPageSource = fs.readFileSync('app/scanner/page.tsx', 'utf8')
 assert.match(scannerPageSource, /OpportunityHub/, 'Dedicated scanner page must render the scanner/watchlist workspace')
 assert.match(scannerPageSource, /AppTabs/, 'Dedicated scanner page must expose shared navigation')
 assert.equal(fs.existsSync('app/scanner/error.tsx'), true, 'Scanner must provide a recovery error boundary')
@@ -196,12 +196,12 @@ assert.match(appTabsSource, /mx-auto w-full max-w-7xl/, 'Navigation shell must a
 assert.match(appTabsSource, /overflow-x-auto[\s\S]*scrollbar-width:none/, 'Primary navigation must remain usable on narrow mobile screens')
 assert.match(portfolioSwitcherSource, /flex w-full flex-col[\s\S]*sm:flex-row/, 'Portfolio controls must stack on phones and share one row on wider screens')
 const scannerPageSource = fs.readFileSync('app/scanner/page.tsx', 'utf8')
-const transactionsPageSource = fs.readFileSync('app/transactions/page.tsx', 'utf8')
-const performancePageSource = fs.readFileSync('app/performance/page.tsx', 'utf8')
+const transactionsWidthPageSource = fs.readFileSync('app/transactions/page.tsx', 'utf8')
+const performanceWidthPageSource = fs.readFileSync('app/performance/page.tsx', 'utf8')
 for (const [name, source] of [
-  ['scanner', scannerPageSource],
-  ['transactions', transactionsPageSource],
-  ['performance', performancePageSource],
+  ['scanner', scannerWidthPageSource],
+  ['transactions', transactionsWidthPageSource],
+  ['performance', performanceWidthPageSource],
 ]) {
   assert.match(source, /mx-auto w-full max-w-7xl/, `${name} content must align with the shared desktop shell while remaining full-width on mobile`)
 }
