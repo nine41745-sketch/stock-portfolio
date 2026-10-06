@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { calculateTradePlanMetrics, type TradePlanSource, type TradePlanStatus } from '@/lib/trade-plan'
+import TradePlanExecutionPanel from './TradePlanExecutionPanel'
 
 export interface TradePlanPrefill {
   symbol?: string
@@ -293,10 +294,10 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">🎯 Trade Plan</h1>
-          <p className="mt-1 text-sm text-gray-400">วาง Entry / Add Zone / Stop / Target / Budget ก่อนซื้อ โดยแยกจาก Holdings และ Transaction Ledger</p>
+          <p className="mt-1 text-sm text-gray-400">วาง Entry / Add Zone / Stop / Target / Budget ก่อนซื้อ และบันทึกซื้อ/ขายจริงจากแผนให้พอร์ต Sync ได้เมื่อยืนยัน</p>
         </div>
         <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs text-blue-300">
-          Long-only plan · ไม่มี Auto BUY / Auto SELL
+          Long-only plan · Real Trade ต้องกดยืนยันเอง
         </div>
       </div>
 
@@ -382,7 +383,7 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button type="submit" disabled={saving || migrationRequired || !draft.symbol.trim() || !draft.entry_low.trim()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">{migrationRequired ? 'รออนุมัติ Migration' : saving ? 'กำลังบันทึก...' : editingId ? 'บันทึกการแก้ไข' : 'บันทึก Trade Plan'}</button>
-          <span className="text-xs text-gray-600">การบันทึกแผนจะไม่เปลี่ยนจำนวนหุ้น, Cost Basis, Cash หรือ Transaction Ledger</span>
+          <span className="text-xs text-gray-600">การบันทึกหรือแก้ไขแผนเพียงอย่างเดียวจะไม่เปลี่ยนจำนวนหุ้น, Cost Basis, Dime หรือ Transaction Ledger</span>
         </div>
       </form>
 
@@ -417,11 +418,12 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
                   </div>
 
                   {item.note && <p className="mt-3 rounded-lg bg-gray-950/60 p-2.5 text-xs leading-relaxed text-gray-400">{item.note}</p>}
+                  <TradePlanExecutionPanel item={item} onExecuted={loadPlans} />
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {item.status === 'WAITING' && <button type="button" onClick={() => void changeStatus(item, 'ENTERED')} className="rounded-lg bg-green-600/20 px-3 py-1.5 text-xs font-semibold text-green-300 hover:bg-green-600/30">✓ เข้าแล้ว</button>}
                     {(item.status === 'WAITING' || item.status === 'ENTERED') && <button type="button" onClick={() => void changeStatus(item, 'CLOSED')} className="rounded-lg bg-blue-600/20 px-3 py-1.5 text-xs font-semibold text-blue-300 hover:bg-blue-600/30">ปิดแผน</button>}
                     {(item.status === 'WAITING' || item.status === 'ENTERED') && <button type="button" onClick={() => void changeStatus(item, 'CANCELLED')} className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-semibold text-gray-400 hover:text-white">ยกเลิกแผน</button>}
-                    <span className="self-center text-[10px] text-gray-600">สถานะนี้ไม่สร้าง BUY/SELL อัตโนมัติ</span>
+                    <span className="self-center text-[10px] text-gray-600">การแก้สถานะเองไม่สร้าง BUY/SELL อัตโนมัติ — ใช้ Real Trade Auto Sync เมื่อต้องการบันทึกธุรกรรมจริง</span>
                   </div>
                 </article>
               )

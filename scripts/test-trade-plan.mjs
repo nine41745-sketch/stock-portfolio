@@ -76,6 +76,10 @@ for (const path of [
   'lib/trade-plan.ts',
   'lib/trade-plan-validation.ts',
   'supabase/migration_trade_plan_v1.23.0.sql',
+  'app/api/trade-plans/execute/route.ts',
+  'components/portfolio/TradePlanExecutionPanel.tsx',
+  'supabase/migration_trade_plan_autosync_v1.30.0.sql',
+  'supabase/verify_trade_plan_autosync_v1.30.0.sql',
 ]) assert.equal(fs.existsSync(path), true, `${path} is required`)
 
 const api = fs.readFileSync('app/api/trade-plans/route.ts', 'utf8')
@@ -105,6 +109,33 @@ assert.match(ui, /R:R Target 1/, 'Risk\/reward must be visible')
 assert.match(ui, /รออนุมัติ Migration/, 'Preview must not pretend persistence works before migration')
 assert.match(ui, /จะไม่เปลี่ยนจำนวนหุ้น/, 'No-auto-sync safety must be explicit')
 assert.match(ui, /ไม่สร้าง BUY\/SELL อัตโนมัติ/, 'Status changes must not imply trade execution')
+
+
+const executionApi = fs.readFileSync('app/api/trade-plans/execute/route.ts', 'utf8')
+assert.match(executionApi, /record_trade_plan_trade/, 'Trade Plan real execution must use the dedicated atomic RPC')
+assert.match(executionApi, /parseTradePlanId/, 'Execution endpoint must validate Trade Plan id')
+assert.match(executionApi, /parseTransactionInput/, 'Execution endpoint must reuse the hardened transaction validator')
+assert.match(executionApi, /createServiceClient/, 'Trade Plan execution RPC must stay server-side')
+assert.match(executionApi, /migration_trade_plan_autosync_v1\.30\.0\.sql/, 'Missing Auto Sync migration must be recoverable')
+
+const executionMigration = fs.readFileSync('supabase/migration_trade_plan_autosync_v1.30.0.sql', 'utf8')
+assert.match(executionMigration, /CREATE OR REPLACE FUNCTION public\.record_trade_plan_trade/, 'Atomic Trade Plan execution RPC is required')
+assert.match(executionMigration, /FOR UPDATE/, 'Trade Plan execution must lock the selected plan')
+assert.match(executionMigration, /public\.record_synced_trade/, 'Trade Plan execution must reuse the existing Ledger + Holdings + Dime atomic trade RPC')
+assert.match(executionMigration, /v_new_plan_status := 'ENTERED'/, 'BUY and partial SELL must keep the plan entered')
+assert.match(executionMigration, /v_new_plan_status := 'CLOSED'/, 'Full SELL must close the Trade Plan')
+assert.match(executionMigration, /UPDATE public\.trade_plans/, 'Trade Plan status must update inside the same database function')
+assert.match(executionMigration, /SET search_path = ''/, 'New security-definer RPC must pin an empty search_path')
+assert.match(executionMigration, /FROM PUBLIC, anon, authenticated/, 'Atomic execution RPC must not be browser-callable')
+assert.match(executionMigration, /TO service_role/, 'Atomic execution RPC must be service-role only')
+
+const executionUi = fs.readFileSync('components/portfolio/TradePlanExecutionPanel.tsx', 'utf8')
+assert.match(executionUi, /บันทึกซื้อจริง/, 'WAITING plan must expose explicit real BUY entry')
+assert.match(executionUi, /บันทึกขายจริง/, 'ENTERED plan must expose explicit real SELL entry')
+assert.match(executionUi, /Transaction Ledger \+ Holdings \+ Dime \+ Trade Plan/, 'Confirmation must explain all atomic side effects')
+assert.match(executionUi, /ไม่ใช่ Auto Trading/, 'Real trade execution must require explicit user action')
+assert.match(executionUi, /\/api\/trade-plans\/execute/, 'Execution UI must call the dedicated endpoint')
+assert.match(ui, /<TradePlanExecutionPanel item=\{item\} onExecuted=\{loadPlans\} \/>/, 'Each active Trade Plan must expose the execution control')
 
 const stockCheck = fs.readFileSync('components/portfolio/StockCheckPanel.tsx', 'utf8')
 assert.match(stockCheck, /ส่งเข้า Trade Plan/, 'Stock Check must link its computed plan into Trade Plan')

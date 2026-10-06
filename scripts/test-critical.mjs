@@ -267,9 +267,9 @@ assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic 
 assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
 assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
 
-// v1.29.3 release metadata must stay synchronized across changelog/package/lockfile.
+// v1.30.0 release metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.29.3', 'Package version must be finalized as v1.29.3 for this release')
+assert.equal(packageJson.version, '1.30.0', 'Package version must be finalized as v1.30.0 for this release')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.8', 'Patched Next.js release must stay pinned')
 assert.equal(packageJson.dependencies?.react, '19.3.0', 'React and ReactDOM must stay aligned on the same release')
@@ -279,7 +279,7 @@ assert.equal(packageJson.devDependencies?.['@types/react-dom'], '^19.3.0', 'Reac
 assert.equal(packageJson.devDependencies?.autoprefixer, '^10.6.1', 'Autoprefixer maintenance floor must stay current')
 assert.equal(packageJson.devDependencies?.['eslint-config-next'], '16.3.8', 'eslint-config-next must stay aligned with Next.js')
 assert.equal(packageJson.devDependencies?.['@types/node'], '^22', 'Node types must stay on the Node 22 runtime major')
-assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.29.3 must preserve the audited Supabase SSR dependency')
+assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.30.0 must preserve the audited Supabase SSR dependency')
 assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
 assert.equal(packageJson.scripts?.lint, 'eslint .', 'Next.js 16 must use the ESLint CLI')
 assert.equal(packageJson.scripts?.typecheck, 'tsc --noEmit', 'CI must expose an explicit TypeScript check')
@@ -358,12 +358,13 @@ const changelogReleaseTimes = [
   ['config/changelog-v1291.ts', '2026-09-30 04:18 ICT'],
   ['config/changelog-v1292.ts', '2026-10-04 15:16 ICT'],
   ['config/changelog-v1293.ts', '2026-10-05 23:19 ICT'],
+  ['config/changelog-v1300.ts', '2026-10-06 19:59 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1293'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1300'])
 
 console.log('✓ Critical regression tests passed')
