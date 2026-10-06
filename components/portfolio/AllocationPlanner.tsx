@@ -96,39 +96,43 @@ export default function AllocationPlanner({
     [savedSnapshot, newMoneyValue],
   )
 
-  async function loadTargets() {
-    setLoading(true)
-    setError(null)
-    try {
-      const response = await fetch('/api/allocation-targets', { cache: 'no-store' })
-      const payload = await response.json() as TargetResponse
-      if (!response.ok) {
-        if (payload.migration_required) {
-          setMigrationRequired(true)
-          setMigrationFile(payload.migration ?? 'supabase/migration_allocation_targets_v1.31.0.sql')
-          setSavedTargets([])
-          setTargets({})
-          return
-        }
-        throw new Error(payload.error || 'โหลด Target Allocation ไม่สำเร็จ')
-      }
-
-      const normalized = payload.targets.map(item => ({
-        asset_key: item.asset_key.toUpperCase(),
-        target_pct: Number(item.target_pct),
-      }))
-      setMigrationRequired(false)
-      setSavedTargets(normalized)
-      setTargets(Object.fromEntries(normalized.map(item => [item.asset_key, String(item.target_pct)])))
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'โหลด Target Allocation ไม่สำเร็จ')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
-    void loadTargets()
+    let cancelled = false
+
+    void fetch('/api/allocation-targets', { cache: 'no-store' })
+      .then(async response => {
+        const payload = await response.json() as TargetResponse
+        if (cancelled) return
+
+        if (!response.ok) {
+          if (payload.migration_required) {
+            setMigrationRequired(true)
+            setMigrationFile(payload.migration ?? 'supabase/migration_allocation_targets_v1.31.0.sql')
+            setSavedTargets([])
+            setTargets({})
+            return
+          }
+          throw new Error(payload.error || 'โหลด Target Allocation ไม่สำเร็จ')
+        }
+
+        const normalized = payload.targets.map(item => ({
+          asset_key: item.asset_key.toUpperCase(),
+          target_pct: Number(item.target_pct),
+        }))
+        setMigrationRequired(false)
+        setSavedTargets(normalized)
+        setTargets(Object.fromEntries(normalized.map(item => [item.asset_key, String(item.target_pct)])))
+      })
+      .catch(reason => {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : 'โหลด Target Allocation ไม่สำเร็จ')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   function useCurrentWeights() {
