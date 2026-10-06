@@ -383,7 +383,7 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button type="submit" disabled={saving || migrationRequired || !draft.symbol.trim() || !draft.entry_low.trim()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">{migrationRequired ? 'รออนุมัติ Migration' : saving ? 'กำลังบันทึก...' : editingId ? 'บันทึกการแก้ไข' : 'บันทึก Trade Plan'}</button>
-          <span className="text-xs text-gray-600">การบันทึกหรือแก้ไขแผนเพียงอย่างเดียวจะไม่เปลี่ยน Holdings, Dime หรือ Transaction Ledger</span>
+          <span className="text-xs text-gray-600">การบันทึกหรือแก้ไขแผนเพียงอย่างเดียวจะไม่เปลี่ยนจำนวนหุ้น, Cost Basis, Dime หรือ Transaction Ledger</span>
         </div>
       </form>
 
