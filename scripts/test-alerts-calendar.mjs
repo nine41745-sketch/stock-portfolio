@@ -125,7 +125,7 @@ assert.match(alertsUi, /🔔 แจ้งเตือน/)
 assert.match(alertsUi, /Stop, Target, แนวรับ, Breakout, ATH และ Earnings/)
 assert.match(alertsUi, /value: 'IMPORTANT_SUPPORT'/)
 assert.match(alertsUi, /value: 'ATH'/)
-assert.match(alertsUi, /Live Derived Alerts/)
+assert.match(alertsUi, /Live Alerts/)
 assert.match(alertsUi, /ไม่สร้าง BUY\/SELL/)
 
 const calendarUi = fs.readFileSync('components/portfolio/MarketCalendar.tsx', 'utf8')
