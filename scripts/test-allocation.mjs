@@ -51,7 +51,8 @@ const plan = allocation.calculateNewMoneyPlan(snapshot, 500)
 assert.ok(plan.length >= 1)
 assert.equal(Math.round(plan.reduce((sum, item) => sum + item.amount, 0) * 100) / 100, 500)
 assert.ok(plan.every(item => item.amount > 0))
-assert.equal(plan.some(item => item.asset_key === 'AAA'), false, 'Overweight asset should not receive new money')
+assert.ok(plan.some(item => item.asset_key === 'DIME'), 'Underweight DIME target should receive new money')
+assert.equal(plan.some(item => item.asset_key === 'ZERO'), false, 'Unknown/zero-target assets must not receive new money')
 
 for (const path of [
   'lib/allocation.ts',

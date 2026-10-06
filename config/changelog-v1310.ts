@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v1310: ChangelogEntry = {
   version: 'v1.31.0',
-  date: '2026-10-06 22:08 ICT',
+  date: '2026-10-06 22:10 ICT',
   changes: [
     'Target Allocation: ตั้งสัดส่วนเป้าหมายรายหุ้นและ DIME Cash แยกตามพอร์ต โดย Target รวมต้องเท่ากับ 100%',
     'Rebalance Planner: แสดง Current vs Target, Overweight/Underweight, Full Rebalance Gap และแผนเติมเงินใหม่แบบไม่บังคับขาย',
