@@ -9,6 +9,7 @@ const v1311: ChangelogEntry = {
     'Copy System: ปรับถ้อยคำไทย/อังกฤษ ป้ายสถานะ หัวข้อ ปุ่ม และข้อความช่วยเหลือให้ใช้รูปแบบเดียวกัน โดยคงศัพท์ตลาดหุ้นที่จำเป็น',
     'Portfolio + Analytics: ลด Utility ซ้ำในหน้า Portfolio, ปรับ KPI/ตาราง/AI Insight และทำ Performance/Risk/Allocation ให้อ่านง่ายขึ้น',
     'Safety: เป็นการปรับ Presentation เท่านั้น ไม่เปลี่ยนสูตรคำนวณ, Trade execution, Authentication, Database, Supabase หรือ Environment',
+    'Security: อัปเดต transitive @modelcontextprotocol/sdk เป็น 1.31.0 เพื่อปิด OAuth credential-forwarding advisory โดยไม่เปลี่ยน yahoo-finance2 API',
   ],
 }
 export const changelog: ChangelogEntry[] = [v1311, ...previousChangelog]
