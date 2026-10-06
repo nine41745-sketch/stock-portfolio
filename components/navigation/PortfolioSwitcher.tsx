@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 
 interface PortfolioItem {
   id: string
@@ -24,7 +25,7 @@ async function readError(response: Response, fallback: string): Promise<string> 
   return fallback
 }
 
-export default function PortfolioSwitcher() {
+export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) {
   const [items, setItems] = useState<PortfolioItem[]>([])
   const [activeId, setActiveId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -108,7 +109,7 @@ export default function PortfolioSwitcher() {
   if (!available) return null
 
   return (
-    <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-800 bg-gray-900/50 px-3 py-2">
+    <div className="mb-2 flex w-full flex-col gap-2 rounded-xl border border-gray-800 bg-gray-900/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-2">
         <span className="text-xs font-semibold text-gray-500">📁 พอร์ต</span>
         {loading ? (
@@ -118,7 +119,7 @@ export default function PortfolioSwitcher() {
             value={activeId}
             disabled={busy || items.length === 0}
             onChange={event => void selectPortfolio(event.target.value)}
-            className="max-w-[180px] rounded-lg border border-gray-700 bg-gray-950 px-2.5 py-1.5 text-xs font-semibold text-gray-200 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+            className="min-h-9 min-w-0 max-w-[180px] flex-1 rounded-lg border border-gray-700 bg-gray-950 px-2.5 py-1.5 text-xs font-semibold text-gray-200 focus:border-blue-500 focus:outline-none disabled:opacity-50 sm:flex-none"
             aria-label="เลือกพอร์ต"
           >
             {items.map(item => (
@@ -127,14 +128,17 @@ export default function PortfolioSwitcher() {
           </select>
         )}
       </div>
-      <button
-        type="button"
-        onClick={() => void createPortfolio()}
-        disabled={busy || loading}
-        className="rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-50"
-      >
-        ＋ เพิ่มพอร์ต
-      </button>
+      <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
+        <button
+          type="button"
+          onClick={() => void createPortfolio()}
+          disabled={busy || loading}
+          className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-50"
+        >
+          ＋ เพิ่มพอร์ต
+        </button>
+        {actions}
+      </div>
       {error && <p className="basis-full text-xs text-red-400">⚠️ {error}</p>}
     </div>
   )

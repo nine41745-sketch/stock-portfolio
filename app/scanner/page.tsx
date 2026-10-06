@@ -35,7 +35,9 @@ export default async function ScannerPage() {
       <InactivityPinLock />
       <InvestingSinceBadge />
       <AppTabs />
-      <ScannerWorkspace holdingSymbols={holdingSymbols} />
+      <div className="mx-auto w-full max-w-7xl">
+        <ScannerWorkspace holdingSymbols={holdingSymbols} />
+      </div>
     </div>
   )
 }
