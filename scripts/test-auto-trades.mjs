@@ -12,6 +12,8 @@ for (const path of [
   'components/portfolio/AutoTradeEntry.tsx',
   'supabase/migration_transaction_autosync_v1.27.1.sql',
   'supabase/verify_transaction_autosync_v1.27.1.sql',
+  'app/api/trade-plans/execute/route.ts',
+  'supabase/migration_trade_plan_autosync_v1.30.0.sql',
 ]) assert.equal(fs.existsSync(path), true, `${path} is required`)
 
 const route = fs.readFileSync('app/api/trades/route.ts', 'utf8')
@@ -19,6 +21,16 @@ assert.match(route, /record_synced_trade/, 'Real BUY/SELL must use the atomic DB
 assert.match(route, /createServiceClient/, 'Atomic trade RPC must stay server-side')
 assert.match(route, /input\.transaction_type !== 'BUY'/, 'Auto Sync endpoint must reject non-trade ledger types')
 assert.match(route, /migration_transaction_autosync_v1\.27\.1\.sql/, 'Missing migration must be recoverable')
+
+
+const tradePlanExecutionRoute = fs.readFileSync('app/api/trade-plans/execute/route.ts', 'utf8')
+assert.match(tradePlanExecutionRoute, /record_trade_plan_trade/, 'Trade Plan execution must use its database transaction wrapper')
+assert.match(tradePlanExecutionRoute, /createServiceClient/, 'Trade Plan execution must stay service-role mediated')
+
+const tradePlanExecutionMigration = fs.readFileSync('supabase/migration_trade_plan_autosync_v1.30.0.sql', 'utf8')
+assert.match(tradePlanExecutionMigration, /public\.record_synced_trade/, 'Trade Plan execution must preserve the proven Auto Sync trade primitive')
+assert.match(tradePlanExecutionMigration, /FOR UPDATE/, 'Trade Plan row must be locked before real execution')
+assert.match(tradePlanExecutionMigration, /trade_plan_status/, 'Atomic RPC must return the synchronized Trade Plan status')
 
 const migration = fs.readFileSync('supabase/migration_transaction_autosync_v1.27.1.sql', 'utf8')
 assert.match(migration, /sync_portfolio BOOLEAN NOT NULL DEFAULT FALSE/, 'Legacy rows must stay manual-only')
