@@ -15,12 +15,12 @@ export default function ScannerWorkspace({ holdingSymbols }: { holdingSymbols: s
           type="button"
           onClick={() => setView('opportunities')}
           className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${view === 'opportunities' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}
-        >🔎 Scanner / ⭐ Watchlist</button>
+        >🔎 สแกน / ⭐ หุ้นที่เล็งไว้</button>
         <button
           type="button"
           onClick={() => setView('today')}
           className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${view === 'today' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}
-        >🔥 โอกาสซื้อวันนี้</button>
+        >🔥 โอกาสวันนี้</button>
         <button
           type="button"
           onClick={() => setView('check')}

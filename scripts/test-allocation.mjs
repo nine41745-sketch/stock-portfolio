@@ -76,10 +76,10 @@ assert.match(migration, /FROM PUBLIC, anon, authenticated/, 'Save RPC must not b
 assert.match(migration, /TO service_role/, 'Save RPC must be service-role only')
 
 const ui = fs.readFileSync('components/portfolio/AllocationPlanner.tsx', 'utf8')
-assert.match(ui, /Target Allocation \+ Rebalance/, 'Allocation workspace is required')
+assert.match(ui, /เป้าหมายสัดส่วนพอร์ต/, 'Allocation workspace is required')
 assert.match(ui, /DIME/, 'DIME must be represented as the portfolio cash asset')
 assert.match(ui, /เงินในธนาคารไม่นำมารวม/, 'Bank cash exclusion must be explicit')
-assert.match(ui, /Full Rebalance Gap/, 'Full rebalance delta view is required')
+assert.match(ui, /Rebalance Gap/, 'Full rebalance delta view is required')
 assert.match(ui, /เติมเงินใหม่โดยไม่ขาย/, 'No-sell new-money planner is required')
 assert.match(ui, /ไม่สร้าง BUY\/SELL/, 'No-auto-trade safety must be explicit')
 

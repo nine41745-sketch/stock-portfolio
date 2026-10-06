@@ -136,13 +136,13 @@ function DonutChart({ holdings, analyses }: { holdings: HoldingWithPrice[], anal
             <button
               onClick={() => hasSector && setDonutView('sector')}
               className={`text-xs px-2.5 py-1 rounded-md transition-colors ${donutView === 'sector' ? 'bg-gray-700 text-white' : hasSector ? 'text-gray-500 hover:text-gray-300' : 'text-gray-700 cursor-not-allowed'}`}
-              title={hasSector ? '' : 'กด ✨ วิเคราะห์ AI ที่หุ้นแต่ละตัวก่อน'}
+              title={hasSector ? '' : 'กด วิเคราะห์ AI ที่หุ้นแต่ละตัวก่อน'}
             >แยกตาม sector{!hasSector && ' 🔒'}</button>
           </div>
         )
       })()}
       {donutView === 'sector' && items.every(i => i.symbol === 'ไม่ระบุ') && (
-        <p className="text-gray-600 text-xs mb-2">กด ✨ วิเคราะห์ AI ที่หุ้นแต่ละตัวก่อน เพื่อแสดง sector</p>
+        <p className="text-gray-600 text-xs mb-2">กด วิเคราะห์ AI ที่หุ้นแต่ละตัวก่อน เพื่อแสดง sector</p>
       )}
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
         {items.map(p => (
@@ -226,7 +226,7 @@ function TrackRecordCard() {
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">🎯 Track Record — ความแม่นยำ AI</p>
+        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">🎯 Track Record AI</p>
         <div className="flex gap-1">
           <button onClick={() => setDays(7)} className={`text-xs px-2.5 py-1 rounded-md transition-colors ${days === 7 ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>7 วัน</button>
           <button onClick={() => setDays(30)} className={`text-xs px-2.5 py-1 rounded-md transition-colors ${days === 30 ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>30 วัน</button>
@@ -245,7 +245,7 @@ function TrackRecordCard() {
         <>
           <div className="flex items-baseline gap-2 mb-3">
             <span className={`text-2xl font-bold ${winColor}`}>{winRate}%</span>
-            <span className="text-gray-500 text-xs">win rate ({data.overall.correct}/{data.overall.total} ครั้งถูก)</span>
+            <span className="text-gray-500 text-xs">Win Rate ({data.overall.correct}/{data.overall.total} ครั้งถูก)</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {data.bySymbol.map(s => {
@@ -351,8 +351,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [dimeBalanceUSD, setDimeBalanceUSD] = useState(0)
   const [initialCapital, setInitialCapital] = useState(0)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
-  const [darkMode, setDarkMode] = useState(true)
-  const [themeReady, setThemeReady] = useState(false)
   const [athBySymbol, setAthBySymbol] = useState<Record<string, AthSnapshot>>({})
   const [importantSupportBySymbol, setImportantSupportBySymbol] = useState<Record<string, ImportantSupportSnapshot>>({})
 
@@ -372,7 +370,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [showChangelog, setShowChangelog] = useState(false)
-  const [showChangePin, setShowChangePin] = useState(false)  // PIN Lock: เปลี่ยน PIN จาก Settings
   const router = useRouter()
   const supabase = createClient()
   const holdingSymbolsKey = useMemo(
@@ -471,22 +468,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       setViewMode('mobile')
     }
   }, [])
-
-// Sync state กับ theme ที่ root bootstrap คืนค่าจาก browser preference ก่อน hydration
-useEffect(() => {
-  const currentTheme = document.documentElement.getAttribute('data-theme')
-  setDarkMode(currentTheme !== 'light')
-  setThemeReady(true)
-}, [])
-
-// apply + persist theme ที่ <html> ให้ครอบทั้ง Dashboard และ Scanner หลัง user เปลี่ยนค่า
-useEffect(() => {
-  if (!themeReady) return
-  const theme = darkMode ? 'dark' : 'light'
-  document.documentElement.setAttribute('data-theme', theme)
-  try { window.localStorage.setItem('stock-portfolio-theme', theme) } catch { /* storage unavailable */ }
-}, [darkMode, themeReady])
-
 
   useEffect(() => {
     let cancelled = false
@@ -745,27 +726,6 @@ useEffect(() => {
     showToast('ลบหุ้นแล้ว')
   }, [])
 
-  async function handleLogout() {
-    // PIN Lock: "ออกจากระบบ" ต้องลบทั้ง PIN session และ Supabase Auth session (ต่างจาก "🔒 ล็อก" ที่ลบ
-    // แค่ PIN session อย่างเดียว) — เรียก /api/pin/lock ก่อนเสมอ ไม่สนผล (best-effort เฉยๆ ไม่ต้อง block
-    // การ signOut ถ้า route นี้พลาดด้วยเหตุผลอะไรก็ตาม เพราะ signOut ทำให้ Supabase session หายไปเอง
-    // และ middleware ก็บังคับ PIN ใหม่อยู่ดีเมื่อ login รอบถัดไป)
-    try { await fetch('/api/pin/lock', { method: 'POST' }) } catch { /* best-effort */ }
-    await supabase.auth.signOut(); router.push('/login'); router.refresh()
-  }
-
-  // PIN Lock: กด "🔒 ล็อก" — ต้องยืนยันว่า server ลบ HttpOnly PIN session สำเร็จก่อนค่อยพาไป /pin
-  async function handleLockPortfolio() {
-    try {
-      const res = await fetch('/api/pin/lock', { method: 'POST', cache: 'no-store' })
-      await requireOk(res, 'ล็อกพอร์ตไม่สำเร็จ')
-      router.push('/pin')
-      router.refresh()
-    } catch {
-      showToast('ล็อกพอร์ตไม่สำเร็จ กรุณาลองใหม่', false)
-    }
-  }
-
   // Analysis card — บทวิเคราะห์เชิงลึกแบบสถาบันการเงิน (technical + news + risk/opportunity + แผนเทรด)
   function AnalysisCard({ analysis }: { analysis: DetailedAnalysisResult }) {
     const action = analysis.recommendation.action
@@ -821,9 +781,9 @@ useEffect(() => {
 
         {analysis.analysisMode === 'PREMARKET_TRIGGER' && (
           <div className="mb-3 rounded-lg border border-purple-500/30 bg-purple-500/10 p-3">
-            <p className="text-xs font-semibold text-purple-300">🌆 Pre-market Update — ตรวจว่าแผนรอบเช้ายังใช้ได้หรือไม่</p>
+            <p className="text-xs font-semibold text-purple-300">🌆 Pre-market Update</p>
             {analysis.baselineAction && (
-              <p className="mt-1 text-[11px] opacity-75">แผนรอบเช้า: {SIGNAL_LABEL[analysis.baselineAction] ?? analysis.baselineAction}</p>
+              <p className="mt-1 text-[11px] opacity-75">แผนก่อนเปิดตลาด: {SIGNAL_LABEL[analysis.baselineAction] ?? analysis.baselineAction}</p>
             )}
             {analysis.triggerReasons?.length ? (
               <p className="mt-1 text-[11px] opacity-75">Trigger: {analysis.triggerReasons.join(' · ')}</p>
@@ -901,7 +861,7 @@ useEffect(() => {
               <p className="text-xs leading-relaxed"><span className="text-green-400 font-medium">ซื้อเพิ่ม: </span><span className="opacity-90">{analysis.recommendation.buyConditions}</span></p>
             )}
             {analysis.recommendation.sellConditions && (
-              <p className="text-xs leading-relaxed"><span className="text-red-400 font-medium">ขาย/Cut loss: </span><span className="opacity-90">{analysis.recommendation.sellConditions}</span></p>
+              <p className="text-xs leading-relaxed"><span className="text-red-400 font-medium">ขาย / Cut Loss: </span><span className="opacity-90">{analysis.recommendation.sellConditions}</span></p>
             )}
           </div>
         )}
@@ -926,7 +886,7 @@ useEffect(() => {
         )}
 
         <div className="border-t border-current/20 pt-3 mt-2 space-y-2">
-          <p className="text-xs opacity-40 font-medium uppercase tracking-wide">📊 ข้อมูลที่ใช้วิเคราะห์</p>
+          <p className="text-xs opacity-40 font-medium uppercase tracking-wide">📊 ข้อมูลอ้างอิง</p>
           <div className="flex flex-wrap gap-1.5">
             <span className="text-xs opacity-60 bg-black/20 rounded px-2 py-0.5">
               💹 ราคา ${analysis.usedPrice?.toFixed(2) ?? '—'} — ${analysis.priceSource ?? 'Finnhub'}
@@ -950,7 +910,7 @@ useEffect(() => {
             </div>
           )}
           {analysis.analysedAt && (
-            <p className="text-xs opacity-35">🕐 วิเคราะห์เมื่อ {fmtDateTime(analysis.analysedAt)}</p>
+            <p className="text-xs opacity-35">🕐 วิเคราะห์ล่าสุด {fmtDateTime(analysis.analysedAt)}</p>
           )}
         </div>
       </div>
@@ -1026,7 +986,7 @@ useEffect(() => {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold text-white">📈 พอร์ตน้องเจน</h1>
+            <h1 className="text-2xl font-bold text-white">📈 ภาพรวมพอร์ต</h1>
             <MarketStatusBadge />
             <button
               onClick={() => setShowChangelog(true)}
@@ -1052,31 +1012,15 @@ useEffect(() => {
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition-colors">
             + เพิ่มหุ้น
           </button>
-          <button onClick={() => setDarkMode(d => !d)}
-            className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
-            {darkMode ? '☀️ สว่าง' : '🌙 มืด'}
-          </button>
-          <button onClick={() => setShowChangePin(true)} title="เปลี่ยน PIN"
-            className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
-            🔑 เปลี่ยน PIN
-          </button>
-          <button onClick={handleLockPortfolio} title="ล็อก Portfolio ทันที (ยัง login Gmail อยู่)"
-            className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
-            🔒 ล็อก
-          </button>
-          <button onClick={handleLogout}
-            className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
-            ออกจากระบบ
-          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <SummaryCard label="มูลค่าพอร์ต" value={fmtAmt(totalValue)} />
         <SummaryCard label="ต้นทุนรวม" value={fmtAmt(totalCost)} />
-        <SummaryCard label="กำไร/ขาดทุนรวม" value={fmtPnl(totalPnl)} sub={fmtPct(totalPnlPct)} color={totalPnl >= 0 ? 'text-green-400' : 'text-red-400'} />
+        <SummaryCard label="กำไร/ขาดทุน" value={fmtPnl(totalPnl)} sub={fmtPct(totalPnlPct)} color={totalPnl >= 0 ? 'text-green-400' : 'text-red-400'} />
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">สัดส่วน {holdings.length} ตัว</p>
+          <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">สถานะหุ้น · {holdings.length} ตัว</p>
           <div className="flex items-center gap-2 mb-2">
             <span className="text-green-400 text-sm font-bold">{winners} กำไร</span>
             <span className="text-gray-700">·</span>
@@ -1117,7 +1061,7 @@ useEffect(() => {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินใน Dime (USD)</p>
+          <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินสด DIME</p>
           {!settingsLoaded ? (
             <p className="text-gray-600 text-sm py-2">กำลังโหลดข้อมูล...</p>
           ) : editingDime ? (
@@ -1145,7 +1089,7 @@ useEffect(() => {
         </div>
 
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินต้นจริงที่ลงทุน</p>
+          <p className="text-gray-500 text-xs mb-1 uppercase tracking-wide">เงินลงทุนสะสม</p>
           {!settingsLoaded ? (
             <p className="text-gray-600 text-sm py-2">กำลังโหลดข้อมูล...</p>
           ) : editingCapital ? (
@@ -1179,10 +1123,10 @@ useEffect(() => {
           const pos = realPnl >= 0
           return (
             <div className={`rounded-xl border p-4 ${pos ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
-              <p className="text-gray-400 text-xs mb-1 uppercase tracking-wide">กำไรจากเงินต้นจริง</p>
+              <p className="text-gray-400 text-xs mb-1 uppercase tracking-wide">ผลตอบแทนจากเงินลงทุน</p>
               <p className={`text-lg font-bold ${pos ? 'text-green-400' : 'text-red-400'}`}>{pos ? '+' : ''}{fmtAmt(realPnl)}</p>
               <p className={`text-sm font-medium ${pos ? 'text-green-400' : 'text-red-400'}`}>{pos ? '+' : ''}{realPct.toFixed(2)}%</p>
-              <p className="text-gray-600 text-xs mt-1">หุ้น + Dime เท่านั้น</p>
+              <p className="text-gray-600 text-xs mt-1">คำนวณจากหุ้น + DIME</p>
             </div>
           )
         })()}
@@ -1224,13 +1168,13 @@ useEffect(() => {
                   <SortTh field="shares" label="จำนวนหุ้น" />
                   <SortTh field="market_value" label="มูลค่า" />
                   <SortTh field="pnl" label="กำไร/ขาดทุน" />
-                  <SortTh field="pnl_pct" label="%กำไร/ขาดทุน" />
-                  <SortTh field="dayChange" label="%เปลี่ยนแปลงวันนี้" tooltip="% เปลี่ยนแปลงราคาเทียบกับวันปิดตลาดก่อนหน้า" />
+                  <SortTh field="pnl_pct" label="P/L %" />
+                  <SortTh field="dayChange" label="วันนี้" tooltip="% เปลี่ยนแปลงราคาเทียบกับวันปิดตลาดก่อนหน้า" />
                   <SortTh field="pe" label="P/E" tooltip="ใช้ประเมินความถูกหรือแพงของหุ้น เมื่อเทียบกับกำไรต่อหุ้น ค่าสูง = แพง" />
                   <SortTh field="week52High" label="52W High" tooltip="ราคาสูงสุดในรอบ 52 สัปดาห์ที่ผ่านมา" />
                   <SortTh field="week52Low" label="52W Low" tooltip="ราคาต่ำสุดในรอบ 52 สัปดาห์ที่ผ่านมา" />
-                  <th className="px-4 py-3 text-right">แก้ไขล่าสุด</th>
-                  <th className="px-4 py-3 text-center">วิเคราะห์ / แก้ไข</th>
+                  <th className="px-4 py-3 text-right">อัปเดต</th>
+                  <th className="px-4 py-3 text-center">เครื่องมือ</th>
                 </tr>
               </thead>
               <tbody>
@@ -1275,11 +1219,11 @@ useEffect(() => {
                         <td className="px-4 py-3 text-center whitespace-nowrap">
                           <button onClick={() => setExpandedSymbol(prev => prev === h.symbol ? null : h.symbol)}
                             className={`rounded-lg px-3 py-1 text-xs transition-colors mr-1 ${expandedSymbol === h.symbol ? 'bg-blue-600/40 border border-blue-500/50 text-blue-300' : 'bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/40'}`}>
-                            📊 กราฟ
+                            กราฟ
                           </button>
                           <button onClick={() => handleAnalyze(h)} disabled={isLoading}
                             className="rounded-lg bg-purple-600/20 border border-purple-500/30 px-3 py-1 text-purple-400 text-xs hover:bg-purple-600/40 disabled:opacity-50 transition-colors mr-2">
-                            {isLoading ? '⏳...' : '✨ วิเคราะห์ AI'}
+                            {isLoading ? '⏳...' : 'วิเคราะห์ AI'}
                           </button>
                           <button onClick={() => setModalHolding(h)} className="text-gray-500 hover:text-white text-xs transition-colors">✏️</button>
                         </td>
@@ -1349,7 +1293,7 @@ useEffect(() => {
                   </button>
                   <button onClick={() => handleAnalyze(h)} disabled={isLoading}
                     className="flex-1 rounded-lg bg-purple-600/20 border border-purple-500/30 py-2 text-purple-400 text-xs font-medium hover:bg-purple-600/40 disabled:opacity-50 transition-colors">
-                    {isLoading ? '⏳ กำลังวิเคราะห์...' : '✨ วิเคราะห์ AI'}
+                    {isLoading ? '⏳ กำลังวิเคราะห์...' : 'วิเคราะห์ AI'}
                   </button>
                   <button onClick={() => setModalHolding(h)} className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-gray-400 text-xs hover:text-white transition-colors">✏️ แก้ไข</button>
                 </div>
@@ -1409,114 +1353,6 @@ useEffect(() => {
 
       <ScratchpadDrawer />
       <ChangelogModal isOpen={showChangelog} onClose={() => setShowChangelog(false)} />
-      {showChangePin && <ChangePinModal onClose={() => setShowChangePin(false)} showToast={showToast} />}
-    </div>
-  )
-}
-
-function ChangePinModal({ onClose, showToast }: { onClose: () => void; showToast: (msg: string, ok?: boolean) => void }) {
-  const [currentPin, setCurrentPin] = useState('')
-  const [newPin, setNewPin] = useState('')
-  const [confirmNewPin, setConfirmNewPin] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-
-    if (!/^\d{6}$/.test(currentPin) || !/^\d{6}$/.test(newPin)) {
-      setError('PIN ต้องเป็นตัวเลข 6 หลักเท่านั้น'); return
-    }
-    if (newPin !== confirmNewPin) { setError('PIN ใหม่และ PIN ยืนยันไม่ตรงกัน'); return }
-
-    setLoading(true)
-    try {
-      const res = await fetch('/api/pin/change', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentPin, newPin, confirmNewPin }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'เปลี่ยน PIN ไม่สำเร็จ'); setLoading(false); return }
-      showToast('เปลี่ยน PIN สำเร็จ')
-      onClose()
-    } catch {
-      setError('เกิดข้อผิดพลาด กรุณาลองใหม่')
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-      <form
-        onSubmit={handleSubmit}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-lg bg-gray-900 border border-gray-800 p-6 space-y-4"
-      >
-        <div className="flex items-center justify-between">
-          <p className="text-white font-medium">🔑 เปลี่ยน PIN</p>
-          <button type="button" onClick={onClose} className="text-gray-500 hover:text-white text-sm">✕</button>
-        </div>
-        <PinField label="PIN ปัจจุบัน" value={currentPin} onChange={setCurrentPin} autoFocus />
-        <PinField label="PIN ใหม่" value={newPin} onChange={setNewPin} />
-        <PinField label="ยืนยัน PIN ใหม่" value={confirmNewPin} onChange={setConfirmNewPin} />
-        {error && <p className="text-red-400 text-xs text-center">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading || currentPin.length !== 6 || newPin.length !== 6 || confirmNewPin.length !== 6}
-          className="w-full rounded-lg bg-blue-600 py-2.5 font-semibold text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? 'กำลังบันทึก...' : 'เปลี่ยน PIN'}
-        </button>
-      </form>
-    </div>
-  )
-}
-
-function ChangePinEyeIcon({ open }: { open: boolean }) {
-  return open ? (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  ) : (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94" />
-      <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-      <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
-      <line x1="1" y1="1" x2="23" y2="23" />
-    </svg>
-  )
-}
-
-function PinField({ label, value, onChange, autoFocus }: { label: string; value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
-  const [visible, setVisible] = useState(false)
-  return (
-    <div>
-      <label className="block text-xs text-gray-400 mb-1">{label}</label>
-      <div className="relative">
-        <input
-          type={visible ? 'text' : 'password'}
-          inputMode="numeric"
-          pattern="[0-9]{6}"
-          autoComplete="off"
-          autoFocus={autoFocus}
-          maxLength={6}
-          value={value}
-          onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          className="w-full rounded-lg bg-gray-800 border border-gray-700 pl-4 pr-10 py-2.5 text-white text-center text-lg tracking-[0.4em] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="••••••"
-        />
-        <button
-          type="button"
-          onClick={() => setVisible(v => !v)}
-          aria-label={visible ? 'ซ่อน PIN' : 'แสดง PIN'}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 focus:outline-none focus:text-gray-300"
-        >
-          <ChangePinEyeIcon open={visible} />
-        </button>
-      </div>
     </div>
   )
 }
@@ -1564,7 +1400,7 @@ ${body}
 ### 🛡️ กฎเหล็กในการอัปเดตโค้ด (Code Preservation Guidelines):
 1. **Preserve Existing Features (ห้ามลบฟีเจอร์เดิม):**
    - โค้ดใหม่ต้องเป็นแบบ Backward Compatible ทั้งหมด
-   - ห้ามตัด/ลบ Logic เดิมที่ทำเสร็จไปแล้ว (OHLCV Data, Swing High/Low, Volume Ratio, Model Badge, Earnings Calendar Check, Daily Cron Analysis, Weekly RSI, Market Status, Track Record, Fallback Latest Record, Quick Notes Drawer และ Sector/Business แบบนิ่ง)
+   - ห้ามตัด/ลบ Logic เดิมที่ทำเสร็จไปแล้ว (OHLCV Data, Swing High/Low, Volume Ratio, Model Badge, Earnings Calendar Check, Daily Cron Analysis, Weekly RSI, Market Status, Track Record, Fallback Latest Record, โน้ตด่วน Drawer และ Sector/Business แบบนิ่ง)
 2. **Full Code Output (ห้ามละโค้ด):**
    - เมื่อแก้ไขไฟล์ใดก็ตาม ให้เขียนโค้ดเต็มสมบูรณ์ของไฟล์นั้น ห้ามใช้คอมเมนต์ประเภท \`// ... existing code ...\` เพื่อป้องกันไม่ให้เผลอลบส่วนสำคัญออก
 3. **Targeted Changes Only (แก้เฉพาะจุด):**
@@ -1637,7 +1473,7 @@ function ScratchpadDrawer() {
     <>
       <button
         onClick={() => setIsOpen(true)}
-        aria-label="เปิด Quick Notes"
+        aria-label="เปิด โน้ตด่วน"
         className={`fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-purple-600 hover:bg-purple-500 hover:scale-105 shadow-lg flex items-center justify-center text-xl transition-all ${isOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
       >
         📝
@@ -1655,7 +1491,7 @@ function ScratchpadDrawer() {
           ${isOpen ? 'translate-y-0 sm:translate-x-0' : 'translate-y-full sm:translate-y-0 sm:translate-x-full'}`}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
-          <span className="text-sm font-semibold text-gray-200">📝 Quick Notes</span>
+          <span className="text-sm font-semibold text-gray-200">📝 โน้ตด่วน</span>
           <button onClick={() => setIsOpen(false)} className="text-gray-500 hover:text-white text-sm">✕</button>
         </div>
         <div className="flex-1 p-3 min-h-0">
@@ -1677,7 +1513,7 @@ function ScratchpadDrawer() {
         </div>
         <div className="flex flex-col gap-2 px-4 py-2.5 border-t border-gray-800 shrink-0">
           <button onClick={handleExportPrompt} disabled={!loaded} className="w-full text-xs bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 rounded px-2.5 py-1.5 transition-colors font-medium disabled:opacity-40">
-            {exported ? '✓ คัดลอก Prompt แล้ว — ไปวางสั่งงาน AI ได้เลย' : '📤 ส่งโน้ตสั่งงาน AI'}
+            {exported ? '✓ คัดลอก Prompt แล้ว — พร้อมนำไปใช้กับ AI' : '📤 คัดลอก Prompt สำหรับ AI'}
           </button>
           <div className="flex items-center justify-between">
             <span className={`text-xs ${saveStatus === 'error' ? 'text-red-400' : 'text-gray-500'}`}>
@@ -1685,10 +1521,10 @@ function ScratchpadDrawer() {
             </span>
             <div className="flex items-center gap-2">
               <button onClick={handleClear} disabled={!loaded} className="text-xs bg-gray-800 hover:bg-red-900/40 hover:text-red-300 text-gray-400 rounded px-2.5 py-1 transition-colors disabled:opacity-40">
-                🗑️ Clear
+                🗑️ ล้าง
               </button>
               <button onClick={handleCopy} disabled={!loaded} className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded px-2.5 py-1 transition-colors disabled:opacity-40">
-                {copied ? '✓ คัดลอกแล้ว' : '📋 Copy'}
+                {copied ? '✓ คัดลอกแล้ว' : '📋 คัดลอก'}
               </button>
             </div>
           </div>

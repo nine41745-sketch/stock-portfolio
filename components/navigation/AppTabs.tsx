@@ -17,9 +17,9 @@ const TABS = [
 ] as const
 
 const PLAN_SUBTABS = [
-  { href: '/trade-plan', label: 'Trade Plan', icon: '🎯' },
-  { href: '/alerts', label: 'Alerts', icon: '🔔' },
-  { href: '/calendar', label: 'Calendar', icon: '📅' },
+  { href: '/trade-plan', label: 'แผนเทรด', icon: '🎯' },
+  { href: '/alerts', label: 'แจ้งเตือน', icon: '🔔' },
+  { href: '/calendar', label: 'ปฏิทิน', icon: '📅' },
 ] as const
 
 function isPlanWorkspace(pathname: string): boolean {
@@ -141,7 +141,7 @@ export default function AppTabs() {
           type="button"
           onClick={() => void handleLock()}
           className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
-          title="ล็อก Portfolio ทันที โดยยังคง session เข้าสู่ระบบไว้"
+          title="ล็อกพอร์ต โดยยังคง session เข้าสู่ระบบไว้"
         >
           🔒 ล็อก
         </button>

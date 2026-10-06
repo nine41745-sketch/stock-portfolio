@@ -80,13 +80,13 @@ export default function AutoTradeEntry() {
     <section className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 md:p-5">
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-lg font-bold text-white">⚡ ซื้อ/ขายจริง — Auto Sync</h1>
+          <h1 className="text-lg font-bold text-white">⚡ บันทึกซื้อ/ขายจริง</h1>
           <p className="mt-1 text-sm text-gray-300">
-            ใช้ช่องนี้สำหรับรายการที่ซื้อหรือขายจริง ระบบจะบันทึกธุรกรรมและอัปเดต Holdings + เงินใน Dime พร้อมกันแบบ Atomic
+            ใช้สำหรับรายการซื้อ/ขายจริง ระบบจะอัปเดตธุรกรรม หุ้น และเงินสด DIME พร้อมกันแบบ Atomic
           </p>
         </div>
         <span className="w-fit rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-400">
-          พอร์ตที่เลือกด้านบน
+          ใช้พอร์ตที่เลือกอยู่
         </span>
       </div>
 

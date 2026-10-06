@@ -38,7 +38,7 @@ export default function HoldingModal({ holding, onClose, onSave, onDelete }: Pro
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.symbol.trim()) return setError('ใส่ symbol ก่อน')
+    if (!form.symbol.trim()) return setError('กรุณาระบุ Symbol')
     if (form.shares && isNaN(Number(form.shares))) return setError('จำนวนหุ้นต้องเป็นตัวเลข')
     if (form.cost_basis && isNaN(Number(form.cost_basis))) return setError('ต้นทุนต้องเป็นตัวเลข')
 
@@ -79,7 +79,7 @@ export default function HoldingModal({ holding, onClose, onSave, onDelete }: Pro
       <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-gray-900 border border-gray-700 shadow-2xl p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-white">
-            {isEdit ? `แก้ไข ${holding.symbol}` : 'เพิ่มหุ้นใหม่'}
+            {isEdit ? `แก้ไข ${holding.symbol}` : 'เพิ่มหุ้น'}
           </h2>
           <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors text-xl">✕</button>
         </div>
@@ -157,7 +157,7 @@ export default function HoldingModal({ holding, onClose, onSave, onDelete }: Pro
                 onClick={() => setConfirmDelete(true)}
                 className="w-full text-sm text-red-400 hover:text-red-300 transition-colors"
               >
-                ลบหุ้นนี้ออกจากพอร์ต
+                ลบหุ้นออกจากพอร์ต
               </button>
             ) : (
               <div className="text-center space-y-2">
@@ -168,7 +168,7 @@ export default function HoldingModal({ holding, onClose, onSave, onDelete }: Pro
                     disabled={deleting}
                     className="flex-1 rounded-lg bg-red-600 py-2 text-sm text-white hover:bg-red-500 disabled:opacity-50 transition-colors"
                   >
-                    {deleting ? 'กำลังลบ...' : 'ลบเลย'}
+                    {deleting ? 'กำลังลบ...' : 'ยืนยันลบ'}
                   </button>
                   <button
                     onClick={() => setConfirmDelete(false)}

@@ -121,18 +121,18 @@ assert.match(finnhub, /for \(let i = 0; i < uniqueSymbols\.length; i \+= CHUNK_S
 assert.match(finnhub, /calendar\/earnings\?from=.*&to=.*&token=/, 'Batch earnings helper must use one date-range calendar endpoint')
 
 const alertsUi = fs.readFileSync('components/portfolio/AlertsCenter.tsx', 'utf8')
-assert.match(alertsUi, /🔔 Notification Center/)
-assert.match(alertsUi, /Stop \/ Target \/ Near Support \/ แนวรับสำคัญ \/ Breakout \/ ATH \/ Earnings/)
+assert.match(alertsUi, /🔔 แจ้งเตือน/)
+assert.match(alertsUi, /Stop, Target, แนวรับ, Breakout, ATH และ Earnings/)
 assert.match(alertsUi, /value: 'IMPORTANT_SUPPORT'/)
 assert.match(alertsUi, /value: 'ATH'/)
-assert.match(alertsUi, /Live Derived Alerts/)
+assert.match(alertsUi, /Live Alerts/)
 assert.match(alertsUi, /ไม่สร้าง BUY\/SELL/)
 
 const calendarUi = fs.readFileSync('components/portfolio/MarketCalendar.tsx', 'utf8')
-assert.match(calendarUi, /📅 Market Calendar/)
-assert.match(calendarUi, /Earnings ของหุ้นที่ติดตาม \+ US CPI \+ FOMC/)
+assert.match(calendarUi, /📅 ปฏิทินตลาด/)
+assert.match(calendarUi, /Earnings ของหุ้นที่ติดตาม พร้อม US CPI และ FOMC/)
 assert.match(calendarUi, /Source:/)
-assert.match(calendarUi, /read-only/)
+assert.match(calendarUi, /อ่านอย่างเดียว/)
 
 const nav = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')
 assert.match(nav, /PLAN_SUBTABS/, 'Alerts and Calendar should remain nested under Plan')
@@ -150,7 +150,7 @@ assert.match(versioning, /package-lock\.json.*track/i, 'Versioning guide must re
 assert.doesNotMatch(versioning, /ไม่ track package-lock\.json/, 'Versioning guide must not claim the lockfile is untracked')
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(pkg.version, '1.31.0', 'Finalized release candidate must expose v1.31.0 metadata')
+assert.equal(pkg.version, '1.31.1', 'Finalized release candidate must expose v1.31.1 metadata')
 assert.match(pkg.scripts['test:critical'], /test-alerts-calendar\.mjs/, 'Alerts/Calendar regression must be part of critical build gate')
 
 console.log('✓ Alerts + Calendar regression tests passed')

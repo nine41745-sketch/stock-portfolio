@@ -98,12 +98,12 @@ assert.match(history, /MAX_HISTORY_YEARS = 5/, 'Historical requests need a bound
 assert.match(history, /SPY/, 'Performance must include the SPY reference benchmark')
 
 const ui = fs.readFileSync('components/portfolio/PerformanceDashboard.tsx', 'utf8')
-assert.match(ui, /Realized P\/L/, 'UI must expose realized P/L')
-assert.match(ui, /Unrealized P\/L/, 'UI must expose unrealized P/L')
+assert.match(ui, /กำไร\/ขาดทุนที่รับรู้/, 'UI must expose realized P/L')
+assert.match(ui, /กำไร\/ขาดทุนที่ยังไม่รับรู้/, 'UI must expose unrealized P/L')
 assert.match(ui, /Win Rate/, 'UI must expose trade win rate')
-assert.match(ui, /Equity \/ P&L Curve/, 'UI must expose a performance curve')
-assert.match(ui, /Best Trade/, 'UI must expose best trade')
-assert.match(ui, /Worst Trade/, 'UI must expose worst trade')
+assert.match(ui, /กราฟ P\/L สะสม/, 'UI must expose a performance curve')
+assert.match(ui, /ดีลดีที่สุด/, 'UI must expose best trade')
+assert.match(ui, /ดีลแย่ที่สุด/, 'UI must expose worst trade')
 assert.match(ui, /Transaction Ledger ยังไม่แก้ Holdings อัตโนมัติ/, 'UI must preserve the no-auto-sync safety boundary')
 
 const nav = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')

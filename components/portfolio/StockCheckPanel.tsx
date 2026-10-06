@@ -227,7 +227,7 @@ export default function StockCheckPanel({
     <div>
       <div className="mb-4 rounded-xl border border-gray-800 bg-gray-950/40 p-4">
         <div className="mb-3">
-          <h2 className="text-lg font-bold text-white">🔬 เช็กหุ้นก่อนซื้อ</h2>
+          <h2 className="text-lg font-bold text-white">🔬 เช็กหุ้น</h2>
           <p className="mt-1 text-xs leading-relaxed text-gray-500">
             พิมพ์ Ticker ตัวเดียวเพื่อดูจุดเข้า, Stop, Target, R:R, Trend, Momentum, Relative Strength และ Earnings โดยไม่ต้องเพิ่มหุ้นเข้าพอร์ตก่อน
           </p>
@@ -301,26 +301,26 @@ export default function StockCheckPanel({
             <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">Relative Strength</p><p className={`mt-1 font-bold ${(result.relativeStrength20 ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>RS20 {fmtPct(result.relativeStrength20)}</p><p className="text-xs text-gray-500">RS60 {fmtPct(result.relativeStrength60)} vs SPY</p></div>
             <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">แนวรับ / แนวต้าน</p><p className="mt-1 font-bold text-white">S {fmtPrice(result.support)}</p><p className="text-xs text-gray-500">R {fmtPrice(result.resistance)}</p></div>
             <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">52 สัปดาห์</p><p className="mt-1 font-bold text-white">High {fmtPrice(result.week52High)}</p><p className="text-xs text-gray-500">Low {fmtPrice(result.week52Low)}</p></div>
-            <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">Valuation</p><p className="mt-1 font-bold text-white">P/E {result.pe === null ? '—' : result.pe.toFixed(1)}</p><p className="text-xs text-gray-500">ใช้เป็นบริบท ไม่ใช้ฟันธงลำพัง</p></div>
-            <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">Earnings Risk</p><p className={`mt-1 font-bold ${result.earnings && result.earnings.daysUntil <= 7 ? 'text-orange-400' : 'text-white'}`}>{result.earnings ? `${result.earnings.daysUntil} วัน` : 'ไม่พบใน 60 วัน'}</p><p className="text-xs text-gray-500">{result.earnings?.date ?? '—'}</p></div>
+            <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">มูลค่าเชิงพื้นฐาน</p><p className="mt-1 font-bold text-white">P/E {result.pe === null ? '—' : result.pe.toFixed(1)}</p><p className="text-xs text-gray-500">ใช้เป็นบริบท ไม่ใช้ฟันธงลำพัง</p></div>
+            <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">ความเสี่ยงงบ</p><p className={`mt-1 font-bold ${result.earnings && result.earnings.daysUntil <= 7 ? 'text-orange-400' : 'text-white'}`}>{result.earnings ? `${result.earnings.daysUntil} วัน` : 'ไม่พบใน 60 วัน'}</p><p className="text-xs text-gray-500">{result.earnings?.date ?? '—'}</p></div>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">✅ เหตุผลสนับสนุน</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">✅ จุดสนับสนุน</p>
               {result.plan.reasons.length ? <ul className="space-y-1.5 text-sm text-gray-300">{result.plan.reasons.map(reason => <li key={reason}>• {reason}</li>)}</ul> : <p className="text-sm text-gray-500">ยังไม่มีสัญญาณบวกเด่นพอ</p>}
             </div>
             <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">⚠️ จุดที่ต้องระวัง</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">⚠️ ความเสี่ยง</p>
               {result.plan.warnings.length ? <ul className="space-y-1.5 text-sm text-orange-300">{result.plan.warnings.map(warning => <li key={warning}>• {warning}</li>)}</ul> : <p className="text-sm text-gray-500">ไม่พบ warning สำคัญจากเกณฑ์ปัจจุบัน</p>}
             </div>
           </div>
 
           <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
-            <p className="mb-3 text-sm font-semibold text-white">💵 Position Sizing จากงบที่กรอก</p>
+            <p className="mb-3 text-sm font-semibold text-white">💵 ขนาดสถานะจากงบ</p>
             {position ? (
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                <div className="rounded-lg bg-gray-900 p-3"><p className="text-[10px] text-gray-500">ราคาเข้ากลาง Zone</p><p className="font-bold text-white">{fmtPrice(position.entry)}</p></div>
+                <div className="rounded-lg bg-gray-900 p-3"><p className="text-[10px] text-gray-500">ราคาเข้ากลางโซน</p><p className="font-bold text-white">{fmtPrice(position.entry)}</p></div>
                 <div className="rounded-lg bg-gray-900 p-3"><p className="text-[10px] text-gray-500">ซื้อได้ประมาณ</p><p className="font-bold text-white">{position.shares.toFixed(4)} หุ้น</p></div>
                 <div className="rounded-lg bg-gray-900 p-3"><p className="text-[10px] text-gray-500">เสี่ยงต่อหุ้น</p><p className="font-bold text-red-400">{fmtPrice(position.riskPerShare)}</p></div>
                 <div className="rounded-lg bg-gray-900 p-3"><p className="text-[10px] text-gray-500">ขาดทุนถ้าโดน Stop</p><p className="font-bold text-red-400">{fmtPrice(position.riskAmount)}</p></div>
@@ -343,8 +343,8 @@ export default function StockCheckPanel({
           />
 
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void runAi()} disabled={aiLoading} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-50">{aiLoading ? 'AI กำลังวิเคราะห์...' : '✨ วิเคราะห์เชิงลึกด้วย AI'}</button>
-            <button type="button" onClick={() => void addToWatchlist()} disabled={watchlistSaving || watchlistSaved} className="rounded-lg border border-gray-700 px-4 py-2 text-sm font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-50">{watchlistSaved ? '✓ อยู่ใน Watchlist แล้ว' : watchlistSaving ? 'กำลังบันทึก...' : '⭐ เพิ่มเข้า Watchlist'}</button>
+            <button type="button" onClick={() => void runAi()} disabled={aiLoading} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-50">{aiLoading ? 'AI กำลังวิเคราะห์...' : 'วิเคราะห์เชิงลึกด้วย AI'}</button>
+            <button type="button" onClick={() => void addToWatchlist()} disabled={watchlistSaving || watchlistSaved} className="rounded-lg border border-gray-700 px-4 py-2 text-sm font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-50">{watchlistSaved ? '✓ อยู่ใน Watchlist แล้ว' : watchlistSaving ? 'กำลังบันทึก...' : 'เพิ่มเข้า Watchlist'}</button>
             <Link href={tradePlanHref} className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-300 hover:bg-blue-500/20">🎯 ส่งเข้า Trade Plan</Link>
           </div>
 

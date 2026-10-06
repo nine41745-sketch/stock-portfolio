@@ -188,8 +188,9 @@ assert.equal(fs.existsSync('app/scanner/error.tsx'), true, 'Scanner must provide
 assert.equal(fs.existsSync('components/navigation/AppTabs.tsx'), true, 'Portfolio/scanner navigation tabs are required')
 
 const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
-assert.match(dashboardSource, /stock-portfolio-theme/, 'Dashboard theme toggle must persist the selected theme')
-assert.match(dashboardSource, /localStorage\.setItem/, 'Dashboard theme toggle must write browser preference')
+const appTabsSource = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')
+assert.match(appTabsSource, /stock-portfolio-theme/, 'Shared theme toggle must persist the selected theme')
+assert.match(appTabsSource, /localStorage\.setItem/, 'Shared theme toggle must write browser preference')
 const rootLayoutSource = fs.readFileSync('app/layout.tsx', 'utf8')
 assert.match(rootLayoutSource, /localStorage\.getItem\('stock-portfolio-theme'\)/, 'Root layout must restore the saved theme before page interaction')
 assert.match(rootLayoutSource, /beforeInteractive/, 'Saved theme must be restored before hydration to avoid dark-mode reset/flash')
@@ -199,7 +200,7 @@ assert.doesNotMatch(dashboardSource, /รันทุกวัน 06:00 น\./, 
 assert.match(dashboardSource, /exchangeRateSource/, 'Dashboard must distinguish live FX from fallback FX')
 assert.match(dashboardSource, /ยังไม่มีอัตรา USD\/THB แบบสด/, 'THB persistence must be blocked while only fallback FX is available')
 assert.match(dashboardSource, /loadFailed/, 'Scratchpad initial-read failure must prevent auto-save overwrite')
-assert.match(dashboardSource, /await requireOk\(res, 'ล็อกพอร์ตไม่สำเร็จ'\)/, 'Manual PIN lock must verify the server lock response')
+assert.match(appTabsSource, /if \(!response\.ok\) throw new Error\(await getErrorMessage\(response, 'ล็อกพอร์ตไม่สำเร็จ'\)\)/, 'Shared PIN lock must verify the server lock response')
 
 const scratchpadSource = fs.readFileSync('app/api/scratchpad/route.ts', 'utf8')
 assert.match(scratchpadSource, /MAX_SCRATCHPAD_LENGTH/, 'Scratchpad must enforce a bounded payload')
@@ -267,9 +268,9 @@ assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic 
 assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
 assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
 
-// v1.31.0 release metadata must stay synchronized across changelog/package/lockfile.
+// v1.31.1 release metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.31.0', 'Package version must be finalized as v1.31.0 for this release')
+assert.equal(packageJson.version, '1.31.1', 'Package version must be finalized as v1.31.1 for this release')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.8', 'Patched Next.js release must stay pinned')
 assert.equal(packageJson.dependencies?.react, '19.3.0', 'React and ReactDOM must stay aligned on the same release')
@@ -279,7 +280,7 @@ assert.equal(packageJson.devDependencies?.['@types/react-dom'], '^19.3.0', 'Reac
 assert.equal(packageJson.devDependencies?.autoprefixer, '^10.6.1', 'Autoprefixer maintenance floor must stay current')
 assert.equal(packageJson.devDependencies?.['eslint-config-next'], '16.3.8', 'eslint-config-next must stay aligned with Next.js')
 assert.equal(packageJson.devDependencies?.['@types/node'], '^22', 'Node types must stay on the Node 22 runtime major')
-assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.31.0 must preserve the audited Supabase SSR dependency')
+assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.31.1 must preserve the audited Supabase SSR dependency')
 assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
 assert.equal(packageJson.scripts?.lint, 'eslint .', 'Next.js 16 must use the ESLint CLI')
 assert.equal(packageJson.scripts?.typecheck, 'tsc --noEmit', 'CI must expose an explicit TypeScript check')
@@ -287,6 +288,8 @@ assert.equal(packageJson.scripts?.ci, 'npm run lint && npm run typecheck && npm 
 assert.equal(fs.existsSync('package-lock.json'), true, 'A committed npm lockfile is required for reproducible builds')
 
 const packageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
+const mcpSdkLock = packageLock.packages?.['node_modules/@modelcontextprotocol/sdk']
+assert.equal(mcpSdkLock?.version, '1.31.0', 'v1.31.1 must pin the patched MCP SDK transitive dependency')
 assert.equal(packageLock.version, packageJson.version, 'package-lock version must match package.json')
 assert.equal(packageLock.packages?.['']?.version, packageJson.version, 'lockfile root package version must match package.json')
 assert.equal(packageLock.packages?.['']?.engines?.node, '22.x', 'lockfile must preserve the Node 22 runtime pin')
@@ -360,12 +363,13 @@ const changelogReleaseTimes = [
   ['config/changelog-v1293.ts', '2026-10-05 23:19 ICT'],
   ['config/changelog-v1300.ts', '2026-10-06 19:59 ICT'],
   ['config/changelog-v1310.ts', '2026-10-06 22:25 ICT'],
+  ['config/changelog-v1311.ts', '2026-10-07 01:40 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1310'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1311'])
 
 console.log('✓ Critical regression tests passed')

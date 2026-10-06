@@ -215,9 +215,9 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-orange-400">Today Opportunity Radar</p>
-          <h1 className="text-xl font-bold text-white md:text-2xl">🔥 โอกาสซื้อวันนี้</h1>
+          <h1 className="text-xl font-bold text-white md:text-2xl">🔥 โอกาสวันนี้</h1>
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-500">
-            สแกน 4 กลุ่มเดิมแบบ deterministic แล้วคัดตัวเด่น ก่อนยืนยัน 6 อันดับแรกด้วย Stock Check ราคาสด/near-live + ATR — ไม่เรียก AI
+            สแกนแบบ deterministic แล้วคัดตัวเด่น ก่อนยืนยันด้วย Stock Check ราคาสด/near-live + ATR โดยไม่ใช้ AI
           </p>
         </div>
         <button
@@ -225,7 +225,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
           onClick={() => void scanToday()}
           disabled={loading}
           className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
-        >{loading ? 'กำลังค้นหาโอกาส...' : '🔥 สแกนโอกาสวันนี้'}</button>
+        >{loading ? 'กำลังค้นหาโอกาส...' : 'สแกนโอกาสวันนี้'}</button>
       </div>
 
       <div className="mt-4 rounded-xl border border-gray-800 bg-gray-950/40 p-3 text-xs leading-relaxed text-gray-500">
