@@ -215,7 +215,7 @@ assert.match(dashboardSource, /whitespace-nowrap[\s\S]*🛡 แนวรับ/,
 assert.match(dashboardSource, /<details className="mt-3 border-t border-gray-800 pt-3">/, 'Secondary AI evidence must stay collapsed by default')
 assert.match(appTabsSource, /stock-portfolio-theme/, 'Shared theme toggle must persist the selected theme')
 assert.match(appTabsSource, /localStorage\.setItem/, 'Shared theme toggle must write browser preference')
-assert.match(appTabsSource, /const \[theme, setTheme\]/, 'Theme toggle must expose the current mode in shared navigation')
+assert.match(appTabsSource, /useSyncExternalStore/, 'Theme toggle must expose the current mode without effect-driven state')
 assert.match(appTabsSource, /☀️ สว่าง/, 'Light mode button label must identify the active light theme')
 assert.match(appTabsSource, /🌙 มืด/, 'Dark mode button label must identify the active dark theme')
 const rootLayoutSource = fs.readFileSync('app/layout.tsx', 'utf8')

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useState, useSyncExternalStore } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import QuickNotesDrawer from '@/components/navigation/QuickNotesDrawer'
@@ -49,19 +49,25 @@ export default function AppTabs() {
   const [pinSaving, setPinSaving] = useState(false)
   const [pinMessage, setPinMessage] = useState<{ ok: boolean; text: string } | null>(null)
   const [utilityError, setUtilityError] = useState<string | null>(null)
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
-
-  useEffect(() => {
-    const current = document.documentElement.getAttribute('data-theme')
-    setTheme(current === 'light' ? 'light' : 'dark')
-  }, [])
+  const theme = useSyncExternalStore(
+    callback => {
+      window.addEventListener('stock-portfolio-theme-change', callback)
+      window.addEventListener('storage', callback)
+      return () => {
+        window.removeEventListener('stock-portfolio-theme-change', callback)
+        window.removeEventListener('storage', callback)
+      }
+    },
+    () => document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark',
+    () => 'dark'
+  )
 
   function toggleTheme() {
     const current = document.documentElement.getAttribute('data-theme')
     const next = current === 'light' ? 'dark' : 'light'
     document.documentElement.setAttribute('data-theme', next)
-    setTheme(next)
     try { window.localStorage.setItem('stock-portfolio-theme', next) } catch { /* storage unavailable */ }
+    window.dispatchEvent(new Event('stock-portfolio-theme-change'))
   }
 
   async function handleLock() {
