@@ -188,8 +188,9 @@ assert.equal(fs.existsSync('app/scanner/error.tsx'), true, 'Scanner must provide
 assert.equal(fs.existsSync('components/navigation/AppTabs.tsx'), true, 'Portfolio/scanner navigation tabs are required')
 
 const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
-assert.match(dashboardSource, /stock-portfolio-theme/, 'Dashboard theme toggle must persist the selected theme')
-assert.match(dashboardSource, /localStorage\.setItem/, 'Dashboard theme toggle must write browser preference')
+const appTabsSource = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')
+assert.match(appTabsSource, /stock-portfolio-theme/, 'Shared theme toggle must persist the selected theme')
+assert.match(appTabsSource, /localStorage\.setItem/, 'Shared theme toggle must write browser preference')
 const rootLayoutSource = fs.readFileSync('app/layout.tsx', 'utf8')
 assert.match(rootLayoutSource, /localStorage\.getItem\('stock-portfolio-theme'\)/, 'Root layout must restore the saved theme before page interaction')
 assert.match(rootLayoutSource, /beforeInteractive/, 'Saved theme must be restored before hydration to avoid dark-mode reset/flash')
@@ -199,7 +200,7 @@ assert.doesNotMatch(dashboardSource, /รันทุกวัน 06:00 น\./, 
 assert.match(dashboardSource, /exchangeRateSource/, 'Dashboard must distinguish live FX from fallback FX')
 assert.match(dashboardSource, /ยังไม่มีอัตรา USD\/THB แบบสด/, 'THB persistence must be blocked while only fallback FX is available')
 assert.match(dashboardSource, /loadFailed/, 'Scratchpad initial-read failure must prevent auto-save overwrite')
-assert.match(dashboardSource, /await requireOk\(res, 'ล็อกพอร์ตไม่สำเร็จ'\)/, 'Manual PIN lock must verify the server lock response')
+assert.match(appTabsSource, /if \(!response\.ok\) throw new Error\(await getErrorMessage\(response, 'ล็อกพอร์ตไม่สำเร็จ'\)\)/, 'Shared PIN lock must verify the server lock response')
 
 const scratchpadSource = fs.readFileSync('app/api/scratchpad/route.ts', 'utf8')
 assert.match(scratchpadSource, /MAX_SCRATCHPAD_LENGTH/, 'Scratchpad must enforce a bounded payload')

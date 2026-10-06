@@ -351,8 +351,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [dimeBalanceUSD, setDimeBalanceUSD] = useState(0)
   const [initialCapital, setInitialCapital] = useState(0)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
-  const [darkMode, setDarkMode] = useState(true)
-  const [themeReady, setThemeReady] = useState(false)
   const [athBySymbol, setAthBySymbol] = useState<Record<string, AthSnapshot>>({})
   const [importantSupportBySymbol, setImportantSupportBySymbol] = useState<Record<string, ImportantSupportSnapshot>>({})
 
@@ -372,7 +370,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [showChangelog, setShowChangelog] = useState(false)
-  const [showChangePin, setShowChangePin] = useState(false)  // PIN Lock: เปลี่ยน PIN จาก Settings
   const router = useRouter()
   const supabase = createClient()
   const holdingSymbolsKey = useMemo(
@@ -471,22 +468,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings, userName
       setViewMode('mobile')
     }
   }, [])
-
-// Sync state กับ theme ที่ root bootstrap คืนค่าจาก browser preference ก่อน hydration
-useEffect(() => {
-  const currentTheme = document.documentElement.getAttribute('data-theme')
-  setDarkMode(currentTheme !== 'light')
-  setThemeReady(true)
-}, [])
-
-// apply + persist theme ที่ <html> ให้ครอบทั้ง Dashboard และ Scanner หลัง user เปลี่ยนค่า
-useEffect(() => {
-  if (!themeReady) return
-  const theme = darkMode ? 'dark' : 'light'
-  document.documentElement.setAttribute('data-theme', theme)
-  try { window.localStorage.setItem('stock-portfolio-theme', theme) } catch { /* storage unavailable */ }
-}, [darkMode, themeReady])
-
 
   useEffect(() => {
     let cancelled = false
@@ -1372,114 +1353,6 @@ useEffect(() => {
 
       <ScratchpadDrawer />
       <ChangelogModal isOpen={showChangelog} onClose={() => setShowChangelog(false)} />
-      {showChangePin && <ChangePinModal onClose={() => setShowChangePin(false)} showToast={showToast} />}
-    </div>
-  )
-}
-
-function ChangePinModal({ onClose, showToast }: { onClose: () => void; showToast: (msg: string, ok?: boolean) => void }) {
-  const [currentPin, setCurrentPin] = useState('')
-  const [newPin, setNewPin] = useState('')
-  const [confirmNewPin, setConfirmNewPin] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-
-    if (!/^\d{6}$/.test(currentPin) || !/^\d{6}$/.test(newPin)) {
-      setError('PIN ต้องเป็นตัวเลข 6 หลักเท่านั้น'); return
-    }
-    if (newPin !== confirmNewPin) { setError('PIN ใหม่และ PIN ยืนยันไม่ตรงกัน'); return }
-
-    setLoading(true)
-    try {
-      const res = await fetch('/api/pin/change', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentPin, newPin, confirmNewPin }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'เปลี่ยน PIN ไม่สำเร็จ'); setLoading(false); return }
-      showToast('เปลี่ยน PIN สำเร็จ')
-      onClose()
-    } catch {
-      setError('เกิดข้อผิดพลาด กรุณาลองใหม่')
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-      <form
-        onSubmit={handleSubmit}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-lg bg-gray-900 border border-gray-800 p-6 space-y-4"
-      >
-        <div className="flex items-center justify-between">
-          <p className="text-white font-medium">🔑 เปลี่ยน PIN</p>
-          <button type="button" onClick={onClose} className="text-gray-500 hover:text-white text-sm">✕</button>
-        </div>
-        <PinField label="PIN ปัจจุบัน" value={currentPin} onChange={setCurrentPin} autoFocus />
-        <PinField label="PIN ใหม่" value={newPin} onChange={setNewPin} />
-        <PinField label="ยืนยัน PIN ใหม่" value={confirmNewPin} onChange={setConfirmNewPin} />
-        {error && <p className="text-red-400 text-xs text-center">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading || currentPin.length !== 6 || newPin.length !== 6 || confirmNewPin.length !== 6}
-          className="w-full rounded-lg bg-blue-600 py-2.5 font-semibold text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? 'กำลังบันทึก...' : 'เปลี่ยน PIN'}
-        </button>
-      </form>
-    </div>
-  )
-}
-
-function ChangePinEyeIcon({ open }: { open: boolean }) {
-  return open ? (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  ) : (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94" />
-      <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-      <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
-      <line x1="1" y1="1" x2="23" y2="23" />
-    </svg>
-  )
-}
-
-function PinField({ label, value, onChange, autoFocus }: { label: string; value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
-  const [visible, setVisible] = useState(false)
-  return (
-    <div>
-      <label className="block text-xs text-gray-400 mb-1">{label}</label>
-      <div className="relative">
-        <input
-          type={visible ? 'text' : 'password'}
-          inputMode="numeric"
-          pattern="[0-9]{6}"
-          autoComplete="off"
-          autoFocus={autoFocus}
-          maxLength={6}
-          value={value}
-          onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          className="w-full rounded-lg bg-gray-800 border border-gray-700 pl-4 pr-10 py-2.5 text-white text-center text-lg tracking-[0.4em] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="••••••"
-        />
-        <button
-          type="button"
-          onClick={() => setVisible(v => !v)}
-          aria-label={visible ? 'ซ่อน PIN' : 'แสดง PIN'}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 focus:outline-none focus:text-gray-300"
-        >
-          <ChangePinEyeIcon open={visible} />
-        </button>
-      </div>
     </div>
   )
 }
