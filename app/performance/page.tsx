@@ -17,7 +17,9 @@ export default async function PerformancePage() {
       <InactivityPinLock />
       <InvestingSinceBadge />
       <AppTabs />
-      <PerformanceDashboard />
+      <div className="mx-auto w-full max-w-7xl">
+        <PerformanceDashboard />
+      </div>
     </div>
   )
 }

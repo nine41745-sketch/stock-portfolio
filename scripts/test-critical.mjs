@@ -195,6 +195,17 @@ assert.match(appTabsSource, /<PortfolioSwitcher[\s\S]*actions=/, 'Global utiliti
 assert.match(appTabsSource, /mx-auto w-full max-w-7xl/, 'Navigation shell must align with the dashboard width on desktop')
 assert.match(appTabsSource, /overflow-x-auto[\s\S]*scrollbar-width:none/, 'Primary navigation must remain usable on narrow mobile screens')
 assert.match(portfolioSwitcherSource, /flex w-full flex-col[\s\S]*sm:flex-row/, 'Portfolio controls must stack on phones and share one row on wider screens')
+const scannerPageSource = fs.readFileSync('app/scanner/page.tsx', 'utf8')
+const transactionsPageSource = fs.readFileSync('app/transactions/page.tsx', 'utf8')
+const performancePageSource = fs.readFileSync('app/performance/page.tsx', 'utf8')
+for (const [name, source] of [
+  ['scanner', scannerPageSource],
+  ['transactions', transactionsPageSource],
+  ['performance', performancePageSource],
+]) {
+  assert.match(source, /mx-auto w-full max-w-7xl/, `${name} content must align with the shared desktop shell while remaining full-width on mobile`)
+}
+
 
 assert.match(portfolioSwitcherSource, /actions\?: ReactNode/, 'Portfolio switcher must accept shared utility actions')
 assert.match(investingSinceSource, /inline-flex/, 'Investing duration must stay compact instead of a full-width banner')

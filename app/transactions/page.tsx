@@ -18,9 +18,11 @@ export default async function TransactionsPage() {
       <InactivityPinLock />
       <InvestingSinceBadge />
       <AppTabs />
-      <AutoTradeEntry />
-      <div className="mt-6">
-        <TransactionLedger />
+      <div className="mx-auto w-full max-w-7xl">
+        <AutoTradeEntry />
+        <div className="mt-6">
+          <TransactionLedger />
+        </div>
       </div>
     </div>
   )
