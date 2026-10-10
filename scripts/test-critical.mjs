@@ -299,9 +299,9 @@ assert.match(lightModeCss, /text-purple-300/, 'Light mode must keep purple AI te
 assert.match(lightModeCss, /bg-blue-600\.text-white/, 'Light mode must preserve white text on primary blue buttons')
 assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native form controls with light color scheme')
 
-// v1.31.2 release metadata must stay synchronized across changelog/package/lockfile.
+// v1.32.0 Preview metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.31.2', 'Package version must be finalized as v1.31.2 for this release')
+assert.equal(packageJson.version, '1.32.0', 'Package version must be finalized as v1.32.0 for this release')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.8', 'Patched Next.js release must stay pinned')
 assert.equal(packageJson.dependencies?.react, '19.3.0', 'React and ReactDOM must stay aligned on the same release')
@@ -396,12 +396,13 @@ const changelogReleaseTimes = [
   ['config/changelog-v1310.ts', '2026-10-06 22:25 ICT'],
   ['config/changelog-v1311.ts', '2026-10-07 01:40 ICT'],
   ['config/changelog-v1312.ts', '2026-10-07 02:20 ICT'],
+  ['config/changelog-v1320.ts', '2026-10-11 03:54 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1312'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1320'])
 
 console.log('✓ Critical regression tests passed')

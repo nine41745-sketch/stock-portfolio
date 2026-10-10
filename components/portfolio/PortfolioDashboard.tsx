@@ -8,7 +8,7 @@ import HoldingModal from './HoldingModal'
 import TradingViewChart from './TradingViewChart'
 import { AUTO_LOGOUT_MS, AUTO_LOGOUT_WARN_MS, FALLBACK_USD_THB_RATE } from '@/lib/constants'
 import { getMarketStatus, MarketStatus } from '@/lib/market-status'
-import { changelog, CURRENT_VERSION } from '@/config/changelog-v1320'
+import { changelog, CURRENT_VERSION } from '@/config/changelog'
 import { getAthState } from '@/lib/ath'
 import { getImportantSupportState } from '@/lib/important-support'
 
