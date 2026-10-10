@@ -333,6 +333,14 @@ assert.equal(packageLock.packages?.['node_modules/autoprefixer']?.version, '10.6
 assert.equal(packageLock.packages?.['node_modules/eslint-config-next']?.version, '16.3.8', 'lockfile must resolve eslint-config-next 16.3.8')
 assert.equal(packageLock.packages?.['node_modules/@supabase/ssr']?.version, '0.12.7', 'lockfile must resolve audited @supabase/ssr 0.12.7')
 assert.equal(packageLock.packages?.['node_modules/@supabase/supabase-js']?.version, '2.116.0', 'lockfile must resolve compatible @supabase/supabase-js 2.116.0')
+assert.equal(packageJson.devDependencies?.tailwindcss, '^3.4.14', 'Security remediation must preserve Tailwind CSS 3 while compatibility is tested')
+assert.equal(packageJson.overrides?.['postcss-selector-parser'], '7.1.6', 'Force the parser containing the quadratic-selector security fix')
+const selectorParserEntries = Object.entries(packageLock.packages ?? {}).filter(([path]) => path.endsWith('node_modules/postcss-selector-parser'))
+assert.ok(selectorParserEntries.length > 0, 'Tailwind CSS 3 must resolve the selector parser dependency')
+for (const [path, manifest] of selectorParserEntries) {
+  assert.equal(manifest.version, '7.1.6', 'Disallow vulnerable postcss-selector-parser in ' + path)
+}
+assert.equal(packageLock.packages?.['node_modules/tailwindcss']?.version, '3.4.19', 'Security remediation must preserve audited Tailwind CSS 3')
 assert.equal(packageLock.packages?.['']?.dependencies?.['@anthropic-ai/sdk'], undefined, 'Removed dependencies must not remain in lockfile root')
 
 assert.equal(fs.existsSync('.github/workflows/ci.yml'), true, 'GitHub Actions CI workflow is required')
