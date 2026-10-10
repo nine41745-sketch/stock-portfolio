@@ -10,6 +10,7 @@ import PortfolioSwitcher from '@/components/navigation/PortfolioSwitcher'
 const TABS = [
   { href: '/dashboard', label: 'พอร์ต', icon: '📊' },
   { href: '/scanner', label: 'สแกนหุ้น', icon: '🔎' },
+  { href: '/intelligence', label: 'วิเคราะห์ตลาด', icon: '🧠' },
   { href: '/transactions', label: 'ธุรกรรม', icon: '🧾' },
   { href: '/performance', label: 'ผลงาน', icon: '📈' },
   { href: '/trade-plan', label: 'แผน', icon: '🎯' },
