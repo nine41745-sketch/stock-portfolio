@@ -27,6 +27,11 @@ updates:
           - minor
           - patch
     ignore:
+      # ESLint 10 is currently incompatible with the eslint-config-next 16.3.8 plugin stack.
+      # This rule only pauses major version PRs; revisit after compatibility testing.
+      - dependency-name: "eslint"
+        update-types:
+          - "version-update:semver-major"
       - dependency-name: "@types/node"
         update-types:
           - "version-update:semver-major"
