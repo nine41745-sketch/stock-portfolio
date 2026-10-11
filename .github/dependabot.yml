@@ -9,6 +9,8 @@ updates:
       timezone: Asia/Bangkok
     open-pull-requests-limit: 5
     versioning-strategy: increase-if-necessary
+    # Reduce repeated bot branch builds; manually refresh PRs when reviewing them.
+    rebase-strategy: disabled
     groups:
       react-family:
         patterns:

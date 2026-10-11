@@ -98,6 +98,7 @@ assert.equal(
 )
 
 const vercel = JSON.parse(fs.readFileSync('vercel.json', 'utf8'))
+assert.deepEqual(vercel.git?.deploymentEnabled, { 'dependabot/**': false }, 'Only Dependabot Git branches may disable Vercel automatic deployments; main and feature previews must remain enabled')
 assert.ok(vercel.crons?.some(c => c.path === '/api/cron/daily-analyze' && c.schedule === '15 1 * * 2-6'), 'Post-close cron must remain ~08:15 ICT for US Mon-Fri sessions')
 assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 12 * * 1-5'), 'Pre-market cron must include EDT candidate 12:45 UTC')
 assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 13 * * 1-5'), 'Pre-market cron must include EST candidate 13:45 UTC')
@@ -346,6 +347,7 @@ assert.equal(packageLock.packages?.['']?.dependencies?.['@anthropic-ai/sdk'], un
 assert.equal(fs.existsSync('.github/workflows/ci.yml'), true, 'GitHub Actions CI workflow is required')
 assert.equal(fs.existsSync('.github/dependabot.yml'), true, 'Dependabot configuration is required')
 const dependabotSource = fs.readFileSync('.github/dependabot.yml', 'utf8')
+assert.match(dependabotSource, /^    rebase-strategy: disabled$/m, 'Dependabot must disable unnecessary automatic rebases')
 assert.match(dependabotSource, /react-family:/, 'Dependabot must group React and ReactDOM updates')
 assert.match(dependabotSource, /next-family:/, 'Dependabot must group Next.js and eslint-config-next updates')
 assert.match(dependabotSource, /dependency-name:\s*["']?@types\/node["']?/, 'Dependabot must explicitly guard Node type major updates')
