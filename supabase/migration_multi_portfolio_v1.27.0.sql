@@ -436,10 +436,10 @@ AS $$
 DECLARE
   v_portfolio_id UUID;
 BEGIN
-  SELECT id INTO v_portfolio_id
-  FROM public.portfolios
-  WHERE user_id = p_user_id AND is_default
-  ORDER BY created_at, id
+  SELECT p.id INTO v_portfolio_id
+  FROM public.portfolios AS p
+  WHERE p.user_id = p_user_id AND p.is_default
+  ORDER BY p.created_at, p.id
   LIMIT 1;
   IF v_portfolio_id IS NULL THEN RAISE EXCEPTION 'default portfolio not found'; END IF;
   RETURN public.upsert_holding(
@@ -469,10 +469,10 @@ AS $$
 DECLARE
   v_portfolio_id UUID;
 BEGIN
-  SELECT id INTO v_portfolio_id
-  FROM public.portfolios
-  WHERE user_id = p_user_id AND is_default
-  ORDER BY created_at, id
+  SELECT p.id INTO v_portfolio_id
+  FROM public.portfolios AS p
+  WHERE p.user_id = p_user_id AND p.is_default
+  ORDER BY p.created_at, p.id
   LIMIT 1;
   IF v_portfolio_id IS NULL THEN RETURN; END IF;
   RETURN QUERY
@@ -628,8 +628,8 @@ AS $$
 DECLARE
   v_portfolio_id UUID;
 BEGIN
-  SELECT id INTO v_portfolio_id FROM public.portfolios
-  WHERE user_id = p_user_id AND is_default ORDER BY created_at, id LIMIT 1;
+  SELECT p.id INTO v_portfolio_id FROM public.portfolios AS p
+  WHERE p.user_id = p_user_id AND p.is_default ORDER BY p.created_at, p.id LIMIT 1;
   IF v_portfolio_id IS NULL THEN RAISE EXCEPTION 'default portfolio not found'; END IF;
   RETURN public.save_portfolio_transaction(
     p_user_id, v_portfolio_id, p_id, p_type, p_symbol, p_shares, p_price,
@@ -662,8 +662,8 @@ AS $$
 DECLARE
   v_portfolio_id UUID;
 BEGIN
-  SELECT id INTO v_portfolio_id FROM public.portfolios
-  WHERE user_id = p_user_id AND is_default ORDER BY created_at, id LIMIT 1;
+  SELECT p.id INTO v_portfolio_id FROM public.portfolios AS p
+  WHERE p.user_id = p_user_id AND p.is_default ORDER BY p.created_at, p.id LIMIT 1;
   IF v_portfolio_id IS NULL THEN RETURN; END IF;
   RETURN QUERY
   SELECT * FROM public.get_decrypted_portfolio_transactions(p_user_id, v_portfolio_id, p_enc_key);
@@ -699,8 +699,8 @@ SET search_path = public, extensions, pg_catalog
 AS $$
 DECLARE
   v_symbol TEXT := UPPER(TRIM(p_symbol));
-  v_status TEXT := UPPER(TRIM(COALESCE(p_status, 'WAITING'));
-  v_source TEXT := UPPER(TRIM(COALESCE(p_source, 'MANUAL'));
+  v_status TEXT := UPPER(TRIM(COALESCE(p_status, 'WAITING')));
+  v_source TEXT := UPPER(TRIM(COALESCE(p_source, 'MANUAL')));
   v_entry_mid NUMERIC;
   v_id UUID;
 BEGIN
@@ -843,8 +843,8 @@ AS $$
 DECLARE
   v_portfolio_id UUID;
 BEGIN
-  SELECT id INTO v_portfolio_id FROM public.portfolios
-  WHERE user_id = p_user_id AND is_default ORDER BY created_at, id LIMIT 1;
+  SELECT p.id INTO v_portfolio_id FROM public.portfolios AS p
+  WHERE p.user_id = p_user_id AND p.is_default ORDER BY p.created_at, p.id LIMIT 1;
   IF v_portfolio_id IS NULL THEN RAISE EXCEPTION 'default portfolio not found'; END IF;
   RETURN public.save_trade_plan(
     p_user_id, v_portfolio_id, p_id, p_symbol, p_status, p_source,
@@ -884,8 +884,8 @@ AS $$
 DECLARE
   v_portfolio_id UUID;
 BEGIN
-  SELECT id INTO v_portfolio_id FROM public.portfolios
-  WHERE user_id = p_user_id AND is_default ORDER BY created_at, id LIMIT 1;
+  SELECT p.id INTO v_portfolio_id FROM public.portfolios AS p
+  WHERE p.user_id = p_user_id AND p.is_default ORDER BY p.created_at, p.id LIMIT 1;
   IF v_portfolio_id IS NULL THEN RETURN; END IF;
   RETURN QUERY
   SELECT * FROM public.get_decrypted_trade_plans(p_user_id, v_portfolio_id, p_enc_key);
@@ -947,8 +947,8 @@ AS $$
 DECLARE
   v_portfolio_id UUID;
 BEGIN
-  SELECT id INTO v_portfolio_id FROM public.portfolios
-  WHERE user_id = p_user_id AND is_default ORDER BY created_at, id LIMIT 1;
+  SELECT p.id INTO v_portfolio_id FROM public.portfolios AS p
+  WHERE p.user_id = p_user_id AND p.is_default ORDER BY p.created_at, p.id LIMIT 1;
   IF v_portfolio_id IS NULL THEN RAISE EXCEPTION 'default portfolio not found'; END IF;
   PERFORM public.save_latest_manual_analysis(
     p_user_id, v_portfolio_id, p_symbol, p_result, p_analysed_at
@@ -976,6 +976,7 @@ RETURNS TABLE (
   is_correct BOOLEAN
 )
 LANGUAGE plpgsql
+SET search_path = pg_catalog
 AS $$
 BEGIN
   RETURN QUERY
@@ -1025,12 +1026,13 @@ RETURNS TABLE (
   is_correct BOOLEAN
 )
 LANGUAGE plpgsql
+SET search_path = pg_catalog
 AS $$
 DECLARE
   v_portfolio_id UUID;
 BEGIN
-  SELECT id INTO v_portfolio_id FROM public.portfolios
-  WHERE user_id = p_user_id AND is_default ORDER BY created_at, id LIMIT 1;
+  SELECT p.id INTO v_portfolio_id FROM public.portfolios AS p
+  WHERE p.user_id = p_user_id AND p.is_default ORDER BY p.created_at, p.id LIMIT 1;
   IF v_portfolio_id IS NULL THEN RETURN; END IF;
   RETURN QUERY SELECT * FROM public.get_track_record(p_user_id, v_portfolio_id, p_days);
 END;

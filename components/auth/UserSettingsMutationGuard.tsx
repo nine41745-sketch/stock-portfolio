@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { STALE_ANALYSIS_MESSAGE } from '@/lib/analysis-freshness'
 
 interface FreshnessResponse {
@@ -26,6 +27,7 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
  * - stale AI state remains synchronized after holdings/cash/Analyze changes
  */
 export default function UserSettingsMutationGuard() {
+  const pathname = usePathname()
   const [staleSymbols, setStaleSymbols] = useState<string[]>([])
   const [financialReadError, setFinancialReadError] = useState<string | null>(null)
 
@@ -44,6 +46,7 @@ export default function UserSettingsMutationGuard() {
   }, [applyFreshnessPayload])
 
   useEffect(() => {
+    if (pathname === '/imports' || pathname.startsWith('/imports/')) return
     const originalFetch = window.fetch.bind(window)
     void refreshFreshness(originalFetch)
 
@@ -129,7 +132,7 @@ export default function UserSettingsMutationGuard() {
     return () => {
       if (window.fetch === guardedFetch) window.fetch = originalFetch
     }
-  }, [applyFreshnessPayload, refreshFreshness])
+  }, [applyFreshnessPayload, pathname, refreshFreshness])
 
   if (!staleSymbols.length && !financialReadError) return null
 

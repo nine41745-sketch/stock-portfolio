@@ -144,3 +144,12 @@
 [data-theme="light"] .hover\:bg-gray-800:hover { background-color: #e2e8f0 !important; }
 [data-theme="light"] .hover\:bg-gray-900:hover { background-color: #f1f5f9 !important; }
 [data-theme="light"] .hover\:text-white:hover { color: #0f172a !important; }
+
+/* Import Preview: visible keyboard focus without changing other feature themes. */
+.import-preview :is(button, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 3px;
+}
+[data-theme="light"] .import-preview :is(button, input, textarea, [tabindex]):focus-visible {
+  outline-color: #1d4ed8;
+}
