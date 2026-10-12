@@ -1,0 +1,217 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import fs from 'node:fs'
+import ts from 'typescript'
+
+function load(file, mocks = {}) {
+  const compiled = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+  const loaded = { exports: {} }
+  new Function('require', 'module', 'exports', compiled)(name => {
+    if (!(name in mocks)) throw new Error(`Unexpected dependency ${name}`)
+    return mocks[name]
+  }, loaded, loaded.exports)
+  return loaded.exports
+}
+const dca = load('lib/smart-dca.ts')
+const dividend = load('lib/dividend-intelligence.ts')
+const parameters = { budget: 100, cash_reserve: 0, max_position_pct: 30, fee_per_order: 0 }
+const positions = [{ symbol: 'AAA', shares: 200, price: 1 }, { symbol: 'BBB', shares: 100, price: 1 }]
+const targets = [{ asset_key: 'AAA', target_pct: 40 }, { asset_key: 'BBB', target_pct: 40 }, { asset_key: 'DIME', target_pct: 20 }]
+
+test('DCA spends existing DIME, preserves cash target and does not add budget to total', () => {
+  const plan = dca.calculateDcaPlan(positions, targets, 700, parameters)
+  assert.equal(plan.status, 'READY')
+  assert.equal(plan.portfolio_value, 1000)
+  assert.equal(plan.effective_reserve, 200)
+  assert.equal(plan.invested, 100)
+  assert.equal(plan.remaining_dime, 600)
+  assert.deepEqual(plan.rows.map(r => r.amount), [33.33, 66.67])
+})
+test('DCA enforces cash reserve, fee budget, gaps and concentration after fees', () => {
+  const plan = dca.calculateDcaPlan(positions, targets, 700, { ...parameters, budget: 900, cash_reserve: 500, fee_per_order: 2 })
+  assert.equal(plan.available_budget, 200)
+  assert.ok(plan.invested + plan.fees <= 200)
+  assert.ok(plan.remaining_dime >= 500)
+  assert.ok(plan.rows.every(r => r.projected_pct <= 30))
+  assert.equal(plan.fees, 4)
+})
+test('DCA fails closed for missing/invalid prices, missing DIME and malformed targets', () => {
+  for (const [p, t, cash] of [
+    [[{ ...positions[0], price: null }, positions[1]], targets, 700],
+    [positions, targets, null], [positions, [], 700],
+    [positions, [...targets, targets[0]], 700],
+    [[{ ...positions[0], shares: NaN }, positions[1]], targets, 700],
+    [positions, [{ asset_key: 'AAA', target_pct: 99 }], 700],
+  ]) {
+    const result = dca.calculateDcaPlan(p, t, cash, parameters)
+    assert.equal(result.status, 'BLOCKED'); assert.equal(result.rows.length, 0)
+  }
+  const newTarget = [{ asset_key: 'CCC', target_pct: 80 }, { asset_key: 'DIME', target_pct: 20 }]
+  assert.equal(dca.calculateDcaPlan(positions, newTarget, 700, parameters).status, 'BLOCKED')
+})
+test('DCA blocks exhausted cash and overweight-only portfolios; validates input boundaries', () => {
+  assert.equal(dca.calculateDcaPlan(positions, targets, 700, { ...parameters, cash_reserve: 700 }).status, 'BLOCKED')
+  assert.equal(dca.calculateDcaPlan(positions, targets, 700, { ...parameters, budget: 0 }).status, 'BLOCKED')
+  const overweight = [{ symbol: 'AAA', shares: 900, price: 1 }]
+  assert.equal(dca.calculateDcaPlan(overweight, [{ asset_key: 'AAA', target_pct: 100 }], 100, parameters).status, 'BLOCKED')
+  for (const value of [-1, NaN, Infinity, 0.001, 1_000_000_001]) assert.throws(() => dca.parseDcaParameters({ ...parameters, budget: value }))
+  for (const value of [0, 30.1, NaN, true, null]) assert.throws(() => dca.parseDcaParameters({ ...parameters, max_position_pct: value }))
+})
+test('DCA is order-independent and preserves money bounds across varied fractional prices', () => {
+  for (let i = 1; i <= 200; i++) {
+    const p = [{ symbol: 'AAA', shares: 0.2, price: 9.17 + i / 3 }, { symbol: 'BBB', shares: 0.4, price: 13.27 + i / 7 }]
+    const cash = 100 + i
+    const args = { ...parameters, budget: i / 10, fee_per_order: 0.01, cash_reserve: i / 20 }
+    const result = dca.calculateDcaPlan(p, targets, cash, args)
+    assert.deepEqual(result, dca.calculateDcaPlan([...p].reverse(), [...targets].reverse(), cash, args))
+    assert.ok(result.invested + result.fees <= args.budget + 1e-8)
+    assert.ok(result.remaining_dime >= args.cash_reserve - 1e-8)
+    assert.ok(result.rows.every(r => r.projected_pct <= 30 + 1e-8 && r.amount > 0 && r.shares > 0))
+  }
+})
+const div = (id, symbol, amount, trade_date = '2026-10-01') => ({ id, symbol, amount, trade_date, transaction_type: 'DIVIDEND' })
+test('Dividends include recorded cash only, sold stocks and inclusive dates', () => {
+  const rows = [div('1', 'AAA', 2, '2026-01-01'), div('2', 'AAA', 3), div('3', 'SOLD', 4, '2026-12-31'), { ...div('4', 'AAA', 99), transaction_type: 'DEPOSIT' }, div('5', 'AAA', 8, '2025-12-31')]
+  const summary = dividend.summarizeDividends(rows, '2026-01-01', '2026-12-31')
+  assert.equal(summary.total, 9); assert.equal(summary.count, 3)
+  assert.deepEqual(summary.by_symbol, [{ symbol: 'AAA', amount: 5, count: 2 }, { symbol: 'SOLD', amount: 4, count: 1 }])
+  assert.equal(summary.by_month.length, 3); assert.equal(summary.forecast, null)
+})
+test('Dividends reject bad dates/amounts and retain legitimate same-value payments', () => {
+  const summary = dividend.summarizeDividends([div('1', 'AAA', 0.004), div('2', 'AAA', 0.004), div('2', 'AAA', 0.004), div('3', 'AAA', NaN), div('4', 'AAA', -1), div('5', 'AAA', 1, '2026-02-30')], '2026-01-01', '2026-12-31')
+  assert.equal(summary.total, 0.01); assert.equal(summary.count, 2); assert.equal(summary.invalid_rows, 3)
+  for (const range of [['2026-02-30', '2026-10-01'], ['2026/01/01', '2026-10-01'], ['2026-10-02', '2026-10-01']]) assert.throws(() => dividend.parseDividendRange(...range))
+  assert.equal(dividend.summarizeDividends([], '2026-01-01', '2026-12-31').total, 0)
+})
+
+function accessHarness({ signedIn = true, pin = true, selected, expected, portfolios = [{ id: 'p1', name: 'One', is_default: true }] } = {}) {
+  let reads = 0
+  const supabase = {
+    auth: { getUser: async () => ({ data: { user: signedIn ? { id: 'u1' } : null } }), getSession: async () => ({ data: { session: { access_token: 'synthetic-session' } } }) },
+    from: table => {
+      reads++; assert.equal(table, 'portfolios')
+      return { select: () => ({ eq: (key, value) => { assert.equal(key, 'user_id'); assert.equal(value, 'u1'); return { order: async () => ({ data: portfolios, error: null }) } } }) }
+    },
+  }
+  const accessModule = load('lib/phase-a-context.ts', {
+    '@/lib/supabase/server': { createClient: async () => supabase },
+    'next/headers': { cookies: async () => ({ get: key => ({ value: key === 'portfolio-cookie' ? selected : 'synthetic-pin' }) }) },
+    '@/lib/portfolio-context': { ACTIVE_PORTFOLIO_COOKIE: 'portfolio-cookie' },
+    '@/lib/pin-session': { PIN_SESSION_COOKIE_NAME: 'pin-cookie', getSupabaseSessionId: () => 'session', verifyPinSessionValue: async (_cookie, uid, sid) => { assert.equal(uid, 'u1'); assert.equal(sid, 'session'); return pin } },
+  })
+  return { module: accessModule, reads: () => reads, resolve: () => accessModule.requirePhaseAPortfolio(expected) }
+}
+test('Read-only context rejects Auth/PIN before portfolio reads', async () => {
+  for (const options of [{ signedIn: false }, { pin: false }]) {
+    const h = accessHarness(options)
+    await assert.rejects(h.resolve(), error => error.status === 401)
+    assert.equal(h.reads(), 0)
+  }
+})
+test('Read-only context never creates portfolios; rejects stale/foreign targets', async () => {
+  for (const options of [{ portfolios: [] }, { selected: 'foreign' }, { expected: 'p2' }]) await assert.rejects(accessHarness(options).resolve(), error => error.status === 409)
+  assert.equal((await accessHarness().resolve()).portfolioId, 'p1')
+})
+
+function readQuery(table, data, calls, error = null) {
+  const query = { select: () => query, eq: (k, v) => { calls.push([table, k, v]); return query }, limit: () => query, maybeSingle: async () => ({ data, error }), then: (resolve, reject) => Promise.resolve({ data, error }).then(resolve, reject) }
+  return query
+}
+test('DCA POST reloads scoped server data; ignores forged client balance and uses bounded quotes', async () => {
+  const calls = []
+  const supabase = { from: table => readQuery(table, { holdings: [{ symbol: 'AAA', shares: 200 }, { symbol: 'BBB', shares: 100 }], user_settings: { dime_balance: 700 }, portfolio_allocation_targets: targets }[table], calls) }
+  const h = accessHarness()
+  const route = load('app/api/smart-dca/route.ts', {
+    '@/lib/phase-a-context': { ...h.module, requirePhaseAPortfolio: async id => { assert.equal(id, 'p1'); return { supabase, userId: 'u1', portfolioId: 'p1', portfolioName: 'One' } } },
+    '@/lib/smart-dca': dca,
+    '@/lib/finnhub': { getQuote: async () => ({ c: 1, t: Math.floor(Date.now() / 1000) }) },
+  })
+  const response = await route.POST(new Request('https://example.test/api/smart-dca', { method: 'POST', body: JSON.stringify({ ...parameters, portfolio_id: 'p1', dime_balance: 999999, positions: [] }) }))
+  assert.equal(response.status, 200)
+  const payload = await response.json()
+  assert.equal(payload.plan.portfolio_value, 1000); assert.equal(payload.dime_balance, 700)
+  for (const table of ['holdings', 'user_settings', 'portfolio_allocation_targets']) {
+    assert.ok(calls.some(c => c[0] === table && c[1] === 'user_id' && c[2] === 'u1'))
+    assert.ok(calls.some(c => c[0] === table && c[1] === 'portfolio_id' && c[2] === 'p1'))
+  }
+  assert.equal((await route.POST(new Request('https://example.test', { method: 'POST', body: '[]' }))).status, 400)
+})
+test('DCA API marks stale and future quotes unavailable and blocks an incomplete valuation', async () => {
+  const h = accessHarness()
+  for (const t of [0, Math.floor(Date.now() / 1000) + 3600]) {
+    const route = load('app/api/smart-dca/route.ts', {
+      '@/lib/phase-a-context': { ...h.module, requirePhaseAPortfolio: async () => ({ supabase: { from: table => readQuery(table, { holdings: [{ symbol: 'AAA', shares: 1 }], user_settings: { dime_balance: 700 }, portfolio_allocation_targets: targets }[table], []) }, userId: 'u1', portfolioId: 'p1', portfolioName: 'One' }) },
+      '@/lib/smart-dca': dca, '@/lib/finnhub': { getQuote: async () => ({ c: 100, t }) },
+    })
+    const result = await route.POST(new Request('https://example.test', { method: 'POST', body: JSON.stringify({ ...parameters, portfolio_id: 'p1' }) }))
+    assert.equal((await result.json()).plan.status, 'BLOCKED')
+  }
+})
+test('Dividend API scopes service RPC, pages results and never calls a market provider', async () => {
+  const h = accessHarness()
+  let pages = 0
+  const route = load('app/api/dividend-intelligence/route.ts', {
+    '@/lib/phase-a-context': { ...h.module, requirePhaseAPortfolio: async id => { assert.equal(id, 'p1'); return { userId: 'u1', portfolioId: 'p1', portfolioName: 'One' } } },
+    '@/lib/dividend-intelligence': dividend,
+    '@/lib/supabase/server': { createServiceClient: () => ({ rpc: (name, args) => {
+      assert.equal(name, 'get_decrypted_portfolio_transactions'); assert.equal(args.p_user_id, 'u1'); assert.equal(args.p_portfolio_id, 'p1')
+      const q = { eq: (key, value) => { assert.equal(key, 'transaction_type'); assert.equal(value, 'DIVIDEND'); return q }, gte: () => q, lte: () => q, range: async offset => { pages++; return { data: offset === 0 ? Array.from({ length: 500 }, (_, i) => div(String(i), 'AAA', 1)) : [div('500', 'SOLD', 2)], error: null } } }; return q
+    } }) },
+  })
+  const response = await route.GET(new Request('https://example.test/api/dividend-intelligence?portfolio_id=p1&from=2026-01-01&to=2026-12-31'))
+  assert.equal(response.status, 200)
+  const payload = await response.json()
+  assert.equal(payload.total, 502); assert.equal(payload.count, 501); assert.equal(pages, 2)
+  assert.equal((await route.GET(new Request('https://example.test?from=invalid'))).status, 400)
+})
+test('API authorization failures do not reach market or financial queries', async () => {
+  const h = accessHarness()
+  const denied = { ...h.module, requirePhaseAPortfolio: async () => { throw new h.module.PhaseAError('PIN required', 401) } }
+  const dcaRoute = load('app/api/smart-dca/route.ts', { '@/lib/phase-a-context': denied, '@/lib/smart-dca': dca, '@/lib/finnhub': { getQuote: () => { throw new Error('must not call') } } })
+  assert.equal((await dcaRoute.GET()).status, 401)
+  const divRoute = load('app/api/dividend-intelligence/route.ts', { '@/lib/phase-a-context': denied, '@/lib/dividend-intelligence': dividend, '@/lib/supabase/server': { createServiceClient: () => { throw new Error('must not call') } } })
+  assert.equal((await divRoute.GET(new Request('https://example.test'))).status, 401)
+})
+
+test('DCA read-only POST rejects cross-origin and oversized requests without loading financial data', async () => {
+  const h = accessHarness()
+  const route = load('app/api/smart-dca/route.ts', {
+    '@/lib/phase-a-context': { ...h.module, requirePhaseAPortfolio: () => { throw new Error('must not load') } },
+    '@/lib/smart-dca': dca, '@/lib/finnhub': { getQuote: () => { throw new Error('must not load') } },
+  })
+  assert.equal((await route.POST(new Request('https://example.test/api/smart-dca', { method: 'POST', headers: { origin: 'https://foreign.test' }, body: '{}' }))).status, 403)
+  assert.equal((await route.POST(new Request('https://example.test/api/smart-dca', { method: 'POST', body: 'x'.repeat(4097) }))).status, 413)
+})
+
+test('DCA quote concurrency stays bounded and data errors are not interpreted as zero balances', async () => {
+  const h = accessHarness()
+  let active = 0, peak = 0
+  const rows = Array.from({ length: 9 }, (_, i) => ({ symbol: `S${i}`, shares: 1 }))
+  const fake = table => readQuery(table, { holdings: rows, user_settings: { dime_balance: 700 }, portfolio_allocation_targets: [{ asset_key: 'DIME', target_pct: 100 }] }[table], [])
+  const route = load('app/api/smart-dca/route.ts', {
+    '@/lib/phase-a-context': { ...h.module, requirePhaseAPortfolio: async () => ({ supabase: { from: fake }, userId: 'u1', portfolioId: 'p1', portfolioName: 'One' }) },
+    '@/lib/smart-dca': dca,
+    '@/lib/finnhub': { getQuote: async () => { active++; peak = Math.max(peak, active); await new Promise(resolve => setTimeout(resolve, 1)); active--; return { c: 1, t: Math.floor(Date.now() / 1000) } } },
+  })
+  assert.equal((await route.GET()).status, 200); assert.equal(peak, 4)
+  const failureRoute = load('app/api/smart-dca/route.ts', {
+    '@/lib/phase-a-context': { ...h.module, requirePhaseAPortfolio: async () => ({ supabase: { from: table => readQuery(table, null, [], { message: 'synthetic private error' }) }, userId: 'u1', portfolioId: 'p1', portfolioName: 'One' }) },
+    '@/lib/smart-dca': dca, '@/lib/finnhub': { getQuote: () => { throw new Error('must not quote on read failure') } },
+  })
+  const response = await failureRoute.GET()
+  assert.equal(response.status, 503); assert.doesNotMatch(await response.text(), /synthetic private/)
+})
+
+test('Dividend API returns an error rather than a zero/partial total when a later page fails', async () => {
+  const h = accessHarness()
+  const route = load('app/api/dividend-intelligence/route.ts', {
+    '@/lib/phase-a-context': { ...h.module, requirePhaseAPortfolio: async () => ({ userId: 'u1', portfolioId: 'p1', portfolioName: 'One' }) },
+    '@/lib/dividend-intelligence': dividend,
+    '@/lib/supabase/server': { createServiceClient: () => ({ rpc: () => {
+      const q = { eq: () => q, gte: () => q, lte: () => q, range: async offset => offset === 0 ? { data: Array.from({ length: 500 }, (_, i) => div(String(i), 'AAA', 1)), error: null } : { data: null, error: { message: 'synthetic private error' } } }; return q
+    } }) },
+  })
+  const response = await route.GET(new Request('https://example.test?from=2026-01-01&to=2026-12-31'))
+  assert.equal(response.status, 503)
+  const body = await response.json(); assert.equal(body.total, undefined); assert.doesNotMatch(body.error, /synthetic private/)
+})
