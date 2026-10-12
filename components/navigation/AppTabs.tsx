@@ -12,6 +12,7 @@ const TABS = [
   { href: '/scanner', label: 'สแกนหุ้น', icon: '🔎' },
   { href: '/intelligence', label: 'วิเคราะห์ตลาด', icon: '🧠' },
   { href: '/transactions', label: 'ธุรกรรม', icon: '🧾' },
+  { href: '/imports', label: 'Import Preview', icon: '📥' },
   { href: '/performance', label: 'ผลงาน', icon: '📈' },
   { href: '/trade-plan', label: 'แผน', icon: '🎯' },
   { href: '/risk', label: 'ความเสี่ยง', icon: '🛡️' },

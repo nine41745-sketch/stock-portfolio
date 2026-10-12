@@ -36,7 +36,7 @@ DROP FUNCTION IF EXISTS public.upsert_holding(UUID, TEXT, NUMERIC, NUMERIC, TEXT
 DROP FUNCTION IF EXISTS public.get_decrypted_holdings(UUID, TEXT);
 
 -- ---- (2) upsert_holding เวอร์ชันเดียว รองรับ cost_basis = NULL + notes 3-state semantics ----
-CREATE FUNCTION public.upsert_holding(
+CREATE OR REPLACE FUNCTION public.upsert_holding(
   p_user_id        UUID,
   p_symbol         TEXT,
   p_shares         NUMERIC,
@@ -77,7 +77,7 @@ END;
 $$;
 
 -- ---- (3) get_decrypted_holdings ----
-CREATE FUNCTION public.get_decrypted_holdings(
+CREATE OR REPLACE FUNCTION public.get_decrypted_holdings(
   p_user_id UUID,
   p_enc_key TEXT
 )
@@ -159,3 +159,7 @@ CREATE TRIGGER user_settings_updated_at
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
 NOTIFY pgrst, 'reload schema';
+
+-- This trigger function only uses PostgreSQL built-ins and NEW; keep its
+-- function path explicit without putting application schemas first.
+ALTER FUNCTION public.update_updated_at() SET search_path = pg_catalog;
