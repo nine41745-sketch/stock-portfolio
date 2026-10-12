@@ -70,6 +70,135 @@ test('DCA is order-independent and preserves money bounds across varied fraction
   }
 })
 const div = (id, symbol, amount, trade_date = '2026-10-01') => ({ id, symbol, amount, trade_date, transaction_type: 'DIVIDEND' })
+
+test('DCA blocks fees pushing an unpurchased holding above cap, including holdings outside targets', () => {
+  const ts = [{ asset_key: 'AAA', target_pct: 30 }, { asset_key: 'BBB', target_pct: 30 }, { asset_key: 'CCC', target_pct: 20 }, { asset_key: 'DIME', target_pct: 20 }]
+  const ps = [{ symbol: 'AAA', shares: 300, price: 1 }, { symbol: 'BBB', shares: 0, price: 1 }, { symbol: 'CCC', shares: 0, price: 1 }]
+  for (const existingSymbol of ['AAA', 'OUTSIDE']) {
+    const input = [{ ...ps[0], symbol: existingSymbol }, ...ps.slice(1), ...(existingSymbol === 'OUTSIDE' ? [{ symbol: 'AAA', shares: 0, price: 1 }] : [])]
+    const before = structuredClone(input)
+    const plan = dca.calculateDcaPlan(input, ts, 700, { ...parameters, fee_per_order: 1 })
+    assert.equal(plan.status, 'BLOCKED'); assert.equal(plan.rows.length, 0)
+    assert.equal(plan.invested, 0); assert.equal(plan.fees, 0); assert.equal(plan.remaining_dime, 700)
+    assert.match(plan.warnings.join(' '), new RegExp(existingSymbol))
+    assert.deepEqual(input, before)
+    assert.equal(dca.calculateDcaPlan(input, ts, 700, parameters).status, 'READY')
+  }
+})
+
+test('DCA concentration boundary uses actual fees and all holdings', () => {
+  const ts = [{ asset_key: 'BBB', target_pct: 60 }, { asset_key: 'DIME', target_pct: 40 }]
+  for (const value of [299.69, 299.70, 299.71]) {
+    const ps = [{ symbol: 'EXISTING', shares: value, price: 1 }, { symbol: 'BBB', shares: 0, price: 1 }]
+    const cash = 1000 - value
+    const plan = dca.calculateDcaPlan(ps, ts, cash, { ...parameters, fee_per_order: 1 })
+    assert.equal(plan.status, value > 299.70 ? 'BLOCKED' : 'READY')
+    assert.ok(plan.invested + plan.fees <= parameters.budget)
+    assert.ok(plan.remaining_dime >= plan.effective_reserve)
+    if (plan.status === 'READY') {
+      const final = 1000 - plan.fees
+      for (const p of ps) {
+        const bought = plan.rows.find(r => r.symbol === p.symbol)?.amount ?? 0
+        assert.ok(p.shares * p.price + bought <= final * 0.30 + 1e-8)
+      }
+    }
+  }
+})
+
+test('DCA uses actual rather than reserved fees when tiny orders are omitted', () => {
+  const plan = dca.calculateDcaPlan(
+    [{ symbol: 'EXISTING', shares: 299.7, price: 1 }, { symbol: 'BBB', shares: 0, price: 1 }, { symbol: 'CCC', shares: 0, price: 1e9 }],
+    [{ asset_key: 'BBB', target_pct: 30 }, { asset_key: 'CCC', target_pct: 30 }, { asset_key: 'DIME', target_pct: 40 }],
+    700.3, { ...parameters, fee_per_order: 1 },
+  )
+  assert.equal(plan.status, 'READY'); assert.equal(plan.rows.length, 1); assert.equal(plan.fees, 1)
+  assert.ok(plan.remaining_dime >= 400)
+})
+
+function dividendResponseHarness(responseFactory) {
+  const h = accessHarness()
+  let calls = 0
+  const orders = []
+  const route = load('app/api/dividend-intelligence/route.ts', {
+    '@/lib/phase-a-context': { ...h.module, requirePhaseAPortfolio: async () => ({ userId: 'u1', portfolioId: 'p1', portfolioName: 'One' }) },
+    '@/lib/dividend-intelligence': dividend,
+    '@/lib/supabase/server': { createServiceClient: () => ({ rpc: (name, args, options) => {
+      calls++; assert.equal(name, 'get_decrypted_portfolio_transactions')
+      assert.equal(args.p_user_id, 'u1'); assert.equal(args.p_portfolio_id, 'p1'); assert.deepEqual(options, { count: 'exact' })
+      const q = {
+        eq: (k, v) => { assert.equal(k, 'transaction_type'); assert.equal(v, 'DIVIDEND'); return q },
+        gte: () => q, lte: () => q,
+        order: (k, options) => { orders.push(k); assert.deepEqual(options, { ascending: false }); return q },
+        range: async (from, to) => { assert.equal(from, 0); assert.equal(to, 10000); return responseFactory() },
+      }
+      return q
+    } }) },
+  })
+  return { read: () => route.GET(new Request('https://example.test?from=2026-01-01&to=2026-12-31')), calls: () => calls, orders }
+}
+
+for (const size of [0, 1, 499, 500, 501, 10000, 10001]) {
+  test(`Dividend response boundary: ${size} records`, async () => {
+    const rows = Array.from({ length: size }, (_, i) => div(String(i), 'AAA', 1))
+    const h = dividendResponseHarness(() => ({ data: rows, count: size, error: null }))
+    const response = await h.read()
+    const body = await response.json()
+    assert.equal(response.status, size > 10000 ? 409 : 200)
+    if (size > 10000) assert.equal(body.total, undefined)
+    else { assert.equal(body.total, size); assert.equal(body.count, size) }
+    assert.equal(h.calls(), 1); assert.deepEqual(h.orders, ['trade_date', 'created_at', 'id'])
+  })
+}
+
+test('Dividend response rejects row caps, missing/bad counts and duplicate IDs without totals', async () => {
+  const rows = Array.from({ length: 501 }, (_, i) => div(String(i), 'AAA', 1))
+  for (const result of [
+    { data: rows.slice(0, 499), count: 501 }, { data: rows.slice(0, 1), count: 501 },
+    { data: rows, count: null }, { data: rows, count: undefined }, { data: rows, count: NaN },
+    { data: rows, count: -1 }, { data: rows, count: 501.5 },
+    { data: [rows[0], rows[0]], count: 2 }, { data: [{ ...rows[0], id: '' }], count: 1 },
+    { data: [{ ...rows[0], id: 1 }], count: 1 },
+    { data: [], count: 1 }, { data: rows, count: 500 },
+  ]) {
+    const h = dividendResponseHarness(() => ({ ...result, error: null }))
+    const response = await h.read()
+    assert.equal(response.status, 503); assert.equal((await response.json()).total, undefined)
+    assert.equal(h.calls(), 1)
+  }
+})
+
+test('Concurrent insert/delete cannot mix independently paginated responses', async () => {
+  for (const mutation of ['insert', 'delete']) {
+    const source = Array.from({ length: 501 }, (_, i) => div(String(i), 'AAA', 1))
+    const h = dividendResponseHarness(async () => {
+      const snapshot = structuredClone(source)
+      await Promise.resolve()
+      if (mutation === 'insert') source.unshift(div('new', 'AAA', 9))
+      else source.splice(0, 1)
+      return { data: snapshot, count: snapshot.length, error: null }
+    })
+    const response = await h.read()
+    assert.equal(response.status, 200)
+    const body = await response.json(); assert.equal(body.total, 501); assert.equal(body.count, 501)
+    assert.equal(h.calls(), 1)
+  }
+})
+
+test('Dividend rejects an inconsistent count during a concurrent change', async () => {
+  for (const count of [500, 502]) {
+    const h = dividendResponseHarness(() => ({ data: Array.from({ length: 501 }, (_, i) => div(String(i), 'AAA', 1)), count, error: null }))
+    const response = await h.read()
+    assert.equal(response.status, 503); assert.equal((await response.json()).total, undefined)
+  }
+})
+
+test('Large dividend sets truncated by the Data API never produce totals', async () => {
+  for (const [count, status] of [[10000, 503], [10001, 409]]) {
+    const h = dividendResponseHarness(() => ({ data: Array.from({ length: 1000 }, (_, i) => div(String(i), 'AAA', 1)), count, error: null }))
+    const response = await h.read()
+    assert.equal(response.status, status); assert.equal((await response.json()).total, undefined)
+  }
+})
 test('Dividends include recorded cash only, sold stocks and inclusive dates', () => {
   const rows = [div('1', 'AAA', 2, '2026-01-01'), div('2', 'AAA', 3), div('3', 'SOLD', 4, '2026-12-31'), { ...div('4', 'AAA', 99), transaction_type: 'DEPOSIT' }, div('5', 'AAA', 8, '2025-12-31')]
   const summary = dividend.summarizeDividends(rows, '2026-01-01', '2026-12-31')
@@ -147,21 +276,22 @@ test('DCA API marks stale and future quotes unavailable and blocks an incomplete
     assert.equal((await result.json()).plan.status, 'BLOCKED')
   }
 })
-test('Dividend API scopes service RPC, pages results and never calls a market provider', async () => {
+test('Dividend API scopes one complete RPC response and never calls a market provider', async () => {
   const h = accessHarness()
   let pages = 0
   const route = load('app/api/dividend-intelligence/route.ts', {
     '@/lib/phase-a-context': { ...h.module, requirePhaseAPortfolio: async id => { assert.equal(id, 'p1'); return { userId: 'u1', portfolioId: 'p1', portfolioName: 'One' } } },
     '@/lib/dividend-intelligence': dividend,
-    '@/lib/supabase/server': { createServiceClient: () => ({ rpc: (name, args) => {
+    '@/lib/supabase/server': { createServiceClient: () => ({ rpc: (name, args, options) => {
       assert.equal(name, 'get_decrypted_portfolio_transactions'); assert.equal(args.p_user_id, 'u1'); assert.equal(args.p_portfolio_id, 'p1')
-      const q = { eq: (key, value) => { assert.equal(key, 'transaction_type'); assert.equal(value, 'DIVIDEND'); return q }, gte: () => q, lte: () => q, range: async offset => { pages++; return { data: offset === 0 ? Array.from({ length: 500 }, (_, i) => div(String(i), 'AAA', 1)) : [div('500', 'SOLD', 2)], error: null } } }; return q
+      assert.deepEqual(options, { count: 'exact' })
+      const q = { eq: (key, value) => { assert.equal(key, 'transaction_type'); assert.equal(value, 'DIVIDEND'); return q }, gte: () => q, lte: () => q, order: () => q, range: async (from, to) => { assert.equal(from, 0); assert.equal(to, 10000); pages++; return { data: [...Array.from({ length: 500 }, (_, i) => div(String(i), 'AAA', 1)), div('500', 'SOLD', 2)], count: 501, error: null } } }; return q
     } }) },
   })
   const response = await route.GET(new Request('https://example.test/api/dividend-intelligence?portfolio_id=p1&from=2026-01-01&to=2026-12-31'))
   assert.equal(response.status, 200)
   const payload = await response.json()
-  assert.equal(payload.total, 502); assert.equal(payload.count, 501); assert.equal(pages, 2)
+  assert.equal(payload.total, 502); assert.equal(payload.count, 501); assert.equal(pages, 1)
   assert.equal((await route.GET(new Request('https://example.test?from=invalid'))).status, 400)
 })
 test('API authorization failures do not reach market or financial queries', async () => {
@@ -202,13 +332,13 @@ test('DCA quote concurrency stays bounded and data errors are not interpreted as
   assert.equal(response.status, 503); assert.doesNotMatch(await response.text(), /synthetic private/)
 })
 
-test('Dividend API returns an error rather than a zero/partial total when a later page fails', async () => {
+test('Dividend API returns an error rather than a zero total when the RPC fails', async () => {
   const h = accessHarness()
   const route = load('app/api/dividend-intelligence/route.ts', {
     '@/lib/phase-a-context': { ...h.module, requirePhaseAPortfolio: async () => ({ userId: 'u1', portfolioId: 'p1', portfolioName: 'One' }) },
     '@/lib/dividend-intelligence': dividend,
     '@/lib/supabase/server': { createServiceClient: () => ({ rpc: () => {
-      const q = { eq: () => q, gte: () => q, lte: () => q, range: async offset => offset === 0 ? { data: Array.from({ length: 500 }, (_, i) => div(String(i), 'AAA', 1)), error: null } : { data: null, error: { message: 'synthetic private error' } } }; return q
+      const q = { eq: () => q, gte: () => q, lte: () => q, order: () => q, range: async () => ({ data: null, count: null, error: { message: 'synthetic private error' } }) }; return q
     } }) },
   })
   const response = await route.GET(new Request('https://example.test?from=2026-01-01&to=2026-12-31'))

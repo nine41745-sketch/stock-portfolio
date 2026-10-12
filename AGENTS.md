@@ -20,6 +20,17 @@ Require explicit approval before adding, changing or applying Database Migration
 
 Approval for one action does not authorize another. READ-ONLY instructions prohibit file/branch/commit/PR/configuration mutations and commands that modify local outputs.
 
+## Tool Selection and Approval Boundaries
+
+- Choose already-connected Tools, Plugins and Connectors automatically within the owner's approved task scope. Do not ask again for authorized read-only access.
+- Use GitHub and Code Review for source/PR/CI/security review; Vercel for deployment metadata/logs; Browser for UI/responsive/theme checks; Computer Use when normal tools cannot support the interaction; official Documentation/Web for current technical guidance.
+- Use Supabase for schema/RPC/RLS/database inspection only when that access is specifically approved and the target environment is verified. Tool availability is not proof of access or environment isolation.
+- Before a required login, new connection or expanded permission, inform the owner of the system, purpose, minimum access, Production/security/quota risks and official approval steps. Use the provided permission flow and wait for approval; never request passwords, tokens, secrets or credentials in chat.
+- Connecting a Plugin does not authorize modifying the system. Keep all existing scoped approvals and safety rules in this file.
+- Commit/push require approval within the current task. Merge, Production access/changes, deployments outside approved scope, Database/schema/data/migrations, Environment/Secrets/Cloud settings, GitHub/Vercel security settings, tags/releases and deletion require explicit scoped approval before acting.
+- Use the least resources needed; avoid unnecessary GitHub Actions runs and Vercel Hobby builds/Previews. Do not weaken security checks or change deployment policy to save quota.
+- Report unavailable tools or insufficient permissions and propose a safe alternative. Claim connection, execution or success only with inspected evidence.
+
 ## Security and setup
 
 - Never read, disclose or copy Production Secrets; never connect Production Database for development tests.

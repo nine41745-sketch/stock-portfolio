@@ -104,10 +104,18 @@ export function calculateDcaPlan(
   }
   const spent = base.rows.reduce((s, p) => s + cents(p.amount), 0)
   const actualFees = base.rows.length * fee
+  const finalValue = total - actualFees
+  const purchases = new Map(base.rows.map(row => [row.symbol, cents(row.amount)]))
+  const overCap = positions.filter(p => floorCents(p.shares * (p.price ?? 0)) + (purchases.get(p.symbol) ?? 0) > finalValue * params.max_position_pct / 100)
+  if (overCap.length) {
+    // Reject the entire proposal, including fees; no trades or balances change.
+    return { ...base, status: 'BLOCKED', rows: [], invested: 0, fees: 0, remaining_dime: dimeBalance,
+      warnings: [`แผนถูกระงับ: ${overCap.map(p => p.symbol).sort().join(', ')} เกินเพดานรายหุ้น ${params.max_position_pct}% หลังหักค่าธรรมเนียมจริง; ไม่สร้างแผนซื้อ`] }
+  }
   for (const row of base.rows) {
     const position = holdings.get(row.symbol)
     const current = floorCents((position?.shares ?? 0) * (position?.price ?? 0))
-    row.projected_pct = (current + cents(row.amount)) / (total - actualFees) * 100
+    row.projected_pct = (current + cents(row.amount)) / finalValue * 100
   }
   base.invested = spent / 100
   base.fees = actualFees / 100
