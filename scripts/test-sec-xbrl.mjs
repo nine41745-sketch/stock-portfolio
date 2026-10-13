@@ -99,12 +99,23 @@ assert.deepEqual(await sec.fetchSecJson('https://data.sec.gov/api/xbrl/companyfa
 assert.equal(calls.length, 1)
 assert.equal(calls[0].init.next.revalidate, 86400)
 assert.equal(calls[0].init.headers['User-Agent'], agent)
+assert.equal(calls[0].init.redirect, 'error', 'Do not follow redirects with a contact-bearing SEC User-Agent')
 assert.equal((await sec.fetchSecJson('http://example.com', agent, fetcher)).status, 'unavailable')
 assert.equal(calls.length, 1, 'Reject non-SEC destinations before fetch')
 for (const url of ['https://www.sec.gov/files/company_tickers_exchange.json', 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000001234.json']) {
   assert.equal((await sec.fetchSecJson(url, agent, fetcher)).status, 'available')
 }
 assert.equal(calls.length, 3, 'The exact SEC hosts are reachable through the allowlist')
+const redirectCalls = []
+const redirectResult = await sec.fetchSecJson('https://www.sec.gov/files/company_tickers_exchange.json', agent, async (url, init) => {
+  redirectCalls.push({ url, init })
+  assert.equal(init.redirect, 'error')
+  // Fetch in redirect:error mode rejects here rather than issuing a second request to Location.
+  throw new TypeError('redirect mode error')
+}, async () => {})
+assert.equal(redirectResult.status, 'provider_error')
+assert.equal(redirectCalls.length, 2, 'At most one bounded retry; no redirect target is requested')
+assert.ok(redirectCalls.every(({ url, init }) => sec.isAllowedSecUrl(url) && init.headers['User-Agent'] === agent))
 for (const [status, expected] of [[403, 'unavailable'], [404, 'missing']]) {
   let count = 0
   const answer = await sec.fetchSecJson('https://data.sec.gov/test', agent, async () => { count++; return response(status) })

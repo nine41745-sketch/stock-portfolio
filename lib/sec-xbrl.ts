@@ -95,6 +95,9 @@ export async function fetchSecJson(
     try {
       const response = await fetcher(url, {
         headers: { 'User-Agent': userAgent, Accept: 'application/json' },
+        // SEC does not require cross-host redirects for these JSON endpoints. Fail closed so the
+        // contact-bearing User-Agent can never be forwarded to an unapproved redirect target.
+        redirect: 'error',
         next: { revalidate: SEC_CACHE_SECONDS },
         signal: AbortSignal.timeout(Math.max(1, Math.min(SEC_REQUEST_TIMEOUT_MS, budget.timeoutMs ?? SEC_REQUEST_TIMEOUT_MS, remainingMs))),
       })
