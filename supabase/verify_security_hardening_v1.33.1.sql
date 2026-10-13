@@ -33,7 +33,8 @@ BEGIN
     WHERE a.grantee IN (
       (SELECT oid FROM pg_roles WHERE rolname = 'anon'),
       (SELECT oid FROM pg_roles WHERE rolname = 'authenticated'),
-      (SELECT oid FROM pg_roles WHERE rolname = 'authenticator')
+      (SELECT oid FROM pg_roles WHERE rolname = 'authenticator'),
+      (SELECT oid FROM pg_roles WHERE rolname = 'service_role')
     ) AND a.privilege_type = 'EXECUTE'
   ) THEN
     RAISE EXCEPTION 'a client-facing role retains a direct EXECUTE ACL on rls_auto_enable';
@@ -41,8 +42,9 @@ BEGIN
 
   IF has_function_privilege('anon', v_rls_fn, 'EXECUTE')
      OR has_function_privilege('authenticated', v_rls_fn, 'EXECUTE')
-     OR has_function_privilege('authenticator', v_rls_fn, 'EXECUTE') THEN
-    RAISE EXCEPTION 'a client-facing or PostgREST role still has EXECUTE on rls_auto_enable';
+     OR has_function_privilege('authenticator', v_rls_fn, 'EXECUTE')
+     OR has_function_privilege('service_role', v_rls_fn, 'EXECUTE') THEN
+    RAISE EXCEPTION 'a runtime or PostgREST role still has EXECUTE on rls_auto_enable';
   END IF;
 
   IF NOT EXISTS (

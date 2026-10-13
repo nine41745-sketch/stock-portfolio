@@ -39,14 +39,25 @@ registrations, change policies, or touch table data.
 3. Run `verify_security_hardening_v1.33.1.sql`. It checks event-trigger
    signature/security/ACL, confirms an enabled trigger still turns on RLS for
    a newly created `public` table, checks all active public triggers using
-   `update_updated_at()`, exercises timestamp behavior, and verifies rollback.
-4. Run the repository Auth/PIN, RPC/portfolio isolation, ledger, dividend and
+   `update_updated_at()`, and exercises timestamp behavior. Its final
+   transaction `ROLLBACK` only discards these probes; it does not run or test
+   `rollback_security_hardening_v1.33.1.sql`.
+4. In the same disposable database, run the actual rollback script with the
+   exact ACL and function-setting values captured in step 2, then rerun the
+   read-only snapshot and compare ACL/function-setting semantics with that
+   baseline. This is the rollback-migration test; a probe transaction's
+   `ROLLBACK` is not a substitute.
+5. Run the repository Auth/PIN, RPC/portfolio isolation, ledger, dividend and
    DCA regression suites using synthetic fixtures.
-5. Run the read-only snapshot again and compare the outputs. The migration
-   revokes PUBLIC, anon, authenticated, and authenticator access, while
-   preserving service_role's effective EXECUTE privilege if it existed before
-   the change and leaving other explicit internal-role ACLs untouched. It
-   constrains both function search paths to `pg_catalog`.
+6. Run the read-only snapshot again after migration and compare the outputs.
+   The migration revokes PUBLIC, anon, authenticated, authenticator, and
+   service_role access. The local synthetic baseline showed authenticator has
+   the `SET ROLE` membership option for service_role, so retaining that grant
+   would leave EXECUTE available after a role switch even though
+   `has_function_privilege('authenticator', ...)` is false before the switch.
+   The function owner and unrelated explicit internal role ACL entries are
+   left intact. The migration constrains both function search paths to
+   `pg_catalog`.
 
 The verification script wraps its probes in a transaction and ends with
 `ROLLBACK`; the probe table and temporary test rows are discarded.

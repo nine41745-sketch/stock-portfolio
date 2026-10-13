@@ -69,13 +69,15 @@ DECLARE
   v_fn OID := to_regprocedure('public.rls_auto_enable()');
 BEGIN
   IF v_rls_present THEN
-    EXECUTE format('ALTER FUNCTION public.rls_auto_enable() SET search_path = %L', v_rls_path);
+    PERFORM set_config('search_path', v_rls_path, TRUE);
+    ALTER FUNCTION public.rls_auto_enable() SET search_path FROM CURRENT;
   ELSE
     ALTER FUNCTION public.rls_auto_enable() RESET search_path;
   END IF;
 
   IF v_update_present THEN
-    EXECUTE format('ALTER FUNCTION public.update_updated_at() SET search_path = %L', v_update_path);
+    PERFORM set_config('search_path', v_update_path, TRUE);
+    ALTER FUNCTION public.update_updated_at() SET search_path FROM CURRENT;
   ELSE
     ALTER FUNCTION public.update_updated_at() RESET search_path;
   END IF;

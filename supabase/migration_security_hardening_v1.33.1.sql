@@ -8,7 +8,6 @@ DECLARE
   v_fn OID := to_regprocedure('public.rls_auto_enable()');
   v_update_fn OID := to_regprocedure('public.update_updated_at()');
   v_event_trigger_count INTEGER;
-  v_service_role_had_execute BOOLEAN;
 BEGIN
   IF v_fn IS NULL THEN
     RAISE EXCEPTION 'public.rls_auto_enable() is missing; refusing to silently skip the security fix';
@@ -45,21 +44,15 @@ BEGIN
     RAISE EXCEPTION 'the enabled ensure_rls event trigger does not reference public.rls_auto_enable()';
   END IF;
 
-  -- Preserve service_role's effective baseline access. It is a trusted backend
-  -- role and was observed with EXECUTE before the fix; the client roles below
-  -- are the excessive grants identified by the security review.
-  v_service_role_had_execute := has_function_privilege('service_role', v_fn, 'EXECUTE');
-
   -- The trigger manager invokes an event-trigger function. Client-facing SQL
   -- roles and the PostgREST authenticator do not need direct EXECUTE grants.
   -- The function owner retains its implicit privileges; no function body or
-  -- event-trigger registration is replaced. Keep service_role and other
-  -- internal-role ACLs intact; revoking PUBLIC also removes inherited access.
-  EXECUTE 'REVOKE ALL ON FUNCTION public.rls_auto_enable() FROM PUBLIC, anon, authenticated, authenticator';
-  IF v_service_role_had_execute
-     AND NOT has_function_privilege('service_role', v_fn, 'EXECUTE') THEN
-    EXECUTE 'GRANT EXECUTE ON FUNCTION public.rls_auto_enable() TO service_role';
-  END IF;
+  -- event-trigger registration is replaced. Local ACL inspection showed that
+  -- authenticator has the SET ROLE option for service_role, so preserving
+  -- service_role's EXECUTE grant would preserve that capability after a role
+  -- switch. No runtime application role needs to invoke an event-trigger
+  -- function directly.
+  EXECUTE 'REVOKE ALL ON FUNCTION public.rls_auto_enable() FROM PUBLIC, anon, authenticated, authenticator, service_role';
 END;
 $$;
 
