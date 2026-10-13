@@ -51,7 +51,7 @@ All portfolio-specific reads and recommendations must use the selected portfolio
 
 Each version needs its own scoped Development approval and acceptance review. Any schema migration, Cloud Apply, environment change, new Preview, or Production action requires its own approval even when listed here.
 
-v1.34.0 development note: The SEC XBRL adapter reads Annual GAAP Basic/Diluted EPS from 10-K with issuer, unit, period and filing evidence. SEC Live access requires a separately approved real identifying User-Agent. Ticker–CIK mapping alone does not prove common-stock share class, ADR ratio or split basis, so comparison and price scenarios remain unverified/suppressed until those inputs have independent evidence. This is development scope, not a released or production-validated capability.
+v1.34.0 development note: The SEC XBRL adapter reads Annual GAAP Basic/Diluted EPS from 10-K with issuer, unit, period and filing evidence. SEC Live access requires a separately approved real identifying User-Agent. Ticker–CIK mapping alone does not prove common-stock share class, ADR ratio or split basis, so comparison and price scenarios remain unverified/suppressed until those inputs have independent evidence. Requests are capped at four symbols, five unique URLs, ten attempts and a 12-second SEC deadline with per-invocation spacing/cache; Vercel serverless instances do not share a global rate limiter, so concurrent cold-cache bursts remain a live-access risk. This is development scope, not a released or production-validated capability.
 
 ## v1.35.0 legacy Watchlist migration plan
 

@@ -77,6 +77,19 @@ assert.equal(sec.secValuationGuard(sec.selectAnnualSecEps(facts([{ ...current, v
 assert.equal(sec.validSecUserAgent(undefined), false)
 assert.equal(sec.validSecUserAgent('MyApp contact@example.com'), false)
 assert.equal(sec.validSecUserAgent('Portfolio Research (owner@private.tld)'), true)
+for (const url of [
+  'https://www.sec.gov/files/company_tickers_exchange.json',
+  'https://data.sec.gov/api/xbrl/companyfacts/CIK0000001234.json',
+]) assert.equal(sec.isAllowedSecUrl(url), true, `${url} is an explicitly allowed SEC host`)
+for (const url of [
+  'http://www.sec.gov/files/company_tickers_exchange.json',
+  'https://sec.gov/files/company_tickers_exchange.json',
+  'https://www.sec.gov.evil.example/data',
+  'https://evil-sec.gov/data',
+  'https://www.sec.gov@evil.example/data',
+  'https://www.sec.gov:444/data',
+  'https://example.com/data',
+]) assert.equal(sec.isAllowedSecUrl(url), false, `${url} must be rejected`)
 const agent = 'Portfolio Research (owner@private.tld)'
 const calls = []
 const response = (status, body = {}) => ({ ok: status >= 200 && status < 300, status,
@@ -88,6 +101,10 @@ assert.equal(calls[0].init.next.revalidate, 86400)
 assert.equal(calls[0].init.headers['User-Agent'], agent)
 assert.equal((await sec.fetchSecJson('http://example.com', agent, fetcher)).status, 'unavailable')
 assert.equal(calls.length, 1, 'Reject non-SEC destinations before fetch')
+for (const url of ['https://www.sec.gov/files/company_tickers_exchange.json', 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000001234.json']) {
+  assert.equal((await sec.fetchSecJson(url, agent, fetcher)).status, 'available')
+}
+assert.equal(calls.length, 3, 'The exact SEC hosts are reachable through the allowlist')
 for (const [status, expected] of [[403, 'unavailable'], [404, 'missing']]) {
   let count = 0
   const answer = await sec.fetchSecJson('https://data.sec.gov/test', agent, async () => { count++; return response(status) })
@@ -103,15 +120,29 @@ for (const [status, expected] of [[429, 'rate_limited'], [503, 'provider_error']
 let timeoutCount = 0
 assert.equal((await sec.fetchSecJson('https://data.sec.gov/test', agent, async () => { timeoutCount++; throw new Error('timeout') }, async () => {})).status, 'provider_error')
 assert.equal(timeoutCount, 2)
+let deadlineCalls = 0
+const deadlineResult = await sec.fetchSecJson('https://data.sec.gov/test', agent, async (_url, init) => {
+  deadlineCalls += 1
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('mock request timeout')), 50)
+    const fail = () => { clearTimeout(timer); reject(new Error('aborted')) }
+    if (init.signal.aborted) fail()
+    else init.signal.addEventListener('abort', fail, { once: true })
+  })
+}, async () => {}, { deadlineAt: Date.now() + 20, timeoutMs: 10 })
+assert.equal(deadlineResult.status, 'provider_error')
+assert.equal(deadlineCalls, 1, 'Shared deadline prevents retry after remaining request budget is exhausted')
 
 const provider = fs.readFileSync('lib/sec-xbrl-provider.ts', 'utf8')
 assert.match(provider, /MAX_SYMBOLS = 4/)
-assert.match(provider, /REQUEST_GAP_MS = 450/)
+assert.match(provider, /TOTAL_REQUEST_DEADLINE_MS = 12000/)
+assert.match(provider, /REQUEST_GAP_MS = 1100/)
 assert.match(provider, /process\.env\.SEC_USER_AGENT/)
 assert.match(provider, /if \(!validSecUserAgent\(userAgent\)\)/, 'Do not call SEC without real contact')
 assert.doesNotMatch(provider, /portfolio_id|service_role|console\.(log|error).*userAgent/)
 const route = fs.readFileSync('app/api/fundamentals/route.ts', 'utf8')
 assert.match(route, /supabase\.auth\.getUser\(\)/)
+assert.match(route, /sources: \{ fundamentals: 'Finnhub', earnings: 'Finnhub', annualEps: 'SEC EDGAR' \}/)
 assert.doesNotMatch(route, /export async function (POST|PUT|PATCH|DELETE)/)
 
 console.log('✓ SEC XBRL synthetic mapping, GAAP EPS, ambiguity, compatibility, valuation and mocked HTTP tests passed')

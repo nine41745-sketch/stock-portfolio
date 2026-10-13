@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     const results = await loadFundamentals(symbols)
     return NextResponse.json({
       requestedAt: new Date().toISOString(),
-      source: 'Finnhub',
+      sources: { fundamentals: 'Finnhub', earnings: 'Finnhub', annualEps: 'SEC EDGAR' },
       earningsResultsStatus: 'unverified',
       results,
     }, { headers: { 'Cache-Control': 'private, no-store' } })

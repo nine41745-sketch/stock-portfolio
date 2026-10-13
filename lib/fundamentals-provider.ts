@@ -141,6 +141,8 @@ async function loadEarnings(symbols: string[]): Promise<Record<string, EarningsI
 
 export async function loadFundamentals(symbols: string[]): Promise<FundamentalSymbolResult[]> {
   const unique = normalizeSymbols(symbols)
+  // SEC work is bounded and overlaps Finnhub work so it does not add its deadline to route latency.
+  const secPromise = loadSecAnnualEps(unique)
   const metricResults: Awaited<ReturnType<typeof loadMetrics>>[] = []
   const profiles: Awaited<ReturnType<typeof getCompanyProfileResults>> = {}
   for (let index = 0; index < unique.length; index += SYMBOL_CHUNK_SIZE) {
@@ -156,7 +158,7 @@ export async function loadFundamentals(symbols: string[]): Promise<FundamentalSy
     }
   }
   const earnings = await loadEarnings(unique)
-  const secResults = await loadSecAnnualEps(unique)
+  const secResults = await secPromise
   return unique.map((symbol, index) => {
     const metricResult = metricResults[index]
     const profileResult = profiles[symbol]

@@ -7,15 +7,17 @@ import {
 const MAPPING_URL = 'https://www.sec.gov/files/company_tickers_exchange.json'
 const FACTS_BASE = 'https://data.sec.gov/api/xbrl/companyfacts/'
 const MAX_SYMBOLS = 4
-const REQUEST_GAP_MS = 450
+const REQUEST_GAP_MS = 1100 // Per invocation only; Vercel instances do not share a rate-limit lock.
+const TOTAL_REQUEST_DEADLINE_MS = 12000
 
 function wait(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 
-/** At most five unique SEC URLs for a four-symbol click; transient failures may retry once. */
+/** At most five unique URLs / ten attempts per invocation; cache helps, but cross-instance bursts are not globally serialized. */
 export async function loadSecAnnualEps(symbols: string[]): Promise<Record<string, SecFinancialResult>> {
+  const deadlineAt = Date.now() + TOTAL_REQUEST_DEADLINE_MS
   const unique = [...new Set(symbols.map(symbol => symbol.trim().toUpperCase()))].slice(0, MAX_SYMBOLS)
   const unavailable = (reason: string) => Object.fromEntries(unique.map(symbol =>
     [symbol, emptySecResult('unavailable', reason)])) as Record<string, SecFinancialResult>
@@ -23,7 +25,7 @@ export async function loadSecAnnualEps(symbols: string[]): Promise<Record<string
   if (!validSecUserAgent(userAgent)) {
     return unavailable('ยังไม่ได้ตั้งค่า SEC User-Agent ที่ระบุแอปและผู้ติดต่อจริง; งดเรียก SEC Live')
   }
-  const mapping = await fetchSecJson(MAPPING_URL, userAgent)
+  const mapping = await fetchSecJson(MAPPING_URL, userAgent, fetch, wait, { deadlineAt })
   if (mapping.status !== 'available') {
     return Object.fromEntries(unique.map(symbol => [symbol,
       emptySecResult(mapping.status, 'โหลด SEC Ticker–CIK mapping ไม่สำเร็จ')])) as Record<string, SecFinancialResult>
@@ -31,6 +33,10 @@ export async function loadSecAnnualEps(symbols: string[]): Promise<Record<string
 
   const results: Record<string, SecFinancialResult> = {}
   for (const symbol of unique) {
+    if (deadlineAt - Date.now() <= REQUEST_GAP_MS) {
+      results[symbol] = emptySecResult('provider_error', 'หมดเวลารวมของคำขอ SEC; ไม่ส่งคำขอเพิ่ม')
+      continue
+    }
     const identity = resolveSecIdentity(symbol, mapping.body)
     if (!identity) {
       results[symbol] = emptySecResult('unverified', 'ไม่พบ Ticker–CIK mapping ที่ไม่กำกวม')
@@ -41,7 +47,11 @@ export async function loadSecAnnualEps(symbols: string[]): Promise<Record<string
       continue
     }
     await wait(REQUEST_GAP_MS)
-    const facts = await fetchSecJson(`${FACTS_BASE}CIK${identity.cik}.json`, userAgent)
+    if (Date.now() >= deadlineAt) {
+      results[symbol] = emptySecResult('provider_error', 'หมดเวลารวมของคำขอ SEC; ไม่ส่งคำขอเพิ่ม')
+      continue
+    }
+    const facts = await fetchSecJson(`${FACTS_BASE}CIK${identity.cik}.json`, userAgent, fetch, wait, { deadlineAt })
     if (facts.status !== 'available') {
       results[symbol] = { ...emptySecResult(facts.status, 'โหลด SEC CompanyFacts ไม่สำเร็จ'), identity }
       continue

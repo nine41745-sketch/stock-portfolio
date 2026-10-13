@@ -51,6 +51,19 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/
 const ACCESSION = /^\d{10}-\d{2}-\d{6}$/
 const TICKER = /^[A-Z][A-Z0-9.\-]{0,9}$/
 export const SEC_CACHE_SECONDS = 86400
+const SEC_REQUEST_TIMEOUT_MS = 8000
+const SEC_RETRY_DELAY_MS = 1100
+
+export function isAllowedSecUrl(input: string): boolean {
+  try {
+    const url = new URL(input)
+    return url.protocol === 'https:' &&
+      (url.hostname === 'www.sec.gov' || url.hostname === 'data.sec.gov') &&
+      (!url.port || url.port === '443') && !url.username && !url.password
+  } catch {
+    return false
+  }
+}
 
 export function validSecUserAgent(value: string | undefined): value is string {
   return !!value && value.length >= 12 && value.length <= 200 &&
@@ -71,15 +84,19 @@ type SecFetch = (url: string, init: RequestInit & { next?: { revalidate: number 
 export async function fetchSecJson(
   url: string, userAgent: string, fetcher: SecFetch = fetch,
   pause: (ms: number) => Promise<void> = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  budget: { deadlineAt: number; timeoutMs?: number } = { deadlineAt: Date.now() + 18000 },
 ): Promise<SecFetchResult> {
-  if (!validSecUserAgent(userAgent) || !/^https:\/\/(data\.)?sec\.gov\//.test(url)) {
+  if (!validSecUserAgent(userAgent) || !isAllowedSecUrl(url)) {
     return { status: 'unavailable', body: null }
   }
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    const remainingMs = budget.deadlineAt - Date.now()
+    if (remainingMs <= 0) return { status: 'provider_error', body: null }
     try {
       const response = await fetcher(url, {
         headers: { 'User-Agent': userAgent, Accept: 'application/json' },
-        next: { revalidate: SEC_CACHE_SECONDS }, signal: AbortSignal.timeout(8000),
+        next: { revalidate: SEC_CACHE_SECONDS },
+        signal: AbortSignal.timeout(Math.max(1, Math.min(SEC_REQUEST_TIMEOUT_MS, budget.timeoutMs ?? SEC_REQUEST_TIMEOUT_MS, remainingMs))),
       })
       if (response.ok) {
         const size = Number(response.headers.get('content-length'))
@@ -89,12 +106,15 @@ export async function fetchSecJson(
         return { status: 'available', body: JSON.parse(payload) as unknown }
       }
       if (attempt === 0 && (response.status === 429 || response.status >= 500)) {
-        await pause(1100)
+        const remaining = budget.deadlineAt - Date.now()
+        if (remaining <= SEC_RETRY_DELAY_MS) return { status: secStatusFromHttp(response.status), body: null }
+        await pause(SEC_RETRY_DELAY_MS)
         continue
       }
       return { status: secStatusFromHttp(response.status), body: null }
     } catch {
-      if (attempt === 0) { await pause(1100); continue }
+      const remaining = budget.deadlineAt - Date.now()
+      if (attempt === 0 && remaining > SEC_RETRY_DELAY_MS) { await pause(SEC_RETRY_DELAY_MS); continue }
       return { status: 'provider_error', body: null }
     }
   }
