@@ -337,7 +337,7 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
                 <option value="semis">Semiconductor</option>
                 <option value="growth">Growth / Software</option>
                 <option value="quality">Quality Leaders</option>
-                <option value="mine">หุ้นของฉัน + Watchlist</option>
+                <option value="mine">Holdings ในพอร์ตที่เลือก</option>
               </select>
               <button
                 type="button"
@@ -355,8 +355,12 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
               <div className="self-center text-right text-xs text-gray-500">แสดง {filteredItems.length}/{scannerItems.length} ตัว</div>
             )}
           </div>
-
-          <div className="mb-4 grid gap-2 rounded-xl border border-gray-800 bg-gray-950/40 p-3 md:grid-cols-2 xl:grid-cols-5">
+            {universe === 'mine' && (
+              <p role="note" className="mb-3 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-blue-200">
+                แสดงเฉพาะ Holdings ของพอร์ตที่เลือก; ยังไม่รวม Watchlist ระดับบัญชีจนถึง v1.35.0
+              </p>
+            )}
+            <div className="mb-4 grid gap-2 rounded-xl border border-gray-800 bg-gray-950/40 p-3 md:grid-cols-2 xl:grid-cols-5">
             <select value={setupFilter} onChange={e => setSetupFilter(e.target.value as 'all' | ScannerSetup)} className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-white">
               <option value="all">Setup: ทั้งหมด</option>
               <option value="BREAKOUT">Breakout</option>

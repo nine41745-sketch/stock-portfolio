@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { PhaseAError, phaseAErrorResponse, requirePhaseAPortfolio } from '@/lib/phase-a-context'
+import { isPortfolioFoundationMissing } from '@/lib/portfolio-context'
+import { selectPortfolioHoldingSymbols } from '@/lib/scanner-universe'
 import { getUpcomingEarnings } from '@/lib/finnhub'
 import { getTechnicalIndicators, TechnicalIndicators } from '@/lib/indicators'
 import { SCANNER_UNIVERSES, ScannerUniverseKey, scoreScannerCandidate } from '@/lib/stock-scanner'
@@ -29,26 +32,27 @@ function riskReward(price: number | null, support: number | null, resistance: nu
   return Math.round((reward / risk) * 100) / 100
 }
 
-async function getMineSymbols(userId: string): Promise<string[]> {
-  const supabase = await createClient()
-  const [holdingsResponse, watchlistResponse] = await Promise.all([
-    supabase.from('holdings').select('symbol').eq('user_id', userId).gt('shares', 0),
-    supabase.from('watchlist').select('symbol').eq('user_id', userId),
-  ])
+async function getMineSymbols(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  portfolioId: string,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('holdings')
+    .select('user_id, portfolio_id, symbol, shares')
+    .eq('user_id', userId)
+    .eq('portfolio_id', portfolioId)
+    .gt('shares', 0)
 
-  if (holdingsResponse.error) {
-    console.error('[scanner] holdings universe failed:', holdingsResponse.error)
-    throw new Error('โหลดรายชื่อหุ้นในพอร์ตไม่สำเร็จ')
-  }
-  if (watchlistResponse.error) {
-    console.error('[scanner] watchlist universe failed:', watchlistResponse.error)
-    throw new Error('โหลด Watchlist ไม่สำเร็จ')
+  if (error) {
+    if (isPortfolioFoundationMissing(error)) {
+      throw new PhaseAError('Multi-Portfolio schema ยังไม่พร้อม จึงไม่สามารถสแกน Holdings ได้', 503)
+    }
+    console.error('[scanner] selected-portfolio Holdings lookup failed:', error)
+    throw new PhaseAError('โหลด Holdings ของพอร์ตที่เลือกไม่สำเร็จ', 503)
   }
 
-  return dedupeSymbols([
-    ...(holdingsResponse.data ?? []).map(row => row.symbol as string),
-    ...(watchlistResponse.data ?? []).map(row => row.symbol as string),
-  ])
+  return selectPortfolioHoldingSymbols(data ?? [], userId, portfolioId)
 }
 
 async function scanOne(symbol: string, spy: TechnicalIndicators) {
@@ -130,9 +134,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const symbols = requested === 'mine'
-      ? await getMineSymbols(user.id)
-      : [...SCANNER_UNIVERSES[requested]]
+    let symbols: string[]
+    if (requested === 'mine') {
+      const portfolio = await requirePhaseAPortfolio()
+      if (portfolio.userId !== user.id) throw new PhaseAError('Unauthorized', 401)
+      symbols = await getMineSymbols(portfolio.supabase, portfolio.userId, portfolio.portfolioId)
+    } else {
+      symbols = [...SCANNER_UNIVERSES[requested]]
+    }
 
     if (!symbols.length) {
       return NextResponse.json({ universe: requested, items: [], scannedAt: new Date().toISOString() })
@@ -160,6 +169,7 @@ export async function GET(request: NextRequest) {
       scannedAt: new Date().toISOString(),
     }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
+    if (error instanceof PhaseAError) return phaseAErrorResponse(error)
     console.error('[scanner] scan failed:', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'สแกนหุ้นไม่สำเร็จ' }, { status: 500 })
   }
