@@ -1,8 +1,8 @@
 # v1.33.1 Security Hardening (Local Validation Package)
 
 This package contains a narrow forward migration for an existing Supabase
-installation. It changes only function ACLs and the `update_updated_at()`
-function setting. It does not replace either function body, edit event-trigger
+installation. It changes the `rls_auto_enable()` ACL and constrains the search_path
+settings of both `rls_auto_enable()` and `update_updated_at()`. It does not replace either function body, edit event-trigger
 registrations, change policies, or touch table data.
 
 ## Preconditions
@@ -28,7 +28,7 @@ registrations, change policies, or touch table data.
 
 ## Synthetic event-trigger fixture
 
-`tests/fixtures/security_hardening_event_trigger_v1.33.1.sql` intentionally installs a local-only representative function and grants for a disposable Supabase/PostgreSQL database. It tests the migration mechanics and automatic-RLS behavior; it is not a copy or assertion of a Production function definition. Never run it against Cloud or Production.
+`tests/fixtures/security_hardening_event_trigger_v1.33.1.sql` intentionally installs a local-only representative function and grants for a disposable Supabase/PostgreSQL database. It models `authenticator` membership in `service_role` with INHERIT disabled and SET enabled. Before migration, it proves EXECUTE is unavailable to `authenticator` before SET ROLE and available after SET ROLE; after migration the verification script proves it is unavailable through that same role switch. It tests migration mechanics and automatic-RLS behavior; it is not a copy or assertion of a Production function definition. Never run it against Cloud or Production.
 
 ## Apply and verify locally
 
@@ -50,11 +50,14 @@ registrations, change policies, or touch table data.
 5. Run the repository Auth/PIN, RPC/portfolio isolation, ledger, dividend and
    DCA regression suites using synthetic fixtures.
 6. Run the read-only snapshot again after migration and compare the outputs.
-   The migration revokes PUBLIC, anon, authenticated, authenticator, and
-   service_role access. The local synthetic baseline showed authenticator has
-   the `SET ROLE` membership option for service_role, so retaining that grant
-   would leave EXECUTE available after a role switch even though
-   `has_function_privilege('authenticator', ...)` is false before the switch.
+   The migration revokes EXECUTE from PUBLIC, anon, authenticated,
+   authenticator, and service_role for the event-trigger function. The
+   synthetic baseline records each membership edge's `inherit_option`,
+   `set_option`, and `admin_option`. It models authenticator with INHERIT
+   disabled and SET enabled for service_role: effective EXECUTE is false before
+   the role switch, but true after `SET ROLE service_role` while service_role
+   retains EXECUTE. The migration revokes that path, and verification checks
+   the post-migration result after the same role switch.
    The function owner and unrelated explicit internal role ACL entries are
    left intact. The migration constrains both function search paths to
    `pg_catalog`.

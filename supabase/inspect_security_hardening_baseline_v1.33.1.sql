@@ -58,21 +58,31 @@ WHERE t.tgfoid = to_regprocedure('public.update_updated_at()')
   AND NOT t.tgisinternal
 ORDER BY n.nspname, c.relname, t.tgname;
 
--- Membership paths that can contribute inherited privileges for the roles
--- checked above. Direct ACL and effective privilege output must be reviewed
--- together before constructing a rollback.
-WITH RECURSIVE role_memberships(member, roleid, path) AS (
-  SELECT m.member, m.roleid, ARRAY[m.member, m.roleid]::OID[]
+-- Membership paths and per-edge options matter: effective privilege checks
+-- alone do not show a role that can SET ROLE into a grantee.
+WITH RECURSIVE role_memberships(
+  member, roleid, path, inherit_options, set_options, admin_options
+) AS (
+  SELECT m.member, m.roleid, ARRAY[m.member, m.roleid]::OID[],
+         ARRAY[m.inherit_option]::BOOLEAN[], ARRAY[m.set_option]::BOOLEAN[],
+         ARRAY[m.admin_option]::BOOLEAN[]
   FROM pg_auth_members AS m
   WHERE m.member IN (SELECT oid FROM pg_roles WHERE rolname IN
     ('anon', 'authenticated', 'authenticator', 'service_role'))
   UNION ALL
-  SELECT rm.member, m.roleid, rm.path || m.roleid
+  SELECT rm.member, m.roleid, rm.path || m.roleid,
+         rm.inherit_options || m.inherit_option,
+         rm.set_options || m.set_option,
+         rm.admin_options || m.admin_option
   FROM role_memberships AS rm
   JOIN pg_auth_members AS m ON m.member = rm.roleid
   WHERE NOT m.roleid = ANY(rm.path)
 )
 SELECT DISTINCT pg_get_userbyid(member) AS member_role,
-       pg_get_userbyid(roleid) AS inherited_role
+       pg_get_userbyid(roleid) AS reachable_role,
+       path AS role_oid_path,
+       inherit_options,
+       set_options,
+       admin_options
 FROM role_memberships
-ORDER BY member_role, inherited_role;
+ORDER BY member_role, reachable_role, role_oid_path;

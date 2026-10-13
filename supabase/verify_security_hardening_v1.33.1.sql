@@ -75,6 +75,28 @@ BEGIN
 END;
 $$;
 
+-- Exercise the membership path, not just direct/effective privileges.
+SELECT CASE WHEN pg_has_role('authenticator', 'service_role', 'SET')
+            THEN 'true' ELSE 'false' END AS authenticator_can_set_service_role
+\gset
+\if :authenticator_can_set_service_role
+  SET SESSION AUTHORIZATION authenticator;
+  SET ROLE service_role;
+  SELECT CASE WHEN has_function_privilege(current_user,
+                  to_regprocedure('public.rls_auto_enable()'), 'EXECUTE')
+              THEN 'true' ELSE 'false' END AS service_role_exec_after_set
+  \gset
+  \if :service_role_exec_after_set
+    \echo 'FAIL: service_role still has EXECUTE after authenticator SET ROLE'
+    \quit 1
+  \endif
+  RESET ROLE;
+  RESET SESSION AUTHORIZATION;
+\else
+  \echo 'FAIL: fixture did not provide authenticator SET ROLE service_role path'
+  \quit 1
+\endif
+
 -- Exercise the existing event trigger against a disposable public table. The
 -- DDL event runs normally; the outer transaction removes the probe afterwards.
 DO $$
