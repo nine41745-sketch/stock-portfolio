@@ -230,6 +230,159 @@ function accessHarness({ signedIn = true, pin = true, selected, expected, portfo
   })
   return { module: accessModule, reads: () => reads, resolve: () => accessModule.requirePhaseAPortfolio(expected) }
 }
+
+function scannerApiHarness({
+  signedIn = true,
+  selectedPortfolioId = 'p1',
+  pinValid = true,
+  portfolios = [{ id: 'p1', name: 'One', is_default: true }, { id: 'p2', name: 'Two', is_default: false }],
+  rows = [],
+  holdingsError = null,
+  portfolioQueryError = null,
+} = {}) {
+  const queryCalls = []
+  const portfolioCalls = []
+  const marketCalls = []
+  let selected = selectedPortfolioId
+  const supabase = {
+    auth: {
+      getUser: async () => ({ data: { user: signedIn ? { id: 'u1' } : null } }),
+      getSession: async () => ({ data: { session: { access_token: 'synthetic-session' } } }),
+    },
+    from(table) {
+      if (table === 'portfolios') {
+        const query = {
+          select(columns) { assert.equal(columns, 'id, name, is_default, created_at'); return query },
+          eq(column, value) { portfolioCalls.push([column, value]); return query },
+          order: async (column, options) => {
+            assert.equal(column, 'created_at'); assert.deepEqual(options, { ascending: true })
+            return { data: portfolios.map(row => ({ created_at: '2026-01-01', ...row })), error: portfolioQueryError }
+          },
+        }
+        return query
+      }
+      assert.equal(table, 'holdings', 'Scanner mine must never query account-level Watchlist')
+      const query = {
+        select(columns) { assert.equal(columns, 'user_id, portfolio_id, symbol, shares'); return query },
+        eq(column, value) { queryCalls.push([column, value]); return query },
+        gt(column, value) { assert.equal(column, 'shares'); assert.equal(value, 0); return query },
+        then(resolve, reject) { return Promise.resolve({ data: rows, error: holdingsError }).then(resolve, reject) },
+      }
+      return query
+    },
+  }
+  const phaseA = load('lib/phase-a-context.ts', {
+    'next/headers': { cookies: async () => ({ get: key => ({ value: key === 'portfolio-cookie' ? selected : 'synthetic-pin' }) }) },
+    '@/lib/supabase/server': { createClient: async () => supabase },
+    '@/lib/portfolio-context': { ACTIVE_PORTFOLIO_COOKIE: 'portfolio-cookie' },
+    '@/lib/pin-session': {
+      PIN_SESSION_COOKIE_NAME: 'pin-cookie', getSupabaseSessionId: () => 'session',
+      verifyPinSessionValue: async (cookie, userId, sessionId) => { assert.equal(cookie, 'synthetic-pin'); assert.equal(userId, 'u1'); assert.equal(sessionId, 'session'); return pinValid },
+    },
+  })
+  const PhaseAError = phaseA.PhaseAError
+  const technical = {
+    return20dPct: 1, return60dPct: 2, trend: 'up', rsi14: 55, weeklyRsi14: 54,
+    macd: { histogram: 1 }, lastClose: 100, ema50: 95, scannerSupport: 90,
+    scannerResistance: 110, scannerVolumeRatio: 1.1, week52High: 120,
+    week52Low: 80, return1dPct: 0.2, ema200: 90, importantSupport: 85,
+    importantSupportTouches: 2,
+  }
+  const route = load('app/api/scanner/route.ts', {
+    'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
+    '@/lib/supabase/server': { createClient: async () => supabase },
+    '@/lib/phase-a-context': {
+      PhaseAError,
+      phaseAErrorResponse: phaseA.phaseAErrorResponse,
+      requirePhaseAPortfolio: phaseA.requirePhaseAPortfolio,
+    },
+    '@/lib/portfolio-context': { isPortfolioFoundationMissing: error => ['42P01', '42703', 'PGRST204', 'PGRST205'].includes(String(error?.code ?? '')) },
+    '@/lib/scanner-universe': load('lib/scanner-universe.ts'),
+    '@/lib/finnhub': { getUpcomingEarnings: async symbol => { marketCalls.push(['earnings', symbol]); return null } },
+    '@/lib/indicators': { getTechnicalIndicators: async symbol => { marketCalls.push(['technical', symbol]); return technical } },
+    '@/lib/stock-scanner': {
+      SCANNER_UNIVERSES: { ai: ['NVDA'], semis: ['AMD'], growth: ['SHOP'], quality: ['COST'], mine: [] },
+      scoreScannerCandidate: () => ({ score: 1, label: 'watch', setup: 'HOLD', reasons: [], categoryScores: {} }),
+    },
+    '@/lib/all-time-high': { getAllTimeHigh: async symbol => { marketCalls.push(['ath', symbol]); return { allTimeHigh: 120 } } },
+    '@/lib/ath': { getAthState: () => ({ distancePct: -16.7, status: 'below' }) },
+  })
+  return {
+    queryCalls,
+    portfolioCalls,
+    marketCalls,
+    get: (universe = 'mine') => route.GET({ nextUrl: new URL(`https://example.test/api/scanner?universe=${universe}`) }),
+    select: id => { selected = id },
+  }
+}
+
+test('Scanner mine API returns only the selected owner portfolio when switching A/B', async () => {
+  const h = scannerApiHarness({ rows: [
+    { user_id: 'u1', portfolio_id: 'p1', symbol: 'aapl', shares: 2 },
+    { user_id: 'u1', portfolio_id: 'p2', symbol: 'MSFT', shares: 4 },
+    { user_id: 'u2', portfolio_id: 'p1', symbol: 'TSLA', shares: 3 },
+    { user_id: 'u1', portfolio_id: 'p1', symbol: 'ZERO', shares: 0 },
+  ] })
+  let response = await h.get()
+  assert.equal(response.status, 200)
+  assert.deepEqual((await response.json()).items.map(row => row.symbol), ['AAPL'])
+  assert.ok(h.queryCalls.some(([key, value]) => key === 'user_id' && value === 'u1'))
+  assert.ok(h.queryCalls.some(([key, value]) => key === 'portfolio_id' && value === 'p1'))
+
+  h.select('p2')
+  response = await h.get()
+  assert.equal(response.status, 200)
+  assert.deepEqual((await response.json()).items.map(row => row.symbol), ['MSFT'])
+  assert.ok(h.queryCalls.some(([key, value]) => key === 'portfolio_id' && value === 'p2'))
+})
+
+test('Scanner mine returns empty without market requests and never adds Watchlist rows', async () => {
+  const empty = scannerApiHarness()
+  const response = await empty.get()
+  assert.equal(response.status, 200)
+  assert.deepEqual((await response.json()).items, [])
+  assert.equal(empty.marketCalls.length, 0)
+
+  const noWatchlistFallback = scannerApiHarness({ rows: [], holdingsError: { code: '42703', message: 'portfolio_id missing' } })
+  const failed = await noWatchlistFallback.get()
+  assert.equal(failed.status, 503)
+  assert.equal(noWatchlistFallback.marketCalls.length, 0)
+
+  const legacySchema = scannerApiHarness({ portfolioQueryError: { code: '42703', message: 'multi-portfolio schema missing' } })
+  const unavailable = await legacySchema.get()
+  assert.equal(unavailable.status, 503)
+  assert.ok(legacySchema.portfolioCalls.some(([key, value]) => key === 'user_id' && value === 'u1'))
+  assert.equal(legacySchema.queryCalls.length, 0)
+  assert.equal(legacySchema.marketCalls.length, 0)
+})
+
+test('Scanner API enforces Auth/PIN and rejects foreign portfolio selection before market access', async () => {
+  const anonymous = await scannerApiHarness({ signedIn: false }).get()
+  assert.equal(anonymous.status, 401)
+
+  const locked = scannerApiHarness({ pinValid: false, rows: [{ user_id: 'u1', portfolio_id: 'p1', symbol: 'AAPL', shares: 1 }] })
+  assert.equal((await locked.get()).status, 401)
+  assert.equal(locked.portfolioCalls.length, 0)
+  assert.equal(locked.queryCalls.length, 0)
+  assert.equal(locked.marketCalls.length, 0)
+
+  const foreign = scannerApiHarness({ rows: [{ user_id: 'u1', portfolio_id: 'p1', symbol: 'AAPL', shares: 1 }] })
+  foreign.select('foreign-portfolio')
+  assert.equal((await foreign.get()).status, 409)
+  assert.ok(foreign.portfolioCalls.some(([key, value]) => key === 'user_id' && value === 'u1'))
+  assert.equal(foreign.queryCalls.length, 0)
+  assert.equal(foreign.marketCalls.length, 0)
+})
+
+test('Scanner static universes do not require portfolio context or query holdings', async () => {
+  const h = scannerApiHarness()
+  const response = await h.get('semis')
+  assert.equal(response.status, 200)
+  assert.deepEqual((await response.json()).items.map(row => row.symbol), ['AMD'])
+  assert.equal(h.queryCalls.length, 0)
+  assert.ok(h.marketCalls.some(([, symbol]) => symbol === 'AMD'))
+})
+
 test('Read-only context rejects Auth/PIN before portfolio reads', async () => {
   for (const options of [{ signedIn: false }, { pin: false }]) {
     const h = accessHarness(options)
