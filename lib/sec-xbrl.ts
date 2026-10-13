@@ -40,6 +40,8 @@ export interface SecFinancialResult {
   status: SecStatus
   reason: string
   identity: SecIdentity | null
+  companyFactsEntityName: string | null
+  issuerNameMatch: 'exact' | 'different' | 'unavailable'
   basic: SecEpsSelection
   diluted: SecEpsSelection
   fetchedAt: string | null
@@ -138,7 +140,8 @@ function record(value: unknown): Record<string, unknown> | null {
 
 export function emptySecResult(status: SecStatus, reason: string): SecFinancialResult {
   const empty: SecEpsSelection = { status, reason, fact: null }
-  return { status, reason, identity: null, basic: empty, diluted: empty, fetchedAt: null, source: 'SEC EDGAR' }
+  return { status, reason, identity: null, companyFactsEntityName: null, issuerNameMatch: 'unavailable',
+    basic: empty, diluted: empty, fetchedAt: null, source: 'SEC EDGAR' }
 }
 
 /** The SEC exchange file maps tickers to issuers, but does not attest security type, ADR ratio or split basis. */
@@ -239,17 +242,24 @@ export function normalizeSecCompanyFacts(symbol: string, identity: SecIdentity, 
   const body = record(raw)
   const bodyCik = body?.cik
   const bodyName = body?.entityName
-  if (typeof bodyCik !== 'number' || String(bodyCik).padStart(10, '0') !== identity.cik ||
-    typeof bodyName !== 'string' || bodyName.trim().toUpperCase() !== identity.entityName.toUpperCase() ||
-    symbol.trim().toUpperCase() !== identity.ticker) {
-    return { ...emptySecResult('unverified', 'CompanyFacts issuer identity ไม่ตรงกับ Ticker–CIK mapping'), identity, fetchedAt }
+  const companyFactsEntityName = typeof bodyName === 'string' && bodyName.trim() ? bodyName.trim() : null
+  const issuerNameMatch = companyFactsEntityName
+    ? companyFactsEntityName.toUpperCase() === identity.entityName.trim().toUpperCase() ? 'exact' as const : 'different' as const
+    : 'unavailable' as const
+  if (typeof bodyCik !== 'number' || !Number.isSafeInteger(bodyCik) || String(bodyCik).padStart(10, '0') !== identity.cik ||
+    !companyFactsEntityName || symbol.trim().toUpperCase() !== identity.ticker) {
+    return { ...emptySecResult('unverified', 'CIK, Symbol หรือ CompanyFacts entity name ไม่ครบ/ไม่ตรงกับ SEC Ticker–CIK context'),
+      identity, companyFactsEntityName, issuerNameMatch, fetchedAt }
   }
   const basic = selectAnnualSecEps(raw, 'basic', identity.cik, fetchedAt)
   const diluted = selectAnnualSecEps(raw, 'diluted', identity.cik, fetchedAt)
   const status: SecStatus = identity.status === 'unsupported' ? 'unsupported'
     : basic.status === 'unverified' || diluted.status === 'unverified' ? 'unverified'
       : basic.status === 'available' || diluted.status === 'available' ? 'available' : 'missing'
-  return { status, reason: identity.reason, identity, basic, diluted, fetchedAt, source: 'SEC EDGAR' }
+  const reason = issuerNameMatch === 'different'
+    ? 'CIK ตรงกับ SEC mapping; Entity Name มีความต่างของการเขียน จึงคงชื่อทั้งสองไว้โดยไม่ใช้ fuzzy match; Security Type/Share Class ยังไม่ยืนยัน'
+    : identity.reason
+  return { status, reason, identity, companyFactsEntityName, issuerNameMatch, basic, diluted, fetchedAt, source: 'SEC EDGAR' }
 }
 
 export function compareSecEps(left: SecFinancialResult, right: SecFinancialResult, definition: EpsDefinition): { comparable: boolean; reason: string } {
@@ -275,5 +285,5 @@ export function secValuationGuard(selection: SecEpsSelection, evidence: SecValua
   if (fact.value <= 0) return { allowed: false, reason: 'EPS ไม่เป็นบวก' }
   if (!evidence.priceCurrency || evidence.priceCurrency !== fact.currency) return { allowed: false, reason: 'สกุลเงิน EPS กับราคาหุ้นยังไม่ยืนยันว่าตรงกัน' }
   if (!evidence.listingIdentityVerified || !evidence.shareClassVerified || !evidence.splitBasisVerified) return { allowed: false, reason: 'ยังไม่ยืนยัน Listing, Share Class และ Split Basis' }
-  return { allowed: true, reason: 'หลักฐานราคา/หุ้น/งวดผ่านเงื่อนไขการคำนวณ' }
+  return { allowed: false, reason: 'ปิด Scenario Price ไว้: ยังไม่มี Verified Evidence Pipeline; Boolean assertions เพียงอย่างเดียวไม่ใช่หลักฐาน' }
 }
