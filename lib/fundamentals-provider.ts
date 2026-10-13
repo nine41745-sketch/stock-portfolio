@@ -28,7 +28,7 @@ export interface FundamentalSymbolResult {
   symbol: string
   companyName: string | null
   industry: string | null
-  currency: string | null
+  profileCurrency: string | null
   profileStatus: ProviderStatus
   profileFetchedAt: string | null
   providerStatus: ProviderStatus
@@ -161,12 +161,14 @@ export async function loadFundamentals(symbols: string[]): Promise<FundamentalSy
       symbol,
       companyName: profile?.name ?? null,
       industry: profile?.industry ?? null,
-      currency: profile?.currency ?? null,
+      profileCurrency: profile?.currency ?? null,
       profileStatus: profileResult?.status ?? 'unavailable',
       profileFetchedAt: profileResult?.fetchedAt ?? null,
       providerStatus: metricResult.status,
       fetchedAt: metricResult.fetchedAt,
-      observations: normalizeFinnhubMetrics(metricResult.metric, profile?.currency ?? null, metricResult.fetchedAt ?? new Date().toISOString()),
+      // Company Profile currency describes the listing/profile; the metrics response
+      // does not prove the financial statement currency, so EPS currency stays unknown.
+      observations: normalizeFinnhubMetrics(metricResult.metric, metricResult.fetchedAt ?? new Date().toISOString()),
       earnings: earnings[symbol] ?? emptyEarnings('provider_error'),
       earningsResultsStatus: 'unverified',
     }

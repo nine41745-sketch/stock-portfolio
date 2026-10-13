@@ -48,7 +48,9 @@ function formatValue(observation: FundamentalObservation): string {
   if (observation.value === null) return '—'
   const value = observation.value.toLocaleString('en-US', { maximumFractionDigits: 3 })
   if (observation.unit === 'x') return `${value}x`
-  return `${observation.currency ? `${observation.currency} ` : ''}${value} / หุ้น`
+  return observation.currency
+    ? `${observation.currency} ${value} / หุ้น`
+    : `${value} / หุ้น · สกุลเงินไม่ยืนยัน`
 }
 
 function comparisonIssue(observations: Array<FundamentalObservation | undefined>): string | null {
@@ -57,9 +59,12 @@ function comparisonIssue(observations: Array<FundamentalObservation | undefined>
   for (let index = 1; index < present.length; index += 1) {
     const result = checkComparisonCompatibility(present[0], present[index])
     if (!result.comparable) {
+      if (result.reason === 'CURRENCY_UNKNOWN') return 'ไม่ทราบสกุลเงินของ EPS จึงเปรียบเทียบค่า per-share ไม่ได้'
       if (result.reason === 'CURRENCY_MISMATCH') return 'สกุลเงินต่างกัน จึงไม่เปรียบเทียบค่า per-share'
       if (result.reason === 'UNIT_MISMATCH') return 'หน่วยต่างกัน'
       if (result.reason === 'PERIOD_MISMATCH') return 'งวดต่างกัน'
+      if (result.reason === 'PERIOD_ALIGNMENT_UNVERIFIED') return 'วันสิ้นงวดไม่ทราบ จึงยืนยันการเทียบงวดไม่ได้'
+      if (result.reason === 'PERIOD_END_MISMATCH') return 'วันสิ้นงวดต่างกัน จึงเปรียบเทียบโดยตรงไม่ได้'
       return 'มีค่าที่ขาดหาย'
     }
   }
@@ -105,7 +110,7 @@ export default function FundamentalsPanel() {
       bearMultiple: Number(multiples.bear),
       baseMultiple: Number(multiples.base),
       bullMultiple: Number(multiples.bull),
-    }, result.currency)
+    }, eps?.currency ?? null)
   }
 
   return (
@@ -139,6 +144,7 @@ export default function FundamentalsPanel() {
 
       {results.length > 0 && <>
         <p className="text-xs text-gray-500 dark:text-gray-400">ผลที่ระบบรับเมื่อ {formatTimestamp(requestedAt)} · Metrics อาจไม่มี period-end timestamp จากผู้ให้บริการ จึงแสดง period ตามชื่อ metric และไม่อ้างวันรายงานที่ไม่มี</p>
+        {results.length > 1 && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">การจัดแนวงวดเป็น Unverified: Finnhub Metrics ที่ได้รับไม่มี Fiscal Period End จึงยังยืนยันไม่ได้ว่าตัวเลขของหุ้นแต่ละตัวเป็นงวดสิ้นสุดวันเดียวกัน</p>}
         <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
           <table className="min-w-[720px] w-full border-collapse text-left text-sm">
             <caption className="sr-only">ตารางเปรียบเทียบตัวชี้วัดพื้นฐานของหุ้นที่เลือก</caption>
@@ -167,6 +173,8 @@ export default function FundamentalsPanel() {
             <h3 className="font-semibold">{result.companyName ?? result.symbol}{result.industry ? <span className="font-normal text-gray-500 dark:text-gray-400"> · {result.industry}</span> : null}</h3>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Metrics: {STATUS_LABELS[result.providerStatus]} · Finnhub · ระบบรับ response {formatTimestamp(result.fetchedAt)}</p>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Company Profile: {STATUS_LABELS[result.profileStatus]} · ระบบรับ response {formatTimestamp(result.profileFetchedAt)}</p>
+            <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">สกุลเงินจาก Company Profile: {result.profileCurrency ?? 'ไม่ทราบ'} · ยังไม่มีหลักฐานยืนยันว่านี่คือสกุลเงินของ EPS</p>
+            <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">สกุลเงินของ EPS: ไม่ได้ระบุใน Metrics response · Fiscal Period End: ไม่ทราบ</p>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">เวลาอัปเดตต้นทาง: ไม่ได้ระบุใน metric response</p>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Earnings Calendar: {STATUS_LABELS[result.earnings.status]}{result.earnings.date ? ` · ${result.earnings.date}${result.earnings.hour ? ` (${result.earnings.hour.toUpperCase()})` : ''}` : ''}</p>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Actual vs Estimate: ยังไม่ยืนยันสิทธิ์ Endpoint ของ Finnhub</p>
@@ -176,11 +184,11 @@ export default function FundamentalsPanel() {
         <section className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30" aria-labelledby="valuation-title">
           <div>
             <h3 id="valuation-title" className="font-bold">P/E Scenario Range</h3>
-            <p className="text-xs text-gray-700 dark:text-gray-300">ราคาสมมติ = EPS (TTM) × P/E ที่ผู้ใช้กำหนด · เป็น Scenario เพื่อศึกษา ไม่ใช่ราคาเป้าหมายหรือคำแนะนำซื้อขาย</p>
+            <p className="text-xs text-gray-700 dark:text-gray-300">ราคาสมมติ = EPS (TTM) × P/E ที่ผู้ใช้กำหนด · ค่าเริ่มต้น Bear/Base/Bull 10/15/20x เป็นเพียงสมมติฐานตัวอย่าง ไม่ใช่ Fair Value หรือ Target Price ที่ยืนยันแล้ว</p>
           </div>
           <div className="grid grid-cols-3 gap-2 sm:max-w-lg">
             {(['bear', 'base', 'bull'] as const).map(key => <label key={key} className="text-xs font-medium capitalize">
-              {key} P/E (x)
+              {key} P/E (x) · สมมติฐาน
               <input type="number" min="0.1" max="100" step="0.5" value={multiples[key]} onChange={event => setMultiples(previous => ({ ...previous, [key]: event.target.value }))} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
             </label>)}
           </div>
@@ -195,7 +203,7 @@ export default function FundamentalsPanel() {
                     <div><dt>Base</dt><dd>{calculated.currency ?? 'หน่วยไม่ทราบ'} {calculated.scenarios.base}</dd></div>
                     <div><dt>Bull</dt><dd>{calculated.currency ?? 'หน่วยไม่ทราบ'} {calculated.scenarios.bull}</dd></div>
                   </dl>
-                  : <p className="mt-1 text-xs text-amber-900 dark:text-amber-200">{calculated.reason === 'EPS_MISSING' ? 'ไม่มี EPS TTM ที่ใช้คำนวณได้' : calculated.reason === 'EPS_NON_POSITIVE' ? 'EPS TTM ไม่เป็นบวก จึงไม่คำนวณ P/E Scenario' : calculated.reason === 'SCENARIO_ORDER_INVALID' ? 'เรียงสมมติฐาน P/E จาก Bear ≤ Base ≤ Bull' : calculated.reason === 'SCENARIO_VALUE_INVALID' ? 'ผลคำนวณอยู่นอกช่วงตัวเลขที่รองรับ' : 'ค่า P/E Scenario ต้องมากกว่า 0 และไม่เกิน 100'}</p>}
+                  : <p className="mt-1 text-xs text-amber-900 dark:text-amber-200">{calculated.reason === 'EPS_MISSING' ? 'ไม่มี EPS TTM ที่ใช้คำนวณได้' : calculated.reason === 'EPS_NON_POSITIVE' ? 'EPS TTM ไม่เป็นบวก จึงไม่คำนวณ P/E Scenario' : calculated.reason === 'CURRENCY_UNKNOWN' ? 'ไม่ยืนยันสกุลเงินของ EPS จึงไม่แสดงราคา Scenario' : calculated.reason === 'SCENARIO_ORDER_INVALID' ? 'เรียงสมมติฐาน P/E จาก Bear ≤ Base ≤ Bull' : calculated.reason === 'SCENARIO_VALUE_INVALID' ? 'ผลคำนวณอยู่นอกช่วงตัวเลขที่รองรับ' : 'ค่า P/E Scenario ต้องมากกว่า 0 และไม่เกิน 100'}</p>}
                 <p className="mt-2 text-[11px] text-gray-600 dark:text-gray-400">P/E: Bear {multiples.bear}x · Base {multiples.base}x · Bull {multiples.bull}x</p>
               </article>
             })}

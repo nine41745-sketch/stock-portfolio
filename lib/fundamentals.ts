@@ -15,7 +15,7 @@ export interface FundamentalObservation {
   fetchedAt: string
   sourceUpdatedAt: null
   freshness: DataFreshness
-  periodEnd: null
+  periodEnd: string | null
   status: FundamentalStatus
 }
 
@@ -42,7 +42,6 @@ export function normalizeSymbols(input: string[]): string[] {
 
 export function normalizeFinnhubMetrics(
   raw: unknown,
-  currency: string | null,
   fetchedAt: string,
 ): FundamentalObservation[] {
   const record = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {}
@@ -56,7 +55,8 @@ export function normalizeFinnhubMetrics(
       label: metric.label,
       period,
       value,
-      currency: metric.unit === 'currency/share' ? currency?.trim().toUpperCase() || null : null,
+      // Finnhub metric values do not carry a proven statement currency here.
+      currency: null,
       unit: metric.unit,
       source: 'Finnhub' as const,
       sourceField,
@@ -77,13 +77,14 @@ export interface PEScenarioInputs {
 }
 
 export type PEScenarioResult =
-  | { status: 'available'; currency: string | null; scenarios: { bear: number; base: number; bull: number }; assumptions: PEScenarioInputs }
-  | { status: 'unavailable'; reason: 'EPS_MISSING' | 'EPS_NON_POSITIVE' | 'MULTIPLE_INVALID' | 'SCENARIO_ORDER_INVALID' | 'SCENARIO_VALUE_INVALID'; assumptions: PEScenarioInputs }
+  | { status: 'available'; currency: string; scenarios: { bear: number; base: number; bull: number }; assumptions: PEScenarioInputs }
+  | { status: 'unavailable'; reason: 'EPS_MISSING' | 'EPS_NON_POSITIVE' | 'CURRENCY_UNKNOWN' | 'MULTIPLE_INVALID' | 'SCENARIO_ORDER_INVALID' | 'SCENARIO_VALUE_INVALID'; assumptions: PEScenarioInputs }
 
 export function calculatePEScenarios(inputs: PEScenarioInputs, currency: string | null): PEScenarioResult {
   const assumptions = { ...inputs }
   if (inputs.eps === null || !Number.isFinite(inputs.eps)) return { status: 'unavailable', reason: 'EPS_MISSING', assumptions }
   if (inputs.eps <= 0) return { status: 'unavailable', reason: 'EPS_NON_POSITIVE', assumptions }
+  if (!currency?.trim()) return { status: 'unavailable', reason: 'CURRENCY_UNKNOWN', assumptions }
   const multiples = [inputs.bearMultiple, inputs.baseMultiple, inputs.bullMultiple]
   if (multiples.some(value => !Number.isFinite(value) || value <= 0 || value > 100)) {
     return { status: 'unavailable', reason: 'MULTIPLE_INVALID', assumptions }
@@ -97,7 +98,7 @@ export function calculatePEScenarios(inputs: PEScenarioInputs, currency: string 
   }
   return {
     status: 'available',
-    currency: currency?.trim().toUpperCase() || null,
+    currency: currency.trim().toUpperCase(),
     scenarios: {
       bear: roundPrice(prices[0]),
       base: roundPrice(prices[1]),
@@ -113,7 +114,7 @@ function roundPrice(value: number): number {
 
 export type ComparisonCompatibility = { comparable: true } | {
   comparable: false
-  reason: 'MISSING_VALUE' | 'PERIOD_MISMATCH' | 'UNIT_MISMATCH' | 'CURRENCY_MISMATCH'
+  reason: 'MISSING_VALUE' | 'PERIOD_MISMATCH' | 'PERIOD_ALIGNMENT_UNVERIFIED' | 'PERIOD_END_MISMATCH' | 'UNIT_MISMATCH' | 'CURRENCY_UNKNOWN' | 'CURRENCY_MISMATCH'
 }
 
 export function checkComparisonCompatibility(
@@ -123,10 +124,25 @@ export function checkComparisonCompatibility(
   if (left.value === null || right.value === null) return { comparable: false, reason: 'MISSING_VALUE' }
   if (left.period !== right.period) return { comparable: false, reason: 'PERIOD_MISMATCH' }
   if (left.unit !== right.unit) return { comparable: false, reason: 'UNIT_MISMATCH' }
-  if (left.unit === 'currency/share' && left.currency !== right.currency) {
-    return { comparable: false, reason: 'CURRENCY_MISMATCH' }
+  if (left.unit === 'currency/share') {
+    if (!left.currency?.trim() || !right.currency?.trim()) {
+      return { comparable: false, reason: 'CURRENCY_UNKNOWN' }
+    }
+    if (left.currency.trim().toUpperCase() !== right.currency.trim().toUpperCase()) {
+      return { comparable: false, reason: 'CURRENCY_MISMATCH' }
+    }
   }
+  if (!isValidPeriodEnd(left.periodEnd) || !isValidPeriodEnd(right.periodEnd)) {
+    return { comparable: false, reason: 'PERIOD_ALIGNMENT_UNVERIFIED' }
+  }
+  if (left.periodEnd !== right.periodEnd) return { comparable: false, reason: 'PERIOD_END_MISMATCH' }
   return { comparable: true }
+}
+
+function isValidPeriodEnd(value: string | null): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
 }
 
 export function metricStatusFromHttp(status: number): ProviderStatus {
