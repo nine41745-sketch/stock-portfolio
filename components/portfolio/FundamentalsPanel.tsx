@@ -9,6 +9,7 @@ import {
   type ProviderStatus,
 } from '@/lib/fundamentals'
 import type { FundamentalSymbolResult } from '@/lib/fundamentals-provider'
+import { compareSecEps, secValuationGuard, type EpsDefinition } from '@/lib/sec-xbrl'
 
 interface FundamentalsResponse {
   requestedAt: string
@@ -104,20 +105,26 @@ export default function FundamentalsPanel() {
   }
 
   function scenarios(result: FundamentalSymbolResult) {
-    const eps = result.observations.find(item => item.id === 'eps' && item.period === 'TTM')
+    const selection = result.sec.diluted
+    // Company Profile currency is not proof of the traded quote currency or split basis.
+    const guard = secValuationGuard(selection, {
+      priceCurrency: null, listingIdentityVerified: false,
+      shareClassVerified: false, splitBasisVerified: false,
+    })
+    if (!guard.allowed) return { status: 'unavailable' as const, reason: guard.reason }
     return calculatePEScenarios({
-      eps: eps?.value ?? null,
+      eps: selection.fact?.value ?? null,
       bearMultiple: Number(multiples.bear),
       baseMultiple: Number(multiples.base),
       bullMultiple: Number(multiples.bull),
-    }, eps?.currency ?? null)
+    }, selection.fact?.currency ?? null)
   }
 
   return (
     <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 shadow-sm dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100 md:p-6" aria-labelledby="fundamentals-title">
       <header>
         <h2 id="fundamentals-title" className="text-lg font-bold">วิเคราะห์พื้นฐานและมูลค่า</h2>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">ข้อมูลสาธารณะจาก Finnhub · เปรียบเทียบได้สูงสุด 4 หุ้น · ไม่มีการบันทึกหรือส่งคำสั่งซื้อขาย</p>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">ข้อมูลสาธารณะ Finnhub และ SEC EDGAR · เปรียบเทียบได้สูงสุด 4 หุ้น · ไม่มีการบันทึกหรือส่งคำสั่งซื้อขาย</p>
       </header>
 
       <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
@@ -168,6 +175,42 @@ export default function FundamentalsPanel() {
           </table>
         </div>
 
+        <section className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/70" aria-labelledby="sec-eps-title">
+          <div>
+            <h3 id="sec-eps-title" className="font-semibold">SEC EDGAR · Annual GAAP EPS จาก 10-K</h3>
+            <p className="text-xs text-gray-700 dark:text-gray-300">Basic และ Diluted แยกกัน · ไม่ใช่ TTM หรือ Adjusted EPS · Fact ระดับบริษัทอาจไม่ตรงกับ Share Class ของหุ้นที่ซื้อขาย</p>
+          </div>
+          {results.length > 1 && (['basic', 'diluted'] as EpsDefinition[]).map(definition => {
+            const checks = results.slice(1).map(item => compareSecEps(results[0].sec, item.sec, definition))
+            const issue = checks.find(check => !check.comparable)
+            return <p key={definition} role="status" className="text-xs text-amber-900 dark:text-amber-200">
+              {definition === 'basic' ? 'Basic' : 'Diluted'} comparison: {issue ? `Unverified — ${issue.reason}` : 'งวดและหน่วยตรงกันตามหลักฐานที่ตรวจได้'}
+            </p>
+          })}
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {results.map(result => <article key={`${result.symbol}-sec`} className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 text-xs dark:border-gray-700 dark:bg-gray-950">
+              <h4 className="text-sm font-semibold">{result.symbol} · SEC {result.sec.status}</h4>
+              <p className="mt-1 text-amber-900 dark:text-amber-200">{result.sec.reason}</p>
+              {result.sec.identity && <p className="mt-1 break-words text-gray-700 dark:text-gray-300">
+                CIK {result.sec.identity.cik} · {result.sec.identity.entityName} · {result.sec.identity.exchange} · Identity {result.sec.identity.status}
+              </p>}
+              {(['basic', 'diluted'] as EpsDefinition[]).map(definition => {
+                const selection = result.sec[definition]
+                const fact = selection.fact
+                return <div key={definition} className="mt-2 border-t border-gray-200 pt-2 dark:border-gray-700">
+                  <p className="font-medium">{definition === 'basic' ? 'Basic' : 'Diluted'} EPS: {fact ? `${fact.value.toLocaleString('en-US')} ${fact.unit}` : selection.status}</p>
+                  {fact ? <>
+                    <p>FY {fact.fiscalYear} · {fact.periodStart} ถึง {fact.periodEnd} · Form {fact.form}</p>
+                    <p>Filed {fact.filed} · Accession {fact.accession} · {fact.freshness}</p>
+                    <p>Restatement: {fact.restatementStatus} (ตรวจเฉพาะ Fact ที่ได้รับ)</p>
+                    <a href={fact.sourceUrl} target="_blank" rel="noopener noreferrer" className="break-all text-blue-700 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 dark:text-blue-300">SEC filing directory</a>
+                  </> : <p className="text-gray-700 dark:text-gray-300">{selection.reason}</p>}
+                </div>
+              })}
+            </article>)}
+          </div>
+        </section>
+
         <div className="grid gap-3 sm:grid-cols-3">
           {results.map(result => <article key={`${result.symbol}-metadata`} className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm dark:border-gray-800 dark:bg-gray-900/70">
             <h3 className="font-semibold">{result.companyName ?? result.symbol}{result.industry ? <span className="font-normal text-gray-500 dark:text-gray-400"> · {result.industry}</span> : null}</h3>
@@ -184,7 +227,7 @@ export default function FundamentalsPanel() {
         <section className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30" aria-labelledby="valuation-title">
           <div>
             <h3 id="valuation-title" className="font-bold">P/E Scenario Range</h3>
-            <p className="text-xs text-gray-700 dark:text-gray-300">ราคาสมมติ = EPS (TTM) × P/E ที่ผู้ใช้กำหนด · ค่าเริ่มต้น Bear/Base/Bull 10/15/20x เป็นเพียงสมมติฐานตัวอย่าง ไม่ใช่ Fair Value หรือ Target Price ที่ยืนยันแล้ว</p>
+            <p className="text-xs text-gray-700 dark:text-gray-300">ราคาสมมติ = SEC Annual GAAP Diluted EPS × P/E ที่ผู้ใช้กำหนด · ค่าเริ่มต้น Bear/Base/Bull 10/15/20x เป็นเพียงสมมติฐานตัวอย่าง ไม่ใช่ Fair Value หรือ Target Price ที่ยืนยันแล้ว · ต้องยืนยันสกุลเงินราคา, Listing, Share Class และ Split Basis ก่อนแสดงผลราคา</p>
           </div>
           <div className="grid grid-cols-3 gap-2 sm:max-w-lg">
             {(['bear', 'base', 'bull'] as const).map(key => <label key={key} className="text-xs font-medium capitalize">
@@ -203,7 +246,7 @@ export default function FundamentalsPanel() {
                     <div><dt>Base</dt><dd>{calculated.currency ?? 'หน่วยไม่ทราบ'} {calculated.scenarios.base}</dd></div>
                     <div><dt>Bull</dt><dd>{calculated.currency ?? 'หน่วยไม่ทราบ'} {calculated.scenarios.bull}</dd></div>
                   </dl>
-                  : <p className="mt-1 text-xs text-amber-900 dark:text-amber-200">{calculated.reason === 'EPS_MISSING' ? 'ไม่มี EPS TTM ที่ใช้คำนวณได้' : calculated.reason === 'EPS_NON_POSITIVE' ? 'EPS TTM ไม่เป็นบวก จึงไม่คำนวณ P/E Scenario' : calculated.reason === 'CURRENCY_UNKNOWN' ? 'ไม่ยืนยันสกุลเงินของ EPS จึงไม่แสดงราคา Scenario' : calculated.reason === 'SCENARIO_ORDER_INVALID' ? 'เรียงสมมติฐาน P/E จาก Bear ≤ Base ≤ Bull' : calculated.reason === 'SCENARIO_VALUE_INVALID' ? 'ผลคำนวณอยู่นอกช่วงตัวเลขที่รองรับ' : 'ค่า P/E Scenario ต้องมากกว่า 0 และไม่เกิน 100'}</p>}
+                  : <p className="mt-1 text-xs text-amber-900 dark:text-amber-200">ไม่แสดงราคา Scenario: {calculated.reason}</p>}
                 <p className="mt-2 text-[11px] text-gray-600 dark:text-gray-400">P/E: Bear {multiples.bear}x · Base {multiples.base}x · Bull {multiples.bull}x</p>
               </article>
             })}

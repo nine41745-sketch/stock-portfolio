@@ -6,6 +6,8 @@ import {
   type ProviderStatus,
 } from '@/lib/fundamentals'
 import { getCompanyProfileResults } from '@/lib/company-profile'
+import { loadSecAnnualEps } from '@/lib/sec-xbrl-provider'
+import type { SecFinancialResult } from '@/lib/sec-xbrl'
 
 const BASE = 'https://finnhub.io/api/v1'
 const KEY = process.env.FINNHUB_API_KEY
@@ -36,6 +38,7 @@ export interface FundamentalSymbolResult {
   observations: FundamentalObservation[]
   earnings: EarningsIntelligence
   earningsResultsStatus: 'unverified'
+  sec: SecFinancialResult
 }
 
 interface MetricsResponse {
@@ -153,6 +156,7 @@ export async function loadFundamentals(symbols: string[]): Promise<FundamentalSy
     }
   }
   const earnings = await loadEarnings(unique)
+  const secResults = await loadSecAnnualEps(unique)
   return unique.map((symbol, index) => {
     const metricResult = metricResults[index]
     const profileResult = profiles[symbol]
@@ -171,6 +175,7 @@ export async function loadFundamentals(symbols: string[]): Promise<FundamentalSy
       observations: normalizeFinnhubMetrics(metricResult.metric, metricResult.fetchedAt ?? new Date().toISOString()),
       earnings: earnings[symbol] ?? emptyEarnings('provider_error'),
       earningsResultsStatus: 'unverified',
+      sec: secResults[symbol],
     }
   })
 }

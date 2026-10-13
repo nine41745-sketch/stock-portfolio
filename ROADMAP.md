@@ -51,6 +51,8 @@ All portfolio-specific reads and recommendations must use the selected portfolio
 
 Each version needs its own scoped Development approval and acceptance review. Any schema migration, Cloud Apply, environment change, new Preview, or Production action requires its own approval even when listed here.
 
+v1.34.0 development note: The SEC XBRL adapter reads Annual GAAP Basic/Diluted EPS from 10-K with issuer, unit, period and filing evidence. SEC Live access requires a separately approved real identifying User-Agent. Ticker–CIK mapping alone does not prove common-stock share class, ADR ratio or split basis, so comparison and price scenarios remain unverified/suppressed until those inputs have independent evidence. This is development scope, not a released or production-validated capability.
+
 ## v1.35.0 legacy Watchlist migration plan
 
 The current Watchlist is account-scoped. Preserve every existing row and field while introducing portfolio-scoped records. The preferred design is additive: introduce a portfolio-scoped representation/table with ownership constraints and RLS while leaving the legacy source intact during rollout. Confirm the exact schema against the repository and disposable-database tests before implementation.
