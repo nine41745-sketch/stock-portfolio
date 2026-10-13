@@ -300,9 +300,19 @@ assert.match(lightModeCss, /text-purple-300/, 'Light mode must keep purple AI te
 assert.match(lightModeCss, /bg-blue-600\.text-white/, 'Light mode must preserve white text on primary blue buttons')
 assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native form controls with light color scheme')
 
-// v1.33.0 Preview metadata must stay synchronized across changelog/package/lockfile.
+// v1.33.1 release metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.33.0', 'Package version must be finalized as v1.33.0 for this release')
+assert.equal(packageJson.version, '1.33.1', 'Package version must be finalized as v1.33.1 for this release')
+const releaseTsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
+assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1331'], 'Version badge and changelog must resolve to v1.33.1')
+const releaseChangelog = fs.readFileSync('config/changelog-v1331.ts', 'utf8')
+assert.match(releaseChangelog, /version: 'v1\.33\.1'/, 'Latest changelog entry must be v1.33.1')
+assert.match(releaseChangelog, /Scanner mine: ใช้ Holdings ของพอร์ตที่เลือกเท่านั้น/)
+assert.match(releaseChangelog, /ตรวจ Auth\/PIN และ Portfolio Ownership ฝั่ง Server/)
+assert.match(releaseChangelog, /ป้องกันข้อมูล Holdings ปะปนระหว่างพอร์ต/)
+assert.match(releaseChangelog, /ไม่รวม Watchlist ระดับบัญชีจนถึง v1\.35\.0/)
+assert.match(releaseChangelog, /Regression Tests/)
+assert.doesNotMatch(releaseChangelog, /SQL Security Hardening|Supabase Cloud Security/i, 'Scanner release must not claim unreleased SQL or Cloud security fixes')
 assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
 assert.equal(packageJson.dependencies?.next, '16.3.8', 'Patched Next.js release must stay pinned')
 assert.equal(packageJson.dependencies?.react, '19.3.0', 'React and ReactDOM must stay aligned on the same release')
@@ -412,12 +422,13 @@ const changelogReleaseTimes = [
   ['config/changelog-v1312.ts', '2026-10-07 02:20 ICT'],
   ['config/changelog-v1320.ts', '2026-10-11 03:54 ICT'],
   ['config/changelog-v1330.ts', '2026-10-13 02:20 ICT'],
+  ['config/changelog-v1331.ts', '2026-10-13 18:01 ICT'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1330'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1331'])
 
 console.log('✓ Critical regression tests passed')
