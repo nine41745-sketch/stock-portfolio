@@ -57,6 +57,8 @@ assert.equal(duplicate.basic.status, 'unverified', 'Even exact duplicate latest 
 assert.equal(duplicate.basic.fact, null)
 const restated = sec.normalizeSecCompanyFacts('SYN', identity, facts([current, { ...current, val: 4.7, accn: '0000001234-26-000002' }]), fetchedAt)
 assert.equal(restated.basic.status, 'unverified')
+const amended = sec.normalizeSecCompanyFacts('SYN', identity, facts([current, { ...current, val: 4.4, form: '10-K/A', filed: '2026-03-01', accn: '0000001234-26-000003' }]), fetchedAt)
+assert.equal(amended.basic.status, 'unverified', '10-K/A facts for the same period must not be silently ignored')
 assert.equal(sec.normalizeSecCompanyFacts('SYN', identity, facts([{ ...current, form: '10-Q' }]), fetchedAt).basic.status, 'missing')
 assert.equal(sec.normalizeSecCompanyFacts('SYN', identity, facts([{ ...current, start: '2025-10-01' }]), fetchedAt).basic.status, 'missing')
 assert.equal(sec.normalizeSecCompanyFacts('SYN', identity, facts([{ ...current, val: Number.NaN }]), fetchedAt).basic.status, 'missing')
@@ -114,7 +116,7 @@ const redirectResult = await sec.fetchSecJson('https://www.sec.gov/files/company
   throw new TypeError('redirect mode error')
 }, async () => {})
 assert.equal(redirectResult.status, 'provider_error')
-assert.equal(redirectCalls.length, 2, 'At most one bounded retry; no redirect target is requested')
+assert.equal(redirectCalls.length, 1, 'Redirect rejection is not retried and no redirect target is requested')
 assert.ok(redirectCalls.every(({ url, init }) => sec.isAllowedSecUrl(url) && init.headers['User-Agent'] === agent))
 for (const [status, expected] of [[403, 'unavailable'], [404, 'missing']]) {
   let count = 0
@@ -122,15 +124,24 @@ for (const [status, expected] of [[403, 'unavailable'], [404, 'missing']]) {
   assert.equal(answer.status, expected)
   assert.equal(count, 1)
 }
-for (const [status, expected] of [[429, 'rate_limited'], [503, 'provider_error']]) {
+{
+  let count = 0
+  const answer = await sec.fetchSecJson('https://data.sec.gov/test', agent, async () => {
+    count++
+    return { ...response(429), headers: new Headers({ 'retry-after': '120' }) }
+  }, async () => {})
+  assert.equal(answer.status, 'rate_limited')
+  assert.equal(count, 1, 'A 429 response is not retried before Retry-After')
+}
+for (const [status, expected] of [[503, 'provider_error']]) {
   let count = 0
   const answer = await sec.fetchSecJson('https://data.sec.gov/test', agent, async () => { count++; return response(status) }, async () => {})
   assert.equal(answer.status, expected)
   assert.equal(count, 2, 'Transient errors have one bounded retry')
 }
 let timeoutCount = 0
-assert.equal((await sec.fetchSecJson('https://data.sec.gov/test', agent, async () => { timeoutCount++; throw new Error('timeout') }, async () => {})).status, 'provider_error')
-assert.equal(timeoutCount, 2)
+assert.equal((await sec.fetchSecJson('https://data.sec.gov/test', agent, async () => { timeoutCount++; throw new DOMException('timeout', 'TimeoutError') }, async () => {})).status, 'provider_error')
+assert.equal(timeoutCount, 1, 'A timeout ends this SEC request without a second attempt')
 let deadlineCalls = 0
 const deadlineResult = await sec.fetchSecJson('https://data.sec.gov/test', agent, async (_url, init) => {
   deadlineCalls += 1

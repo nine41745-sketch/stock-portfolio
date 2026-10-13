@@ -21,7 +21,7 @@ export interface SecAnnualEps {
   periodEnd: string
   fiscalYear: number
   fiscalPeriod: 'FY'
-  form: '10-K'
+  form: '10-K' | '10-K/A'
   filed: string
   accession: string
   sourceUrl: string
@@ -108,7 +108,9 @@ export async function fetchSecJson(
         if (payload.length > 25_000_000) return { status: 'provider_error', body: null }
         return { status: 'available', body: JSON.parse(payload) as unknown }
       }
-      if (attempt === 0 && (response.status === 429 || response.status >= 500)) {
+      // Do not retry rate limiting inside this request; honor Retry-After by ending the
+      // invocation so a later request can follow the provider's backoff window.
+      if (attempt === 0 && response.status >= 500) {
         const remaining = budget.deadlineAt - Date.now()
         if (remaining <= SEC_RETRY_DELAY_MS) return { status: secStatusFromHttp(response.status), body: null }
         await pause(SEC_RETRY_DELAY_MS)
@@ -116,8 +118,8 @@ export async function fetchSecJson(
       }
       return { status: secStatusFromHttp(response.status), body: null }
     } catch {
-      const remaining = budget.deadlineAt - Date.now()
-      if (attempt === 0 && remaining > SEC_RETRY_DELAY_MS) { await pause(SEC_RETRY_DELAY_MS); continue }
+      // Network failures, redirects rejected by Fetch, and timeouts fail closed. Retrying a
+      // timed-out request would consume more SEC budget without honoring provider backoff.
       return { status: 'provider_error', body: null }
     }
   }
@@ -180,6 +182,7 @@ interface Candidate {
   fy: number
   filed: string
   accn: string
+  form: '10-K' | '10-K/A'
 }
 
 function candidatesFor(raw: unknown, definition: EpsDefinition): Candidate[] {
@@ -196,7 +199,7 @@ function candidatesFor(raw: unknown, definition: EpsDefinition): Candidate[] {
     if (!unitMatch || !Array.isArray(values)) continue
     for (const value of values) {
       const item = record(value)
-      if (!item || item.form !== '10-K' || item.fp !== 'FY' ||
+      if (!item || (item.form !== '10-K' && item.form !== '10-K/A') || item.fp !== 'FY' ||
         !validDate(item.start) || !validDate(item.end) || !validDate(item.filed) ||
         typeof item.accn !== 'string' || !ACCESSION.test(item.accn) ||
         typeof item.fy !== 'number' || !Number.isSafeInteger(item.fy) ||
@@ -204,7 +207,7 @@ function candidatesFor(raw: unknown, definition: EpsDefinition): Candidate[] {
       const duration = (Date.parse(item.end) - Date.parse(item.start)) / 86_400_000
       if (duration < 330 || duration > 400 || item.filed < item.end) continue
       output.push({ value: item.val, unit, currency: unitMatch[1], start: item.start,
-        end: item.end, fy: item.fy, filed: item.filed, accn: item.accn })
+        end: item.end, fy: item.fy, filed: item.filed, accn: item.accn, form: item.form })
     }
   }
   return output
@@ -227,7 +230,7 @@ export function selectAnnualSecEps(
   return { status: 'available', reason: '10-K annual fact พร้อม source metadata; ยังต้องตรวจ share class ก่อนใช้กับราคาหุ้น', fact: {
     definition, value: item.value, currency: item.currency, unit: item.unit,
     periodStart: item.start, periodEnd: item.end, fiscalYear: item.fy,
-    fiscalPeriod: 'FY', form: '10-K', filed: item.filed, accession: item.accn,
+    fiscalPeriod: 'FY', form: item.form, filed: item.filed, accession: item.accn,
     sourceUrl: filingDirectory, fetchedAt, freshness, restatementStatus: 'no_conflict_observed',
   } }
 }
