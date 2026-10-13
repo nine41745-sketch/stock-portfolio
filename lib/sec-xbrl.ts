@@ -40,6 +40,7 @@ export interface SecFinancialResult {
   status: SecStatus
   reason: string
   identity: SecIdentity | null
+  issuerIdentityStatus: 'matched' | 'unverified' | 'unavailable'
   companyFactsEntityName: string | null
   issuerNameMatch: 'exact' | 'different' | 'unavailable'
   basic: SecEpsSelection
@@ -140,7 +141,7 @@ function record(value: unknown): Record<string, unknown> | null {
 
 export function emptySecResult(status: SecStatus, reason: string): SecFinancialResult {
   const empty: SecEpsSelection = { status, reason, fact: null }
-  return { status, reason, identity: null, companyFactsEntityName: null, issuerNameMatch: 'unavailable',
+  return { status, reason, identity: null, issuerIdentityStatus: 'unavailable', companyFactsEntityName: null, issuerNameMatch: 'unavailable',
     basic: empty, diluted: empty, fetchedAt: null, source: 'SEC EDGAR' }
 }
 
@@ -249,7 +250,7 @@ export function normalizeSecCompanyFacts(symbol: string, identity: SecIdentity, 
   if (typeof bodyCik !== 'number' || !Number.isSafeInteger(bodyCik) || String(bodyCik).padStart(10, '0') !== identity.cik ||
     !companyFactsEntityName || symbol.trim().toUpperCase() !== identity.ticker) {
     return { ...emptySecResult('unverified', 'CIK, Symbol หรือ CompanyFacts entity name ไม่ครบ/ไม่ตรงกับ SEC Ticker–CIK context'),
-      identity, companyFactsEntityName, issuerNameMatch, fetchedAt }
+      identity, issuerIdentityStatus: 'unverified', companyFactsEntityName, issuerNameMatch, fetchedAt }
   }
   const basic = selectAnnualSecEps(raw, 'basic', identity.cik, fetchedAt)
   const diluted = selectAnnualSecEps(raw, 'diluted', identity.cik, fetchedAt)
@@ -259,7 +260,25 @@ export function normalizeSecCompanyFacts(symbol: string, identity: SecIdentity, 
   const reason = issuerNameMatch === 'different'
     ? 'CIK ตรงกับ SEC mapping; Entity Name มีความต่างของการเขียน จึงคงชื่อทั้งสองไว้โดยไม่ใช้ fuzzy match; Security Type/Share Class ยังไม่ยืนยัน'
     : identity.reason
-  return { status, reason, identity, companyFactsEntityName, issuerNameMatch, basic, diluted, fetchedAt, source: 'SEC EDGAR' }
+  return { status, reason, identity, issuerIdentityStatus: 'matched', companyFactsEntityName, issuerNameMatch, basic, diluted, fetchedAt, source: 'SEC EDGAR' }
+}
+
+export function issuerIdentityPresentation(result: SecFinancialResult) {
+  const nameMatchLabel = result.issuerNameMatch === 'exact' ? 'Exact · ตรงกัน'
+    : result.issuerNameMatch === 'different' ? 'Different · แตกต่างกัน' : 'Unavailable · ไม่ทราบ'
+  return {
+    mappingName: result.identity?.entityName ?? null,
+    companyFactsName: result.companyFactsEntityName,
+    nameMatchLabel,
+    issuerStatusLabel: result.issuerIdentityStatus === 'matched'
+      ? 'จับคู่ด้วย CIK และ Symbol ตาม Mapping'
+      : result.issuerIdentityStatus === 'unverified' ? 'ยังยืนยันการจับคู่ไม่ได้' : 'ไม่มีข้อมูล Mapping/CompanyFacts',
+    warning: result.issuerNameMatch === 'different'
+      ? 'ชื่อบริษัทจาก SEC Mapping และ CompanyFacts แตกต่างกัน ระบบไม่ใช้ fuzzy matching; ความตรงกันของ CIK/Symbol ไม่ยืนยันประเภทหลักทรัพย์หรือ Share Class'
+      : null,
+    securityTypeLabel: 'ยังไม่ยืนยัน',
+    shareClassLabel: 'ยังไม่ยืนยัน',
+  }
 }
 
 export function compareSecEps(left: SecFinancialResult, right: SecFinancialResult, definition: EpsDefinition): { comparable: boolean; reason: string } {

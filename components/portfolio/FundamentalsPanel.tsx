@@ -9,7 +9,7 @@ import {
   type ProviderStatus,
 } from '@/lib/fundamentals'
 import type { FundamentalSymbolResult } from '@/lib/fundamentals-provider'
-import { compareSecEps, secValuationGuard, type EpsDefinition } from '@/lib/sec-xbrl'
+import { compareSecEps, issuerIdentityPresentation, secValuationGuard, type EpsDefinition } from '@/lib/sec-xbrl'
 
 interface FundamentalsResponse {
   requestedAt: string
@@ -191,9 +191,25 @@ export default function FundamentalsPanel() {
             {results.map(result => <article key={`${result.symbol}-sec`} className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 text-xs dark:border-gray-700 dark:bg-gray-950">
               <h4 className="text-sm font-semibold">{result.symbol} · SEC {result.sec.status}</h4>
               <p className="mt-1 text-amber-900 dark:text-amber-200">{result.sec.reason}</p>
-              {result.sec.identity && <p className="mt-1 break-words text-gray-700 dark:text-gray-300">
-                CIK {result.sec.identity.cik} · {result.sec.identity.entityName} · {result.sec.identity.exchange} · Identity {result.sec.identity.status}
-              </p>}
+              {(() => {
+                const issuer = issuerIdentityPresentation(result.sec)
+                return <section aria-label={`ข้อมูลผู้ออกหลักทรัพย์ SEC ${result.symbol}`} className="mt-2 rounded-md border border-gray-200 bg-gray-50 p-2 text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                  <h5 className="font-semibold">Issuer Identity · การจับคู่ผู้ออกหลักทรัพย์</h5>
+                  <dl className="mt-1 grid min-w-0 gap-2 sm:grid-cols-2">
+                    <div className="min-w-0"><dt className="text-gray-600 dark:text-gray-400">ชื่อจาก SEC Ticker–CIK Mapping</dt><dd className="break-words">{issuer.mappingName ?? 'ไม่มีข้อมูล'}</dd></div>
+                    <div className="min-w-0"><dt className="text-gray-600 dark:text-gray-400">ชื่อจาก SEC CompanyFacts</dt><dd className="break-words">{issuer.companyFactsName ?? 'ไม่มีข้อมูล'}</dd></div>
+                    <div><dt className="text-gray-600 dark:text-gray-400">สถานะชื่อบริษัท</dt><dd>{issuer.nameMatchLabel}</dd></div>
+                    <div><dt className="text-gray-600 dark:text-gray-400">CIK / Exchange</dt><dd className="break-words">{result.sec.identity ? `${result.sec.identity.cik} / ${result.sec.identity.exchange}` : 'ไม่มีข้อมูล'}</dd></div>
+                    <div className="sm:col-span-2"><dt className="text-gray-600 dark:text-gray-400">การจับคู่ issuer</dt><dd>{issuer.issuerStatusLabel}</dd></div>
+                  </dl>
+                  {issuer.warning && <p role="status" className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">คำเตือน: {issuer.warning}</p>}
+                  <dl className="mt-2 grid gap-2 border-t border-gray-200 pt-2 dark:border-gray-700 sm:grid-cols-2">
+                    <div><dt className="text-gray-600 dark:text-gray-400">Security Type</dt><dd>{issuer.securityTypeLabel}</dd></div>
+                    <div><dt className="text-gray-600 dark:text-gray-400">Share Class / ADR Ratio</dt><dd>{issuer.shareClassLabel}</dd></div>
+                  </dl>
+                  <p className="mt-2 text-gray-600 dark:text-gray-400">การจับคู่ด้วย CIK และ Symbol ระบุข้อมูลระดับบริษัทเท่านั้น ไม่ได้ยืนยันประเภทหลักทรัพย์หรือ Share Class</p>
+                </section>
+              })()}
               {(['basic', 'diluted'] as EpsDefinition[]).map(definition => {
                 const selection = result.sec[definition]
                 const fact = selection.fact
