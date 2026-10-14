@@ -142,7 +142,7 @@ export default function FundamentalsPanel() {
           />
           <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">เลือก {symbols.length}/4 · สัญลักษณ์ซ้ำจะถูกรวม</span>
         </label>
-        <button type="button" onClick={() => void loadData()} disabled={loading || !symbols.length || symbols.length > 4} className="rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-offset-gray-950">
+        <button type="button" onClick={() => void loadData()} disabled={loading || !symbols.length || symbols.length > 4} className="rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-100 dark:focus-visible:ring-offset-gray-950">
           {loading ? 'กำลังโหลด…' : 'โหลดข้อมูล'}
         </button>
       </div>

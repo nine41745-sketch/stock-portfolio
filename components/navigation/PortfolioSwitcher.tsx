@@ -119,7 +119,7 @@ export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) 
             value={activeId}
             disabled={busy || items.length === 0}
             onChange={event => void selectPortfolio(event.target.value)}
-            className="min-h-9 min-w-0 max-w-[180px] flex-1 rounded-lg border border-gray-700 bg-gray-950 px-2.5 py-1.5 text-xs font-semibold text-gray-200 focus:border-blue-500 focus:outline-none disabled:opacity-50 sm:flex-none"
+            className="min-h-9 min-w-0 max-w-[180px] flex-1 rounded-lg border border-gray-700 bg-gray-950 px-2.5 py-1.5 text-xs font-semibold text-gray-200 focus:border-blue-500 focus:outline-none disabled:text-gray-300 disabled:opacity-100 sm:flex-none"
             aria-label="เลือกพอร์ต"
           >
             {items.map(item => (
@@ -133,7 +133,7 @@ export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) 
           type="button"
           onClick={() => void createPortfolio()}
           disabled={busy || loading}
-          className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-50"
+          className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white disabled:text-gray-300 disabled:opacity-100"
         >
           ＋ เพิ่มพอร์ต
         </button>
