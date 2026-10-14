@@ -1,0 +1,104 @@
+name: Authenticated Browser QA
+
+on:
+  pull_request:
+    types: [labeled]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: authenticated-browser-qa-pr64
+  cancel-in-progress: false
+
+jobs:
+  authenticated-browser-qa:
+    if: >-
+      ${{ github.event.pull_request.number == 64 &&
+          github.event.pull_request.head.ref == 'codex/v1.34.0-fundamentals-valuation' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.event.label.name == 'authenticated-browser-qa' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: 'true'
+      QA_ARTIFACT_DIR: .local-artifacts/authenticated-browser-qa/${{ github.run_id }}
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Setup pinned Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 2.84.2
+
+      - name: Verify isolated project and tool versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e supabase/.temp/project-ref
+          test "$(supabase --version)" = "2.84.2"
+          grep -q '^project_id = "stock-portfolio-auth-browser-qa"$' supabase/config.toml
+
+      - name: Start Local Supabase and validate endpoint identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase start --exclude studio,inbucket,realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor,postgres-meta > "$RUNNER_TEMP/supabase-start.log" 2>&1
+          supabase status --output env > "$RUNNER_TEMP/supabase-status.env" 2>/dev/null
+          node scripts/qa/export-local-supabase-env.mjs "$RUNNER_TEMP/supabase-status.env"
+
+      - name: Bootstrap repository SQL on disposable database
+        shell: bash
+        run: bash scripts/qa/bootstrap-local-supabase.sh
+
+      - name: Run Authenticated Browser QA with external network blocked
+        shell: bash
+        run: |
+          set -euo pipefail
+          export QA_NETWORK_GUARD_LOG="$RUNNER_TEMP/qa-network-guard.log"
+          : > "$QA_NETWORK_GUARD_LOG"
+          export NODE_OPTIONS="--require=$GITHUB_WORKSPACE/scripts/qa/deny-external-network.cjs"
+          (npm run dev -- --hostname 127.0.0.1 --port 3000 > "$RUNNER_TEMP/next-dev.log" 2>&1 & echo $! > "$RUNNER_TEMP/next-dev.pid")
+          for attempt in $(seq 1 90); do
+            curl --silent --fail http://127.0.0.1:3000/login >/dev/null && break
+            sleep 2
+          done
+          curl --silent --fail http://127.0.0.1:3000/login >/dev/null
+          node scripts/qa/authenticated-browser.mjs
+
+      - name: Stop only this disposable project
+        if: always()
+        shell: bash
+        run: supabase stop > "$RUNNER_TEMP/supabase-stop.log" 2>&1 || true
+
+      - name: Record blocked QA result
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p "$QA_ARTIFACT_DIR"
+          printf '{"status":"BLOCKED","reason":"An isolated QA precondition or assertion failed; inspect the failed workflow step. No raw logs or credentials are included."}\n' > "$QA_ARTIFACT_DIR/results.json"
+      - name: Upload synthetic QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr64-authenticated-browser-qa
+          path: ${{ env.QA_ARTIFACT_DIR }}/
+          retention-days: 3
+          if-no-files-found: ignore

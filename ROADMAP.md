@@ -1,19 +1,19 @@
 # Stock Portfolio — Roadmap
 
 Status: Owner-confirmed direction and acceptance criteria; each implementation, database, cloud, and deployment change still requires scoped approval.
-Updated: 2026-10-13 (Asia/Bangkok)
-Repository baseline: `main` at `ea76e7bf4a68b62b3649c2f8f9bfa063d7796411` (v1.33.0).
+Updated: 2026-10-14 (Asia/Bangkok)
+Repository baseline: `main` at `28f31880465d30e091726e68130b2d275fd7fcb9` (v1.33.1).
 
 ## Evidence and boundaries
 
 | Item | Verified status |
 | --- | --- |
-| GitHub `main` | SHA `ea76e7bf4a68b62b3649c2f8f9bfa063d7796411` |
-| PR #60 | Merged; merge commit is the Production baseline SHA above |
-| GitHub Release | `v1.33.0` published at [GitHub Release](https://github.com/nine41745-sketch/stock-portfolio/releases/tag/v1.33.0) |
-| GitHub Actions | `verify` completed successfully for the exact baseline SHA: [workflow run](https://github.com/nine41745-sketch/stock-portfolio/actions/runs/38299088297) |
-| Application release scope | Smart DCA, Dividend Intelligence Phase 1, Screenshot Import Preview, Broker CSV Import Preview, and SQL bootstrap/repair assets are included in the release |
-| Production database / live RLS behavior | Not proven by source, release, or CI. Cloud migrations were not applied as part of v1.33.0; live database behavior needs separate, approved verification |
+| GitHub `main` | SHA `28f31880465d30e091726e68130b2d275fd7fcb9` |
+| PR #63 | Merged; merge commit is the Production baseline SHA above |
+| GitHub Release | `v1.33.1` published at [GitHub Release](https://github.com/nine41745-sketch/stock-portfolio/releases/tag/v1.33.1) |
+| GitHub Actions | `verify` passed on PR #63 head `7fae3e9e84e41362fd5cf594c5d62f8c312417fb`: [workflow run](https://github.com/nine41745-sketch/stock-portfolio/actions/runs/38387514971) |
+| Application release scope | v1.33.1 releases Scanner `mine` Portfolio Isolation, server-side Auth/PIN and ownership validation, and Regression Tests. v1.33.0 features remain in release history. |
+| Production database / live RLS behavior | Not proven by source, release, or CI. v1.33.1 SQL Cloud verification remains blocked; do not infer Cloud behavior from Local SQL tests. |
 
 Release evidence confirms repository, PR, release, and CI state. It does not establish that SQL repairs were applied to Supabase Cloud or that Production RLS/RPC behavior was live-tested.
 
@@ -40,7 +40,7 @@ All portfolio-specific reads and recommendations must use the selected portfolio
 
 | Version | Scope and acceptance criteria | Dependencies, quota, and risk |
 | --- | --- | --- |
-| **v1.33.1 — Security Hardening** | Narrow hardening for `rls_auto_enable()` EXECUTE ACL and a fixed safe `search_path` on `update_updated_at()`. Fix Scanner `mine` to use only selected-portfolio Holdings and disclose omitted account-level Watchlist. Verify Auth/PIN, RPC/RLS, ownership, and cross-portfolio regressions. | SQL Security Hardening has **not passed Disposable Database integration tests**; Docker Desktop currently blocks that local verification. Supabase Cloud security advisories remain open risks. Do not claim the migration is production-ready or applied. Use a disposable non-production target only after it is available and approved. |
+| **v1.33.1 — Scanner Portfolio Isolation** | **Released:** Scanner `mine` uses only the selected portfolio's Holdings, with server-side Auth/PIN and ownership checks plus regression coverage. It excludes account-level Watchlist until v1.35.0. SQL Security Hardening is tracked separately in Draft PR #62. | Local SQL Acceptance on disposable PostgreSQL 17.11 with synthetic data and PR CI passed per PR #62 evidence. **Cloud Verification remains BLOCKED**; Supabase Cloud advisories remain open. Do not claim Cloud changes were applied or verified. |
 | **v1.34.0 — Fundamentals and Valuation** | Fundamental Analysis, Stock Comparison, Earnings Intelligence, and Stock Valuation. Show source, reporting period, units, timestamp, assumptions, and missing/stale data. Comparison must use equivalent periods/units and label estimates versus reported values. | Reuse existing quote/profile/earnings data where suitable. Cache and batch provider calls; make expensive analysis user-initiated. Do not imply precision beyond source coverage. |
 | **v1.35.0 — Portfolio Watchlist and Smart Alerts** | Portfolio-scoped Watchlist, per-portfolio target prices and notes, Watchlist Collections, Smart Alerts, Support/Resistance Ladder, and Conditional Investment Rules. Alert/rule evaluation must be deterministic, explainable, and scoped to the selected portfolio. Alerts suggest or notify; they do not trade. | Requires an additive, reviewed schema/RLS migration and explicit mapping of legacy Watchlist rows. Preserve legacy data; no automatic assignment, move, deletion, or copy. Cloud migration and apply require separate approval. Avoid frequent polling/cron that exceeds Hobby or provider quotas. |
 | **v1.36.0 — Investment Discovery** | Investment Themes, Trending Opportunities, and Expanded Market Radar. Show selection logic, coverage, source, and data freshness; reuse existing Scanner and Market Intelligence components. | Start with bounded universes and cached/on-demand refresh. Avoid duplicate scanners and unbounded third-party API fan-out. |
@@ -50,6 +50,8 @@ All portfolio-specific reads and recommendations must use the selected portfolio
 | **v1.40.0 — Personal Investment Command Center** | One selected-portfolio view for existing holdings, watchlist/targets, alerts, market signals, risk, and investment plans, with source timestamps and clear stale/missing states. | Compose existing screens/components and APIs; avoid duplicating features or causing a burst of provider calls. Use cached/shared results and user-triggered refresh. No automated trades. |
 
 Each version needs its own scoped Development approval and acceptance review. Any schema migration, Cloud Apply, environment change, new Preview, or Production action requires its own approval even when listed here.
+
+v1.34.0 development note: The SEC XBRL adapter reads Annual GAAP Basic/Diluted EPS from 10-K with issuer, unit, period and filing evidence. SEC Live access requires a separately approved real identifying User-Agent. Ticker–CIK mapping alone does not prove common-stock share class, ADR ratio or split basis, so comparison and price scenarios remain unverified/suppressed until those inputs have independent evidence. Requests are capped at four symbols, five unique URLs, ten attempts and a 12-second SEC deadline with per-invocation spacing/cache; Vercel serverless instances do not share a global rate limiter, so concurrent cold-cache bursts remain a live-access risk. This is development scope, not a released or production-validated capability.
 
 ## v1.35.0 legacy Watchlist migration plan
 
@@ -65,8 +67,8 @@ The current Watchlist is account-scoped. Preserve every existing row and field w
 
 ## Security, operational limits, and quota
 
-- Keep v1.33.1 Cloud security advisories open until evidence confirms a fix in the relevant environment. SQL source assertions and CI do not substitute for database integration tests.
-- The proposed v1.33.1 SQL Security Hardening files are local work only and have not passed Disposable Database integration tests. Docker Desktop has been reported as the current blocker; recheck its status before planning local database acceptance.
+- Keep v1.33.1 Cloud security advisories open until approved evidence confirms the relevant Cloud state. Local SQL Acceptance and CI for PR #62 passed, but do not substitute for Cloud verification.
+- PR #62 remains Draft and contains the SQL Security Hardening package. Cloud Function definitions, ACL/role membership, target identity, and live Auth/PostgREST/RLS behavior have not been verified. Do not apply the migration without separate approval.
 - Use non-production, synthetic data for database acceptance. Verify environment identity before any test that writes data. Never use Production credentials or data for development tests.
 - Control Vercel Hobby builds and previews: validate locally, batch related changes, and avoid unnecessary pushes, previews, redeployments, or Cron Jobs. Review the current plan-specific [Vercel Hobby](https://vercel.com/docs/plans/hobby), [limits](https://vercel.com/docs/limits), and [Cron usage/pricing](https://vercel.com/docs/cron-jobs/usage-and-pricing) before scheduling work.
 - Control Supabase Free storage, project availability, and compute; use a disposable local database first. Confirm current terms and limits in [Supabase billing](https://supabase.com/docs/guides/platform/billing-on-supabase), [database size](https://supabase.com/docs/guides/platform/database-size), and [free project pausing](https://supabase.com/docs/guides/platform/free-project-pausing). Do not assume a Cloud test project exists or is isolated.
@@ -77,7 +79,7 @@ The current Watchlist is account-scoped. Preserve every existing row and field w
 
 ## Pending Maintenance / Technical Risks
 
-Status below is based on GitHub reads on 2026-10-13 and prior repository evidence. Recheck before acting; open PRs can change.
+Status below is based on GitHub reads on 2026-10-14 and prior repository evidence. Recheck before acting; open PRs can change.
 
 ### Confirmed GitHub findings
 
@@ -92,9 +94,9 @@ Status below is based on GitHub reads on 2026-10-13 and prior repository evidenc
 | Area | Evidence status | Follow-up |
 | --- | --- | --- |
 | Stooq market-data responses | An earlier audit observed HTTP 200 with HTML/challenge content where CSV was expected; the reported Production 403 cause was not confirmed. This was not re-tested for this roadmap update. | Recheck current response handling and record status/content-type/body classification without assuming the Production cause. |
-| Regression and database integration tests | Repository/CI checks do not prove live Auth, RLS, RPC, or database behavior. v1.33.1 SQL Security Hardening has not passed Disposable Database integration tests; Docker Desktop was reported as the blocker and needs a current status check. | Use synthetic data on a verified disposable non-production database. Separate source assertions, mocked tests, and live integration results. Never substitute Production. |
+| Regression and database integration tests | PR #62 reports Disposable PostgreSQL 17.11 SQL Acceptance and CI passed with synthetic data. Live Supabase Auth/PostgREST/RLS and Cloud metadata remain unverified; Docker Desktop recovery is a separate local tooling issue. | Preserve the distinction between local, mocked, and Cloud evidence. Use only an explicitly verified non-production target for any future live integration tests. Never substitute Production. |
 | Governance documentation | Earlier review flagged potentially stale DEPLOY/SETUP/VERSIONING references; those files were not re-audited as part of this update. | Recheck each referenced instruction against current workflows, deployment behavior, and configuration before relying on it. |
-| Dependency security | Seven High development-dependency findings were reported in a prior audit; their current advisories, paths, and patched versions were not re-audited here. | Run a fresh production and full dependency audit and compatibility review. Keep findings open until verified fixed; never disable security alerts or skip/relax required tests to make CI pass. |
+| Dependency security | Fresh audit on 2026-10-14: `npm audit --omit=dev --audit-level=high` reports 0 production vulnerabilities; full `npm audit` reports 7 High findings in development-only chains involving `braces` (GHSA-vfj7-8cjw-p6xm), `chokidar`, `micromatch`, `fast-glob`, Tailwind and Next ESLint. The current lockfile paths were inspected; no application use of user-controlled glob patterns was found. | Keep the findings open. Audit remediation suggests major-version changes (Tailwind 4 or an older Next ESLint configuration) and needs a separate compatibility plan. Never disable alerts or skip/relax required tests to make CI pass. |
 
 ## Delivery order and dependencies
 
@@ -124,9 +126,10 @@ Before adding work, compare it with current repository code and reuse existing c
 | Decision | Status |
 | --- | --- |
 | v1.33.0 is Released at `ea76e7bf4a68b62b3649c2f8f9bfa063d7796411`; PR #60 merged; Release published; exact-SHA `verify` succeeded | GitHub evidence inspected 2026-10-13 |
+| v1.33.1 Scanner Portfolio Isolation is Released at `28f31880465d30e091726e68130b2d275fd7fcb9`; PR #63 merged; Release published | GitHub PR metadata and Vercel Production deployment metadata inspected 2026-10-14 |
 | v1.34.0–v1.40.0 scope and order, including portfolio-scoped Watchlist in v1.35.0 | Owner-confirmed roadmap direction |
 | Existing `PortfolioSwitcher` and shared login remain; no duplicate selector or separate-login project in scope | Owner decision |
 | Import flows remain preview-only until persistence receives separate design, approval, and acceptance | v1.33.0 release scope / owner direction |
-| v1.33.1 local SQL hardening has not passed Disposable Database integration tests; Cloud advisories remain open | Current limitation; recheck before implementation/acceptance |
+| PR #62 SQL hardening passed Local SQL Acceptance and CI; Cloud Verification and live Supabase behavior remain unverified | PR #62 metadata inspected 2026-10-14; keep Draft pending authorized Cloud evidence |
 | Each Development, migration, Cloud, environment, Preview, merge, or Production action needs scoped approval | Owner instructions and repository governance |
 | Do not push directly to `main`; develop on a dedicated branch and use a Pull Request; do not merge or deploy Production without explicit approval | Owner instruction |
