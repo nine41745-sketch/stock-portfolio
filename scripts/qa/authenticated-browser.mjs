@@ -29,8 +29,9 @@ const created=await fetch(new URL('/auth/v1/admin/users',sb),{
   body:JSON.stringify({email,password,email_confirm:true}),
 })
 assert.equal(created.status,200)
+const qaUser=await created.json()
 pass('Synthetic user created by local Auth Admin')
-let outside=0, mode='synthetic', watchlistMode='normal'
+let outside=0, mode='synthetic', watchlistMode='normal', scannerMode='mock'
 const browser=await chromium.launch({headless:true})
 try {
  const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'})
@@ -63,7 +64,7 @@ try {
    else await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(fixture())})
    return
   }
-  if(u.pathname==='/api/scanner') return route.fulfill({status:200,contentType:'application/json',body:'{"items":[]}'})
+  if(u.pathname==='/api/scanner'&&scannerMode!=='real-mine') return route.fulfill({status:200,contentType:'application/json',body:'{"items":[]}'})
   if(u.pathname==='/api/watchlist'&&watchlistMode==='missing-schema') return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic missing portfolio Watchlist migration',migration_required:true})})
   return route.continue()
  })
@@ -86,12 +87,48 @@ try {
  const locked=await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)
  assert.equal(locked.status(),401)
  assert.match((await locked.json()).error,/PIN/i)
+ const legacyLocked=await page.request.get(new URL('/api/watchlist/legacy',base).href)
+ assert.equal(legacyLocked.status(),401,'Legacy Watchlist must enforce PIN before reading')
  pass('Authenticated session is denied until PIN setup')
  const fields=page.locator('input[type=password]')
  await fields.nth(0).fill(pin);await fields.nth(1).fill(pin)
  await page.getByRole('button',{name:'ตั้ง PIN'}).click()
  await page.waitForURL(/\/(?:dashboard|scanner)(?:\?|$)/)
  qaStage='unlocked'
+ const legacyInsert=await fetch(new URL('/rest/v1/watchlist?on_conflict=user_id,symbol',sb),{
+  method:'POST',headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY,'content-type':'application/json',Prefer:'resolution=merge-duplicates'},
+  body:JSON.stringify({user_id:qaUser.id,symbol:'IBM',target_price:123.45,note:'Synthetic legacy; read-only QA'})
+ })
+ assert([200,201,204].includes(legacyInsert.status),`Synthetic legacy fixture insert failed with ${legacyInsert.status}`)
+ const otherUserResponse=await fetch(new URL('/auth/v1/admin/users',sb),{
+  method:'POST',headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY,'content-type':'application/json'},
+  body:JSON.stringify({email:'qa-other-'+randomUUID()+'@example.test',password:randomBytes(24).toString('base64url'),email_confirm:true})
+ })
+ assert.equal(otherUserResponse.status,200)
+ const otherUser=await otherUserResponse.json()
+ const otherLegacyInsert=await fetch(new URL('/rest/v1/watchlist?on_conflict=user_id,symbol',sb),{
+  method:'POST',headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY,'content-type':'application/json',Prefer:'resolution=merge-duplicates'},
+  body:JSON.stringify({user_id:otherUser.id,symbol:'NVDA',target_price:456,note:'synthetic foreign owner row'})
+ })
+ assert([200,201,204].includes(otherLegacyInsert.status),`Synthetic other-owner row insert failed with ${otherLegacyInsert.status}`)
+ const legacyRead=await page.request.get(new URL('/api/watchlist/legacy',base).href)
+ assert.equal(legacyRead.status(),200)
+ const legacyData=await legacyRead.json()
+ assert.equal(legacyData.scope,'account-unmapped-read-only')
+ assert.equal(legacyData.portfolio_id,null)
+ assert.equal(legacyData.items.length,1)
+ assert.equal(legacyData.items[0].symbol,'IBM')
+ assert.equal(legacyData.items[0].target_price,123.45)
+ assert.equal(legacyData.items[0].note,'Synthetic legacy; read-only QA')
+ assert(!legacyData.items.some(item=>item.symbol==='NVDA'),'Legacy endpoint must not return another user\'s row')
+ assert(!('smart_alert' in legacyData.items[0])&&!('current_price' in legacyData.items[0]),'Legacy rows must not enter quote or alert processing')
+ assert.equal((await page.request.post(new URL('/api/watchlist/legacy',base).href,{data:{symbol:'MSFT'}})).status(),405,'Legacy endpoint must reject write methods')
+ scannerMode='real-mine'
+ const mineWithLegacy=await page.request.get(new URL('/api/scanner?universe=mine',base).href)
+ scannerMode='mock'
+ assert.equal(mineWithLegacy.status(),200)
+ assert.deepEqual((await mineWithLegacy.json()).items,[],'Account-level legacy rows must not be included in Scanner mine')
+ pass('Legacy rows are PIN-protected, account-filtered, unmapped, and excluded from quotes/alerts and real Scanner mine')
  const live=await page.request.get(new URL('/api/fundamentals?symbols=AAPL,MSFT',base).href)
  assert.equal(live.status(),200)
  const liveBody=await live.json()
@@ -126,7 +163,7 @@ try {
  await page.getByRole('button',{name:'⭐ หุ้นที่เล็งไว้',exact:true}).click()
  await page.getByRole('alert').filter({hasText:'Synthetic missing portfolio Watchlist migration'}).waitFor()
  assert.equal(await page.getByText(/ยังไม่มีรายการ Watchlist ที่ผูกกับพอร์ตนี้/).count(),0,'Migration failure must not be presented as an empty portfolio Watchlist')
- assert(await page.getByText(/Watchlist เดิมระดับบัญชียังคงถูกเก็บไว้/).count()===1,'Legacy Watchlist preservation and unassigned status must be disclosed')
+ assert(await page.getByText(/Legacy แสดงแยกแบบอ่านอย่างเดียว/).count()===1,'Legacy Watchlist must be disclosed separately as read-only and unmapped')
  pass('Missing portfolio Watchlist migration is reported without implying old data is absent')
  watchlistMode='normal'
  await page.goto(new URL('/scanner',base).href)
@@ -172,6 +209,12 @@ try {
  assert.equal(visibleAData.items[0].collection_id,collectionA.id)
  await page.goto(new URL('/scanner',base).href)
  await page.getByRole('button',{name:'⭐ หุ้นที่เล็งไว้',exact:true}).click()
+ const legacySection=page.getByRole('region',{name:'Legacy Watchlist · ระดับบัญชี · อ่านอย่างเดียว'})
+ await legacySection.getByText('IBM',{exact:true}).waitFor()
+ assert.equal(await legacySection.getByText('ราคาเป้าหมายเดิม').count(),1)
+ assert.equal(await legacySection.getByText('Synthetic legacy; read-only QA').count(),1)
+ assert.equal(await legacySection.locator('button').count(),0,'Legacy section must not provide mutation controls')
+ pass('Legacy Watchlist is visibly separate and contains no mapping or mutation controls')
  const watchlistCard=page.locator('article').filter({hasText:'Synthetic A'})
  await watchlistCard.waitFor()
  assert(await watchlistCard.getByRole('heading',{name:'AAPL'}).count()===1)

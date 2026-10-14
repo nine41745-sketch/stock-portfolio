@@ -62,6 +62,7 @@ type WatchlistItem = {
 }
 
 type WatchlistCollection = { id: string; name: string; sort_order: number }
+type LegacyWatchlistItem = { id: string; symbol: string; target_price: number | null; note: string | null; created_at: string }
 type RuleType = 'PRICE_AT_OR_BELOW' | 'PRICE_AT_OR_ABOVE' | 'DIME_AT_OR_BELOW' | 'CASH_AT_OR_BELOW' | 'ALLOCATION_AT_OR_BELOW' | 'POSITION_WEIGHT_AT_OR_ABOVE'
 type InvestmentRule = { id: string; name: string; rule_type: RuleType; symbol: string | null; threshold: number; enabled: boolean }
 type RuleEvaluation = { id: string; status: 'triggered' | 'not-triggered' | 'unavailable' | 'disabled'; reason: string; observedValue: number | null }
@@ -179,6 +180,9 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([])
   const [watchlistLoading, setWatchlistLoading] = useState(true)
   const [watchlistError, setWatchlistError] = useState<string | null>(null)
+  const [legacyWatchlist, setLegacyWatchlist] = useState<LegacyWatchlistItem[]>([])
+  const [legacyWatchlistLoading, setLegacyWatchlistLoading] = useState(true)
+  const [legacyWatchlistError, setLegacyWatchlistError] = useState<string | null>(null)
   const [collections, setCollections] = useState<WatchlistCollection[]>([])
   const [collectionFilter, setCollectionFilter] = useState('all')
   const [selectedCollection, setSelectedCollection] = useState('')
@@ -219,10 +223,30 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
     }
   }, [])
 
+  const loadLegacyWatchlist = useCallback(async () => {
+    try {
+      const response = await fetch('/api/watchlist/legacy', { cache: 'no-store' })
+      if (!response.ok) throw new Error(await getErrorMessage(response, 'โหลด Legacy Watchlist ไม่สำเร็จ'))
+      const data = await response.json() as { items?: LegacyWatchlistItem[]; scope?: string; portfolio_id?: string | null }
+      if (data.scope !== 'account-unmapped-read-only' || data.portfolio_id !== null) throw new Error('ขอบเขต Legacy Watchlist ไม่ถูกต้อง')
+      setLegacyWatchlist(Array.isArray(data.items) ? data.items : [])
+      setLegacyWatchlistError(null)
+    } catch (error) {
+      setLegacyWatchlistError(error instanceof Error ? error.message : 'โหลด Legacy Watchlist ไม่สำเร็จ')
+    } finally {
+      setLegacyWatchlistLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadWatchlist() }, 0)
     return () => window.clearTimeout(timer)
   }, [loadWatchlist])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadLegacyWatchlist() }, 0)
+    return () => window.clearTimeout(timer)
+  }, [loadLegacyWatchlist])
 
   const loadRules = useCallback(async () => {
     try {
@@ -737,7 +761,7 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
             <div>
               <h2 className="text-lg font-semibold text-white">Watchlist และ Smart Alerts</h2>
               <p className="text-xs text-gray-400">ข้อมูลแยกตามพอร์ตที่เลือก · ไม่มีการตรวจราคาอัตโนมัติหรือส่งคำสั่งซื้อขาย</p>
-              <p className="mt-1 max-w-3xl text-xs text-amber-300" role="note">Watchlist เดิมระดับบัญชียังคงถูกเก็บไว้ แต่ยังไม่ได้จับคู่กับพอร์ตและจะไม่แสดงในรายการนี้ ห้ามย้ายหรือคัดลอกข้อมูลเดิมจนกว่าเจ้าของจะตรวจรับแผนจับคู่ข้อมูล</p>
+              <p className="mt-1 max-w-3xl text-xs text-amber-300" role="note">รายการ Legacy แสดงแยกแบบอ่านอย่างเดียว ยังไม่ผูกกับพอร์ตใด และไม่ใช้กับ Scanner mine หรือ Smart Alerts</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <label className="sr-only" htmlFor="watchlist-filter">กรอง Collection</label>
@@ -751,7 +775,7 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
           </div>
           {watchlistLoading ? <p role="status" className="py-6 text-center text-sm text-gray-400">กำลังโหลด Watchlist...</p>
             : watchlistError ? null
-              : watchlist.length === 0 ? <p className="rounded-lg border border-dashed border-gray-700 px-4 py-8 text-center text-sm text-gray-400">ยังไม่มีรายการ Watchlist ที่ผูกกับพอร์ตนี้ — Watchlist เดิมที่ยังไม่จับคู่จะไม่แสดง</p>
+              : watchlist.length === 0 ? <p className="rounded-lg border border-dashed border-gray-700 px-4 py-8 text-center text-sm text-gray-400">ยังไม่มีรายการ Watchlist ที่ผูกกับพอร์ตนี้</p>
               : visibleWatchlist.length === 0 ? <p className="rounded-lg border border-dashed border-gray-700 px-4 py-8 text-center text-sm text-gray-400">Collection นี้ยังไม่มีหุ้น</p>
                 : <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                   {visibleWatchlist.map(item => {
@@ -776,6 +800,23 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
                     </article>
                   })}
                 </div>}
+
+          <section className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4" aria-labelledby="legacy-watchlist-title">
+            <div>
+              <h3 id="legacy-watchlist-title" className="font-semibold text-amber-300">Legacy Watchlist · ระดับบัญชี · อ่านอย่างเดียว</h3>
+              <p className="mt-1 text-xs text-gray-400">รายการเหล่านี้ยังไม่ได้จับคู่กับพอร์ตที่เลือก จึงไม่รวมใน Scanner mine, ราคาเฝ้ารอ หรือ Smart Alerts และไม่มีการย้ายหรือคัดลอกข้อมูล</p>
+            </div>
+            {legacyWatchlistLoading ? <p role="status" className="text-sm text-gray-400">กำลังโหลดรายการเดิม…</p>
+              : legacyWatchlistError ? <p role="alert" className="text-sm text-red-400">{legacyWatchlistError}</p>
+                : legacyWatchlist.length === 0 ? <p className="text-sm text-gray-400">ไม่พบรายการ Legacy ที่ยังไม่ได้จับคู่</p>
+                  : <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {legacyWatchlist.map(item => <li key={item.id} className="min-w-0 rounded-lg border border-gray-800 bg-gray-950/50 p-3" data-testid="legacy-watchlist-item">
+                      <div className="flex items-start justify-between gap-3"><h4 className="font-semibold text-white">{item.symbol}</h4><span className="shrink-0 rounded border border-amber-500/30 px-2 py-0.5 text-[10px] text-amber-300">ยังไม่จับคู่</span></div>
+                      <dl className="mt-2 grid grid-cols-2 gap-2 text-xs"><div><dt className="text-gray-400">ราคาเป้าหมายเดิม</dt><dd className="text-gray-200">{fmtPrice(item.target_price)}</dd></div><div><dt className="text-gray-400">วันที่เพิ่ม</dt><dd className="text-gray-200">{new Date(item.created_at).toLocaleDateString('th-TH')}</dd></div></dl>
+                      {item.note && <p className="mt-2 break-words text-xs text-gray-300">{item.note}</p>}
+                    </li>)}
+                  </ul>}
+          </section>
 
           <section className="space-y-4 rounded-xl border border-gray-800 bg-gray-950/50 p-4" aria-labelledby="investment-rules-title">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="investment-rules-title" className="font-semibold text-white">Conditional Investment Rules</h2><p className="mt-1 text-xs text-gray-400">ประเมินแบบ deterministic จากข้อมูลของพอร์ตที่เลือกเท่านั้น · ไม่มีการซื้อขายอัตโนมัติ</p></div><button type="button" onClick={() => void evaluateRules()} disabled={ruleBusy || rulesLoading || rules.length === 0} className="rounded-lg border border-blue-500/40 px-3 py-2 text-sm font-semibold text-blue-300 hover:bg-blue-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50">{ruleBusy ? 'กำลังประเมิน…' : 'ประเมินกฎตามข้อมูลล่าสุด'}</button></div>
