@@ -147,9 +147,43 @@ assert.equal(timeoutCalls, 1, 'Timeout is not retried')
 assert.equal(timeoutLedger.requests[0].outcome, 'timeout')
 assert.equal(timeoutLedger.requests[0].httpStatus, null)
 
+const endpointCases = [
+  ['mapping', 'https://www.sec.gov/files/company_tickers_exchange.json'],
+  ['companyfacts', 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json'],
+  ['submissions', 'https://data.sec.gov/submissions/CIK0000320193.json'],
+  ['filing_index', 'https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/index.json'],
+  ['filing_document', 'https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl.htm'],
+]
+for (const [endpointType, url] of endpointCases) {
+  const endpointLedger = createEvidenceLedger('synthetic', 1)
+  let calls = 0
+  const wrapped = createLedgerFetch(endpointLedger, async () => {
+    calls += 1
+    return new Response('{}', { status: 200 })
+  }, () => {})
+  await wrapped(url, { redirect: 'error' })
+  assert.equal(endpointLedger.requests[0].endpointType, endpointType)
+  assert.equal(calls, 1)
+}
+
+const budgetLedger = createEvidenceLedger('synthetic', 1)
+let budgetCalls = 0
+const budgetFetch = createLedgerFetch(budgetLedger, async () => {
+  budgetCalls += 1
+  return new Response('{}', { status: 200 })
+}, () => {})
+await budgetFetch('https://data.sec.gov/submissions/CIK0000320193.json', {})
+await assert.rejects(budgetFetch('https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json', {}),
+  /attempt budget exhausted/)
+assert.equal(budgetCalls, 1, 'Exhausted budget blocks before the next network call')
+assert.equal(budgetLedger.requests.length, 1, 'Only actual fetcher calls consume the attempt budget')
+assert.equal(buildEvidenceArtifact(budgetLedger).remainingHttpAttempts, 0)
+
 await assert.rejects(createLedgerFetch(ledger, mockFetcher)('https://www.sec.gov.evil.invalid/files/company_tickers_exchange.json', {}),
   /Unsupported SEC endpoint/)
 assert.equal(ledger.requests.length, 1, 'Rejected host is not counted as an HTTP attempt')
+await assert.rejects(createLedgerFetch(ledger, mockFetcher)('https://data.sec.gov/submissions/CIK0000320193.json.evil', {}),
+  /Unsupported SEC endpoint/)
 
 const probe = createEvidenceLedger('synthetic')
 probe.requests.push({ endpointType: 'filing', httpStatus: 200, retry: false, redirectOutcome: 'none', outcome: 'success',

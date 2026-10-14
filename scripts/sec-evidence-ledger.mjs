@@ -2,14 +2,17 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
-const endpointTypes = new Set(['mapping', 'companyfacts', 'filing'])
+const endpointTypes = new Set(['mapping', 'companyfacts', 'submissions', 'filing_index', 'filing_document', 'filing'])
 const redirectOutcomes = new Set(['none', 'rejected', 'followed', 'unknown'])
 const requestOutcomes = new Set(['pending', 'success', 'http_error', 'network_error', 'timeout', 'redirect_rejected', 'unknown'])
 const caseStatuses = new Set(['pass', 'fail', 'blocked', 'unknown'])
 
-export function createEvidenceLedger(mode = 'synthetic') {
+export function createEvidenceLedger(mode = 'synthetic', maxHttpAttempts = 5) {
   if (mode !== 'synthetic' && mode !== 'live') throw new Error('Unsupported evidence mode')
-  return { mode, requests: [], acceptance: [] }
+  if (!Number.isInteger(maxHttpAttempts) || maxHttpAttempts < 1 || maxHttpAttempts > 10) {
+    throw new Error('Invalid HTTP attempt budget')
+  }
+  return { mode, maxHttpAttempts, requests: [], acceptance: [] }
 }
 
 export function recordHttpRequest(ledger, event) {
@@ -38,7 +41,8 @@ export function buildEvidenceArtifact(ledger, generatedAt = new Date().toISOStri
   }))
   const acceptance = ledger.acceptance.map(item => ({ caseId: item.caseId, status: item.status }))
   return {
-    schemaVersion: 1, generatedAt, evidenceMode: ledger.mode, httpRequestCount: requests.length,
+    schemaVersion: 1, generatedAt, evidenceMode: ledger.mode, maxHttpAttempts: ledger.maxHttpAttempts,
+    httpRequestCount: requests.length, remainingHttpAttempts: Math.max(0, ledger.maxHttpAttempts - requests.length),
     retryCount: requests.filter(item => item.retry).length, requests, acceptance,
   }
 }
@@ -62,7 +66,12 @@ function classifyEndpoint(rawUrl) {
   }
   if (url.hostname === 'www.sec.gov' && url.pathname === '/files/company_tickers_exchange.json') return 'mapping'
   if (url.hostname === 'data.sec.gov' && /^\/api\/xbrl\/companyfacts\/CIK\d{10}\.json$/.test(url.pathname)) return 'companyfacts'
-  if (url.hostname === 'www.sec.gov' && /^\/Archives\/edgar\/data\/\d+\/\d{18}(?:\/[A-Za-z0-9._-]+)?$/.test(url.pathname)) return 'filing'
+  if (url.hostname === 'data.sec.gov' && /^\/submissions\/CIK\d{10}\.json$/.test(url.pathname)) return 'submissions'
+  const archive = url.hostname === 'www.sec.gov' && url.pathname.match(/^\/Archives\/edgar\/data\/(?:0|[1-9]\d{0,9})\/(\d{18})\/(.+)$/)
+  if (archive && archive[2] === 'index.json') return 'filing_index'
+  if (archive && /^[A-Za-z0-9][A-Za-z0-9._-]{0,179}\.html?$/i.test(archive[2]) && !archive[2].includes('..')) {
+    return 'filing_document'
+  }
   throw new Error('Unsupported SEC endpoint')
 }
 
@@ -71,29 +80,34 @@ function classifyEndpoint(rawUrl) {
  * call and a completion checkpoint afterward. URL and request init remain transient in memory only.
  */
 export function createLedgerFetch(ledger, fetcher, persist = current => writeEvidenceArtifact(current)) {
-  if (!ledger || typeof fetcher !== 'function' || typeof persist !== 'function') throw new Error('Invalid ledger fetch configuration')
+  if (!ledger || !Number.isInteger(ledger.maxHttpAttempts) || ledger.maxHttpAttempts < 1 ||
+      !Array.isArray(ledger.requests) || typeof fetcher !== 'function' || typeof persist !== 'function') {
+    throw new Error('Invalid ledger fetch configuration')
+  }
   const seen = new Set()
   return async (url, init) => {
     const endpointType = classifyEndpoint(url)
+    if (ledger.requests.length >= ledger.maxHttpAttempts) throw new Error('SEC request attempt budget exhausted')
     const retry = seen.has(url)
     seen.add(url)
     const event = { endpointType, httpStatus: null, retry, redirectOutcome: 'unknown', outcome: 'pending' }
     const eventIndex = ledger.requests.length
     recordHttpRequest(ledger, event)
     persist(ledger)
+    let response
     try {
-      const response = await fetcher(url, init)
-      ledger.requests[eventIndex].httpStatus = response.status
-      ledger.requests[eventIndex].redirectOutcome = response.status >= 300 && response.status < 400 ? 'rejected' : 'none'
-      ledger.requests[eventIndex].outcome = response.status >= 200 && response.status < 300 ? 'success' :
-        response.status >= 300 && response.status < 400 ? 'redirect_rejected' : 'http_error'
-      persist(ledger)
-      return response
+      response = await fetcher(url, init)
     } catch (error) {
       const name = error && typeof error === 'object' ? error.name : ''
       ledger.requests[eventIndex].outcome = name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'network_error'
       persist(ledger)
       throw error
     }
+    ledger.requests[eventIndex].httpStatus = response.status
+    ledger.requests[eventIndex].redirectOutcome = response.status >= 300 && response.status < 400 ? 'rejected' : 'none'
+    ledger.requests[eventIndex].outcome = response.status >= 200 && response.status < 300 ? 'success' :
+      response.status >= 300 && response.status < 400 ? 'redirect_rejected' : 'http_error'
+    persist(ledger)
+    return response
   }
 }
