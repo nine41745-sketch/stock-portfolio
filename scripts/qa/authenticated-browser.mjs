@@ -120,7 +120,9 @@ try {
  await page.getByRole('button',{name:/โหมดมืด.*โหมดสว่าง/}).click()
  assert.equal(await page.locator('html').getAttribute('data-theme'),'light')
  const lightAxe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()
- assert.equal(lightAxe.violations.filter(v=>v.impact==='critical'||v.impact==='serious').length,0,'Light theme axe serious/critical findings')
+ const lightSevere=lightAxe.violations.filter(v=>v.impact==='critical'||v.impact==='serious')
+ if(lightSevere.length) await writeFile(dir+'/axe-light-serious.json',JSON.stringify(lightSevere.map(v=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map(n=>n.target)})),null,2))
+ assert.equal(lightSevere.length,0,'Light theme axe serious/critical findings: '+JSON.stringify(lightSevere.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)}))))
  for(const width of [375,768,1440]){
   await page.setViewportSize({width,height:1000})
   const dims=await page.evaluate(()=>[innerWidth,document.documentElement.scrollWidth])
