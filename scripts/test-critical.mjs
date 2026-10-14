@@ -300,13 +300,18 @@ assert.match(lightModeCss, /text-purple-300/, 'Light mode must keep purple AI te
 assert.match(lightModeCss, /bg-blue-600\.text-white/, 'Light mode must preserve white text on primary blue buttons')
 assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native form controls with light color scheme')
 
-// v1.34.0 release candidate metadata must stay synchronized across changelog/package/lockfile.
+// v1.34.1 release candidate metadata must stay synchronized across changelog/package/lockfile.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.34.0', 'Package version must match the v1.34.0 development release candidate')
+assert.equal(packageJson.version, '1.34.1', 'Package version must match the v1.34.1 release candidate')
 const releaseTsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1340'], 'Version badge must resolve to the v1.34.0 changelog')
+assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1341'], 'Version badge must resolve to the v1.34.1 changelog')
+const latestReleaseChangelog = fs.readFileSync('config/changelog-v1341.ts', 'utf8')
+assert.match(latestReleaseChangelog, /version: 'v1\.34\.1'/, 'Latest changelog entry must be v1.34.1')
+assert.match(latestReleaseChangelog, /from '\.\/changelog-v1340'/, 'v1.34.1 changelog must retain the v1.34.0 history')
+assert.match(latestReleaseChangelog, /data-theme="dark"/, 'v1.34.1 must document the app-scoped theme fix')
+assert.doesNotMatch(latestReleaseChangelog, /SQL Security Hardening|Supabase Cloud Security/i, 'v1.34.1 must not claim unreleased SQL or Cloud security fixes')
 const releaseChangelog = fs.readFileSync('config/changelog-v1340.ts', 'utf8')
-assert.match(releaseChangelog, /version: 'v1\.34\.0'/, 'Latest changelog entry must be v1.34.0')
+assert.match(releaseChangelog, /version: 'v1\.34\.0'/, 'Previously released v1.34.0 changelog must remain intact')
 assert.match(releaseChangelog, /Fundamental Analysis/)
 assert.match(releaseChangelog, /Stock Comparison/)
 assert.match(releaseChangelog, /Actual vs Estimate ยังไม่เปิดใช้/)
@@ -435,7 +440,8 @@ for (const [file, expectedTime] of changelogReleaseTimes) {
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1340'])
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1341'])
 assert.match(releaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.34.0 changelog must contain a timestamp in the repository format')
+assert.match(latestReleaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.34.1 changelog must contain a timestamp in the repository format')
 
 console.log('✓ Critical regression tests passed')

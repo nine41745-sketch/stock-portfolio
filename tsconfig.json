@@ -30,7 +30,7 @@
         "./lib/portfolio-batch-v114"
       ],
       "@/config/changelog": [
-        "./config/changelog-v1340"
+        "./config/changelog-v1341"
       ],
       "@/*": [
         "./*"
