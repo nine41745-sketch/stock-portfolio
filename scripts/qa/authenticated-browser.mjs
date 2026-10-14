@@ -64,8 +64,6 @@ try {
    return
   }
   if(u.pathname==='/api/scanner') return route.fulfill({status:200,contentType:'application/json',body:'{"items":[]}'})
-  if(u.pathname==='/api/watchlist'&&route.request().method()==='GET')
-   return route.fulfill({status:200,contentType:'application/json',body:'{"items":[]}'})
   return route.continue()
  })
  qaStage='anonymous'
@@ -120,6 +118,111 @@ try {
  await page.waitForURL(/\/(?:dashboard|scanner)(?:\?|$)/)
  qaStage='unlocked'
  pass('Real PIN rejects incorrect and accepts correct synthetic PIN')
+
+ // Exercise portfolio-scoped Watchlist and rule APIs with a synthetic Auth/PIN user.
+ qaStage='watchlist-portfolio-isolation'
+ const portfoliosResponse=await page.request.get(new URL('/api/portfolios',base).href)
+ assert.equal(portfoliosResponse.status(),200)
+ const portfolioList=await portfoliosResponse.json()
+ const portfolioA=portfolioList.portfolios.find(portfolio=>portfolio.id===portfolioList.active_portfolio_id)
+ assert(portfolioA,'Synthetic user must have an active default portfolio')
+ const collectionResponse=await page.request.post(new URL('/api/watchlist/collections',base).href,{data:{name:'QA Collection A'}})
+ assert.equal(collectionResponse.status(),201)
+ const collectionA=(await collectionResponse.json()).collection
+ const itemAResponse=await page.request.post(new URL('/api/watchlist',base).href,{data:{symbol:'AAPL',target_price:99,note:'Synthetic A',collection_id:collectionA.id,alert_enabled:true}})
+ assert.equal(itemAResponse.status(),200)
+ const secondPortfolioResponse=await page.request.post(new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio B'}})
+ assert.equal(secondPortfolioResponse.status(),200)
+ const portfolioB=(await secondPortfolioResponse.json()).portfolio
+ const emptyB=await page.request.get(new URL('/api/watchlist',base).href)
+ assert.equal(emptyB.status(),200)
+ assert.equal((await emptyB.json()).items.length,0,'Portfolio B must not see Portfolio A Watchlist rows')
+ const collectionBResponse=await page.request.post(new URL('/api/watchlist/collections',base).href,{data:{name:'QA Collection B'}})
+ assert.equal(collectionBResponse.status(),201)
+ const collectionB=(await collectionBResponse.json()).collection
+ const itemBResponse=await page.request.post(new URL('/api/watchlist',base).href,{data:{symbol:'AAPL',target_price:101,note:'Synthetic B',collection_id:collectionB.id,alert_enabled:true}})
+ assert.equal(itemBResponse.status(),200)
+ const foreignCollectionResponse=await page.request.post(new URL('/api/watchlist',base).href,{data:{symbol:'MSFT',target_price:400,collection_id:collectionA.id}})
+ assert.equal(foreignCollectionResponse.status(),404,'A collection from another portfolio must be rejected')
+ const selectA=await page.request.post(new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioA.id}})
+ assert.equal(selectA.status(),200)
+ const visibleA=await page.request.get(new URL('/api/watchlist',base).href)
+ const visibleAData=await visibleA.json()
+ assert.equal(visibleA.status(),200)
+ assert.equal(visibleAData.items.length,1)
+ assert.equal(visibleAData.items[0].target_price,99)
+ assert.equal(visibleAData.items[0].note,'Synthetic A')
+ assert.equal(visibleAData.items[0].collection_id,collectionA.id)
+ await page.goto(new URL('/scanner',base).href)
+ await page.getByRole('button',{name:'⭐ หุ้นที่เล็งไว้',exact:true}).click()
+ const watchlistCard=page.locator('article').filter({hasText:'Synthetic A'})
+ await watchlistCard.waitFor()
+ assert(await watchlistCard.getByRole('heading',{name:'AAPL'}).count()===1)
+ assert(await watchlistCard.getByText('ราคาเป้าหมาย').count()===1)
+ await page.screenshot({path:`${dir}/watchlist-portfolio-a.png`,fullPage:true})
+ pass('Authenticated Watchlist UI loads the selected portfolio item and target from Disposable Supabase')
+ const themeButton=page.locator('button[title^="โหมดปัจจุบัน:"]')
+ for(const theme of ['light','dark']){
+  const currentTheme=await page.locator('html').getAttribute('data-theme')
+  if(currentTheme!==theme){await themeButton.click();await page.waitForFunction(expected=>document.documentElement.getAttribute('data-theme')===expected,theme)}
+    const watchlistContrast=await watchlistCard.evaluate(element=>{
+   const parse=value=>{const match=value.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);return match?[Number(match[1]),Number(match[2]),Number(match[3]),match[4]===undefined?1:Number(match[4])]:null}
+   const blend=(front,back)=>[0,1,2].map(index=>Math.round(front[index]*front[3]+back[index]*(1-front[3]))).concat(1)
+   const lum=color=>{const channels=color.slice(0,3).map(value=>{const c=value/255;return c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4});return 0.2126*channels[0]+0.7152*channels[1]+0.0722*channels[2]}
+   const contrastFor=node=>{const foreground=parse(getComputedStyle(node).color);const layers=[];for(let current=node;current;current=current.parentElement){const background=parse(getComputedStyle(current).backgroundColor);if(background&&background[3]>0)layers.push(background)}let background=parse(getComputedStyle(document.documentElement).backgroundColor);background=background&&background[3]>0?background.slice(0,3).concat(1):[255,255,255,1];for(const layer of layers.reverse())background=blend(layer,background);if(!foreground)return 0;const a=lum(foreground),b=lum(background);return Number(((Math.max(a,b)+0.05)/(Math.min(a,b)+0.05)).toFixed(2))}
+   const targets=[['heading',element.querySelector('h3')],['collection',element.querySelector('div.min-w-0 > p')],['metric',element.querySelector('dl dt')],['source',Array.from(element.querySelectorAll(':scope > p')).find(node=>node.textContent.includes('Source'))],['note',Array.from(element.querySelectorAll(':scope > p')).find(node=>node.textContent==='Synthetic A')]]
+   return Object.fromEntries(targets.map(([name,node])=>[name,node?contrastFor(node):null]))
+  })
+  if(theme==='light'){
+   const unsupportedBackgrounds=await page.evaluate(()=>{
+    const scope=Array.from(document.querySelectorAll('section')).find(element=>element.textContent.includes('Opportunity Scanner'))
+    const unsupported=new Set(['bg-gray-950/30','bg-gray-950/40','bg-gray-900/30','bg-gray-800/50'])
+    return scope?Array.from(scope.querySelectorAll('*')).flatMap(element=>Array.from(element.classList).filter(name=>unsupported.has(name))):['opportunity-scanner-not-found']
+   })
+   assert.deepEqual(unsupportedBackgrounds,[],'Light Watchlist surfaces must use app theme-compatible background utilities')
+   pass('Light Watchlist surfaces use theme-compatible background utilities')
+  }
+  const measured=Object.values(watchlistContrast).filter(value=>value!==null)
+  assert(measured.length>=4&&measured.every(value=>value>=4.5),`${theme} Watchlist card text contrast must be at least 4.5:1; measured ${JSON.stringify(watchlistContrast)}`)
+  await page.screenshot({path:`${dir}/watchlist-${theme}-1440.png`,fullPage:true})
+  pass(`Watchlist UI ${theme} theme contrast`)
+ }
+ for(const width of [375,768,1440]){
+  await page.setViewportSize({width,height:1000})
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1)
+  assert.equal(overflow,false,`Watchlist UI must not overflow at ${width}px`)
+  await page.screenshot({path:`${dir}/watchlist-portfolio-a-${width}.png`,fullPage:true})
+  pass(`Watchlist UI responsive width ${width}px`)
+ }
+ await page.setViewportSize({width:1440,height:1000})
+ const ruleResponse=await page.request.post(new URL('/api/watchlist/rules',base).href,{data:{name:'Synthetic cash rule',rule_type:'CASH_AT_OR_BELOW',threshold:100}})
+ assert.equal(ruleResponse.status(),201)
+ const rule=(await ruleResponse.json()).rule
+ const rulesBSelect=await page.request.post(new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioB.id}})
+ assert.equal(rulesBSelect.status(),200)
+ const rulesB=await page.request.get(new URL('/api/watchlist/rules',base).href)
+ assert.equal(rulesB.status(),200)
+ assert.equal((await rulesB.json()).rules.length,0,'Portfolio B must not see Portfolio A rules')
+ await page.request.post(new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioA.id}})
+ const evalResponse=await page.request.post(new URL('/api/watchlist/rules/evaluate',base).href)
+ assert.equal(evalResponse.status(),200)
+ const evaluation=(await evalResponse.json()).results.find(result=>result.id===rule.id)
+ assert.equal(evaluation.status,'unavailable','Missing cash settings must not be coerced to zero')
+ const deleteCollection=await page.request.delete(new URL('/api/watchlist/collections?id='+encodeURIComponent(collectionA.id),base).href)
+ assert.equal(deleteCollection.status(),200)
+ const preserved=await page.request.get(new URL('/api/watchlist',base).href)
+ const preservedItem=(await preserved.json()).items[0]
+ assert.equal(preservedItem.symbol,'AAPL')
+ assert.equal(preservedItem.collection_id,null,'Deleting a collection must preserve items and clear only the collection reference')
+ await page.request.delete(new URL('/api/watchlist?symbol=AAPL',base).href)
+ await page.request.post(new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioB.id}})
+ await page.request.delete(new URL('/api/watchlist?symbol=AAPL',base).href)
+ await page.request.delete(new URL('/api/watchlist/collections?id='+encodeURIComponent(collectionB.id),base).href)
+ await page.request.post(new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioA.id}})
+ await page.request.delete(new URL('/api/watchlist/rules?id='+encodeURIComponent(rule.id),base).href)
+ pass('Watchlist, Collection, and investment rules remain isolated across two selected portfolios; same Symbol can hold different targets')
+ pass('Deleting a Collection preserves its Watchlist rows; incomplete rule inputs remain unavailable')
+
  await page.goto(new URL('/scanner',base).href)
  await page.getByRole('button',{name:/พื้นฐาน \/ มูลค่า/}).click()
  await page.getByRole('heading',{name:'วิเคราะห์พื้นฐานและมูลค่า'}).waitFor()

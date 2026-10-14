@@ -11,7 +11,7 @@ The Vercel project is connected to GitHub `main`. A merge to `main` triggers a P
 ## Runtime and dependency standard
 
 - Production runtime: **Node.js 22.x**
-- Framework: **Next.js 16.3.4**
+- Framework: **Next.js 16.3.8** (matches the current released package manifest)
 - `package-lock.json` is committed and must stay synchronized with `package.json`.
 - CI installs dependencies with `npm ci` and blocks high-severity advisories in production dependencies.
 - Never use `npm audit fix --force` directly on a release branch without reviewing the resulting breaking changes.
@@ -55,6 +55,8 @@ The latest migration currently required by the deployed schema is:
 `supabase/migration_analysis_freshness_v1.16.0.sql`
 
 **v1.17.0 does not add a SQL migration.** Do not rerun previous migrations as part of this release.
+
+The v1.35.0 development branch proposes `supabase/migration_portfolio_watchlist_v1.35.0.sql`. It is additive and passed disposable-local synthetic tests, including rollback and roll-forward. It has not been applied to Supabase Cloud. Before any release that depends on this schema, verify the target project's identity, review a legacy Watchlist mapping plan, and obtain separate approval for Cloud apply. The migration intentionally does not copy or alter the legacy `public.watchlist`; do not infer that old rows are assigned to a portfolio.
 
 ## Daily analysis Cron
 

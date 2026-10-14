@@ -1,6 +1,6 @@
 # Stock Portfolio — Dependency & Deployment Governance
 
-**Scope:** `nine41745-sketch/stock-portfolio` only. **Baseline:** v1.32.0, merge commit `433595ba8b2a61d1ba6a2246db1c27ab03658f24`.
+**Scope:** `nine41745-sketch/stock-portfolio` only. **Production baseline:** v1.34.1, commit `3312347a4a62e668093e1de2d0307cd6e7537a14`. v1.35.0 remains In Development.
 
 **Policy:** no paid services, no automatic merging, no Supabase/Environment changes, and no production or other-project changes without separate approval.
 
@@ -19,6 +19,14 @@ Inspect GitHub **Settings → Security / Code security** for Dependency Graph, D
 ## Existing CI gates — preserve
 
 The existing `.github/workflows/ci.yml` executes `npm ci`, `npm audit --omit=dev --audit-level=high`, then `npm run ci` (Lint, Typecheck, regression tests, Next.js build). **Vercel READY alone is not a release gate**; GitHub CI must also succeed. No CI workflow changes are necessary for this initial PR.
+
+## v1.34.1 temporary dependency-risk boundary
+
+The owner accepted `GHSA-vfj7-8cjw-p6xm` temporarily for v1.34.1 only, with review due 2026-10-29 and expiry no later than 2026-11-14 or the next release, whichever comes first. The acceptance does not carry over to v1.35.0. The last recorded full audit had seven High findings in development dependency chains and zero production findings; re-run both audits against the current lockfile before release. Keep all alerts and gates enabled. v1.35.0 release requires a compatible remediation that passes the full checks or a new explicit owner risk decision.
+
+## v1.35.0 local database boundary
+
+The v1.35.0 branch proposes additive portfolio-scoped Watchlist tables and RLS. Migration, verification, rollback, and roll-forward have been tested only on a disposable local database with synthetic data. The legacy account-scoped `public.watchlist` remains preserved and unmapped. This evidence does not authorize Supabase Cloud apply or any legacy-row migration; obtain separate approval and verify the target environment before either action.
 
 ## Required GitHub rules — separate owner approval/settings task
 

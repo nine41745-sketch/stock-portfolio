@@ -7,6 +7,10 @@ Source of truth ของ "current version" คือ `config/changelog.ts` — 
 sync ให้ตรงกับค่านี้เสมอ (ตัด prefix `v` ออก เช่น `CURRENT_VERSION = 'v1.10.1'` → `package.json`
 `"version": "1.10.1"`)
 
+## Development version boundary
+
+The current released version remains v1.34.1 while v1.35.0 is under development. Do not change `config/changelog.ts`, `package.json`, or `package-lock.json` to claim v1.35.0 as released before the release acceptance and owner authorization. Keep this branch's roadmap/PR status explicitly **In Development**; version metadata and the Version Badge remain tied to the latest completed release until the approved release-candidate step.
+
 ## กฎการ bump version (ถาวร ห้ามยกเว้นโดยไม่ได้รับอนุมัติ)
 
 - **PATCH** (`x.y.Z`) — production bugfix / hotfix ที่ไม่เพิ่ม feature ใหม่ (เช่น แก้ input validation,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { selectPortfolioHoldingSymbols } from '../lib/scanner-universe.ts'
+import { selectPortfolioHoldingSymbols, selectPortfolioMineSymbols } from '../lib/scanner-universe.ts'
 
 const owner = 'user-a'
 const portfolioA = 'portfolio-a'
@@ -28,11 +28,24 @@ assert.deepEqual(
   ], owner, portfolioA),
   ['AAPL'],
 )
+const watchlistRows = [
+  { user_id: owner, portfolio_id: portfolioA, symbol: 'aapl' },
+  { user_id: owner, portfolio_id: portfolioA, symbol: 'TSLA' },
+  { user_id: owner, portfolio_id: portfolioB, symbol: 'GOOG' },
+  { user_id: 'user-b', portfolio_id: portfolioA, symbol: 'META' },
+  { user_id: owner, portfolio_id: null, symbol: 'LEGACY-WATCH' },
+]
+assert.deepEqual(selectPortfolioMineSymbols(rows, watchlistRows, owner, portfolioA), ['AAPL', 'NVDA', 'TSLA'])
+assert.deepEqual(selectPortfolioMineSymbols(rows, watchlistRows, owner, portfolioB), ['MSFT', 'GOOG'])
+assert.deepEqual(selectPortfolioMineSymbols([], [], owner, portfolioA), [])
+assert.deepEqual(selectPortfolioMineSymbols([], watchlistRows, owner, ''), [])
 
 const route = fs.readFileSync('app/api/scanner/route.ts', 'utf8')
 assert.ok(route.includes('requirePhaseAPortfolio()'), 'mine must verify Auth/PIN and resolve the owned active portfolio')
 assert.ok(route.includes(".eq('user_id', userId)") && route.includes(".eq('portfolio_id', portfolioId)"), 'query must scope both user and portfolio')
-assert.ok(!route.includes(".from('watchlist')"), 'mine must exclude account-level Watchlist until v1.35.0')
+assert.ok(route.includes(".from('portfolio_watchlist_items')"), 'mine must load portfolio-scoped Watchlist')
+assert.ok(route.includes(".eq('user_id', userId)") && route.includes(".eq('portfolio_id', portfolioId)"), 'both mine data sources must scope user and portfolio')
+assert.ok(route.includes('selectPortfolioMineSymbols'), 'mine must union only selected-portfolio Holdings and Watchlist')
 assert.ok(route.includes('phaseAErrorResponse(error)'), 'Auth/PIN/portfolio failures must preserve their HTTP status')
 
 const context = fs.readFileSync('lib/phase-a-context.ts', 'utf8')
@@ -44,8 +57,8 @@ assert.ok(proxy.includes("!pinUnlocked && pathname.startsWith('/api/')"), 'API r
 assert.ok(proxy.includes("if (!user && pathname.startsWith('/api/')"), 'API requests must remain Auth-gated')
 
 const ui = fs.readFileSync('components/portfolio/OpportunityHub.tsx', 'utf8')
-assert.ok(ui.includes('Holdings ในพอร์ตที่เลือก'), 'mine label must identify selected-portfolio holdings')
-assert.ok(ui.includes('ยังไม่รวม Watchlist ระดับบัญชีจนถึง v1.35.0'), 'UI must disclose Watchlist limitation')
+assert.ok(ui.includes('Holdings + Watchlist ในพอร์ตที่เลือก'), 'mine label must identify both selected-portfolio sources')
+assert.ok(ui.includes('Watchlist ระดับบัญชีเดิมไม่ถูกรวม'), 'UI must disclose that legacy account Watchlist is excluded')
 assert.ok(ui.includes('AI / Mega Tech'), 'other scanner universes must remain available')
 
-console.log('✓ Scanner selected-portfolio behavioral and safety tests passed')
+console.log('✓ Scanner selected-portfolio Holdings/Watchlist behavioral and safety tests passed')

@@ -19,7 +19,12 @@ Use the following order for a new disposable or newly provisioned database. Run 
 15. `migration_allocation_targets_v1.31.0.sql`
 16. `migration_bootstrap_repairs_v1.33.0.sql`
 17. `verify_bootstrap_security.sql`
+18. `test_portfolio_watchlist_fixtures_v1.35.0.sql` (Disposable Local only; synthetic owners, portfolios, and legacy row)
+19. `migration_portfolio_watchlist_v1.35.0.sql`
+20. `verify_portfolio_watchlist_v1.35.0.sql` (Disposable Local only; RLS/cross-owner/collection/legacy-preservation checks)
 
 `migration_batch1_notes_and_daily_analyses.sql` is a historical one-off correction for a database that predates the current RPC hardening and daily-analysis migration. It is superseded in a fresh bootstrap by steps 2 and 3, and must not be run before `daily_analyses` exists.
+
+The v1.35.0 migration is additive. It does not alter, copy, or assign rows from legacy `public.watchlist`. `rollback_portfolio_watchlist_v1.35.0.sql` removes only the new empty tables and refuses to proceed if any new table contains rows; a populated deployment requires an owner-reviewed data-preservation/roll-forward plan instead of destructive rollback. Cloud Apply remains a separately approved operation.
 
 For a database that already ran the historical multi-portfolio migration, apply only `migration_bootstrap_repairs_v1.33.0.sql`, then run `verify_bootstrap_security.sql` and the repository's verification queries. The repair uses `CREATE OR REPLACE`, changes function settings and grants only, and preserves table rows. Take the usual database backup before applying any SQL to a non-disposable environment.

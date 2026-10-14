@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { PhaseAError, phaseAErrorResponse, requirePhaseAPortfolio } from '@/lib/phase-a-context'
 import { isPortfolioFoundationMissing } from '@/lib/portfolio-context'
-import { selectPortfolioHoldingSymbols } from '@/lib/scanner-universe'
+import { selectPortfolioMineSymbols } from '@/lib/scanner-universe'
 import { getUpcomingEarnings } from '@/lib/finnhub'
 import { getTechnicalIndicators, TechnicalIndicators } from '@/lib/indicators'
 import { SCANNER_UNIVERSES, ScannerUniverseKey, scoreScannerCandidate } from '@/lib/stock-scanner'
@@ -13,10 +13,6 @@ export const maxDuration = 45
 
 const MAX_SCAN_SYMBOLS = 12
 const VALID_UNIVERSES = new Set<ScannerUniverseKey>(['ai', 'semis', 'growth', 'quality', 'mine'])
-
-function dedupeSymbols(symbols: string[]): string[] {
-  return [...new Set(symbols.map(s => s.trim().toUpperCase()).filter(Boolean))].slice(0, MAX_SCAN_SYMBOLS)
-}
 
 function diffOrNull(a: number | null, b: number | null): number | null {
   if (a === null || b === null) return null
@@ -37,22 +33,43 @@ async function getMineSymbols(
   userId: string,
   portfolioId: string,
 ): Promise<string[]> {
-  const { data, error } = await supabase
+  const [holdingsResult, watchlistResult] = await Promise.all([
+    supabase
     .from('holdings')
     .select('user_id, portfolio_id, symbol, shares')
     .eq('user_id', userId)
     .eq('portfolio_id', portfolioId)
-    .gt('shares', 0)
+    .gt('shares', 0),
+    supabase
+      .from('portfolio_watchlist_items')
+      .select('user_id, portfolio_id, symbol')
+      .eq('user_id', userId)
+      .eq('portfolio_id', portfolioId),
+  ])
 
-  if (error) {
-    if (isPortfolioFoundationMissing(error)) {
-      throw new PhaseAError('Multi-Portfolio schema ยังไม่พร้อม จึงไม่สามารถสแกน Holdings ได้', 503)
+  if (holdingsResult.error) {
+    if (isPortfolioFoundationMissing(holdingsResult.error)) {
+      throw new PhaseAError('Multi-Portfolio schema ยังไม่พร้อม จึงไม่สามารถสแกนข้อมูลพอร์ตได้', 503)
     }
-    console.error('[scanner] selected-portfolio Holdings lookup failed:', error)
+    console.error('[scanner] selected-portfolio Holdings lookup failed:', holdingsResult.error)
     throw new PhaseAError('โหลด Holdings ของพอร์ตที่เลือกไม่สำเร็จ', 503)
   }
 
-  return selectPortfolioHoldingSymbols(data ?? [], userId, portfolioId)
+  if (watchlistResult.error) {
+    if (['42P01', '42703', 'PGRST204', 'PGRST205'].includes(String(watchlistResult.error.code ?? ''))
+      || String(watchlistResult.error.message ?? '').toLowerCase().includes('portfolio_watchlist_items')) {
+      throw new PhaseAError('Portfolio Watchlist v1.35.0 ยังไม่พร้อม จึงไม่สามารถสแกนพอร์ตแบบครบได้', 503)
+    }
+    console.error('[scanner] selected-portfolio Watchlist lookup failed:', watchlistResult.error)
+    throw new PhaseAError('โหลด Watchlist ของพอร์ตที่เลือกไม่สำเร็จ', 503)
+  }
+
+  return selectPortfolioMineSymbols(
+    holdingsResult.data ?? [],
+    watchlistResult.data ?? [],
+    userId,
+    portfolioId,
+  )
 }
 
 async function scanOne(symbol: string, spy: TechnicalIndicators) {

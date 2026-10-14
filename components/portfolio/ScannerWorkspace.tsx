@@ -6,7 +6,7 @@ import StockCheckPanel from './StockCheckPanel'
 import TodayOpportunities from './TodayOpportunities'
 import FundamentalsPanel from './FundamentalsPanel'
 
-export default function ScannerWorkspace({ holdingSymbols }: { holdingSymbols: string[] }) {
+export default function ScannerWorkspace({ holdingSymbols, activePortfolioId }: { holdingSymbols: string[]; activePortfolioId: string | null }) {
   const [view, setView] = useState<'opportunities' | 'today' | 'check' | 'fundamentals'>('opportunities')
 
   return (
@@ -39,7 +39,7 @@ export default function ScannerWorkspace({ holdingSymbols }: { holdingSymbols: s
       </div>
 
       {view === 'opportunities'
-        ? <OpportunityHub holdingSymbols={holdingSymbols} />
+        ? <OpportunityHub key={activePortfolioId ?? 'legacy'} holdingSymbols={holdingSymbols} />
         : view === 'today'
           ? <TodayOpportunities holdingSymbols={holdingSymbols} />
           : view === 'check'
