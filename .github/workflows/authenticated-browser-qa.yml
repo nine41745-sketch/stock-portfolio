@@ -23,7 +23,6 @@ jobs:
     timeout-minutes: 45
     env:
       CI: 'true'
-      QA_NETWORK_GUARD_LOG: ${{ runner.temp }}/qa-network-guard.log
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v7
@@ -72,6 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export QA_NETWORK_GUARD_LOG="$RUNNER_TEMP/qa-network-guard.log"
           : > "$QA_NETWORK_GUARD_LOG"
           export NODE_OPTIONS="--require=$GITHUB_WORKSPACE/scripts/qa/deny-external-network.cjs"
           (npm run dev -- --hostname 127.0.0.1 --port 3000 > "$RUNNER_TEMP/next-dev.log" 2>&1 & echo $! > "$RUNNER_TEMP/next-dev.pid")
