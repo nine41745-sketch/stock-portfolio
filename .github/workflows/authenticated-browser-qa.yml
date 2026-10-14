@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 45
     env:
       CI: 'true'
+      QA_ARTIFACT_DIR: .local-artifacts/authenticated-browser-qa/${{ github.run_id }}
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v7
@@ -91,13 +92,13 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          mkdir -p .local-artifacts/authenticated-browser-qa
-          printf '{"status":"BLOCKED","reason":"An isolated QA precondition or assertion failed; inspect the failed workflow step. No raw logs or credentials are included."}\n' > .local-artifacts/authenticated-browser-qa/results.json
+          mkdir -p "$QA_ARTIFACT_DIR"
+          printf '{"status":"BLOCKED","reason":"An isolated QA precondition or assertion failed; inspect the failed workflow step. No raw logs or credentials are included."}\n' > "$QA_ARTIFACT_DIR/results.json"
       - name: Upload synthetic QA evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pr64-authenticated-browser-qa
-          path: .local-artifacts/authenticated-browser-qa/
+          path: ${{ env.QA_ARTIFACT_DIR }}/
           retention-days: 3
           if-no-files-found: ignore

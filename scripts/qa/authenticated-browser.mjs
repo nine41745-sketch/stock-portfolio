@@ -10,7 +10,7 @@ assert(local(base.hostname) && base.protocol === 'http:' && base.port === '3000'
 assert(local(sb.hostname) && sb.protocol === 'http:' && sb.port === '54321')
 assert(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY)
 assert(!process.env.FINNHUB_API_KEY && !process.env.SEC_USER_AGENT && !process.env.GROQ_API_KEY)
-const dir = '.local-artifacts/authenticated-browser-qa'
+const dir = process.env.QA_ARTIFACT_DIR ?? '.local-artifacts/authenticated-browser-qa'
 await mkdir(dir,{recursive:true})
 const checks=[]
 const pass=name=>checks.push({name,status:'PASS'})
