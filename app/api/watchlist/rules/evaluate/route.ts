@@ -5,11 +5,10 @@ import { getQuoteObservations } from '@/lib/finnhub'
 import { calculateRiskSnapshot, type RiskHoldingInput } from '@/lib/risk'
 import { phaseAErrorResponse, requirePhaseAPortfolio } from '@/lib/phase-a-context'
 import { evaluateInvestmentRule, type InvestmentRule, type InvestmentRuleContext } from '@/lib/watchlist-rules'
+import { isMissingSchemaError } from '@/lib/supabase/schema-errors'
 
 const MIGRATION = 'supabase/migration_portfolio_watchlist_v1.35.0.sql'
-const missing = (error: { code?: string; message?: string } | null) => Boolean(error &&
-  (['42P01', '42703', 'PGRST204', 'PGRST205'].includes(String(error.code ?? ''))
-    || String(error.message ?? '').toLowerCase().includes('portfolio_')))
+const missing = isMissingSchemaError
 
 export async function POST() {
   let context: Awaited<ReturnType<typeof requirePhaseAPortfolio>>

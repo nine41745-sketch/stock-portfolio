@@ -30,7 +30,7 @@ const created=await fetch(new URL('/auth/v1/admin/users',sb),{
 })
 assert.equal(created.status,200)
 pass('Synthetic user created by local Auth Admin')
-let outside=0, mode='synthetic'
+let outside=0, mode='synthetic', watchlistMode='normal'
 const browser=await chromium.launch({headless:true})
 try {
  const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'})
@@ -64,6 +64,7 @@ try {
    return
   }
   if(u.pathname==='/api/scanner') return route.fulfill({status:200,contentType:'application/json',body:'{"items":[]}'})
+  if(u.pathname==='/api/watchlist'&&watchlistMode==='missing-schema') return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic missing portfolio Watchlist migration',migration_required:true})})
   return route.continue()
  })
  qaStage='anonymous'
@@ -119,6 +120,17 @@ try {
  qaStage='unlocked'
  pass('Real PIN rejects incorrect and accepts correct synthetic PIN')
 
+ qaStage='watchlist-missing-migration-ui'
+ watchlistMode='missing-schema'
+ await page.goto(new URL('/scanner',base).href)
+ await page.getByRole('button',{name:'⭐ หุ้นที่เล็งไว้',exact:true}).click()
+ await page.getByRole('alert').filter({hasText:'Synthetic missing portfolio Watchlist migration'}).waitFor()
+ assert.equal(await page.getByText(/ยังไม่มีรายการ Watchlist ที่ผูกกับพอร์ตนี้/).count(),0,'Migration failure must not be presented as an empty portfolio Watchlist')
+ assert(await page.getByText(/Watchlist เดิมระดับบัญชียังคงถูกเก็บไว้/).count()===1,'Legacy Watchlist preservation and unassigned status must be disclosed')
+ pass('Missing portfolio Watchlist migration is reported without implying old data is absent')
+ watchlistMode='normal'
+ await page.goto(new URL('/scanner',base).href)
+
  // Exercise portfolio-scoped Watchlist and rule APIs with a synthetic Auth/PIN user.
  qaStage='watchlist-portfolio-isolation'
  const portfoliosResponse=await page.request.get(new URL('/api/portfolios',base).href)
@@ -129,6 +141,11 @@ try {
  const collectionResponse=await page.request.post(new URL('/api/watchlist/collections',base).href,{data:{name:'QA Collection A'}})
  assert.equal(collectionResponse.status(),201)
  const collectionA=(await collectionResponse.json()).collection
+ const duplicateCollection=await page.request.post(new URL('/api/watchlist/collections',base).href,{data:{name:'QA Collection A'}})
+ assert.equal(duplicateCollection.status(),409,'Duplicate collection names in one portfolio must be rejected')
+ const renameCollection=await page.request.patch(new URL('/api/watchlist/collections',base).href,{data:{id:collectionA.id,name:'QA Collection A renamed'}})
+ assert.equal(renameCollection.status(),200)
+ assert.equal((await renameCollection.json()).collection.name,'QA Collection A renamed','Collection rename must persist within the selected portfolio')
  const itemAResponse=await page.request.post(new URL('/api/watchlist',base).href,{data:{symbol:'AAPL',target_price:99,note:'Synthetic A',collection_id:collectionA.id,alert_enabled:true}})
  assert.equal(itemAResponse.status(),200)
  const secondPortfolioResponse=await page.request.post(new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio B'}})
@@ -318,7 +335,8 @@ try {
     (path==='/api/pin/verify'&&status===401)||
     (path==='/api/daily-analyses/today'&&status===401&&['anonymous','login','pin-setup'].includes(stage))||
     (path==='/api/daily-analyses/today'&&status===401&&['lock-transition','pin-unlock'].includes(stage)&&authGate==='pin-required')||
-    (path==='/api/fundamentals'&&status===503)
+    (path==='/api/fundamentals'&&status===503)||
+    (path==='/api/watchlist'&&status===503&&stage==='watchlist-missing-migration-ui')
   const unexpectedHttpFailures=browserHttpFailures.filter(failure=>!expectedHttpFailure(failure))
   const allowedHttpStatuses=new Set(browserHttpFailures.filter(expectedHttpFailure).map(failure=>failure.status))
   const unexpectedConsoleErrors=browserConsoleErrors.filter(error=>error.kind!=='http-status'||!allowedHttpStatuses.has(error.status))

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { evaluateInvestmentRule } from '../lib/watchlist-rules.ts'
+import { isMissingSchemaError } from '../lib/supabase/schema-errors.ts'
 
 const make = (rule_type, threshold, symbol = 'AAPL', enabled = true) => ({
   id: `${rule_type}:${symbol ?? 'portfolio'}`,
@@ -24,6 +25,9 @@ assert.equal(evaluateInvestmentRule(make('POSITION_WEIGHT_AT_OR_ABOVE', 20), { p
 assert.equal(evaluateInvestmentRule(make('PRICE_AT_OR_BELOW', 100), {}).status, 'unavailable')
 assert.equal(evaluateInvestmentRule(make('ALLOCATION_AT_OR_BELOW', 20), { allocationPct: { AAPL: null } }).status, 'unavailable')
 assert.equal(evaluateInvestmentRule(make('DIME_AT_OR_BELOW', 1, null, false), { dimeBalance: 0 }).status, 'disabled')
+for (const code of ['42P01', '42703', 'PGRST204', 'PGRST205']) assert.equal(isMissingSchemaError({ code, message: 'portfolio_watchlist_collections' }), true)
+assert.equal(isMissingSchemaError({ code: '23505', message: 'duplicate key violates unique constraint portfolio_watchlist_collections_user_id_portfolio_id_name_key' }), false, 'Unique violations mentioning the table must not masquerade as missing migrations')
+assert.equal(isMissingSchemaError({ code: '42501', message: 'permission denied for table portfolio_watchlist_items' }), false, 'Permission failures must not masquerade as missing migrations')
 
 const watchlistRoute = await readFile(new URL('../app/api/watchlist/route.ts', import.meta.url), 'utf8')
 const collectionRoute = await readFile(new URL('../app/api/watchlist/collections/route.ts', import.meta.url), 'utf8')

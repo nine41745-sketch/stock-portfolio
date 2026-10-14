@@ -737,6 +737,7 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
             <div>
               <h2 className="text-lg font-semibold text-white">Watchlist และ Smart Alerts</h2>
               <p className="text-xs text-gray-400">ข้อมูลแยกตามพอร์ตที่เลือก · ไม่มีการตรวจราคาอัตโนมัติหรือส่งคำสั่งซื้อขาย</p>
+              <p className="mt-1 max-w-3xl text-xs text-amber-300" role="note">Watchlist เดิมระดับบัญชียังคงถูกเก็บไว้ แต่ยังไม่ได้จับคู่กับพอร์ตและจะไม่แสดงในรายการนี้ ห้ามย้ายหรือคัดลอกข้อมูลเดิมจนกว่าเจ้าของจะตรวจรับแผนจับคู่ข้อมูล</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <label className="sr-only" htmlFor="watchlist-filter">กรอง Collection</label>
@@ -749,7 +750,8 @@ export default function OpportunityHub({ holdingSymbols }: { holdingSymbols: str
             </div>
           </div>
           {watchlistLoading ? <p role="status" className="py-6 text-center text-sm text-gray-400">กำลังโหลด Watchlist...</p>
-            : watchlist.length === 0 ? <p className="rounded-lg border border-dashed border-gray-700 px-4 py-8 text-center text-sm text-gray-400">ยังไม่มีหุ้นในพอร์ตนี้ — เพิ่มหุ้นด้านบนหรือจาก Scanner</p>
+            : watchlistError ? null
+              : watchlist.length === 0 ? <p className="rounded-lg border border-dashed border-gray-700 px-4 py-8 text-center text-sm text-gray-400">ยังไม่มีรายการ Watchlist ที่ผูกกับพอร์ตนี้ — Watchlist เดิมที่ยังไม่จับคู่จะไม่แสดง</p>
               : visibleWatchlist.length === 0 ? <p className="rounded-lg border border-dashed border-gray-700 px-4 py-8 text-center text-sm text-gray-400">Collection นี้ยังไม่มีหุ้น</p>
                 : <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                   {visibleWatchlist.map(item => {

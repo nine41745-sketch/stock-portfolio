@@ -108,7 +108,7 @@ Status below is based on GitHub reads on 2026-10-14 and prior repository evidenc
 7. **v1.39.0:** combine the verified portfolio, price-zone, cash, fee, and risk inputs into a read-only dip-buying plan.
 8. **v1.40.0:** compose the accepted capabilities into a single portfolio-aware command center.
 
-v1.35.0 batch status: local implementation is in progress; its additive migration and synthetic disposable-DB acceptance have passed locally. Cloud verification/apply and legacy mapping are not authorized. After remaining local quality gates, inspect the current Preview trigger, push one coherent batch, open a Draft PR, and inspect CI/any single automatic Preview. Do not merge, apply Cloud SQL, or deploy Production without separate explicit approval.
+v1.35.0 batch status: implementation is in Draft PR #66; additive migration and synthetic disposable-DB acceptance passed locally. Cloud verification/apply and legacy mapping remain unapproved. Existing account-level Watchlist rows remain preserved but unassigned and are not visible in the portfolio-scoped UI; decide how to present or map them before Production rollout. The latest full dependency audit attempt in this review could not reach the npm registry, while the last captured audit reported seven High findings from one development-dependency advisory; re-run before release and remediate or obtain a separate risk decision. Do not merge, apply Cloud SQL, or deploy Production without separate explicit approval.
 
 ## Existing backlog and non-duplication
 

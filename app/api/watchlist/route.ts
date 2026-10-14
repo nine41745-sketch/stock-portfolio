@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getQuoteObservations } from '@/lib/finnhub'
 import { InputValidationError, parseSymbol } from '@/lib/portfolio-validation'
 import { phaseAErrorResponse, requirePhaseAPortfolio } from '@/lib/phase-a-context'
+import { isMissingSchemaError } from '@/lib/supabase/schema-errors'
 
 const MIGRATION_FILE = 'supabase/migration_portfolio_watchlist_v1.35.0.sql'
 const MAX_WATCHLIST_ITEMS = 12
@@ -10,12 +11,7 @@ const MAX_TARGET_PRICE = 99_999_999_999.9999
 const ITEM_COLUMNS = 'id, symbol, collection_id, target_price, note, alert_enabled, created_at, updated_at'
 
 function missingMigration(error: { code?: string; message?: string } | null | undefined): boolean {
-  if (!error) return false
-  const code = String(error.code ?? '')
-  const message = String(error.message ?? '').toLowerCase()
-  return ['42P01', '42703', 'PGRST204', 'PGRST205'].includes(code)
-    || message.includes('portfolio_watchlist_')
-    || message.includes('portfolio_investment_rules')
+  return isMissingSchemaError(error)
 }
 
 function migrationRequired() {

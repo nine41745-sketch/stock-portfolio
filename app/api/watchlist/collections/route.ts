@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { phaseAErrorResponse, requirePhaseAPortfolio } from '@/lib/phase-a-context'
+import { isMissingSchemaError } from '@/lib/supabase/schema-errors'
 
 const MIGRATION = 'supabase/migration_portfolio_watchlist_v1.35.0.sql'
-const missing = (error: { code?: string; message?: string } | null) => Boolean(error &&
-  (['42P01', '42703', 'PGRST204', 'PGRST205'].includes(String(error.code ?? ''))
-    || String(error.message ?? '').toLowerCase().includes('portfolio_watchlist_collections')))
+const missing = isMissingSchemaError
 
 function missingResponse() {
   return NextResponse.json({ error: 'Watchlist Collections ยังไม่ได้ติดตั้งฐานข้อมูล', migration_required: true, migration: MIGRATION }, { status: 503 })

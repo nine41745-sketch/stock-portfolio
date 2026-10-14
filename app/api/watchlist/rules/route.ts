@@ -2,15 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { phaseAErrorResponse, requirePhaseAPortfolio } from '@/lib/phase-a-context'
 import { InputValidationError, parseSymbol } from '@/lib/portfolio-validation'
 import type { InvestmentRuleType } from '@/lib/watchlist-rules'
+import { isMissingSchemaError } from '@/lib/supabase/schema-errors'
 
 const MIGRATION = 'supabase/migration_portfolio_watchlist_v1.35.0.sql'
 const TYPES = new Set<InvestmentRuleType>([
   'PRICE_AT_OR_BELOW', 'PRICE_AT_OR_ABOVE', 'DIME_AT_OR_BELOW', 'CASH_AT_OR_BELOW',
   'ALLOCATION_AT_OR_BELOW', 'POSITION_WEIGHT_AT_OR_ABOVE',
 ])
-const missing = (error: { code?: string; message?: string } | null) => Boolean(error &&
-  (['42P01', '42703', 'PGRST204', 'PGRST205'].includes(String(error.code ?? ''))
-    || String(error.message ?? '').toLowerCase().includes('portfolio_investment_rules')))
+const missing = isMissingSchemaError
 const missingResponse = () => NextResponse.json({ error: 'Conditional Rules ยังไม่ได้ติดตั้งฐานข้อมูล', migration_required: true, migration: MIGRATION }, { status: 503 })
 
 function parseRule(raw: Record<string, unknown>) {
