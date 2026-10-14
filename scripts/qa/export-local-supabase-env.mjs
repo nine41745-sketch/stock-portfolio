@@ -12,7 +12,6 @@ const local = host => ['localhost', '127.0.0.1', '::1'].includes(host)
 if (api.protocol !== 'http:' || !local(api.hostname) || api.port !== '54321' ||
     !local(db.hostname) || db.port !== '54322' || !values.ANON_KEY || !values.SERVICE_ROLE_KEY)
   throw new Error('Supabase API/database endpoint failed strict loopback validation')
-for (const key of [values.ANON_KEY, values.SERVICE_ROLE_KEY]) process.stdout.write('::add-mask::' + key + '\n')
 const entries = {
   NEXT_PUBLIC_SUPABASE_URL: api.origin,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: values.ANON_KEY,
@@ -22,6 +21,9 @@ const entries = {
   PIN_SESSION_SECRET: randomBytes(32).toString('hex'),
   CRON_SECRET: randomBytes(32).toString('hex'),
   QA_BASE_URL: 'http://127.0.0.1:3000',
+}
+for (const value of Object.values(entries)) {
+  if (value) process.stdout.write('::add-mask::' + value + '\n')
 }
 for (const [name, value] of Object.entries(entries)) await appendFile(process.env.GITHUB_ENV, name + '=' + value + '\n', { mode: 0o600 })
 console.log('Validated disposable loopback Supabase API, database, and Auth configuration.')
