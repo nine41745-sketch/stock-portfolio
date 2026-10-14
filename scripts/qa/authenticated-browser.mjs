@@ -106,7 +106,7 @@ try {
  const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()
  const severe=axe.violations.filter(v=>v.impact==='critical'||v.impact==='serious')
  if(severe.length) await writeFile(dir+'/axe-serious.json',JSON.stringify(severe.map(v=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map(n=>n.target)})),null,2))
- assert.equal(severe.length,0,'Axe serious/critical findings')
+ assert.equal(severe.length,0,'Axe serious/critical findings: '+JSON.stringify(severe.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)}))))
  pass('Axe WCAG A/AA serious and critical scan')
  if((await page.locator('html').getAttribute('data-theme'))!=='dark') await page.getByRole('button',{name:/โหมดสว่าง.*โหมดมืด/}).click()
  assert.equal(await page.locator('html').getAttribute('data-theme'),'dark')
