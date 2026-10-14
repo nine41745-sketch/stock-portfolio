@@ -111,7 +111,7 @@ export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) 
   return (
     <div className="mb-2 flex w-full flex-col gap-2 rounded-xl border border-gray-800 bg-gray-900/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="text-xs font-semibold text-gray-500">📁 พอร์ต</span>
+        <span className="text-xs font-semibold text-gray-300">📁 พอร์ต</span>
         {loading ? (
           <span className="text-xs text-gray-600">กำลังโหลด...</span>
         ) : (
