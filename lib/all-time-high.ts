@@ -1,4 +1,6 @@
 import YahooFinance from 'yahoo-finance2'
+import type { DiscoveryProviderContext } from '@/lib/discovery-deadline'
+import { getDiscoveryYahooChart } from '@/lib/discovery-yahoo'
 
 const yahooFinance = new YahooFinance()
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000
@@ -27,11 +29,11 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100
 }
 
-async function fetchAllTimeHigh(symbol: string): Promise<AllTimeHighSnapshot> {
+async function fetchAllTimeHigh(symbol: string, context?: DiscoveryProviderContext): Promise<AllTimeHighSnapshot> {
   try {
     // period1=0 requests Yahoo's maximum available history. Monthly bars keep each month's
     // actual High, so max(high) is an ATH level without downloading thousands of daily rows.
-    const result = await yahooFinance.chart(symbol, {
+    const result = context ? await getDiscoveryYahooChart(symbol, 0, '1mo', context) : await yahooFinance.chart(symbol, {
       period1: 0,
       interval: '1mo',
       includePrePost: false,
@@ -53,21 +55,22 @@ async function fetchAllTimeHigh(symbol: string): Promise<AllTimeHighSnapshot> {
       asOf: maxQuote.date instanceof Date ? maxQuote.date.toISOString() : null,
     }
   } catch (error) {
-    console.error(`[ath] yahoo-finance2 error for ${symbol}:`, error)
+    if (!context) console.error(`[ath] yahoo-finance2 error for ${symbol}:`, error)
     return { symbol, allTimeHigh: null, asOf: null }
   }
 }
 
-export async function getAllTimeHigh(symbol: string): Promise<AllTimeHighSnapshot> {
+export async function getAllTimeHigh(symbol: string, context?: DiscoveryProviderContext): Promise<AllTimeHighSnapshot> {
   const normalized = normalizeSymbol(symbol)
   if (!normalized) return { symbol: '', allTimeHigh: null, asOf: null }
 
+  if (context && !context.canStart()) return { symbol: normalized, allTimeHigh: null, asOf: null }
   const now = Date.now()
   const cached = cache.get(normalized)
   if (cached && cached.expiresAt > now) return cached.value
 
-  const value = await fetchAllTimeHigh(normalized)
-  cache.set(normalized, { expiresAt: now + CACHE_TTL_MS, value })
+  const value = await fetchAllTimeHigh(normalized, context)
+  if (!context) cache.set(normalized, { expiresAt: now + CACHE_TTL_MS, value })
   return value
 }
 
@@ -79,7 +82,7 @@ export async function getMultipleAllTimeHigh(
 
   for (let i = 0; i < unique.length; i += CHUNK_SIZE) {
     const chunk = unique.slice(i, i + CHUNK_SIZE)
-    const settled = await Promise.allSettled(chunk.map(getAllTimeHigh))
+    const settled = await Promise.allSettled(chunk.map(symbol => getAllTimeHigh(symbol)))
     settled.forEach((item, index) => {
       const symbol = chunk[index]
       result[symbol] = item.status === 'fulfilled'

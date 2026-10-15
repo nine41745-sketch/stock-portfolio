@@ -1,3 +1,4 @@
+import { discoveryFetch, type DiscoveryProviderContext } from '@/lib/discovery-deadline'
 import { FinnhubQuote } from '@/types'
 
 const BASE = 'https://finnhub.io/api/v1'
@@ -195,24 +196,25 @@ function toUpcomingEarnings(row: EarningsCalendarRow, today: Date): UpcomingEarn
 
 // เช็ควันประกาศผลประกอบการที่ใกล้ที่สุด — ใช้เตือนความเสี่ยงก่อน AI วิเคราะห์
 // (technical indicators ไม่มีความหมายถ้าราคาจะเหวี่ยงแรงจากงบที่กำลังจะออก)
-export async function getUpcomingEarnings(symbol: string): Promise<UpcomingEarnings | null> {
+export async function getUpcomingEarnings(symbol: string, context?: DiscoveryProviderContext): Promise<UpcomingEarnings | null> {
   try {
     const today = new Date()
     const to = new Date(today)
     to.setDate(to.getDate() + 60)
 
     const url = `${BASE}/calendar/earnings?from=${fmtDate(today)}&to=${fmtDate(to)}&symbol=${symbol}&token=${KEY}`
-    const res = await fetch(url, { next: { revalidate: 21600 } })
-    if (!res.ok) return null
+    const res = context ? null : await fetch(url, { next: { revalidate: 21600 } })
+    if (res && !res.ok) return null
 
-    const data = await res.json()
+    const data = context ? await discoveryFetch(context, url, response => response.json()) : await res!.json()
     const list: EarningsCalendarRow[] = data?.earningsCalendar ?? []
     if (!list.length) return null
 
     const sorted = [...list].sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')))
     return toUpcomingEarnings(sorted[0], today)
   } catch (e) {
-    console.error(`[finnhub] getUpcomingEarnings error for ${symbol}:`, e)
+    if (!context) console.error(`[finnhub] getUpcomingEarnings error for ${symbol}:`, e)
+    if (context) throw e
     return null
   }
 }
