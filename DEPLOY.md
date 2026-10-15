@@ -56,7 +56,7 @@ The latest migration currently required by the deployed schema is:
 
 **v1.17.0 does not add a SQL migration.** Do not rerun previous migrations as part of this release.
 
-The v1.35.0 development branch proposes `supabase/migration_portfolio_watchlist_v1.35.0.sql`. It is additive and passed disposable-local synthetic tests, including rollback and roll-forward. It has not been applied to Supabase Cloud. Before any release that depends on this schema, verify the target project's identity, review a legacy Watchlist mapping plan, and obtain separate approval for Cloud apply. The migration intentionally does not copy or alter the legacy `public.watchlist`; do not infer that old rows are assigned to a portfolio.
+The v1.35.0 release candidate includes `supabase/migration_portfolio_watchlist_v1.35.0.sql`, an additive migration previously verified on disposable local PostgreSQL. **Supabase Cloud migration was applied and catalog-verified on 2026-10-15** for project `etzoreksiwcbuwtbxozv`, history `20261015104706 portfolio_watchlist_v1_35_0`, as recorded in PR #66. RLS (3 tables), 12 policies, 4 foreign keys, ACL, triggers, indexes and the unchanged 3-row legacy `public.watchlist` were checked read-only after apply. Do not apply the migration again. No legacy Watchlist mapping or migration occurred. Production application code remains v1.34.1 until a separately approved PR merge and deployment; database recovery coverage is partial, and Cloud catalog verification is not authenticated JWT-backed runtime QA.
 
 ## Daily analysis Cron
 

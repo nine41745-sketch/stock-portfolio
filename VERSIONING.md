@@ -9,7 +9,7 @@ sync ให้ตรงกับค่านี้เสมอ (ตัด prefix
 
 ## Development version boundary
 
-The current released version remains v1.34.1 while v1.35.0 is under development. Do not change `config/changelog.ts`, `package.json`, or `package-lock.json` to claim v1.35.0 as released before the release acceptance and owner authorization. Keep this branch's roadmap/PR status explicitly **In Development**; version metadata and the Version Badge remain tied to the latest completed release until the approved release-candidate step.
+Production and the latest published release remain v1.34.1 until the owner explicitly approves merge/deployment of v1.35.0. The v1.35.0 release-candidate branch may carry v1.35.0 changelog, package and lockfile metadata for CI/Preview acceptance; this does **not** claim Production has released v1.35.0. Do not merge, deploy, tag or publish a release without separate explicit owner authorization. Keep the PR as a release candidate (Draft until acceptance), and preserve all prior changelog history.
 
 ## กฎการ bump version (ถาวร ห้ามยกเว้นโดยไม่ได้รับอนุมัติ)
 
