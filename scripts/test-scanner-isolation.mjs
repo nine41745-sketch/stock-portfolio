@@ -63,6 +63,21 @@ const proxy = fs.readFileSync('proxy.ts', 'utf8')
 assert.ok(proxy.includes("!pinUnlocked && pathname.startsWith('/api/')"), 'API requests must remain PIN-gated')
 assert.ok(proxy.includes("if (!user && pathname.startsWith('/api/')"), 'API requests must remain Auth-gated')
 
+// Regression: after account switching, the Scanner must not race scoped reads
+// against the authenticated endpoint that replaces a stale foreign portfolio cookie.
+const scannerWorkspaceSource = fs.readFileSync('components/portfolio/ScannerWorkspace.tsx', 'utf8')
+assert.match(scannerWorkspaceSource, /fetch\('\/api\/portfolios'/, 'Scanner must wait for authenticated portfolio initialization')
+assert.match(scannerWorkspaceSource, /response\.ok/, 'Portfolio initialization must fail closed')
+assert.match(scannerWorkspaceSource, /active_portfolio_id !== activePortfolioId/, 'Scanner must check exact selected-portfolio identity')
+assert.match(scannerWorkspaceSource, /portfolios\?\.some\(item => item\.id === activePortfolioId\)/, 'Scanner must verify the selected portfolio belongs to the authenticated context')
+assert.match(scannerWorkspaceSource, /controller\.abort\(\)/, 'Stale account/portfolio initialization must be cancellable')
+assert.match(scannerWorkspaceSource, /gate\?\.portfolioId === activePortfolioId && gate\.attempt === attempt/, 'Stale gate results must never unlock a new portfolio')
+assert.match(scannerWorkspaceSource, /!portfolioReady\s*\?/, 'Scoped Scanner children must remain unmounted while the portfolio is initializing')
+assert.match(scannerWorkspaceSource, /setAttempt\(current => current \+ 1\)/, 'Recovery must be an explicit user action, not blind repeated writes')
+assert.match(scannerWorkspaceSource, /<OpportunityHub key=\{activePortfolioId \?\? 'legacy'\}/, 'Scanner state must remount for a new selected portfolio')
+assert.ok(!scannerWorkspaceSource.includes("document.cookie"), 'Client must not forge the HttpOnly active portfolio cookie')
+assert.ok(context.includes("throw new PhaseAError('Portfolio เปลี่ยนแล้ว กรุณาโหลดหน้าใหม่', 409)"), 'Server foreign-cookie gate must stay fail-closed')
+
 const ui = fs.readFileSync('components/portfolio/OpportunityHub.tsx', 'utf8')
 assert.ok(ui.includes('Holdings + Watchlist ในพอร์ตที่เลือก'), 'mine label must identify both selected-portfolio sources')
 assert.ok(ui.includes('Watchlist ระดับบัญชีเดิมไม่ถูกรวม'), 'UI must disclose that legacy account Watchlist is excluded')
