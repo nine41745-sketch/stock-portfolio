@@ -18,7 +18,7 @@ const NO_STORE = { headers: { 'Cache-Control': 'private, no-store' } }
 interface DiscoveryItem extends DiscoveryCandidate {
   label: string | null
   reasons: string[]
-  categoryScores: Record<string, number> | null
+  categoryScores: ReturnType<typeof scoreScannerCandidate>['categoryScores'] | null
   price: number | null
   relativeStrength60: number | null
   lastBarAt: string | null
