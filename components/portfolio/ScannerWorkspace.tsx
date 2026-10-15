@@ -23,6 +23,7 @@ export default function ScannerWorkspace({ holdingSymbols, activePortfolioId }: 
   // Do not weaken the server's 401/409 ownership checks or retry those writes.
   useEffect(() => {
     if (activePortfolioId === null) return // Legacy schema stays on the existing migration-error path.
+    const portfolioId = activePortfolioId // Stable non-null ID across async callbacks.
     const controller = new AbortController()
     async function initializePortfolio() {
       try {
@@ -36,15 +37,15 @@ export default function ScannerWorkspace({ holdingSymbols, activePortfolioId }: 
           active_portfolio_id?: string
           portfolios?: Array<{ id: string }>
         }
-        if (payload.active_portfolio_id !== activePortfolioId
-          || !payload.portfolios?.some(item => item.id === activePortfolioId)) {
+        if (payload.active_portfolio_id !== portfolioId
+          || !payload.portfolios?.some(item => item.id === portfolioId)) {
           throw new Error('พอร์ตมีการเปลี่ยนแปลง กรุณาโหลดหน้าใหม่')
         }
-        if (!controller.signal.aborted) setGate({ portfolioId: activePortfolioId, attempt, status: 'ready' })
+        if (!controller.signal.aborted) setGate({ portfolioId, attempt, status: 'ready' })
       } catch (error) {
         if (!controller.signal.aborted) {
           setGate({
-            portfolioId: activePortfolioId,
+            portfolioId,
             attempt,
             status: 'error',
             error: error instanceof Error ? error.message : 'เตรียมพอร์ตสำหรับ Scanner ไม่สำเร็จ',
