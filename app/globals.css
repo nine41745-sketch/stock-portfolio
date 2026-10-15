@@ -66,7 +66,7 @@
 [data-theme="light"] .divide-gray-800 > * + * { border-color: #e2e8f0 !important; }
 
 [data-theme="light"] input::placeholder,
-[data-theme="light"] textarea::placeholder { color: #64748b !important; opacity: 1; }
+[data-theme="light"] textarea::placeholder { color: #475569 !important; opacity: 1; }
 [data-theme="light"] select,
 [data-theme="light"] input,
 [data-theme="light"] textarea { color: #0f172a; }
