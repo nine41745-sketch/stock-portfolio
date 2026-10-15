@@ -23,6 +23,9 @@ interface Bar {
 }
 
 export interface TechnicalIndicators {
+  /** Daily OHLCV adapter provenance, not a live quote-source guarantee. */
+  dataSource?: 'Yahoo Finance' | 'Stooq' | 'unavailable'
+  lastBarAt?: string | null
   ema50: number | null
   ema100: number | null
   ema200: number | null
@@ -290,14 +293,15 @@ function calcWeek52Range(bars: Bar[]): { week52High: number | null; week52Low: n
 }
 
 export async function getTechnicalIndicators(symbol: string): Promise<TechnicalIndicators> {
-  const [bars, weeklyBars] = await Promise.all([
-    fetchHistoricalBars(symbol),
+  const [{ bars, source }, weeklyBars] = await Promise.all([
+    fetchHistoricalBarsWithSource(symbol),
     fetchHistoricalWeeklyBars(symbol),
   ])
+  const lastBarAt = bars.at(-1)?.date ?? null
 
   const weeklyRsi14 = calcWeeklyRsi(weeklyBars)
 
-  if (bars.length < 15) return { ...EMPTY_INDICATORS, weeklyRsi14 }
+  if (bars.length < 15) return { ...EMPTY_INDICATORS, weeklyRsi14, dataSource: source, lastBarAt }
 
   const closes = bars.map(b => b.close)
   const lastClose = last(closes)
@@ -343,6 +347,8 @@ export async function getTechnicalIndicators(symbol: string): Promise<TechnicalI
   const range52 = calcWeek52Range(bars)
 
   return {
+    dataSource: source,
+    lastBarAt,
     ema50,
     ema100: round2(last(ema100arr)),
     ema200,
