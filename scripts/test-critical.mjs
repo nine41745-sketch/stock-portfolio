@@ -227,7 +227,9 @@ assert.match(dashboardSource, /08:15/, 'Track Record/Cron UI must show the real 
 assert.doesNotMatch(dashboardSource, /รันทุกวัน 06:00 น\./, 'Old 06:00 Track Record label must not return')
 assert.match(dashboardSource, /exchangeRateSource/, 'Dashboard must distinguish live FX from fallback FX')
 assert.match(dashboardSource, /ยังไม่มีอัตรา USD\/THB แบบสด/, 'THB persistence must be blocked while only fallback FX is available')
-assert.match(dashboardSource, /loadFailed/, 'Scratchpad initial-read failure must prevent auto-save overwrite')
+const quickNotesSource = fs.readFileSync('components/navigation/QuickNotesDrawer.tsx', 'utf8')
+assert.match(appTabsSource, /<QuickNotesDrawer\s*\/>/, 'Every authenticated page must expose the shared notes drawer')
+assert.match(quickNotesSource, /loadFailed/, 'Shared scratchpad initial-read failure must prevent auto-save overwrite')
 assert.match(appTabsSource, /if \(!response\.ok\) throw new Error\(await getErrorMessage\(response, 'ล็อกพอร์ตไม่สำเร็จ'\)\)/, 'Shared PIN lock must verify the server lock response')
 
 const scratchpadSource = fs.readFileSync('app/api/scratchpad/route.ts', 'utf8')
@@ -450,4 +452,5 @@ assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./co
 assert.match(releaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.34.0 changelog must contain a timestamp in the repository format')
 assert.match(latestReleaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.35.0 changelog must contain a timestamp in the repository format')
 
+await import('./test-quick-notes.mjs')
 console.log('✓ Critical regression tests passed')

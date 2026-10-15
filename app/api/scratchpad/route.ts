@@ -11,7 +11,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('scratchpad_notes')
-    .select('content')
+    .select('content, updated_at')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -20,7 +20,7 @@ export async function GET() {
     return NextResponse.json({ error: 'โหลดโน้ตไม่สำเร็จ' }, { status: 500 })
   }
 
-  return NextResponse.json({ content: data?.content ?? '' })
+  return NextResponse.json({ content: data?.content ?? '', revision: data?.updated_at ?? null, userId: user.id }, { headers: { 'Cache-Control': 'no-store' } })
 }
 
 // PUT /api/scratchpad — บันทึกโน้ต (upsert, เรียกแบบ debounce จากฝั่ง client หลังหยุดพิมพ์)
@@ -43,6 +43,26 @@ export async function PUT(request: NextRequest) {
   }
   if (body.content.length > MAX_SCRATCHPAD_LENGTH) {
     return NextResponse.json({ error: `โน้ตยาวเกิน ${MAX_SCRATCHPAD_LENGTH.toLocaleString('en-US')} ตัวอักษร` }, { status: 400 })
+  }
+
+  // New drawers use compare-and-swap on the existing timestamp; legacy Dashboard
+  // callers remain compatible. Never let an old session write into a new account.
+  const guarded = Object.prototype.hasOwnProperty.call(body, 'expectedRevision')
+  if (guarded) {
+    if (body.userId !== user.id) return NextResponse.json({ error: 'Session changed' }, { status: 403 })
+    if (body.expectedRevision !== null && (typeof body.expectedRevision !== 'string' || !Number.isFinite(Date.parse(body.expectedRevision)))) {
+      return NextResponse.json({ error: 'Invalid revision' }, { status: 400 })
+    }
+    const row = { user_id: user.id, content: body.content, updated_at: new Date().toISOString() }
+    const result = body.expectedRevision === null
+      ? await supabase.from('scratchpad_notes').insert(row).select('updated_at').maybeSingle()
+      : await supabase.from('scratchpad_notes').update(row).eq('user_id', user.id)
+        .eq('updated_at', body.expectedRevision).select('updated_at').maybeSingle()
+    if (result.error?.code === '23505' || (!result.error && !result.data)) {
+      return NextResponse.json({ error: 'โน้ตมีการเปลี่ยนแปลงจากหน้าต่างอื่น กรุณาคัดลอกข้อความไว้แล้วเปิดหน้าใหม่' }, { status: 409 })
+    }
+    if (result.error) return NextResponse.json({ error: 'บันทึกโน้ตไม่สำเร็จ' }, { status: 500 })
+    return NextResponse.json({ ok: true, revision: result.data!.updated_at })
   }
 
   const { error } = await supabase
