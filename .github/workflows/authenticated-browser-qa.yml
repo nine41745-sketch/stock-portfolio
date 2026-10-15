@@ -15,14 +15,15 @@ concurrency:
 jobs:
   authenticated-browser-qa:
     if: >-
-      ${{ github.event.pull_request.head.ref == 'fix/v1.34.1-theme-consistency' &&
+      ${{ (github.event.pull_request.head.ref == 'fix/v1.34.1-theme-consistency' ||
+          github.event.pull_request.head.ref == 'codex/v1.35.0-watchlist-smart-alerts') &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           github.event.label.name == 'authenticated-browser-qa' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       CI: 'true'
-      QA_ARTIFACT_DIR: .local-artifacts/theme-hotfix-authenticated-browser-qa/${{ github.run_id }}
+      QA_ARTIFACT_DIR: .local-artifacts/authenticated-browser-qa/${{ github.run_id }}
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v7
@@ -97,7 +98,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: theme-hotfix-authenticated-browser-qa
+          name: authenticated-browser-qa-v1.35.0
           path: ${{ env.QA_ARTIFACT_DIR }}/
           retention-days: 3
           if-no-files-found: ignore

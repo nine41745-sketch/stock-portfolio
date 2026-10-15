@@ -1,13 +1,13 @@
 {
   "name": "stock-portfolio",
-  "version": "1.34.1",
+  "version": "1.35.0",
   "private": true,
   "engines": {
     "node": "22.x"
   },
   "scripts": {
     "dev": "next dev",
-    "test:critical": "node scripts/test-critical.mjs && node scripts/test-fundamentals.mjs && node scripts/test-sec-xbrl.mjs && node scripts/test-sec-filing-index.mjs && node scripts/test-stock-check.mjs && node scripts/test-multi-portfolio.mjs && node scripts/test-command-center.mjs && node scripts/test-transactions.mjs && node scripts/test-auto-trades.mjs && node scripts/test-performance.mjs && node scripts/test-trade-plan.mjs && node scripts/test-risk.mjs && node scripts/test-allocation.mjs && node scripts/test-alerts-calendar.mjs && node --experimental-strip-types --test scripts/test-market-intelligence.mjs && node scripts/test-phase-a.mjs && node scripts/test-import-preview.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-scanner-isolation.mjs",
+    "test:critical": "node scripts/test-critical.mjs && node scripts/test-fundamentals.mjs && node scripts/test-sec-xbrl.mjs && node scripts/test-sec-filing-index.mjs && node scripts/test-stock-check.mjs && node scripts/test-multi-portfolio.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-watchlist-v1350.mjs && node scripts/test-command-center.mjs && node scripts/test-transactions.mjs && node scripts/test-auto-trades.mjs && node scripts/test-performance.mjs && node scripts/test-trade-plan.mjs && node scripts/test-risk.mjs && node scripts/test-allocation.mjs && node scripts/test-alerts-calendar.mjs && node --experimental-strip-types --test scripts/test-market-intelligence.mjs && node scripts/test-phase-a.mjs && node scripts/test-import-preview.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-scanner-isolation.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "build": "npm run test:critical && next build",

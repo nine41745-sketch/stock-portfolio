@@ -20,6 +20,7 @@ export interface StockMetrics {
 }
 
 export async function getQuote(symbol: string): Promise<FinnhubQuote | null> {
+  if (!KEY) return null
   try {
     const res = await fetch(`${BASE}/quote?symbol=${symbol}&token=${KEY}`, { next: { revalidate: 60 } })
     if (!res.ok) return null
@@ -27,6 +28,48 @@ export async function getQuote(symbol: string): Promise<FinnhubQuote | null> {
     if (!d.c) return null
     return d as FinnhubQuote
   } catch { return null }
+}
+
+export interface QuoteObservation {
+  price: number | null
+  source: 'Finnhub'
+  fetchedAt: string
+  providerTimestamp: string | null
+  freshness: 'fresh' | 'stale' | 'unknown' | 'unavailable'
+}
+
+// Explicitly requested, bounded quote snapshot for Watchlist alerts. Do not poll or
+// fetch automatically on page load; getQuote's Next cache is limited to 60 seconds.
+export async function getQuoteObservations(symbols: string[]): Promise<Record<string, QuoteObservation>> {
+  const fetchedAt = new Date().toISOString()
+  const uniqueSymbols = normalizeSymbols(symbols)
+  const result: Record<string, QuoteObservation> = {}
+
+  for (let i = 0; i < uniqueSymbols.length; i += CHUNK_SIZE) {
+    const chunk = uniqueSymbols.slice(i, i + CHUNK_SIZE)
+    const settled = await Promise.allSettled(chunk.map(async symbol => ({ symbol, quote: await getQuote(symbol) })))
+    for (let index = 0; index < settled.length; index += 1) {
+      const symbol = chunk[index]
+      const entry = settled[index]
+      const quote = entry.status === 'fulfilled' ? entry.value.quote : null
+      const price = quote && Number.isFinite(Number(quote.c)) && Number(quote.c) > 0 ? Number(quote.c) : null
+      const providerTime = quote && Number.isFinite(Number(quote.t)) && Number(quote.t) > 0
+        ? new Date(Number(quote.t) * 1000)
+        : null
+      const providerTimestamp = providerTime && Number.isFinite(providerTime.getTime()) ? providerTime.toISOString() : null
+      const ageMs = providerTime ? Date.now() - providerTime.getTime() : null
+      result[symbol] = {
+        price,
+        source: 'Finnhub',
+        fetchedAt,
+        providerTimestamp,
+        freshness: price === null ? 'unavailable' : ageMs === null ? 'unknown' : ageMs > 24 * 60 * 60 * 1000 ? 'stale' : 'fresh',
+      }
+    }
+    if (i + CHUNK_SIZE < uniqueSymbols.length) await delay(CHUNK_DELAY_MS)
+  }
+
+  return result
 }
 
 async function getBasicMetrics(symbol: string): Promise<{ pe: number | null; week52High: number | null; week52Low: number | null }> {

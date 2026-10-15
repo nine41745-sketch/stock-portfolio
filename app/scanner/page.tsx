@@ -36,7 +36,7 @@ export default async function ScannerPage() {
       <InvestingSinceBadge />
       <AppTabs />
       <div className="mx-auto w-full max-w-7xl">
-        <ScannerWorkspace holdingSymbols={holdingSymbols} />
+        <ScannerWorkspace holdingSymbols={holdingSymbols} activePortfolioId={portfolio.portfolioId} />
       </div>
     </div>
   )

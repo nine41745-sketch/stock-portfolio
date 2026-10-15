@@ -238,6 +238,8 @@ function scannerApiHarness({
   portfolios = [{ id: 'p1', name: 'One', is_default: true }, { id: 'p2', name: 'Two', is_default: false }],
   rows = [],
   holdingsError = null,
+  watchlistRows = [],
+  watchlistError = null,
   portfolioQueryError = null,
 } = {}) {
   const queryCalls = []
@@ -261,12 +263,18 @@ function scannerApiHarness({
         }
         return query
       }
-      assert.equal(table, 'holdings', 'Scanner mine must never query account-level Watchlist')
+      assert.ok(['holdings', 'portfolio_watchlist_items'].includes(table), 'Scanner mine may query only selected-portfolio sources')
       const query = {
-        select(columns) { assert.equal(columns, 'user_id, portfolio_id, symbol, shares'); return query },
+        select(columns) {
+          assert.equal(columns, table === 'holdings' ? 'user_id, portfolio_id, symbol, shares' : 'user_id, portfolio_id, symbol')
+          return query
+        },
         eq(column, value) { queryCalls.push([column, value]); return query },
-        gt(column, value) { assert.equal(column, 'shares'); assert.equal(value, 0); return query },
-        then(resolve, reject) { return Promise.resolve({ data: rows, error: holdingsError }).then(resolve, reject) },
+        gt(column, value) { assert.equal(table, 'holdings'); assert.equal(column, 'shares'); assert.equal(value, 0); return query },
+        then(resolve, reject) {
+          const result = table === 'holdings' ? { data: rows, error: holdingsError } : { data: watchlistRows, error: watchlistError }
+          return Promise.resolve(result).then(resolve, reject)
+        },
       }
       return query
     },
@@ -316,34 +324,40 @@ function scannerApiHarness({
   }
 }
 
-test('Scanner mine API returns only the selected owner portfolio when switching A/B', async () => {
+test('Scanner mine API returns selected-owner Holdings and Watchlist when switching A/B', async () => {
   const h = scannerApiHarness({ rows: [
     { user_id: 'u1', portfolio_id: 'p1', symbol: 'aapl', shares: 2 },
     { user_id: 'u1', portfolio_id: 'p2', symbol: 'MSFT', shares: 4 },
     { user_id: 'u2', portfolio_id: 'p1', symbol: 'TSLA', shares: 3 },
     { user_id: 'u1', portfolio_id: 'p1', symbol: 'ZERO', shares: 0 },
+  ], watchlistRows: [
+    { user_id: 'u1', portfolio_id: 'p1', symbol: 'aapl' },
+    { user_id: 'u1', portfolio_id: 'p1', symbol: 'NVDA' },
+    { user_id: 'u1', portfolio_id: 'p2', symbol: 'GOOG' },
+    { user_id: 'u2', portfolio_id: 'p1', symbol: 'META' },
+    { user_id: 'u1', portfolio_id: null, symbol: 'LEGACY' },
   ] })
   let response = await h.get()
   assert.equal(response.status, 200)
-  assert.deepEqual((await response.json()).items.map(row => row.symbol), ['AAPL'])
+  assert.deepEqual((await response.json()).items.map(row => row.symbol), ['AAPL', 'NVDA'])
   assert.ok(h.queryCalls.some(([key, value]) => key === 'user_id' && value === 'u1'))
   assert.ok(h.queryCalls.some(([key, value]) => key === 'portfolio_id' && value === 'p1'))
 
   h.select('p2')
   response = await h.get()
   assert.equal(response.status, 200)
-  assert.deepEqual((await response.json()).items.map(row => row.symbol), ['MSFT'])
+  assert.deepEqual((await response.json()).items.map(row => row.symbol), ['GOOG', 'MSFT'])
   assert.ok(h.queryCalls.some(([key, value]) => key === 'portfolio_id' && value === 'p2'))
 })
 
-test('Scanner mine returns empty without market requests and never adds Watchlist rows', async () => {
+test('Scanner mine fails closed on incomplete schemas and returns empty without market requests', async () => {
   const empty = scannerApiHarness()
   const response = await empty.get()
   assert.equal(response.status, 200)
   assert.deepEqual((await response.json()).items, [])
   assert.equal(empty.marketCalls.length, 0)
 
-  const noWatchlistFallback = scannerApiHarness({ rows: [], holdingsError: { code: '42703', message: 'portfolio_id missing' } })
+  const noWatchlistFallback = scannerApiHarness({ rows: [], watchlistError: { code: '42P01', message: 'portfolio_watchlist_items missing' } })
   const failed = await noWatchlistFallback.get()
   assert.equal(failed.status, 503)
   assert.equal(noWatchlistFallback.marketCalls.length, 0)

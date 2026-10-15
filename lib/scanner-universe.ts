@@ -8,8 +8,8 @@ export type ScannerHoldingRow = {
 const MAX_SCAN_SYMBOLS = 12
 
 /**
- * Derive mine only from the already selected portfolio's Holdings.
- * The API also scopes the database query; this second filter is defense in depth.
+ * Derive mine only from the selected portfolio's Holdings and portfolio-scoped Watchlist.
+ * The API also scopes both database queries; these filters are defense in depth.
  */
 export function selectPortfolioHoldingSymbols(
   rows: ScannerHoldingRow[],
@@ -27,4 +27,21 @@ export function selectPortfolioHoldingSymbols(
     if (symbols.size >= MAX_SCAN_SYMBOLS) break
   }
   return [...symbols]
+}
+
+export function selectPortfolioMineSymbols(
+  holdings: ScannerHoldingRow[],
+  watchlist: Array<{ user_id: string; portfolio_id: string | null; symbol: string }>,
+  userId: string,
+  portfolioId: string,
+): string[] {
+  if (!userId || !portfolioId) return []
+  const symbols = new Set(selectPortfolioHoldingSymbols(holdings, userId, portfolioId))
+  for (const row of watchlist) {
+    if (row.user_id !== userId || row.portfolio_id !== portfolioId) continue
+    const symbol = row.symbol.trim().toUpperCase()
+    if (symbol) symbols.add(symbol)
+    if (symbols.size >= MAX_SCAN_SYMBOLS) break
+  }
+  return [...symbols].slice(0, MAX_SCAN_SYMBOLS)
 }

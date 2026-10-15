@@ -19,6 +19,7 @@ interface Bar {
   high: number
   low: number
   volume: number
+  date: string | null
 }
 
 export interface TechnicalIndicators {
@@ -75,15 +76,21 @@ const EMPTY_INDICATORS: TechnicalIndicators = {
   week52Low: null,
 }
 
-function toBars(raw: Array<{ close: number | null; high: number | null; low: number | null; volume: number | null }>): Bar[] {
+function toBars(raw: Array<{ close: number | null; high: number | null; low: number | null; volume: number | null; date?: Date | string | null }>): Bar[] {
   return raw
-    .filter((b): b is { close: number; high: number; low: number; volume: number } =>
+    .filter((b): b is { close: number; high: number; low: number; volume: number; date?: Date | string | null } =>
       typeof b.close === 'number' && !Number.isNaN(b.close) &&
       typeof b.high === 'number' && !Number.isNaN(b.high) &&
       typeof b.low === 'number' && !Number.isNaN(b.low) &&
       typeof b.volume === 'number' && !Number.isNaN(b.volume)
     )
-    .map(b => ({ close: b.close, high: b.high, low: b.low, volume: b.volume }))
+    .map(b => ({
+      close: b.close,
+      high: b.high,
+      low: b.low,
+      volume: b.volume,
+      date: b.date instanceof Date ? b.date.toISOString() : typeof b.date === 'string' && !Number.isNaN(Date.parse(b.date)) ? new Date(b.date).toISOString() : null,
+    }))
 }
 
 async function fetchFromYahoo(symbol: string): Promise<Bar[]> {
@@ -96,7 +103,7 @@ async function fetchFromYahoo(symbol: string): Promise<Bar[]> {
       interval: '1d',
     })
 
-    return toBars((result.quotes ?? []).map(q => ({ close: q.close, high: q.high, low: q.low, volume: q.volume })))
+    return toBars((result.quotes ?? []).map(q => ({ close: q.close, high: q.high, low: q.low, volume: q.volume, date: q.date })))
   } catch (e) {
     console.error(`[indicators] yahoo-finance2 error for ${symbol}:`, e)
     return []
@@ -137,6 +144,7 @@ async function fetchFromStooq(symbol: string): Promise<Bar[]> {
         low: Number(cols[3]),
         close: Number(cols[4]),
         volume: Number(cols[5]),
+        date: cols[0],
       }
     }))
     return bars.slice(-260)
@@ -173,13 +181,17 @@ async function fetchFromStooqWeekly(symbol: string): Promise<Bar[]> {
 }
 
 async function fetchHistoricalBars(symbol: string): Promise<Bar[]> {
+  return (await fetchHistoricalBarsWithSource(symbol)).bars
+}
+
+async function fetchHistoricalBarsWithSource(symbol: string): Promise<{ bars: Bar[]; source: 'Yahoo Finance' | 'Stooq' | 'unavailable' }> {
   const yahoo = await fetchFromYahoo(symbol)
-  if (yahoo.length >= 200) return yahoo
+  if (yahoo.length >= 200) return { bars: yahoo, source: 'Yahoo Finance' }
 
   const stooq = await fetchFromStooq(symbol)
-  if (stooq.length > yahoo.length) return stooq
-
-  return yahoo
+  if (stooq.length > yahoo.length) return { bars: stooq, source: 'Stooq' }
+  if (yahoo.length) return { bars: yahoo, source: 'Yahoo Finance' }
+  return { bars: [], source: 'unavailable' }
 }
 
 async function fetchHistoricalWeeklyBars(symbol: string): Promise<Bar[]> {
@@ -383,4 +395,56 @@ export async function getImportantSupportSnapshot(symbol: string): Promise<Impor
     currentPrice,
   )
   return { symbol, importantSupport: support.level, touches: support.touches }
+}
+
+export interface SupportResistanceLadderSnapshot {
+  symbol: string
+  status: 'available' | 'unavailable'
+  source: 'Yahoo Finance' | 'Stooq' | null
+  lastBarAt: string | null
+  freshness: 'fresh' | 'stale' | 'unknown'
+  currentPrice: number | null
+  support: number | null
+  importantSupport: number | null
+  resistance: number | null
+  touches: number
+  levels: Array<{ kind: 'support' | 'important-support' | 'current' | 'resistance'; price: number }>
+  methodology: string
+}
+
+// Reuses the existing scanner levels and important-support calculation; this endpoint
+// does not introduce a separate indicator model or background refresh.
+export async function getSupportResistanceLadder(symbol: string): Promise<SupportResistanceLadderSnapshot> {
+  const { bars, source } = await fetchHistoricalBarsWithSource(symbol)
+  const lastBar = bars.length ? bars[bars.length - 1] : undefined
+  const currentPrice = lastBar ? round2(lastBar.close) : null
+  const levels = calcScannerSupportResistance(bars)
+  const important = bars.length >= 15
+    ? calculateImportantSupport(bars.slice(0, -1).map(bar => bar.low), lastBar?.close ?? null)
+    : { level: null, touches: 0 }
+  const lastBarTime = lastBar?.date ? Date.parse(lastBar.date) : NaN
+  const age = Number.isFinite(lastBarTime) ? Date.now() - lastBarTime : null
+  const freshness = age === null ? 'unknown' : age > 24 * 60 * 60 * 1000 ? 'stale' : 'fresh'
+  const ladder = [
+    { kind: 'support' as const, price: levels.support },
+    { kind: 'important-support' as const, price: important.level },
+    { kind: 'current' as const, price: currentPrice },
+    { kind: 'resistance' as const, price: levels.resistance },
+  ].filter((item): item is { kind: 'support' | 'important-support' | 'current' | 'resistance'; price: number } => item.price !== null && item.price > 0)
+    .sort((a, b) => a.price - b.price)
+
+  return {
+    symbol,
+    status: bars.length >= 6 && ladder.length > 0 ? 'available' : 'unavailable',
+    source: source === 'unavailable' ? null : source,
+    lastBarAt: lastBar?.date ?? null,
+    freshness,
+    currentPrice,
+    support: levels.support,
+    importantSupport: important.level,
+    resistance: levels.resistance,
+    touches: important.touches,
+    levels: ladder,
+    methodology: '20 completed daily bars for scanner support/resistance; important support reuses the existing swing-low clustering calculation. Informational only.',
+  }
 }

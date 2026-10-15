@@ -7,6 +7,10 @@ Source of truth ของ "current version" คือ `config/changelog.ts` — 
 sync ให้ตรงกับค่านี้เสมอ (ตัด prefix `v` ออก เช่น `CURRENT_VERSION = 'v1.10.1'` → `package.json`
 `"version": "1.10.1"`)
 
+## Development version boundary
+
+Production and the latest published release remain v1.34.1 until the owner explicitly approves merge/deployment of v1.35.0. The v1.35.0 release-candidate branch may carry v1.35.0 changelog, package and lockfile metadata for CI/Preview acceptance; this does **not** claim Production has released v1.35.0. Do not merge, deploy, tag or publish a release without separate explicit owner authorization. Keep the PR as a release candidate (Draft until acceptance), and preserve all prior changelog history.
+
 ## กฎการ bump version (ถาวร ห้ามยกเว้นโดยไม่ได้รับอนุมัติ)
 
 - **PATCH** (`x.y.Z`) — production bugfix / hotfix ที่ไม่เพิ่ม feature ใหม่ (เช่น แก้ input validation,

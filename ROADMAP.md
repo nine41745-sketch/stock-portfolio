@@ -1,18 +1,17 @@
 # Stock Portfolio — Roadmap
 
-Status: Owner-confirmed direction and acceptance criteria; each implementation, database, cloud, and deployment change still requires scoped approval.
-Updated: 2026-10-14 (Asia/Bangkok)
-Repository baseline: `main` at `28f31880465d30e091726e68130b2d275fd7fcb9` (v1.33.1).
+Status: v1.35.0 is a Draft Release Candidate on `codex/v1.35.0-watchlist-smart-alerts`; not merged or released.
+Updated: 2026-10-15 (Asia/Bangkok)
+Production baseline: `main` / release v1.34.1 at `3312347a4a62e668093e1de2d0307cd6e7537a14`.
 
 ## Evidence and boundaries
 
 | Item | Verified status |
 | --- | --- |
-| GitHub `main` | SHA `28f31880465d30e091726e68130b2d275fd7fcb9` |
-| PR #63 | Merged; merge commit is the Production baseline SHA above |
-| GitHub Release | `v1.33.1` published at [GitHub Release](https://github.com/nine41745-sketch/stock-portfolio/releases/tag/v1.33.1) |
-| GitHub Actions | `verify` passed on PR #63 head `7fae3e9e84e41362fd5cf594c5d62f8c312417fb`: [workflow run](https://github.com/nine41745-sketch/stock-portfolio/actions/runs/38387514971) |
-| Application release scope | v1.33.1 releases Scanner `mine` Portfolio Isolation, server-side Auth/PIN and ownership validation, and Regression Tests. v1.33.0 features remain in release history. |
+| GitHub `main` / Production | SHA `3312347a4a62e668093e1de2d0307cd6e7537a14` (v1.34.1) |
+| PR #65 / GitHub Release | PR #65 merged; `v1.34.1` published at [GitHub Release](https://github.com/nine41745-sketch/stock-portfolio/releases/tag/v1.34.1) |
+| GitHub Actions / Production deployment | CI passed and Vercel Production was reported READY for v1.34.1; this development branch does not change that release. |
+| Application release scope | v1.34.1 contains the theme consistency hotfix and authenticated browser regression coverage. v1.35.0 features in this branch are not released. |
 | Production database / live RLS behavior | Not proven by source, release, or CI. v1.33.1 SQL Cloud verification remains blocked; do not infer Cloud behavior from Local SQL tests. |
 
 Release evidence confirms repository, PR, release, and CI state. It does not establish that SQL repairs were applied to Supabase Cloud or that Production RLS/RPC behavior was live-tested.
@@ -31,7 +30,7 @@ Keep the existing `PortfolioSwitcher`; do not create another portfolio selector 
 
 All portfolio-specific reads and recommendations must use the selected portfolio: Holdings, DIME, cost basis, ledger, trade plans, Smart DCA, alerts, scanner results, and future AI guidance. Never combine cash, cost, or transactions across portfolios implicitly.
 
-- **v1.33.1:** Scanner category `mine` must use Holdings for the currently selected portfolio only. Until the Watchlist becomes portfolio-scoped in v1.35.0, exclude the account-level Watchlist from `mine` results and clearly disclose this limitation in the UI.
+- **v1.33.1 release behavior:** Scanner category `mine` uses Holdings for the selected portfolio and excludes the account-level Watchlist. The v1.35.0 implementation under development adds only the newly portfolio-scoped Watchlist records; legacy account-level rows remain excluded.
 - **v1.35.0 onward:** Watchlist entries, target prices, notes, collections, and alerts are portfolio-scoped. The same symbol can exist in both portfolios with different targets and notes.
 - Every feature that reads or writes portfolio data must validate ownership and selected `portfolio_id`; enforce database RLS where applicable and cover cross-portfolio and cross-user denial with regression tests.
 - Two portfolios under one login are organizational separation, **not separate personal access controls**. Anyone using that authenticated account can switch to and view both portfolios. Do not represent this arrangement as confidential separation between the two people. Separate accounts/sharing are outside the current scope.
@@ -42,7 +41,7 @@ All portfolio-specific reads and recommendations must use the selected portfolio
 | --- | --- | --- |
 | **v1.33.1 — Scanner Portfolio Isolation** | **Released:** Scanner `mine` uses only the selected portfolio's Holdings, with server-side Auth/PIN and ownership checks plus regression coverage. It excludes account-level Watchlist until v1.35.0. SQL Security Hardening is tracked separately in Draft PR #62. | Local SQL Acceptance on disposable PostgreSQL 17.11 with synthetic data and PR CI passed per PR #62 evidence. **Cloud Verification remains BLOCKED**; Supabase Cloud advisories remain open. Do not claim Cloud changes were applied or verified. |
 | **v1.34.0 — Fundamentals and Valuation** | Fundamental Analysis, Stock Comparison, Earnings Intelligence, and Stock Valuation. Show source, reporting period, units, timestamp, assumptions, and missing/stale data. Comparison must use equivalent periods/units and label estimates versus reported values. | Reuse existing quote/profile/earnings data where suitable. Cache and batch provider calls; make expensive analysis user-initiated. Do not imply precision beyond source coverage. |
-| **v1.35.0 — Portfolio Watchlist and Smart Alerts** | Portfolio-scoped Watchlist, per-portfolio target prices and notes, Watchlist Collections, Smart Alerts, Support/Resistance Ladder, and Conditional Investment Rules. Alert/rule evaluation must be deterministic, explainable, and scoped to the selected portfolio. Alerts suggest or notify; they do not trade. | Requires an additive, reviewed schema/RLS migration and explicit mapping of legacy Watchlist rows. Preserve legacy data; no automatic assignment, move, deletion, or copy. Cloud migration and apply require separate approval. Avoid frequent polling/cron that exceeds Hobby or provider quotas. |
+| **v1.35.0 — Portfolio Watchlist and Smart Alerts (Release Candidate)** | Portfolio-scoped Watchlist with per-portfolio target prices/notes; Collections; user-triggered Smart Alerts; support/resistance ladder; deterministic Conditional Rules; integrated responsive UI. Scanner `mine` combines only selected-portfolio Holdings and new scoped Watchlist rows. No automatic trades. | Additive SQL/RLS and behavioral tests passed on a fresh disposable local database with synthetic data, including idempotency, actual rollback and roll-forward. Legacy account Watchlist remains untouched and unmapped; owner review is required before any data mapping. Cloud migration applied and schema/RLS verified on 2026-10-15 (PR #66 evidence); Merge and Production deployment remain separately gated. JWT-backed Production behavior is not yet verified. Avoid polling/cron; quote refresh is explicit and bounded. |
 | **v1.36.0 — Investment Discovery** | Investment Themes, Trending Opportunities, and Expanded Market Radar. Show selection logic, coverage, source, and data freshness; reuse existing Scanner and Market Intelligence components. | Start with bounded universes and cached/on-demand refresh. Avoid duplicate scanners and unbounded third-party API fan-out. |
 | **v1.37.0 — Portfolio and SEC Risk Intelligence** | Portfolio Stress Test, Portfolio Risk Intelligence, SEC Financial Risk Radar, and SEC Filing Monitor. Expose scenario assumptions and trace filing evidence to issuer/CIK, form, filing date, and source. | Use SEC primary sources and a descriptive User-Agent; respect current SEC fair-access limits. Prefer cache/on-demand checks, avoid unnecessary scheduled jobs, and clearly disclose data coverage and lag. |
 | **v1.38.0 — Journal and Performance Attribution** | Trading Journal, Advanced Trade Statistics, and FX Profit Attribution. Reconcile statistics to the Transaction Ledger, including fees, partial fills, FIFO ordering, and realized/unrealized distinctions. State FX source, rate date, and conversion assumptions. | Persisted journal/FX data may need schema changes and migration. Design reconciliation and rollback before separately approved Database work. Never silently rewrite ledger history. |
@@ -53,13 +52,13 @@ Each version needs its own scoped Development approval and acceptance review. An
 
 v1.34.0 development note: The SEC XBRL adapter reads Annual GAAP Basic/Diluted EPS from 10-K with issuer, unit, period and filing evidence. SEC Live access requires a separately approved real identifying User-Agent. Ticker–CIK mapping alone does not prove common-stock share class, ADR ratio or split basis, so comparison and price scenarios remain unverified/suppressed until those inputs have independent evidence. Requests are capped at four symbols, five unique URLs, ten attempts and a 12-second SEC deadline with per-invocation spacing/cache; Vercel serverless instances do not share a global rate limiter, so concurrent cold-cache bursts remain a live-access risk. This is development scope, not a released or production-validated capability.
 
-## v1.35.0 legacy Watchlist migration plan
+## v1.35.0 legacy Watchlist preservation and future mapping plan
 
-The current Watchlist is account-scoped. Preserve every existing row and field while introducing portfolio-scoped records. The preferred design is additive: introduce a portfolio-scoped representation/table with ownership constraints and RLS while leaving the legacy source intact during rollout. Confirm the exact schema against the repository and disposable-database tests before implementation.
+The released Watchlist is account-scoped. The v1.35.0 development branch adds new portfolio-scoped tables and RLS but does not read, alter, migrate, or copy rows from `public.watchlist`. Preserve every legacy row and field while introducing scoped records. The local disposable schema and synthetic tests do not establish Cloud state or authorize applying this migration.
 
 1. Inventory and snapshot legacy rows and fields; define deterministic symbol normalization and reconciliation counts without changing data.
-2. Prepare a proposed destination mapping for the owner to review. Do not assign, move, delete, or copy any legacy row into a portfolio automatically.
-3. Obtain explicit approval of the mapping and migration plan before any migration or data write.
+2. A proposed destination mapping may be prepared for owner review. Do not assign, move, delete, or copy any legacy row into a portfolio automatically.
+3. Obtain explicit approval of the mapping and migration plan before any legacy-data write. Cloud schema apply also requires separate approval.
 4. Test schema, ownership, RLS, duplicate behavior, rollback, and roll-forward on a disposable non-production database with synthetic fixtures.
 5. After separately authorized rollout, reconcile row counts and field-level values. Keep the legacy source until acceptance and a separately approved retirement plan.
 6. Rollback should route reads/writes back to the preserved legacy source without deleting newly written scoped rows; roll-forward must be idempotent and reconcile differences before retry.
@@ -109,7 +108,7 @@ Status below is based on GitHub reads on 2026-10-14 and prior repository evidenc
 7. **v1.39.0:** combine the verified portfolio, price-zone, cash, fee, and risk inputs into a read-only dip-buying plan.
 8. **v1.40.0:** compose the accepted capabilities into a single portfolio-aware command center.
 
-Batch local implementation and validation for each separately approved scope; push a coherent reviewed batch once. A push may trigger GitHub Actions or Vercel Preview, so inspect current triggers before authorizing it. Do not merge, apply Cloud SQL, or deploy Production without explicit approval.
+v1.35.0 batch status: implementation is in Draft PR #66; additive migration and synthetic disposable-DB acceptance passed locally. Cloud verification/apply and legacy mapping remain unapproved. Existing account-level Watchlist rows remain preserved but unassigned and are not visible in the portfolio-scoped UI; decide how to present or map them before Production rollout. The latest full dependency audit attempt in this review could not reach the npm registry, while the last captured audit reported seven High findings from one development-dependency advisory; re-run before release and remediate or obtain a separate risk decision. Do not merge, apply Cloud SQL, or deploy Production without separate explicit approval.
 
 ## Existing backlog and non-duplication
 
