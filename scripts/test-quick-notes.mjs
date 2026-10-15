@@ -94,3 +94,18 @@ await nextPage.load()
 assert.equal(nextPage.getSnapshot().content, 'route transition', 'Navigation must drain edits before the next drawer reads')
 assert.equal(puts.length, 4)
 console.log('✓ Quick Notes autosave: unchanged, debounce, revert, races, stale loads, load failure, conflict, navigation passed')
+
+for (const status of [401, 403, 428]) {
+  let writes = 0
+  const guarded = new QuickNotesSession(async (_url, options) => {
+    if (options?.method !== 'PUT') return json({ content: 'synthetic original', userId: 'synthetic-user', revision: 'r0' })
+    writes++
+    return json({ error: 'synthetic guard rejection' }, status)
+  }, 15)
+  await guarded.load(); guarded.edit('retained draft'); await guarded.flush()
+  guarded.edit('retained newer draft'); await wait(25); await guarded.flush(); guarded.leave()
+  assert.equal(writes, 1, `${status} must stop stale/account/precondition retries`)
+  assert.equal(guarded.getSnapshot().content, 'retained newer draft')
+  assert.equal(guarded.getSnapshot().saveStatus, 'error')
+}
+console.log('✓ Quick Notes preserves drafts and stops automatic writes after 401/403/428')

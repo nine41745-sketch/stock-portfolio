@@ -1,17 +1,17 @@
 # Stock Portfolio — Roadmap
 
-Status: v1.35.0 is a Draft Release Candidate on `codex/v1.35.0-watchlist-smart-alerts`; not merged or released.
+Status: v1.35.1 Hotfix is under local development on `fix/v1.35.1-contrast-notes` for Draft PR #67; metadata is prepared, not released.
 Updated: 2026-10-15 (Asia/Bangkok)
-Production baseline: `main` / release v1.34.1 at `3312347a4a62e668093e1de2d0307cd6e7537a14`.
+Repository baseline: `main` at `5d796cc452b79220a47dfc20c4efa526b9bdd785` (merged PR #66, v1.35.0 metadata). Production was last verified at that commit in the preceding review; it is not changed or retested by this local batch.
 
 ## Evidence and boundaries
 
 | Item | Verified status |
 | --- | --- |
-| GitHub `main` / Production | SHA `3312347a4a62e668093e1de2d0307cd6e7537a14` (v1.34.1) |
+| GitHub `main` | SHA `5d796cc452b79220a47dfc20c4efa526b9bdd785`; remote main rechecked before this local batch. |
 | PR #65 / GitHub Release | PR #65 merged; `v1.34.1` published at [GitHub Release](https://github.com/nine41745-sketch/stock-portfolio/releases/tag/v1.34.1) |
-| GitHub Actions / Production deployment | CI passed and Vercel Production was reported READY for v1.34.1; this development branch does not change that release. |
-| Application release scope | v1.34.1 contains the theme consistency hotfix and authenticated browser regression coverage. v1.35.0 features in this branch are not released. |
+| GitHub Actions / Production deployment | Baseline PR #67 HEAD `1e29f72203e8b1adbc12f30ca708111be98a5738` passed CI and its automatic Preview was READY in the preceding review. Production remained on PR #66's merge commit. New local commits have no remote CI/Preview evidence until separately approved for push. |
+| Application release scope | v1.35.0 is the merged repository baseline. v1.35.1 contrast, QuickNotes accessibility/autosave and mandatory revision guards are an unreleased Hotfix; the local version badge is release preparation only. |
 | Production database / live RLS behavior | Not proven by source, release, or CI. v1.33.1 SQL Cloud verification remains blocked; do not infer Cloud behavior from Local SQL tests. |
 
 Release evidence confirms repository, PR, release, and CI state. It does not establish that SQL repairs were applied to Supabase Cloud or that Production RLS/RPC behavior was live-tested.
@@ -41,7 +41,8 @@ All portfolio-specific reads and recommendations must use the selected portfolio
 | --- | --- | --- |
 | **v1.33.1 — Scanner Portfolio Isolation** | **Released:** Scanner `mine` uses only the selected portfolio's Holdings, with server-side Auth/PIN and ownership checks plus regression coverage. It excludes account-level Watchlist until v1.35.0. SQL Security Hardening is tracked separately in Draft PR #62. | Local SQL Acceptance on disposable PostgreSQL 17.11 with synthetic data and PR CI passed per PR #62 evidence. **Cloud Verification remains BLOCKED**; Supabase Cloud advisories remain open. Do not claim Cloud changes were applied or verified. |
 | **v1.34.0 — Fundamentals and Valuation** | Fundamental Analysis, Stock Comparison, Earnings Intelligence, and Stock Valuation. Show source, reporting period, units, timestamp, assumptions, and missing/stale data. Comparison must use equivalent periods/units and label estimates versus reported values. | Reuse existing quote/profile/earnings data where suitable. Cache and batch provider calls; make expensive analysis user-initiated. Do not imply precision beyond source coverage. |
-| **v1.35.0 — Portfolio Watchlist and Smart Alerts (Release Candidate)** | Portfolio-scoped Watchlist with per-portfolio target prices/notes; Collections; user-triggered Smart Alerts; support/resistance ladder; deterministic Conditional Rules; integrated responsive UI. Scanner `mine` combines only selected-portfolio Holdings and new scoped Watchlist rows. No automatic trades. | Additive SQL/RLS and behavioral tests passed on a fresh disposable local database with synthetic data, including idempotency, actual rollback and roll-forward. Legacy account Watchlist remains untouched and unmapped; owner review is required before any data mapping. Cloud migration applied and schema/RLS verified on 2026-10-15 (PR #66 evidence); Merge and Production deployment remain separately gated. JWT-backed Production behavior is not yet verified. Avoid polling/cron; quote refresh is explicit and bounded. |
+| **v1.35.0 — Portfolio Watchlist and Smart Alerts (Merged baseline)** | Portfolio-scoped Watchlist with per-portfolio target prices/notes; Collections; user-triggered Smart Alerts; support/resistance ladder; deterministic Conditional Rules. Scanner `mine` combines selected-portfolio Holdings and new scoped Watchlist rows. No automatic trades. | PR #66 is merged. Its recorded Cloud/Local acceptance evidence is historical and is not rerun in the Hotfix. Legacy remains separate, read-only and unmapped. Avoid polling/cron; quote refresh is explicit and bounded. |
+| **v1.35.1 — Contrast and QuickNotes Hotfix (Unreleased)** | AA placeholder contrast; one accessible notes drawer across pages; genuine-edit autosave with debounce; mandatory revision/account guards and preserved conflict drafts. | Local-only continuation of Draft PR #67. No schema/dependency changes. Cached legacy clients must copy unsaved drafts before refreshing; their unguarded writes receive 428. Separate v1.35.1 security decision, push/CI review, merge and Production approval are still required. See [release preparation](docs/release-v1351.md). |
 | **v1.36.0 — Investment Discovery** | Investment Themes, Trending Opportunities, and Expanded Market Radar. Show selection logic, coverage, source, and data freshness; reuse existing Scanner and Market Intelligence components. | Start with bounded universes and cached/on-demand refresh. Avoid duplicate scanners and unbounded third-party API fan-out. |
 | **v1.37.0 — Portfolio and SEC Risk Intelligence** | Portfolio Stress Test, Portfolio Risk Intelligence, SEC Financial Risk Radar, and SEC Filing Monitor. Expose scenario assumptions and trace filing evidence to issuer/CIK, form, filing date, and source. | Use SEC primary sources and a descriptive User-Agent; respect current SEC fair-access limits. Prefer cache/on-demand checks, avoid unnecessary scheduled jobs, and clearly disclose data coverage and lag. |
 | **v1.38.0 — Journal and Performance Attribution** | Trading Journal, Advanced Trade Statistics, and FX Profit Attribution. Reconcile statistics to the Transaction Ledger, including fees, partial fills, FIFO ordering, and realized/unrealized distinctions. State FX source, rate date, and conversion assumptions. | Persisted journal/FX data may need schema changes and migration. Design reconciliation and rollback before separately approved Database work. Never silently rewrite ledger history. |
@@ -54,7 +55,7 @@ v1.34.0 development note: The SEC XBRL adapter reads Annual GAAP Basic/Diluted E
 
 ## v1.35.0 legacy Watchlist preservation and future mapping plan
 
-The released Watchlist is account-scoped. The v1.35.0 development branch adds new portfolio-scoped tables and RLS but does not read, alter, migrate, or copy rows from `public.watchlist`. Preserve every legacy row and field while introducing scoped records. The local disposable schema and synthetic tests do not establish Cloud state or authorize applying this migration.
+The legacy `public.watchlist` remains account-scoped and preserved. The merged v1.35.0 baseline provides new portfolio-scoped tables and RLS, while Legacy is displayed separately as read-only. No automatic mapping or copying is authorized. The steps below apply only to a future separately approved mapping phase; local synthetic tests do not establish Cloud state or authorize Cloud writes.
 
 1. Inventory and snapshot legacy rows and fields; define deterministic symbol normalization and reconciliation counts without changing data.
 2. A proposed destination mapping may be prepared for owner review. Do not assign, move, delete, or copy any legacy row into a portfolio automatically.
@@ -108,7 +109,7 @@ Status below is based on GitHub reads on 2026-10-14 and prior repository evidenc
 7. **v1.39.0:** combine the verified portfolio, price-zone, cash, fee, and risk inputs into a read-only dip-buying plan.
 8. **v1.40.0:** compose the accepted capabilities into a single portfolio-aware command center.
 
-v1.35.0 batch status: implementation is in Draft PR #66; additive migration and synthetic disposable-DB acceptance passed locally. Cloud verification/apply and legacy mapping remain unapproved. Existing account-level Watchlist rows remain preserved but unassigned and are not visible in the portfolio-scoped UI; decide how to present or map them before Production rollout. The latest full dependency audit attempt in this review could not reach the npm registry, while the last captured audit reported seven High findings from one development-dependency advisory; re-run before release and remediate or obtain a separate risk decision. Do not merge, apply Cloud SQL, or deploy Production without separate explicit approval.
+Current Hotfix gate: Draft PR #67 remains at its approved remote HEAD until the local continuation receives push approval. Legacy Watchlist remains separate and read-only; no mapping or Cloud work is in this batch. Full audit findings and the v1.35.1 Security Decision must be assessed separately from v1.35.0 acceptance. No new merge, deployment, tag or release is authorized.
 
 ## Existing backlog and non-duplication
 

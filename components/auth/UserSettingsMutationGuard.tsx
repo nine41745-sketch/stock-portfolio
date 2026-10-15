@@ -23,7 +23,8 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
  *
  * - failed financial mutations must reject so legacy Dashboard handlers never report false success
  * - failed financial reads are surfaced as a blocking warning instead of silently looking like zero balances
- * - failed scratchpad/track-record requests reject so callers can enter their error path
+ * - failed track-record requests reject so callers can enter their error path
+ * - Scratchpad responses keep their HTTP status for QuickNotesSession's conflict/account guard
  * - stale AI state remains synchronized after holdings/cash/Analyze changes
  */
 export default function UserSettingsMutationGuard() {
@@ -93,11 +94,6 @@ export default function UserSettingsMutationGuard() {
 
       if (method === 'PUT' && pathname === '/api/user-settings' && !response.ok) {
         throw new Error(await readErrorMessage(response, `บันทึกข้อมูลเงินไม่สำเร็จ (HTTP ${response.status})`))
-      }
-
-      if (pathname === '/api/scratchpad' && !response.ok) {
-        const verb = method === 'GET' ? 'โหลด' : 'บันทึก'
-        throw new Error(await readErrorMessage(response, `${verb}โน้ตไม่สำเร็จ (HTTP ${response.status})`))
       }
 
       if (method === 'GET' && pathname === '/api/track-record' && !response.ok) {

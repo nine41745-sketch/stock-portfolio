@@ -302,11 +302,18 @@ assert.match(lightModeCss, /text-purple-300/, 'Light mode must keep purple AI te
 assert.match(lightModeCss, /bg-blue-600\.text-white/, 'Light mode must preserve white text on primary blue buttons')
 assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native form controls with light color scheme')
 
-// v1.35.0 release candidate metadata must stay synchronized across changelog/package/lockfile.
+// Prepared v1.35.1 metadata must stay synchronized without claiming a deployed release.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.35.0', 'Package version must match the v1.35.0 release candidate')
+assert.equal(packageJson.version, '1.35.1', 'Package version must match the v1.35.1 hotfix')
 const releaseTsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1350'], 'Version badge must resolve to the v1.35.0 changelog')
+assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1351'], 'Version badge must resolve to the v1.35.1 changelog')
+const hotfixChangelog = fs.readFileSync('config/changelog-v1351.ts', 'utf8')
+assert.match(hotfixChangelog, /version: 'v1\.35\.1'/)
+assert.match(hotfixChangelog, /from '\.\/changelog-v1350'/, 'Hotfix must preserve the complete earlier changelog chain')
+assert.match(hotfixChangelog, /date: 'Unreleased/, 'Prepared metadata must not invent a release time')
+assert.match(hotfixChangelog, /QuickNotesDrawer/)
+assert.match(hotfixChangelog, /Revision/)
+assert.match(hotfixChangelog, /Security Decision/, 'v1.35.1 must retain its separate security gate')
 const latestReleaseChangelog = fs.readFileSync('config/changelog-v1350.ts', 'utf8')
 assert.match(latestReleaseChangelog, /version: 'v1\.35\.0'/, 'Latest changelog entry must be v1.35.0')
 assert.match(latestReleaseChangelog, /from '\.\/changelog-v1341'/, 'v1.35.0 changelog must retain the v1.34.1 history')
@@ -448,9 +455,10 @@ for (const [file, expectedTime] of changelogReleaseTimes) {
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1350'], 'v1.35.0 release candidate must use the v1.35.0 version badge')
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1351'], 'Prepared hotfix must use the v1.35.1 version badge')
 assert.match(releaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.34.0 changelog must contain a timestamp in the repository format')
 assert.match(latestReleaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.35.0 changelog must contain a timestamp in the repository format')
 
 await import('./test-quick-notes.mjs')
+await import('./test-scratchpad-security.mjs')
 console.log('✓ Critical regression tests passed')

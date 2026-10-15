@@ -89,7 +89,7 @@ export class QuickNotesSession {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content, userId: this.userId, expectedRevision: this.revision }),
           })
-          if ([401, 403, 409].includes(response.status)) this.conflicted = true
+          if ([401, 403, 409, 428].includes(response.status)) this.conflicted = true
           if (!response.ok) throw new Error('save failed')
           const data = await response.json()
           if (typeof data.revision !== 'string') throw new Error('missing revision')
