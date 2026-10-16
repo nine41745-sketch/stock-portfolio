@@ -355,7 +355,29 @@ jobs:
         shell: bash
         run: |
           mkdir -p "$QA_ARTIFACT_DIR"
-          printf '{"status":"BLOCKED","reason":"An isolated QA precondition or assertion failed; inspect the failed workflow step. No raw logs or credentials are included."}\n' > "$QA_ARTIFACT_DIR/results.json"
+          python3 - "$QA_ARTIFACT_DIR/results.json" <<'PY'
+          import json, pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          if not path.exists():
+              result = {
+                  "status": "BLOCKED",
+                  "reason": "An isolated QA precondition failed before the browser runner recorded evidence.",
+                  "data": "synthetic only",
+              }
+          else:
+              try:
+                  result = json.loads(path.read_text())
+              except (OSError, json.JSONDecodeError):
+                  result = {
+                      "status": "BLOCKED",
+                      "reason": "The browser runner evidence file was incomplete or invalid JSON.",
+                      "data": "synthetic only",
+                  }
+              if result.get("status") == "PASS":
+                  result["status"] = "BLOCKED"
+                  result["workflowFailure"] = "A later workflow step failed; inspect its sanitized step output."
+          path.write_text(json.dumps(result, separators=(",", ":")) + "\n")
+          PY
       - name: Upload synthetic QA evidence
         if: always()
         uses: actions/upload-artifact@v4

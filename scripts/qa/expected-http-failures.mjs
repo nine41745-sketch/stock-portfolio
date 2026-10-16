@@ -1,36 +1,100 @@
 const matches = (failure, expected) =>
   Object.entries(expected).every(([key, value]) => failure[key] === value)
 
+function matchingAuthAttempt(failure, lifecycle) {
+  return lifecycle?.authAttempts?.find(attempt => attempt.id === failure.authAttemptId) ?? null
+}
+
+function matchingControl(lifecycle, sequence, expected) {
+  if (!Number.isInteger(sequence)) return false
+  return lifecycle?.controls?.some(control => control.sequence === sequence && matches(control, expected)) ?? false
+}
+
+function expectedDailyAnalysisAuthFailure(failure, lifecycle) {
+  if (failure.path !== '/api/daily-analyses/today' || failure.status !== 401) return false
+  const attempt = matchingAuthAttempt(failure, lifecycle)
+  if (!attempt || !Number.isInteger(failure.sequence) || failure.sequence <= attempt.startedSequence) return false
+
+  if (failure.authGate === 'unauthorized') {
+    if (attempt.account === 'B' && failure.stage === 'account-switch-a-logout') {
+      return Number.isInteger(attempt.previousAccountPinReadyControlSequence) &&
+        attempt.previousAccountPinReadyControlSequence < attempt.logoutTransitionStartedSequence &&
+        attempt.logoutTransitionStartedSequence < failure.sequence &&
+        failure.sequence < attempt.unauthenticatedControlSequence &&
+        attempt.authenticatedControlSequence > failure.sequence &&
+        matchingControl(lifecycle, attempt.previousAccountPinReadyControlSequence, {
+          kind: 'protected-api-positive-control', account: 'A', status: 200,
+        }) &&
+        matchingControl(lifecycle, attempt.unauthenticatedControlSequence, {
+          kind: 'unauthenticated-negative-control', account: 'B', status: 401, authGate: 'unauthorized',
+        }) &&
+        matchingControl(lifecycle, attempt.authenticatedControlSequence, {
+          kind: 'auth-positive-control', account: 'B', status: 200, hasPin: false,
+        })
+    }
+
+    const allowedStage = attempt.account === 'A'
+      ? failure.stage === 'login'
+      : ['account-switch-b-login', 'account-switch-b-authenticating'].includes(failure.stage)
+    return allowedStage &&
+      Number.isInteger(attempt.unauthenticatedControlSequence) &&
+      attempt.unauthenticatedControlSequence < failure.sequence &&
+      Number.isInteger(attempt.authenticatedControlSequence) &&
+      attempt.authenticatedControlSequence > failure.sequence &&
+      matchingControl(lifecycle, attempt.unauthenticatedControlSequence, {
+        kind: 'unauthenticated-negative-control', account: attempt.account, status: 401, authGate: 'unauthorized',
+      }) &&
+      matchingControl(lifecycle, attempt.authenticatedControlSequence, {
+        kind: 'auth-positive-control', account: attempt.account, status: 200, hasPin: false,
+      })
+  }
+
+  if (failure.authGate !== 'pin-required' || attempt.authenticatedHasPin !== false || attempt.pinSetupHasPin !== false) {
+    return false
+  }
+
+  const setupStage = attempt.account === 'A'
+    ? failure.stage === 'pin-setup' || (failure.stage === 'login' && failure.authPhase === 'authenticating')
+    : ['account-switch-b-authenticating', 'account-switch-b-pin-setup'].includes(failure.stage)
+  const authControlOrderMatchesStage = failure.stage === 'account-switch-b-authenticating'
+    ? attempt.authenticatedControlSequence > failure.sequence
+    : attempt.authenticatedControlSequence < failure.sequence
+  if (setupStage &&
+    authControlOrderMatchesStage &&
+    Number.isInteger(attempt.pinSubmissionSequence) &&
+    failure.sequence < attempt.pinSubmissionSequence &&
+    Number.isInteger(attempt.pinReadyControlSequence) &&
+    failure.sequence < attempt.pinReadyControlSequence &&
+    matchingControl(lifecycle, attempt.authenticatedControlSequence, {
+      kind: 'auth-positive-control', account: attempt.account, status: 200, hasPin: false,
+    }) &&
+    matchingControl(lifecycle, attempt.pinReadyControlSequence, {
+      kind: 'protected-api-positive-control', account: attempt.account, status: 200,
+    })) {
+    return true
+  }
+
+  const lockStage = ['lock-transition', 'pin-unlock'].includes(failure.stage)
+  return lockStage && attempt.pinLockTransitions?.some(transition =>
+    Number.isInteger(transition.startedSequence) &&
+    transition.startedSequence < failure.sequence &&
+    Number.isInteger(transition.unlockedControlSequence) &&
+    transition.unlockedControlSequence > failure.sequence &&
+    matchingControl(lifecycle, transition.unlockedControlSequence, {
+      kind: 'protected-api-positive-control', account: attempt.account, status: 200,
+    })
+  ) === true
+}
+
 /**
  * Accept only HTTP failures tied to a documented QA stage and its active synthetic fixture.
  * Request-state fields are snapshotted when Playwright emits the request.
  */
-export function isExpectedHttpFailure(failure) {
+export function isExpectedHttpFailure(failure, lifecycle = null) {
   const { path, status, stage, authGate, authReady, pinReady, fixtureMode } = failure
 
   if (path === '/api/daily-analyses/today' && status === 401) {
-    return (
-      matches(failure, {
-        stage: 'account-switch-b-authenticating',
-        authGate: 'unauthorized',
-        authReady: false,
-        pinReady: false,
-      }) ||
-      matches(failure, {
-        stage: 'account-switch-b-pin-setup',
-        authGate: 'pin-required',
-        authReady: true,
-        pinReady: false,
-      }) ||
-      matches(failure, {
-        stage: 'pin-setup',
-        authGate: 'pin-required',
-        authReady: true,
-        pinReady: false,
-      }) ||
-      (['lock-transition', 'pin-unlock'].includes(stage) &&
-        authGate === 'pin-required' && authReady === true && pinReady === false)
-    )
+    return expectedDailyAnalysisAuthFailure(failure, lifecycle)
   }
 
   if (path === '/api/fundamentals' && status === 401) {
@@ -57,8 +121,8 @@ export function isExpectedHttpFailure(failure) {
   )
 }
 
-export function assertNoUnexpectedHttpFailures(failures) {
-  const unexpected = failures.filter(failure => !isExpectedHttpFailure(failure))
+export function assertNoUnexpectedHttpFailures(failures, lifecycle = null) {
+  const unexpected = failures.filter(failure => !isExpectedHttpFailure(failure, lifecycle))
   if (unexpected.length > 0) {
     throw new Error('Unexpected failed browser responses: ' + JSON.stringify(unexpected))
   }

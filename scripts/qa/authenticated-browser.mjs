@@ -21,8 +21,59 @@ const browserRuntimeErrors=[]
 const responseTasks=new Set()
 let qaStage='startup'
 let authReady=false, pinReady=false
+let lifecycleSequence=0
+let activeAuthAttempt=null
+const lifecycleEvidence={authAttempts:[],controls:[]}
 const requestContexts=new WeakMap()
 const pass=name=>checks.push({name,status:'PASS'})
+const nextLifecycleSequence=()=>++lifecycleSequence
+function recordLifecycleControl(control){
+ const entry={...control,sequence:nextLifecycleSequence()}
+ lifecycleEvidence.controls.push(entry)
+ return entry
+}
+function beginAuthAttempt(account,unauthenticatedControlSequence){
+ const attempt={
+  id:`${account}-${lifecycleEvidence.authAttempts.length+1}`,
+  account,
+  phase:'login-form',
+  startedSequence:nextLifecycleSequence(),
+  unauthenticatedControlSequence,
+  authenticatedControlSequence:null,
+  authenticatedHasPin:null,
+  pinSetupControlSequence:null,
+  pinSetupHasPin:null,
+  pinSubmissionSequence:null,
+  pinReadyControlSequence:null,
+  pinLockTransitions:[],
+ }
+ lifecycleEvidence.authAttempts.push(attempt)
+ activeAuthAttempt=attempt
+ return attempt
+}
+function recordAuthStatusControl(attempt,response,payload){
+ const control=recordLifecycleControl({kind:'auth-positive-control',account:attempt.account,status:response.status(),hasPin:payload.hasPin===true})
+ attempt.authenticatedControlSequence=control.sequence
+ attempt.authenticatedHasPin=payload.hasPin===true
+ if(payload.hasPin===false){
+  attempt.pinSetupControlSequence=control.sequence
+  attempt.pinSetupHasPin=false
+ }
+ return control
+}
+function recordPinReadyControl(attempt,response,transition=null){
+ assert.equal(response.status(),200,'Protected API must confirm Auth and PIN readiness')
+ const control=recordLifecycleControl({kind:'protected-api-positive-control',account:attempt.account,status:response.status()})
+ attempt.pinReadyControlSequence=control.sequence
+ if(transition)transition.unlockedControlSequence=control.sequence
+ return control
+}
+async function recordUnauthenticatedControl(response,account){
+ assert.equal(response.status(),401,`${account} logged-out control must be rejected`)
+ const payload=await response.json()
+ assert.equal(payload.error,'Unauthorized',`${account} logged-out control must prove missing Auth, not a PIN gate`)
+ return recordLifecycleControl({kind:'unauthenticated-negative-control',account,status:response.status(),authGate:'unauthorized'})
+}
 const email='qa-'+randomUUID()+'@example.test'
 const password=randomBytes(24).toString('base64url')
 const pin='583104'
@@ -49,9 +100,12 @@ try {
  })
  page.on('pageerror',()=>browserRuntimeErrors.push('page-error'))
  page.on('request',request=>requestContexts.set(request,{
+   sequence:nextLifecycleSequence(),
   stage:qaStage,
   authReady,
   pinReady,
+   authAttemptId:activeAuthAttempt?.id??null,
+   authPhase:activeAuthAttempt?.phase??'none',
   fixtureMode:request.url().includes('/api/risk')?riskMode:
     request.url().includes('/api/sec-risk')?secRiskMode:
     request.url().includes('/api/fundamentals')?mode:
@@ -100,20 +154,28 @@ try {
  const anonymous=await context.newPage()
  await anonymous.goto(new URL('/scanner',base).href)
  await anonymous.waitForURL(/\/login(?:\?|$)/)
- assert.equal((await anonymous.request.get(new URL('/api/pin/status',base).href)).status(),401)
+  const anonymousAuthControl=await recordUnauthenticatedControl(
+   await anonymous.request.get(new URL('/api/pin/status',base).href),'A'
+  )
  pass('Anonymous page and API are rejected')
+  const authAttemptA=beginAuthAttempt('A',anonymousAuthControl.sequence)
  qaStage='login'
  await page.goto(new URL('/login',base).href)
  await page.addStyleTag({content:'nextjs-portal{display:none!important}'})
  await page.locator('input[type="email"]').fill(email)
  await page.locator('input[type="password"]').fill(password)
+  authAttemptA.phase='authenticating'
+  authAttemptA.authRequestSequence=nextLifecycleSequence()
  await page.getByRole('button',{name:'เข้าสู่ระบบ'}).click()
  await page.waitForURL(/\/(?:pin|dashboard)(?:\?|$)/)
+  qaStage='pin-setup'
  if(new URL(page.url()).pathname!=='/pin') await page.goto(new URL('/pin',base).href)
- qaStage='pin-setup'
  const pinStatus=await page.request.get(new URL('/api/pin/status',base).href)
  assert.equal(pinStatus.status(),200,'Supabase Auth must be ready before initial PIN setup')
- assert.equal((await pinStatus.json()).hasPin,false,'New synthetic account must not already have a PIN')
+  const initialPinStatus=await pinStatus.json()
+  assert.equal(initialPinStatus.hasPin,false,'New synthetic account must not already have a PIN')
+  recordAuthStatusControl(authAttemptA,pinStatus,initialPinStatus)
+  authAttemptA.phase='pin-setup'
  authReady=true
  await page.getByText('ตั้ง PIN 6 หลัก').waitFor()
  const locked=await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)
@@ -124,8 +186,13 @@ try {
  pass('Authenticated session is denied until PIN setup')
  const fields=page.locator('input[type=password]')
  await fields.nth(0).fill(pin);await fields.nth(1).fill(pin)
+  authAttemptA.pinSubmissionSequence=nextLifecycleSequence()
+  authAttemptA.phase='pin-submitting'
  await page.getByRole('button',{name:'ตั้ง PIN'}).click()
  await page.waitForURL(/\/(?:dashboard|scanner)(?:\?|$)/)
+  const initialPinReady=await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)
+  recordPinReadyControl(authAttemptA,initialPinReady)
+  authAttemptA.phase='pin-ready'
  pinReady=true
  qaStage='unlocked'
  const legacyInsert=await fetch(new URL('/rest/v1/watchlist?on_conflict=user_id,symbol',sb),{
@@ -178,6 +245,8 @@ try {
  await page.goto(new URL('/scanner',base).href)
  qaStage='lock-transition'
  pinReady=false
+  const lockTransition={startedSequence:nextLifecycleSequence(),unlockedControlSequence:null}
+  authAttemptA.pinLockTransitions.push(lockTransition)
  await page.getByRole('button',{name:/ล็อก/}).click()
  await page.waitForURL(/\/pin(?:\?|$)/)
  qaStage='pin-unlock'
@@ -190,6 +259,9 @@ try {
  await pinField.fill(pin)
  await page.getByRole('button',{name:'เข้าสู่พอร์ต'}).click()
  await page.waitForURL(/\/(?:dashboard|scanner)(?:\?|$)/)
+  const pinUnlockControl=await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)
+  recordPinReadyControl(authAttemptA,pinUnlockControl,lockTransition)
+  authAttemptA.phase='pin-ready'
  qaStage='unlocked'
  pinReady=true
  pass('Real PIN rejects incorrect and accepts correct synthetic PIN')
@@ -389,30 +461,49 @@ try {
  await page.setViewportSize({width:1440,height:1000})
 
  // Real same-context Account A -> logout -> Account B, including B's own PIN setup.
+  const accountAPreLogoutPinControl=await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)
+  recordPinReadyControl(authAttemptA,accountAPreLogoutPinControl)
  qaStage='account-switch-a-logout'
+  const authAttemptB=beginAuthAttempt('B',null)
+  authAttemptB.previousAccount='A'
+  authAttemptB.previousAccountPinReadyControlSequence=authAttemptA.pinReadyControlSequence
+  authAttemptB.logoutTransitionStartedSequence=nextLifecycleSequence()
+  authAttemptB.phase='logout-transition'
  await page.getByRole('button',{name:'⚙️ บัญชี'}).click()
  await page.getByRole('menuitem',{name:'ออกจากระบบ'}).click()
  await page.waitForURL(/\/login(?:\?|$)/)
  authReady=false;pinReady=false
+  const accountBLoggedOutControl=await recordUnauthenticatedControl(
+   await page.request.get(new URL('/api/pin/status',base).href),'B'
+  )
+  authAttemptB.unauthenticatedControlSequence=accountBLoggedOutControl.sequence
  qaStage='account-switch-b-login'
  await page.locator('input[type="email"]').fill(otherEmail)
  await page.locator('input[type="password"]').fill(otherPassword)
  qaStage='account-switch-b-authenticating'
+  authAttemptB.phase='authenticating'
+  authAttemptB.authRequestSequence=nextLifecycleSequence()
  await page.getByRole('button',{name:'เข้าสู่ระบบ'}).click()
  await page.waitForURL(/\/(?:pin|dashboard)(?:\?|$)/)
  if(new URL(page.url()).pathname!=='/pin') await page.goto(new URL('/pin',base).href)
- // Keep the stage pre-auth until a protected-session control succeeds. Any
- // Unauthorized response before this point is therefore demonstrably pre-ready.
  const bPinStatus=await page.request.get(new URL('/api/pin/status',base).href)
  assert.equal(bPinStatus.status(),200,'Account B Auth must be established before PIN setup')
- assert.equal((await bPinStatus.json()).hasPin,false,'New Account B must not already have a PIN')
+  const bPinStatusBody=await bPinStatus.json()
+  assert.equal(bPinStatusBody.hasPin,false,'New Account B must not already have a PIN')
+  recordAuthStatusControl(authAttemptB,bPinStatus,bPinStatusBody)
+  authAttemptB.phase='pin-setup'
  authReady=true
  qaStage='account-switch-b-pin-setup'
  await page.getByText('ตั้ง PIN 6 หลัก').waitFor()
  const otherPinFields=page.locator('input[type=password]')
  await otherPinFields.nth(0).fill(pin);await otherPinFields.nth(1).fill(pin)
+  authAttemptB.pinSubmissionSequence=nextLifecycleSequence()
+  authAttemptB.phase='pin-submitting'
  await page.getByRole('button',{name:'ตั้ง PIN'}).click()
  await page.waitForURL(/\/(?:dashboard|scanner)(?:\?|$)/)
+  const accountBPinReady=await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)
+  recordPinReadyControl(authAttemptB,accountBPinReady)
+  authAttemptB.phase='pin-ready'
  pinReady=true
  qaStage='account-switch-b-unlocked'
  const bPortfoliosResponse=await page.request.get(new URL('/api/portfolios',base).href)
@@ -526,18 +617,45 @@ try {
  assert.equal(outside,0,'Browser tried to contact non-local host')
  pass('Browser made no non-local requests')
   await Promise.all([...responseTasks])
-  const expectedFailures=browserHttpFailures.filter(isExpectedHttpFailure)
+   const expectedFailures=browserHttpFailures.filter(failure=>isExpectedHttpFailure(failure,lifecycleEvidence))
   const unexpectedConsoleErrors=unexpectedConsoleHttpErrors(browserConsoleErrors,expectedFailures)
-  assertNoUnexpectedHttpFailures(browserHttpFailures)
+   assertNoUnexpectedHttpFailures(browserHttpFailures,lifecycleEvidence)
   assert.equal(browserRuntimeErrors.length,0,'Browser runtime errors occurred')
   assert.deepEqual(unexpectedConsoleErrors,[],'Unexpected browser console errors: '+JSON.stringify(unexpectedConsoleErrors))
   pass('No browser runtime or unhandled console errors; expected PIN/provider HTTP failures are tracked separately')
  await context.close()
-} finally {await browser.close()}
+ } catch(error) {
+  await Promise.allSettled([...responseTasks])
+  let blocked=0
+  try{blocked=(await readFile(process.env.QA_NETWORK_GUARD_LOG,'utf8')).split('\n').filter(Boolean).length}catch{}
+  const message=String(error?.message??'QA assertion failed')
+   .split('\n')[0]
+   .replace(/Bearer\s+\S+/gi,'Bearer [redacted]')
+   .replace(/(authorization|cookie|password|secret|token)\s*[:=]\s*[^\s,}]+/gi,'$1=[redacted]')
+   .slice(0,500)
+  await writeFile(dir+'/results.json',JSON.stringify({
+   status:'FAIL',
+   environment:'Disposable local Supabase loopback only',
+   providers:'live credentials absent; synthetic UI fixture',
+   data:'synthetic only',
+   failure:{stage:qaStage,name:String(error?.name??'Error').slice(0,80),message},
+   finalStage:qaStage,
+   checks,
+   passedChecks:checks.length,
+   authLifecycle:lifecycleEvidence,
+   browserHttpFailures,
+   consoleErrors:browserConsoleErrors.filter(item=>item.kind!=='http-status').length,
+   runtimeErrors:browserRuntimeErrors.length,
+   blockedExternalAttempts:blocked,
+   blockedBrowserRequests:outside,
+  },null,2))
+  throw error
+ } finally {await browser.close()}
 let blocked=0
 try{blocked=(await readFile(process.env.QA_NETWORK_GUARD_LOG,'utf8')).split('\n').filter(Boolean).length}catch{}
+ qaStage='complete'
 pass('Server outbound attempts blocked by guard: '+blocked)
-await writeFile(dir+'/results.json',JSON.stringify({status:'PASS',environment:'Disposable local Supabase loopback only',providers:'live credentials absent; synthetic UI fixture',checks,themeMatrix,consoleErrors:browserConsoleErrors.filter(error=>error.kind!=='http-status').length,expectedHttpConsoleErrors:browserConsoleErrors.filter(error=>error.kind==='http-status'),browserHttpFailures,runtimeErrors:browserRuntimeErrors.length,blockedExternalAttempts:blocked,blockedBrowserRequests:outside,data:'synthetic only'},null,2))
+ await writeFile(dir+'/results.json',JSON.stringify({status:'PASS',environment:'Disposable local Supabase loopback only',providers:'live credentials absent; synthetic UI fixture',checks,passedChecks:checks.length,themeMatrix,finalStage:qaStage,authLifecycle:lifecycleEvidence,consoleErrors:browserConsoleErrors.filter(error=>error.kind!=='http-status').length,expectedHttpConsoleErrors:browserConsoleErrors.filter(error=>error.kind==='http-status'),browserHttpFailures,runtimeErrors:browserRuntimeErrors.length,blockedExternalAttempts:blocked,blockedBrowserRequests:outside,data:'synthetic only'},null,2))
 await writeFile(dir+'/theme-matrix-evidence.json',JSON.stringify({status:'PASS',themeMatrix},null,2))
 console.log('Authenticated Browser QA passed: '+checks.length+' checks; external network is blocked by policy.')
 

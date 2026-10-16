@@ -12,27 +12,109 @@ const failure = overrides => ({
   ...overrides,
 })
 
-test('only the pre-auth Account B login 401 is expected', () => {
-  assert.equal(isExpectedHttpFailure(failure({})), true)
-  assert.equal(isExpectedHttpFailure(failure({ authReady: true })), false)
-  assert.equal(isExpectedHttpFailure(failure({ pinReady: true })), false)
-  assert.equal(isExpectedHttpFailure(failure({ stage: 'account-switch-b-pin-setup' })), false)
-  assert.equal(isExpectedHttpFailure(failure({ path: '/api/portfolios' })), false)
+const lifecycle = {
+  authAttempts: [
+    {
+      id: 'account-a-attempt', account: 'A', startedSequence: 1,
+      unauthenticatedControlSequence: 0, authenticatedControlSequence: 10, authenticatedHasPin: false,
+      pinSetupControlSequence: 10, pinSetupHasPin: false, pinSubmissionSequence: 20,
+      pinReadyControlSequence: 30, pinLockTransitions: [],
+    },
+    {
+      id: 'account-b-attempt', account: 'B', startedSequence: 32,
+      unauthenticatedControlSequence: 31, authenticatedControlSequence: 50, authenticatedHasPin: false,
+      pinSetupControlSequence: 50, pinSetupHasPin: false, pinSubmissionSequence: 60,
+      pinReadyControlSequence: 70, pinLockTransitions: [],
+    },
+  ],
+  controls: [
+    { sequence: 0, kind: 'unauthenticated-negative-control', account: 'A', status: 401, authGate: 'unauthorized' },
+    { sequence: 10, kind: 'auth-positive-control', account: 'A', status: 200, hasPin: false },
+    { sequence: 30, kind: 'protected-api-positive-control', account: 'A', status: 200 },
+    { sequence: 31, kind: 'unauthenticated-negative-control', account: 'B', status: 401, authGate: 'unauthorized' },
+    { sequence: 50, kind: 'auth-positive-control', account: 'B', status: 200, hasPin: false },
+    { sequence: 70, kind: 'protected-api-positive-control', account: 'B', status: 200 },
+  ],
+}
+
+test('the five QA #20 lifecycle responses require matching pre- and post-auth controls', () => {
+  const qa20Failures = [
+    failure({ stage: 'login', sequence: 2, authAttemptId: 'account-a-attempt', authGate: 'unauthorized' }),
+    failure({ stage: 'login', sequence: 3, authAttemptId: 'account-a-attempt', authGate: 'unauthorized' }),
+    failure({ stage: 'pin-setup', sequence: 12, authAttemptId: 'account-a-attempt', authGate: 'pin-required' }),
+    failure({ stage: 'account-switch-b-login', sequence: 33, authAttemptId: 'account-b-attempt', authGate: 'unauthorized' }),
+    failure({ stage: 'account-switch-b-authenticating', sequence: 34, authAttemptId: 'account-b-attempt', authGate: 'pin-required' }),
+  ]
+
+  assert.deepEqual(qa20Failures.map(item => isExpectedHttpFailure(item, lifecycle)), [true, true, true, true, true])
+  assert.doesNotThrow(() => assertNoUnexpectedHttpFailures(qa20Failures, lifecycle))
 })
 
-test('PIN-required 401 is expected only after positive Auth control and before PIN readiness', () => {
+test('authReady=false alone never proves that an Unauthorized response is expected', () => {
+  assert.equal(isExpectedHttpFailure(failure({ stage: 'login', sequence: 2, authReady: false }), { authAttempts: [] }), false)
+  assert.throws(() => assertNoUnexpectedHttpFailures([
+    failure({ stage: 'login', sequence: 2, authReady: false }),
+  ], { authAttempts: [] }), /Unexpected failed browser responses.*401/)
+})
+
+test('missing or mismatched server controls do not authorize lifecycle 401 responses', () => {
   assert.equal(isExpectedHttpFailure(failure({
-    stage: 'account-switch-b-pin-setup', authGate: 'pin-required', authReady: true,
-  })), true)
+    stage: 'login', sequence: 2, authAttemptId: 'account-a-attempt', authGate: 'unauthorized',
+  }), { authAttempts: [{ ...lifecycle.authAttempts[0], authenticatedControlSequence: null }] }), false)
   assert.equal(isExpectedHttpFailure(failure({
-    stage: 'account-switch-b-pin-setup', authGate: 'unauthorized', authReady: true,
-  })), false)
+    stage: 'pin-setup', sequence: 12, authAttemptId: 'account-a-attempt', authGate: 'pin-required',
+  }), { authAttempts: [{ ...lifecycle.authAttempts[0], pinReadyControlSequence: null }] }), false)
   assert.equal(isExpectedHttpFailure(failure({
-    stage: 'account-switch-b-pin-setup', authGate: 'pin-required', authReady: false,
-  })), false)
+    stage: 'pin-setup', sequence: 12, authAttemptId: 'account-a-attempt', authGate: 'pin-required',
+  }), { authAttempts: [{ ...lifecycle.authAttempts[0], pinSetupHasPin: true }] }), false)
   assert.equal(isExpectedHttpFailure(failure({
-    stage: 'account-switch-b-unlocked', authGate: 'pin-required', authReady: true, pinReady: true,
-  })), false)
+    stage: 'login', sequence: 2, authAttemptId: 'account-a-attempt', authGate: 'unauthorized',
+  }), { authAttempts: lifecycle.authAttempts, controls: [] }), false)
+})
+
+test('Account A logout transition is bounded by an A protected control and B logged-out control', () => {
+  const logoutLifecycle = { authAttempts: [{
+    id: 'account-b-attempt', account: 'B', startedSequence: 5,
+    previousAccountPinReadyControlSequence: 4, logoutTransitionStartedSequence: 6,
+    unauthenticatedControlSequence: 10, authenticatedControlSequence: 20,
+  }], controls: [
+    { sequence: 4, kind: 'protected-api-positive-control', account: 'A', status: 200 },
+    { sequence: 10, kind: 'unauthenticated-negative-control', account: 'B', status: 401, authGate: 'unauthorized' },
+    { sequence: 20, kind: 'auth-positive-control', account: 'B', status: 200, hasPin: false },
+  ] }
+  assert.equal(isExpectedHttpFailure(failure({
+    stage: 'account-switch-a-logout', sequence: 8, authAttemptId: 'account-b-attempt', authGate: 'unauthorized',
+  }), logoutLifecycle), true)
+  assert.equal(isExpectedHttpFailure(failure({
+    stage: 'account-switch-a-logout', sequence: 11, authAttemptId: 'account-b-attempt', authGate: 'unauthorized',
+  }), logoutLifecycle), false)
+  assert.equal(isExpectedHttpFailure(failure({
+    stage: 'account-switch-a-logout', sequence: 8, authAttemptId: 'account-b-attempt', authGate: 'unauthorized',
+  }), { authAttempts: [{ ...logoutLifecycle.authAttempts[0], previousAccountPinReadyControlSequence: null }] }), false)
+})
+
+test('Unauthorized responses after the matching positive Auth control still fail', () => {
+  assert.equal(isExpectedHttpFailure(failure({
+    stage: 'account-switch-b-authenticating', sequence: 51, authAttemptId: 'account-b-attempt', authGate: 'unauthorized',
+  }), lifecycle), false)
+  assert.equal(isExpectedHttpFailure(failure({
+    stage: 'account-switch-b-unlocked', sequence: 71, authAttemptId: 'account-b-attempt', authGate: 'unauthorized',
+  }), lifecycle), false)
+})
+
+test('PIN-required is accepted only before PIN submission and its positive protected control', () => {
+  assert.equal(isExpectedHttpFailure(failure({
+    stage: 'pin-setup', sequence: 8, authAttemptId: 'account-a-attempt', authGate: 'pin-required',
+  }), lifecycle), false, 'Account A setup requires its positive Auth control before the failure')
+  assert.equal(isExpectedHttpFailure(failure({
+    stage: 'pin-setup', sequence: 20, authAttemptId: 'account-a-attempt', authGate: 'pin-required',
+  }), lifecycle), false)
+  assert.equal(isExpectedHttpFailure(failure({
+    stage: 'pin-setup', sequence: 31, authAttemptId: 'account-a-attempt', authGate: 'pin-required',
+  }), lifecycle), false)
+  assert.equal(isExpectedHttpFailure(failure({
+    stage: 'account-switch-b-unlocked', sequence: 49, authAttemptId: 'account-b-attempt', authGate: 'pin-required',
+  }), lifecycle), false)
 })
 
 test('simulated provider failures are scoped to matching endpoint, stage, and fixture mode', () => {
