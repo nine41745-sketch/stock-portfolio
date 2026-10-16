@@ -485,4 +485,6 @@ assert.match(latestReleaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/
 
 await import('./test-quick-notes.mjs')
 await import('./test-scratchpad-security.mjs')
+// Pure backup safety regressions; the opt-in Docker restore exercise is never run by CI implicitly.
+await import('./test-recovery.mjs')
 console.log('✓ Critical regression tests passed')

@@ -65,3 +65,7 @@ SEC verification is synthetic/mock only. No approved SEC Live request was made. 
 ## Proposed rollout and recovery review
 
 Before any separately authorized rollout, preserve unsaved QuickNotes drafts from cached legacy clients; missing expectedRevision is rejected with HTTP 428. Recheck the approved SHA, audit, CI and existing recovery evidence. Stop for unexpected Auth/PIN/isolation failures, new High/Critical findings, mismatched SHA or unexpected schema/environment requirements. No schema/environment change is part of this preparation. If an authorized rollout regresses, pause and present the previously verified application artifact/recovery procedure for explicit owner approval; do not reset data, alter migrations or downgrade runtime blindly. Any rollback/deployment remains separately authorized.
+
+## Phase B — local backup/recovery preparation
+
+The synthetic-only PostgreSQL recovery exercise and the remaining Auth/Storage/configuration gaps are documented in [Backup/Recovery Runbook](backup-recovery-v1370.md). See the local handoff for exact executed results. This does not verify an existing Production backup, recover a Supabase project, grant Cloud access or close Backup/Release Gates. Security / Production Release Gate remains HOLD — Full Audit 7 High.
