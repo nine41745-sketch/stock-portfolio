@@ -219,7 +219,7 @@ try {
  assert.equal(visibleAData.items[0].note,'Synthetic A')
  assert.equal(visibleAData.items[0].collection_id,collectionA.id)
  await page.goto(new URL('/scanner',base).href)
- await page.getByRole('button',{name:'⭐ หุ้นที่เล็งไว้',exact:true}).click()
+ await page.getByRole('button',{name:/^⭐ หุ้นที่เล็งไว้/}).click()
  const legacySection=page.getByRole('region',{name:'Legacy Watchlist · ระดับบัญชี · อ่านอย่างเดียว'})
  await legacySection.getByText('IBM',{exact:true}).waitFor()
  assert.equal(await legacySection.getByText('ราคาเป้าหมายเดิม').count(),1)
