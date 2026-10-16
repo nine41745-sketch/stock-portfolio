@@ -3,6 +3,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdir, writeFile, readFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
+import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, unexpectedConsoleHttpErrors } from './expected-http-failures.mjs'
 const base = new URL(process.env.QA_BASE_URL ?? '')
 const local = h => ['localhost', '127.0.0.1', '::1'].includes(h)
 const sb = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
@@ -17,8 +18,10 @@ const themeMatrix=[]
 const browserConsoleErrors=[]
 const browserHttpFailures=[]
 const browserRuntimeErrors=[]
+const responseTasks=new Set()
 let qaStage='startup'
-const requestStages=new WeakMap()
+let authReady=false, pinReady=false
+const requestContexts=new WeakMap()
 const pass=name=>checks.push({name,status:'PASS'})
 const email='qa-'+randomUUID()+'@example.test'
 const password=randomBytes(24).toString('base64url')
@@ -39,20 +42,34 @@ try {
  page.on('console',message=>{
   if(message.type()==='error'){
    const status=message.text().match(/status of (\d{3})/)
-   browserConsoleErrors.push(status?{kind:'http-status',status:Number(status[1])}:{kind:'console-error'})
+   let path
+   try { path=new URL(message.location().url).pathname } catch {}
+   browserConsoleErrors.push(status?{kind:'http-status',status:Number(status[1]),path}:{kind:'console-error'})
   }
  })
  page.on('pageerror',()=>browserRuntimeErrors.push('page-error'))
- page.on('request',request=>requestStages.set(request,qaStage))
- page.on('response',async response=>{
+ page.on('request',request=>requestContexts.set(request,{
+  stage:qaStage,
+  authReady,
+  pinReady,
+  fixtureMode:request.url().includes('/api/risk')?riskMode:
+    request.url().includes('/api/sec-risk')?secRiskMode:
+    request.url().includes('/api/fundamentals')?mode:
+    request.url().includes('/api/watchlist')?watchlistMode:undefined,
+ }))
+ page.on('response',response=>{
   if(response.status()>=400){
+   const task=(async()=>{
    let authGate='unclassified'
    if(response.status()===401){
     const body=await response.text().catch(()=> '')
     if(body.includes('PIN required'))authGate='pin-required'
+    else if(body.includes('PIN ไม่ถูกต้อง'))authGate='pin-invalid'
     else if(body.includes('Unauthorized'))authGate='unauthorized'
    }
-   browserHttpFailures.push({path:new URL(response.url()).pathname,status:response.status(),stage:requestStages.get(response.request())??'unknown',authGate})
+   browserHttpFailures.push({path:new URL(response.url()).pathname,status:response.status(),...(requestContexts.get(response.request())??{stage:'unknown',authReady:false,pinReady:false}),authGate})
+   })().finally(()=>responseTasks.delete(task))
+   responseTasks.add(task)
   }
  })
  await context.route('**/*',async route=>{
@@ -94,6 +111,10 @@ try {
  await page.waitForURL(/\/(?:pin|dashboard)(?:\?|$)/)
  if(new URL(page.url()).pathname!=='/pin') await page.goto(new URL('/pin',base).href)
  qaStage='pin-setup'
+ const pinStatus=await page.request.get(new URL('/api/pin/status',base).href)
+ assert.equal(pinStatus.status(),200,'Supabase Auth must be ready before initial PIN setup')
+ assert.equal((await pinStatus.json()).hasPin,false,'New synthetic account must not already have a PIN')
+ authReady=true
  await page.getByText('ตั้ง PIN 6 หลัก').waitFor()
  const locked=await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)
  assert.equal(locked.status(),401)
@@ -105,6 +126,7 @@ try {
  await fields.nth(0).fill(pin);await fields.nth(1).fill(pin)
  await page.getByRole('button',{name:'ตั้ง PIN'}).click()
  await page.waitForURL(/\/(?:dashboard|scanner)(?:\?|$)/)
+ pinReady=true
  qaStage='unlocked'
  const legacyInsert=await fetch(new URL('/rest/v1/watchlist?on_conflict=user_id,symbol',sb),{
   method:'POST',headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY,'content-type':'application/json',Prefer:'resolution=merge-duplicates'},
@@ -155,6 +177,7 @@ try {
  qaStage='scanner-after-setup'
  await page.goto(new URL('/scanner',base).href)
  qaStage='lock-transition'
+ pinReady=false
  await page.getByRole('button',{name:/ล็อก/}).click()
  await page.waitForURL(/\/pin(?:\?|$)/)
  qaStage='pin-unlock'
@@ -168,6 +191,7 @@ try {
  await page.getByRole('button',{name:'เข้าสู่พอร์ต'}).click()
  await page.waitForURL(/\/(?:dashboard|scanner)(?:\?|$)/)
  qaStage='unlocked'
+ pinReady=true
  pass('Real PIN rejects incorrect and accepts correct synthetic PIN')
 
  qaStage='watchlist-missing-migration-ui'
@@ -331,9 +355,11 @@ try {
  await page.getByRole('heading',{name:'🛡️ ความเสี่ยงพอร์ต'}).waitFor()
  pass('Risk Dashboard loading and market/industry/symbol stress simulations render from synthetic fixtures')
  secRiskMode='error'
+ qaStage='risk-sec-error'
  await page.getByRole('button',{name:'โหลดข้อมูล SEC'}).click()
  await page.getByRole('alert').filter({hasText:'Synthetic SEC risk unavailable'}).waitFor()
  secRiskMode='synthetic'
+ qaStage='risk-dashboard'
  await page.getByRole('button',{name:'โหลดข้อมูล SEC'}).click()
  await page.getByText('AAPL · Synthetic Issuer').waitFor()
  await page.locator('summary').filter({hasText:'วิธีคำนวณและเอกสาร SEC'}).click()
@@ -367,17 +393,27 @@ try {
  await page.getByRole('button',{name:'⚙️ บัญชี'}).click()
  await page.getByRole('menuitem',{name:'ออกจากระบบ'}).click()
  await page.waitForURL(/\/login(?:\?|$)/)
+ authReady=false;pinReady=false
  qaStage='account-switch-b-login'
  await page.locator('input[type="email"]').fill(otherEmail)
  await page.locator('input[type="password"]').fill(otherPassword)
+ qaStage='account-switch-b-authenticating'
  await page.getByRole('button',{name:'เข้าสู่ระบบ'}).click()
  await page.waitForURL(/\/(?:pin|dashboard)(?:\?|$)/)
  if(new URL(page.url()).pathname!=='/pin') await page.goto(new URL('/pin',base).href)
+ // Keep the stage pre-auth until a protected-session control succeeds. Any
+ // Unauthorized response before this point is therefore demonstrably pre-ready.
+ const bPinStatus=await page.request.get(new URL('/api/pin/status',base).href)
+ assert.equal(bPinStatus.status(),200,'Account B Auth must be established before PIN setup')
+ assert.equal((await bPinStatus.json()).hasPin,false,'New Account B must not already have a PIN')
+ authReady=true
+ qaStage='account-switch-b-pin-setup'
  await page.getByText('ตั้ง PIN 6 หลัก').waitFor()
  const otherPinFields=page.locator('input[type=password]')
  await otherPinFields.nth(0).fill(pin);await otherPinFields.nth(1).fill(pin)
  await page.getByRole('button',{name:'ตั้ง PIN'}).click()
  await page.waitForURL(/\/(?:dashboard|scanner)(?:\?|$)/)
+ pinReady=true
  qaStage='account-switch-b-unlocked'
  const bPortfoliosResponse=await page.request.get(new URL('/api/portfolios',base).href)
  assert.equal(bPortfoliosResponse.status(),200,'Account B must establish its own authenticated portfolio context')
@@ -482,24 +518,17 @@ try {
   assert.equal(focusStyle.tag,'BUTTON')
   assert(focusStyle.shadow!=='none'||focusStyle.outline!=='none','Keyboard focus must remain visible')
   pass('Keyboard navigation reaches the primary action with visible focus')
+ qaStage='fundamentals-provider-error'
  mode='error';await symbols.fill('AAPL')
  await page.getByRole('button',{name:'โหลดข้อมูล'}).click()
  await page.getByRole('alert').filter({hasText:'Synthetic provider error'}).waitFor()
  pass('Synthetic provider error state')
  assert.equal(outside,0,'Browser tried to contact non-local host')
  pass('Browser made no non-local requests')
-  const expectedHttpFailure=({path,status,stage,authGate})=>
-    (path==='/api/pin/status'&&status===401)||
-    (path==='/api/pin/verify'&&status===401)||
-    (path==='/api/daily-analyses/today'&&status===401&&['anonymous','login','pin-setup'].includes(stage))||
-    (path==='/api/daily-analyses/today'&&status===401&&['lock-transition','pin-unlock'].includes(stage)&&authGate==='pin-required')||
-    (path==='/api/fundamentals'&&status===503)||
-    (path==='/api/sec-risk'&&status===503)||
-    (path==='/api/watchlist'&&status===503&&stage==='watchlist-missing-migration-ui')
-  const unexpectedHttpFailures=browserHttpFailures.filter(failure=>!expectedHttpFailure(failure))
-  const allowedHttpStatuses=new Set(browserHttpFailures.filter(expectedHttpFailure).map(failure=>failure.status))
-  const unexpectedConsoleErrors=browserConsoleErrors.filter(error=>error.kind!=='http-status'||!allowedHttpStatuses.has(error.status))
-  assert.deepEqual(unexpectedHttpFailures,[],'Unexpected failed browser responses: '+JSON.stringify(unexpectedHttpFailures))
+  await Promise.all([...responseTasks])
+  const expectedFailures=browserHttpFailures.filter(isExpectedHttpFailure)
+  const unexpectedConsoleErrors=unexpectedConsoleHttpErrors(browserConsoleErrors,expectedFailures)
+  assertNoUnexpectedHttpFailures(browserHttpFailures)
   assert.equal(browserRuntimeErrors.length,0,'Browser runtime errors occurred')
   assert.deepEqual(unexpectedConsoleErrors,[],'Unexpected browser console errors: '+JSON.stringify(unexpectedConsoleErrors))
   pass('No browser runtime or unhandled console errors; expected PIN/provider HTTP failures are tracked separately')

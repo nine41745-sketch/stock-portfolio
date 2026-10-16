@@ -200,11 +200,29 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set -euo pipefail
           if [ -s "$RUNNER_TEMP/next-dev.pid" ]; then
             pid="$(cat "$RUNNER_TEMP/next-dev.pid")"
             case "$pid" in
-              (*[!0-9]*|'') echo "Invalid QA app PID marker; leaving process untouched." >&2 ;;
-              (*) kill "$pid" 2>/dev/null || true ;;
+              (*[!0-9]*|'') echo "Invalid QA app PID marker; leaving process untouched." >&2; exit 1 ;;
+              (*)
+                if process="$(ps -p "$pid" -o args=)"; then
+                  case "$process" in
+                    *"next dev --hostname 127.0.0.1 --port ${QA_APP_PORT}"*)
+                      kill "$pid"
+                      for attempt in $(seq 1 20); do
+                        if ! kill -0 "$pid" 2>/dev/null; then break; fi
+                        sleep 1
+                      done
+                      if kill -0 "$pid" 2>/dev/null; then
+                        echo "QA application process is still running after termination." >&2
+                        exit 1
+                      fi
+                      ;;
+                    *) echo "PID marker no longer identifies this QA application; leaving process untouched." >&2; exit 1 ;;
+                  esac
+                fi
+                ;;
             esac
           fi
 
@@ -212,18 +230,124 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set -uo pipefail
+          project_id="stock-v1370-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          network_name="supabase_network_${project_id}"
+          if [ -n "${QA_SUPABASE_PROJECT_ID:-}" ] && [ "$QA_SUPABASE_PROJECT_ID" != "$project_id" ]; then
+            echo "QA project ID does not match this workflow run; refusing cleanup." >&2
+            exit 1
+          fi
+          stop_status=not-run
           if [ -n "${QA_SUPABASE_PROJECT_ID:-}" ]; then
-            supabase stop --project-id "$QA_SUPABASE_PROJECT_ID" > "$RUNNER_TEMP/supabase-stop.log" 2>&1 || true
-            expected_volume="supabase_db_${QA_SUPABASE_PROJECT_ID}"
-            while IFS= read -r volume; do
-              [ -n "$volume" ] || continue
-              label="$(docker volume inspect -f '{{index .Labels "com.supabase.cli.project"}}' "$volume" 2>/dev/null || true)"
-              if [ "$volume" = "$expected_volume" ] && [ "$label" = "$QA_SUPABASE_PROJECT_ID" ]; then
-                docker volume rm "$volume" >/dev/null
-              else
-                echo "Unexpected volume ownership after QA; leaving it untouched." >&2
+            if supabase stop --project-id "$project_id" > "$RUNNER_TEMP/supabase-stop.log" 2>&1; then
+              stop_status=0
+            else
+              stop_status=$?
+              echo "supabase stop returned ${stop_status}; continuing only with run-owned resource checks." >&2
+            fi
+          fi
+
+          cleanup_error=0
+          container_ids="$(docker ps -aq --filter "label=com.supabase.cli.project=${project_id}")" || { echo "Cannot inventory project containers." >&2; exit 1; }
+          for container_id in $container_ids; do
+            inspect_file="$RUNNER_TEMP/qa-container-inspect.json"
+            if ! docker inspect "$container_id" > "$inspect_file"; then
+              echo "Cannot verify container ownership; leaving it untouched." >&2
+              cleanup_error=1
+              continue
+            fi
+            if ! python3 - "$inspect_file" "$project_id" "$network_name" <<'PY'
+          import json, sys
+          item = json.load(open(sys.argv[1]))[0]
+          project, network = sys.argv[2:]
+          labels = item.get("Config", {}).get("Labels", {}) or {}
+          name = item.get("Name", "")
+          networks = set((item.get("NetworkSettings", {}).get("Networks", {}) or {}).keys())
+          if labels.get("com.supabase.cli.project") != project:
+              raise SystemExit("container project label mismatch")
+          if not name.startswith("/supabase_") or not name.endswith("_" + project):
+              raise SystemExit("container name is outside this run's Supabase namespace")
+          if networks != {network}:
+              raise SystemExit("container network ownership is not exclusive to this run")
+          PY
+            then
+              echo "Container ${container_id} is not proven run-owned; leaving it untouched." >&2
+              cleanup_error=1
+              continue
+            fi
+            if ! docker rm -f "$container_id" >/dev/null; then
+              echo "Failed to remove verified run-owned container ${container_id}." >&2
+              cleanup_error=1
+            fi
+          done
+
+          volume_names="$(docker volume ls -q --filter "label=com.supabase.cli.project=${project_id}")" || { echo "Cannot inventory project volumes." >&2; exit 1; }
+          for volume in $volume_names; do
+            inspect_file="$RUNNER_TEMP/qa-volume-inspect.json"
+            if ! docker volume inspect "$volume" > "$inspect_file"; then
+              echo "Cannot verify volume ownership; leaving it untouched." >&2
+              cleanup_error=1
+              continue
+            fi
+            if ! python3 - "$inspect_file" "$project_id" <<'PY'
+          import json, sys
+          item = json.load(open(sys.argv[1]))[0]
+          project = sys.argv[2]
+          labels = item.get("Labels", {}) or {}
+          name = item.get("Name", "")
+          if labels.get("com.supabase.cli.project") != project:
+              raise SystemExit("volume project label mismatch")
+          if not name.startswith("supabase_") or not name.endswith("_" + project):
+              raise SystemExit("volume name is outside this run's Supabase namespace")
+          PY
+            then
+              echo "Volume ${volume} is not proven run-owned; leaving it untouched." >&2
+              cleanup_error=1
+              continue
+            fi
+            if ! docker volume rm "$volume" >/dev/null; then
+              echo "Failed to remove verified run-owned volume ${volume}." >&2
+              cleanup_error=1
+            fi
+          done
+
+          if network_json="$(docker network inspect "$network_name" 2>/dev/null)"; then
+            printf '%s' "$network_json" > "$RUNNER_TEMP/qa-network-inspect.json"
+            if python3 - "$RUNNER_TEMP/qa-network-inspect.json" "$project_id" "$GITHUB_RUN_ID" <<'PY'
+          import json, sys
+          item = json.load(open(sys.argv[1]))[0]
+          project, run_id = sys.argv[2:]
+          labels = item.get("Labels", {}) or {}
+          if labels.get("com.supabase.cli.project") != project or labels.get("qa.owner.run") != run_id:
+              raise SystemExit("network ownership labels do not match this workflow run")
+          if item.get("Containers"):
+              raise SystemExit("network still has attached containers")
+          PY
+            then
+              if ! docker network rm "$network_name" >/dev/null; then
+                echo "Failed to remove verified run-owned network." >&2
+                cleanup_error=1
               fi
-            done < <(docker volume ls -q --filter "label=com.supabase.cli.project=${QA_SUPABASE_PROJECT_ID}")
+            else
+              echo "Network ownership or attachment check failed; leaving it untouched." >&2
+              cleanup_error=1
+            fi
+          fi
+
+          remaining_containers="$(docker ps -aq --filter "label=com.supabase.cli.project=${project_id}")" || exit 1
+          remaining_volumes="$(docker volume ls -q --filter "label=com.supabase.cli.project=${project_id}")" || exit 1
+          remaining_networks="$(docker network ls -q --filter "label=com.supabase.cli.project=${project_id}")" || exit 1
+          printf 'supabase_stop_status=%s\nremaining_containers=%s\nremaining_volumes=%s\nremaining_networks=%s\n' \
+            "$stop_status" "${remaining_containers:-none}" "${remaining_volumes:-none}" "${remaining_networks:-none}" \
+            | tee "$RUNNER_TEMP/qa-cleanup-summary.txt"
+          mkdir -p "$QA_ARTIFACT_DIR"
+          cp "$RUNNER_TEMP/qa-cleanup-summary.txt" "$QA_ARTIFACT_DIR/cleanup-summary.txt"
+          if [ -n "$remaining_containers" ] || [ -n "$remaining_volumes" ] || [ -n "$remaining_networks" ] || [ "$cleanup_error" -ne 0 ]; then
+            echo "Post-cleanup verification found owned resources or an ownership/cleanup error." >&2
+            exit 1
+          fi
+          if [ "$stop_status" != "0" ] && [ "$stop_status" != "not-run" ]; then
+            echo "supabase stop failed, but direct run-specific cleanup and empty post-checks succeeded; see stop log and cleanup summary." >&2
           fi
 
       - name: Record blocked QA result
