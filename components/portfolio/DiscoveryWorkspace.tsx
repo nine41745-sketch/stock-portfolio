@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { CURRENT_VERSION } from '@/config/changelog'
 import { DISCOVERY_THEMES, type DiscoveryTheme } from '@/lib/discovery-contract'
 
 type Item = {
@@ -93,7 +94,7 @@ export default function DiscoveryWorkspace({ activePortfolioId }: { activePortfo
     } finally { if (!controller.signal.aborted) setLoading(false) }
   }
   return <main className="mx-auto max-w-7xl space-y-5 py-6 text-gray-950 dark:text-gray-100">
-    <header><h1 className="text-2xl font-bold">Investment Discovery · v1.36.0</h1><p className="mt-1 text-sm text-gray-700 dark:text-gray-400">กลุ่มหุ้นคัดสรร ไม่ใช่ข้อมูลทั้งตลาดหรือคำแนะนำซื้อขาย</p></header>
+    <header><h1 className="text-2xl font-bold">Investment Discovery · {CURRENT_VERSION}</h1><p className="mt-1 text-sm text-gray-700 dark:text-gray-400">กลุ่มหุ้นคัดสรร ไม่ใช่ข้อมูลทั้งตลาดหรือคำแนะนำซื้อขาย</p></header>
     {!ready ? <section role={current && gate?.error ? 'alert' : 'status'} className="rounded-xl border border-gray-300 p-4 dark:border-gray-700">
       <p className="text-sm">{activePortfolioId===null ? 'Multi-Portfolio ไม่พร้อม' : current && gate?.error ? gate.error : 'กำลังยืนยันพอร์ตที่เลือก...'}</p>
       {current && gate?.error && <button type="button" onClick={()=>setAttempt(n=>n+1)} className="mt-3 rounded border border-gray-400 px-3 py-2">ลองยืนยันพอร์ตอีกครั้ง</button>}

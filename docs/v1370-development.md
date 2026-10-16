@@ -20,3 +20,7 @@ Status: Development-only, unreleased. This document describes the local candidat
 ## Verification boundary
 
 Pure calculation, SEC parsing, request budgets and route scope are covered by synthetic/mocked regression tests. Authenticated Supabase Local browser QA requires an isolated disposable local Supabase service; it remains unrun when Docker Engine is unavailable to the Codex process. Mock tests do not prove live Auth, PIN, RLS, or database behavior.
+
+## Subsequent QA / release-preparation record
+
+The initial local verification boundary above describes the original development environment. At the later PR #71 baseline fbdbaf21db02b3c824be324206db40fa5967b386, GitHub CI #376 and isolated Authenticated Browser QA #22 succeeded; the inspected QA log reports 51 checks, external network blocked and no run-owned containers, volumes or networks after cleanup. This is synthetic/disposable evidence, not Production or SEC Live verification. Metadata preparation on a separate local branch is described in [release notes and checklist](release-v1370.md). No feature redevelopment is part of that preparation.

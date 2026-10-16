@@ -302,11 +302,27 @@ assert.match(lightModeCss, /text-purple-300/, 'Light mode must keep purple AI te
 assert.match(lightModeCss, /bg-blue-600\.text-white/, 'Light mode must preserve white text on primary blue buttons')
 assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native form controls with light color scheme')
 
-// Prepared v1.35.1 metadata must stay synchronized without claiming a deployed release.
+// Prepared v1.37.0 RC metadata must stay synchronized without claiming a deployed release.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.35.1', 'Package version must match the v1.35.1 hotfix')
+assert.equal(packageJson.version, '1.37.0', 'Package version must match the v1.37.0 release candidate')
 const releaseTsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1351'], 'Version badge must resolve to the v1.35.1 changelog')
+assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1370'], 'Version badge must resolve to the v1.37.0 candidate changelog')
+const candidateChangelog = fs.readFileSync('config/changelog-v1370.ts', 'utf8')
+assert.match(candidateChangelog, /version: 'v1\.37\.0'/)
+assert.match(candidateChangelog, /date: 'Unreleased — Release Candidate'/)
+assert.match(candidateChangelog, /from '\.\/changelog-v1360'/, 'Candidate must preserve Discovery and hotfix history')
+assert.match(candidateChangelog, /Release Gate: HOLD/)
+assert.match(candidateChangelog, /Full Audit 7 High/)
+assert.match(candidateChangelog, /SEC Live/)
+const discoveryChangelog = fs.readFileSync('config/changelog-v1360.ts', 'utf8')
+assert.match(discoveryChangelog, /version: 'v1\.36\.0'/)
+assert.match(discoveryChangelog, /date: 'Unreleased/)
+assert.match(discoveryChangelog, /from '\.\/changelog-v1351'/)
+assert.match(discoveryChangelog, /ATH Cache/)
+assert.match(fs.readFileSync('components/portfolio/DiscoveryWorkspace.tsx', 'utf8'), /Investment Discovery · \{CURRENT_VERSION\}/, 'Discovery must use the shared application version')
+const candidateReleaseNotes = fs.readFileSync('docs/release-v1370.md', 'utf8')
+assert.match(candidateReleaseNotes, /Release Candidate \/ Unreleased/)
+assert.match(candidateReleaseNotes, /Security \/ Production Release Gate: HOLD/)
 const hotfixChangelog = fs.readFileSync('config/changelog-v1351.ts', 'utf8')
 assert.match(hotfixChangelog, /version: 'v1\.35\.1'/)
 assert.match(hotfixChangelog, /from '\.\/changelog-v1350'/, 'Hotfix must preserve the complete earlier changelog chain')
@@ -463,7 +479,7 @@ for (const [file, expectedTime] of changelogReleaseTimes) {
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1351'], 'Prepared hotfix must use the v1.35.1 version badge')
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1370'], 'Prepared candidate must use the v1.37.0 version badge')
 assert.match(releaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.34.0 changelog must contain a timestamp in the repository format')
 assert.match(latestReleaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.35.0 changelog must contain a timestamp in the repository format')
 

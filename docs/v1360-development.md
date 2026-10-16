@@ -36,3 +36,7 @@ Discovery uses an absolute40s work deadline with5s response allowance and5s prov
 Regression: scripts/test-portfolio-initialization.mjs and scripts/test-discovery-deadline.mjs are included in critical tests. Full dev/build audit findings remain a release gate; no inherited security exception. Local QA artifacts/reports carry exact measured outcomes and candidate identity. No GitHubCI run exists for an unpushed local candidate.
 
 This local integration supersedes the earlier isolation note for this candidate only. PR67 and PR69 remain unchanged Draft/HOLD; merge/deploy/Cloud/tag/release require separate authorization.
+
+## Subsequent integration / release-preparation record
+
+The isolated-source description above is historical. PR #70 at 5ce87b10a411021fc8692ee1f0b6aeb1cb996b4d integrates PR #67 and #69, and PR #71 at fbdbaf21db02b3c824be324206db40fa5967b386 descends from it. v1.36.0 remains unreleased and is included in the v1.37.0 Release Candidate history. No duplicate patch application is required. See [v1.37.0 release checklist](release-v1370.md); Security / Production Release Gate remains HOLD.

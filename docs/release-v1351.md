@@ -26,7 +26,7 @@ An already-open client from an older release may still omit the revision. After 
 - The focused continuation QA covers missing revision 428, wrong-account 403, stale/concurrent writes 409, preserved drafts, unchanged-load zero PUT, and version badge/changelog using synthetic data and real disposable Local Postgres.
 - No Production/Preview database or real user data was used in these QA runs; local artifacts remain git-ignored. After an authorized Production deployment, independently verify authenticated UI behavior with suitable privacy precautions.
 
-## v1.35.1 Security Decision — pending owner approval
+## v1.35.1 Security Decision — historical proposal; superseded by HOLD
 
 **Observed/reported:** Full `npm audit` still reports **7 High** in development/build transitive chains related to `braces` (`GHSA-vfj7-8cjw-p6xm`, `CVE-2026-93687`). Production-only audit reports **0 vulnerabilities** (confirmed in GitHub CI). Existing source/lockfile review found no application handling of attacker-supplied glob patterns, but this does not eliminate every build/CI exposure or prove that the deployed runtime is unreachable from the issue.
 
@@ -44,3 +44,7 @@ Any additional CVE, runtime exposure, changed dependency paths, failed CI or exp
 2. Obtain the owner's explicit v1.35.1 Security Decision above; do **not** record the proposed acceptance as granted.
 3. Receive user acceptance of the Release Candidate and separate **Merge / Production deployment** authorization; verify the approved SHA/CI and communicate cached-client draft recovery before rollout.
 4. After authorized Production deployment, verify main/CI/Production and run Production smoke/acceptance. Git Tag/GitHub Release require their own approval.
+
+## Current integrated-candidate boundary (2026-10-17)
+
+This document retains historical v1.35.1 evidence and the earlier unapproved proposal above. The owner subsequently selected HOLD, as recorded on PR #67; no temporary acceptance is granted and the earlier proposed dates do not activate or expire any approval. v1.35.1 remains unreleased and is already included in PR #70 and PR #71. v1.37.0 Release Candidate preparation supersedes the local package/badge target only, not the security decision or release authority. See [current checklist](release-v1370.md). Security / Production Release Gate: HOLD — Full Audit 7 High.
