@@ -15,7 +15,8 @@ concurrency:
 jobs:
   authenticated-browser-qa:
     if: >-
-      ${{ (github.event.pull_request.head.ref == 'fix/v1.34.1-theme-consistency' ||
+      ${{ (github.event.pull_request.head.ref == 'feat/v1.37.0-risk-intelligence-local' ||
+          github.event.pull_request.head.ref == 'fix/v1.34.1-theme-consistency' ||
           github.event.pull_request.head.ref == 'codex/v1.35.0-watchlist-smart-alerts') &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           github.event.label.name == 'authenticated-browser-qa' }}
@@ -48,19 +49,131 @@ jobs:
         with:
           version: 2.84.2
 
+      - name: Prepare a unique loopback-only disposable Supabase project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${RUNNER_ENVIRONMENT:-}" = "github-hosted"
+          test "${GITHUB_REPOSITORY}" = "nine41745-sketch/stock-portfolio"
+          test ! -e supabase/.temp/project-ref
+          test "$(supabase --version)" = "2.84.2"
+          project_id="stock-v1370-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          network_name="supabase_network_${project_id}"
+          db_container="supabase_db_${project_id}"
+          db_volume="supabase_db_${project_id}"
+          test -z "$(docker ps -aq --filter "label=com.supabase.cli.project=${project_id}")"
+          test -z "$(docker volume ls -q --filter "label=com.supabase.cli.project=${project_id}")"
+          if docker network inspect "$network_name" >/dev/null 2>&1; then
+            echo "A network already exists for the supposedly unique QA project; refusing reuse." >&2
+            exit 1
+          fi
+          if docker container inspect "$db_container" >/dev/null 2>&1; then
+            echo "A database container already exists for the supposedly unique QA project; refusing reuse." >&2
+            exit 1
+          fi
+          if docker volume inspect "$db_volume" >/dev/null 2>&1; then
+            echo "A database volume already exists for the supposedly unique QA project; refusing reuse." >&2
+            exit 1
+          fi
+          read -r api_port db_port shadow_port app_port < <(python3 - <<'PY'
+          import socket
+          ports = []
+          for _ in range(4):
+              sock = socket.socket()
+              sock.bind(("127.0.0.1", 0))
+              ports.append(sock.getsockname()[1])
+              sock.close()
+          if len(set(ports)) != len(ports):
+              raise SystemExit("Failed to choose unique temporary QA ports")
+          print(*ports)
+          PY
+          )
+          python3 - "$project_id" "$api_port" "$db_port" "$shadow_port" "$app_port" <<'PY'
+          from pathlib import Path
+          import re, sys
+          project, api, db, shadow, app = sys.argv[1:]
+          path = Path("supabase/config.toml")
+          content = path.read_text()
+          replacements = [
+              (r'(?m)^project_id = "[^"]+"$', f'project_id = "{project}"'),
+              (r'(?m)^port = 54321$', f'port = {api}'),
+              (r'(?m)^port = 54322$', f'port = {db}'),
+              (r'(?m)^shadow_port = 54320$', f'shadow_port = {shadow}'),
+              (r'(?m)^site_url = "http://127\.0\.0\.1:3000"$', f'site_url = "http://127.0.0.1:{app}"'),
+              (r'(?m)^additional_redirect_urls = \["http://127\.0\.0\.1:3000"\]$', f'additional_redirect_urls = ["http://127.0.0.1:{app}"]'),
+          ]
+          for pattern, replacement in replacements:
+              content, count = re.subn(pattern, replacement, content)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one config match for {pattern!r}, found {count}")
+          path.write_text(content)
+          PY
+          # Supabase CLI v2.84.2 omits HostIp in Docker port bindings.
+          # Establish Docker's loopback default on the unique project bridge first.
+          docker network create --driver bridge \
+            --opt com.docker.network.bridge.host_binding_ipv4=127.0.0.1 \
+            --label "com.supabase.cli.project=${project_id}" \
+            --label "qa.owner.run=${GITHUB_RUN_ID}" \
+            "$network_name" >/dev/null
+          network_options="$(docker network inspect -f '{{json .Options}}' "$network_name")"
+          python3 - "$network_options" <<'PY'
+          import json, sys
+          options = json.loads(sys.argv[1])
+          if options.get("com.docker.network.bridge.host_binding_ipv4") != "127.0.0.1":
+              raise SystemExit("Unique Supabase bridge is not configured for loopback-only published ports")
+          PY
+          {
+            echo "QA_SUPABASE_PROJECT_ID=${project_id}"
+            echo "QA_SUPABASE_API_PORT=${api_port}"
+            echo "QA_SUPABASE_DB_PORT=${db_port}"
+            echo "QA_APP_PORT=${app_port}"
+            echo "QA_SUPABASE_NETWORK=${network_name}"
+            echo "QA_DB_CONTAINER=${db_container}"
+          } >> "$GITHUB_ENV"
+
       - name: Verify isolated project and tool versions
         shell: bash
         run: |
           set -euo pipefail
-          test ! -e supabase/.temp/project-ref
           test "$(supabase --version)" = "2.84.2"
-          grep -q '^project_id = "stock-portfolio-auth-browser-qa"$' supabase/config.toml
+          grep -q "^project_id = \"${QA_SUPABASE_PROJECT_ID}\"$" supabase/config.toml
+          grep -q "^port = ${QA_SUPABASE_API_PORT}$" supabase/config.toml
+          grep -q "^port = ${QA_SUPABASE_DB_PORT}$" supabase/config.toml
 
       - name: Start Local Supabase and validate endpoint identity
         shell: bash
         run: |
           set -euo pipefail
+          test "$(docker network inspect -f '{{json .Options}}' "$QA_SUPABASE_NETWORK" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("com.docker.network.bridge.host_binding_ipv4", ""))')" = "127.0.0.1"
           supabase start --exclude studio,inbucket,realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor,postgres-meta > "$RUNNER_TEMP/supabase-start.log" 2>&1
+          project_container_ids="$(docker ps -aq --filter "label=com.supabase.cli.project=${QA_SUPABASE_PROJECT_ID}")"
+          test -n "$project_container_ids"
+          docker inspect $project_container_ids > "$RUNNER_TEMP/supabase-containers.json"
+          docker volume ls -q --filter "label=com.supabase.cli.project=${QA_SUPABASE_PROJECT_ID}" > "$RUNNER_TEMP/supabase-volumes.txt"
+          test -s "$RUNNER_TEMP/supabase-volumes.txt"
+          python3 - "$RUNNER_TEMP/supabase-containers.json" "$QA_SUPABASE_PROJECT_ID" "$QA_SUPABASE_NETWORK" <<'PY'
+          import json, sys
+          containers = json.load(open(sys.argv[1]))
+          project, network = sys.argv[2:]
+          if not containers:
+              raise SystemExit("No Supabase containers found for the isolated project")
+          for container in containers:
+              labels = container.get("Config", {}).get("Labels", {}) or {}
+              if labels.get("com.supabase.cli.project") != project:
+                  raise SystemExit("Supabase container ownership label mismatch")
+              networks = container.get("NetworkSettings", {}).get("Networks", {}) or {}
+              if set(networks) != {network}:
+                  raise SystemExit("Supabase container is attached to an unexpected Docker network")
+              for bindings in (container.get("NetworkSettings", {}).get("Ports", {}) or {}).values():
+                  for binding in bindings or []:
+                      if binding.get("HostIp") != "127.0.0.1":
+                          raise SystemExit("A Supabase published port is not bound exclusively to IPv4 loopback")
+          db = next((c for c in containers if c.get("Name", "").lstrip("/") == f"supabase_db_{project}"), None)
+          if not db:
+              raise SystemExit("Unique disposable Supabase database container was not found")
+          if not any(m.get("Name") == f"supabase_db_{project}" for m in db.get("Mounts", [])):
+              raise SystemExit("Database container is not using the unique project-owned volume")
+          PY
           supabase status --output env > "$RUNNER_TEMP/supabase-status.env" 2>/dev/null
           node scripts/qa/export-local-supabase-env.mjs "$RUNNER_TEMP/supabase-status.env"
 
@@ -75,18 +188,43 @@ jobs:
           export QA_NETWORK_GUARD_LOG="$RUNNER_TEMP/qa-network-guard.log"
           : > "$QA_NETWORK_GUARD_LOG"
           export NODE_OPTIONS="--require=$GITHUB_WORKSPACE/scripts/qa/deny-external-network.cjs"
-          (npm run dev -- --hostname 127.0.0.1 --port 3000 > "$RUNNER_TEMP/next-dev.log" 2>&1 & echo $! > "$RUNNER_TEMP/next-dev.pid")
+          (./node_modules/.bin/next dev --hostname 127.0.0.1 --port "$QA_APP_PORT" > "$RUNNER_TEMP/next-dev.log" 2>&1 & echo $! > "$RUNNER_TEMP/next-dev.pid")
           for attempt in $(seq 1 90); do
-            curl --silent --fail http://127.0.0.1:3000/login >/dev/null && break
+            curl --silent --fail "http://127.0.0.1:${QA_APP_PORT}/login" >/dev/null && break
             sleep 2
           done
-          curl --silent --fail http://127.0.0.1:3000/login >/dev/null
+          curl --silent --fail "http://127.0.0.1:${QA_APP_PORT}/login" >/dev/null
           node scripts/qa/authenticated-browser.mjs
+
+      - name: Stop only this QA application process
+        if: always()
+        shell: bash
+        run: |
+          if [ -s "$RUNNER_TEMP/next-dev.pid" ]; then
+            pid="$(cat "$RUNNER_TEMP/next-dev.pid")"
+            case "$pid" in
+              (*[!0-9]*|'') echo "Invalid QA app PID marker; leaving process untouched." >&2 ;;
+              (*) kill "$pid" 2>/dev/null || true ;;
+            esac
+          fi
 
       - name: Stop only this disposable project
         if: always()
         shell: bash
-        run: supabase stop > "$RUNNER_TEMP/supabase-stop.log" 2>&1 || true
+        run: |
+          if [ -n "${QA_SUPABASE_PROJECT_ID:-}" ]; then
+            supabase stop --project-id "$QA_SUPABASE_PROJECT_ID" > "$RUNNER_TEMP/supabase-stop.log" 2>&1 || true
+            expected_volume="supabase_db_${QA_SUPABASE_PROJECT_ID}"
+            while IFS= read -r volume; do
+              [ -n "$volume" ] || continue
+              label="$(docker volume inspect -f '{{index .Labels "com.supabase.cli.project"}}' "$volume" 2>/dev/null || true)"
+              if [ "$volume" = "$expected_volume" ] && [ "$label" = "$QA_SUPABASE_PROJECT_ID" ]; then
+                docker volume rm "$volume" >/dev/null
+              else
+                echo "Unexpected volume ownership after QA; leaving it untouched." >&2
+              fi
+            done < <(docker volume ls -q --filter "label=com.supabase.cli.project=${QA_SUPABASE_PROJECT_ID}")
+          fi
 
       - name: Record blocked QA result
         if: failure()
@@ -98,7 +236,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: authenticated-browser-qa-v1.35.0
+          name: authenticated-browser-qa-v1.37.0
           path: ${{ env.QA_ARTIFACT_DIR }}/
           retention-days: 3
           if-no-files-found: ignore

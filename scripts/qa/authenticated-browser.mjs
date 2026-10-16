@@ -6,8 +6,8 @@ import assert from 'node:assert/strict'
 const base = new URL(process.env.QA_BASE_URL ?? '')
 const local = h => ['localhost', '127.0.0.1', '::1'].includes(h)
 const sb = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
-assert(local(base.hostname) && base.protocol === 'http:' && base.port === '3000')
-assert(local(sb.hostname) && sb.protocol === 'http:' && sb.port === '54321')
+assert(local(base.hostname) && base.protocol === 'http:' && base.port === process.env.QA_APP_PORT)
+assert(local(sb.hostname) && sb.protocol === 'http:' && sb.port === process.env.QA_SUPABASE_API_PORT)
 assert(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY)
 assert(!process.env.FINNHUB_API_KEY && !process.env.SEC_USER_AGENT && !process.env.GROQ_API_KEY)
 const dir = process.env.QA_ARTIFACT_DIR ?? '.local-artifacts/authenticated-browser-qa'
@@ -31,7 +31,7 @@ const created=await fetch(new URL('/auth/v1/admin/users',sb),{
 assert.equal(created.status,200)
 const qaUser=await created.json()
 pass('Synthetic user created by local Auth Admin')
-let outside=0, mode='synthetic', watchlistMode='normal', scannerMode='mock'
+let outside=0, mode='synthetic', watchlistMode='normal', scannerMode='mock', riskMode='synthetic', secRiskMode='synthetic'
 const browser=await chromium.launch({headless:true})
 try {
  const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'})
@@ -57,12 +57,21 @@ try {
  })
  await context.route('**/*',async route=>{
   const u=new URL(route.request().url())
-  if(!local(u.hostname)||(u.port!=='3000'&&u.origin!==process.env.NEXT_PUBLIC_SUPABASE_URL)){outside++;await route.abort('blockedbyclient');return}
+  if(!local(u.hostname)||(u.port!==process.env.QA_APP_PORT&&u.origin!==process.env.NEXT_PUBLIC_SUPABASE_URL)){outside++;await route.abort('blockedbyclient');return}
   if(u.pathname==='/api/fundamentals'){
    if(mode==='loading') await new Promise(resolve=>setTimeout(resolve,1000))
    if(mode==='error') await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic provider error'})})
    else await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(fixture())})
    return
+  }
+  if(u.pathname==='/api/risk'){
+   if(riskMode==='loading') await new Promise(resolve=>setTimeout(resolve,400))
+   if(riskMode==='error') return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic risk unavailable'})})
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(riskFixture())})
+  }
+  if(u.pathname==='/api/sec-risk'){
+   if(secRiskMode==='error') return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic SEC risk unavailable'})})
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(secRiskFixture())})
   }
   if(u.pathname==='/api/scanner'&&scannerMode!=='real-mine') return route.fulfill({status:200,contentType:'application/json',body:'{"items":[]}'})
   if(u.pathname==='/api/watchlist'&&watchlistMode==='missing-schema') return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic missing portfolio Watchlist migration',migration_required:true})})
@@ -100,9 +109,11 @@ try {
   body:JSON.stringify({user_id:qaUser.id,symbol:'IBM',target_price:123.45,note:'Synthetic legacy; read-only QA'})
  })
  assert([200,201,204].includes(legacyInsert.status),`Synthetic legacy fixture insert failed with ${legacyInsert.status}`)
+ const otherEmail='qa-other-'+randomUUID()+'@example.test'
+ const otherPassword=randomBytes(24).toString('base64url')
  const otherUserResponse=await fetch(new URL('/auth/v1/admin/users',sb),{
   method:'POST',headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY,'content-type':'application/json'},
-  body:JSON.stringify({email:'qa-other-'+randomUUID()+'@example.test',password:randomBytes(24).toString('base64url'),email_confirm:true})
+  body:JSON.stringify({email:otherEmail,password:otherPassword,email_confirm:true})
  })
  assert.equal(otherUserResponse.status,200)
  const otherUser=await otherUserResponse.json()
@@ -283,6 +294,81 @@ try {
  pass('Watchlist, Collection, and investment rules remain isolated across two selected portfolios; same Symbol can hold different targets')
  pass('Deleting a Collection preserves its Watchlist rows; incomplete rule inputs remain unavailable')
 
+ // Exercise v1.37 risk and SEC UI with synthetic-only API fixtures.
+ qaStage='risk-dashboard'
+ riskMode='loading'
+ await page.goto(new URL('/risk',base).href)
+ await page.getByText('กำลังคำนวณ Portfolio Risk...').waitFor()
+ await page.getByRole('heading',{name:'🛡️ ความเสี่ยงพอร์ต'}).waitFor()
+ const scenarioSelect=page.locator('label').filter({hasText:'ประเภทสถานการณ์'}).locator('select')
+ await page.getByText('-$200.00',{exact:true}).waitFor()
+ await scenarioSelect.selectOption('industry')
+ await page.getByText('-$160.00',{exact:true}).waitFor()
+ await scenarioSelect.selectOption('symbols')
+ await page.getByText('-$160.00',{exact:true}).waitFor()
+ pass('Risk Dashboard loading and market/industry/symbol stress simulations render from synthetic fixtures')
+ secRiskMode='error'
+ await page.getByRole('button',{name:'โหลดข้อมูล SEC'}).click()
+ await page.getByRole('alert').filter({hasText:'Synthetic SEC risk unavailable'}).waitFor()
+ secRiskMode='synthetic'
+ await page.getByRole('button',{name:'โหลดข้อมูล SEC'}).click()
+ await page.getByText('AAPL · Synthetic Issuer').waitFor()
+ await page.locator('summary').filter({hasText:'วิธีคำนวณและเอกสาร SEC'}).click()
+ await page.getByText(/Synthetic Accession/).waitFor()
+ pass('SEC Risk/Filing UI handles synthetic failure and renders issuer, metrics, and filing provenance without live SEC requests')
+ for(const appTheme of ['light','dark']){
+  await page.emulateMedia({colorScheme:appTheme})
+  const themeButton=page.locator('button[title^="โหมดปัจจุบัน:"]')
+  if(await page.locator('html').getAttribute('data-theme')!==appTheme) await themeButton.click()
+  await page.waitForFunction(theme=>document.documentElement.getAttribute('data-theme')===theme,appTheme)
+  const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()
+  const relevant=axe.violations.filter(v=>v.impact==='critical'||v.impact==='serious'||v.id==='color-contrast')
+  assert.equal(relevant.length,0,`Risk UI axe violations ${appTheme}: `+JSON.stringify(relevant.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)}))))
+  pass(`Risk/SEC UI accessibility axe checks ${appTheme}`)
+ }
+ for(const width of [375,768,1440]){
+  await page.setViewportSize({width,height:1000})
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,`Risk UI overflow at ${width}px`)
+  pass(`Risk/SEC UI responsive width ${width}px`)
+ }
+ await page.setViewportSize({width:1440,height:1000})
+
+ // Real same-context Account A -> logout -> Account B, including B's own PIN setup.
+ qaStage='account-switch-a-logout'
+ await page.getByRole('button',{name:'⚙️ บัญชี'}).click()
+ await page.getByRole('menuitem',{name:'ออกจากระบบ'}).click()
+ await page.waitForURL(/\/login(?:\?|$)/)
+ qaStage='account-switch-b-login'
+ await page.locator('input[type="email"]').fill(otherEmail)
+ await page.locator('input[type="password"]').fill(otherPassword)
+ await page.getByRole('button',{name:'เข้าสู่ระบบ'}).click()
+ await page.waitForURL(/\/(?:pin|dashboard)(?:\?|$)/)
+ if(new URL(page.url()).pathname!=='/pin') await page.goto(new URL('/pin',base).href)
+ await page.getByText('ตั้ง PIN 6 หลัก').waitFor()
+ const otherPinFields=page.locator('input[type=password]')
+ await otherPinFields.nth(0).fill(pin);await otherPinFields.nth(1).fill(pin)
+ await page.getByRole('button',{name:'ตั้ง PIN'}).click()
+ await page.waitForURL(/\/(?:dashboard|scanner)(?:\?|$)/)
+ qaStage='account-switch-b-unlocked'
+ const bPortfoliosResponse=await page.request.get(new URL('/api/portfolios',base).href)
+ assert.equal(bPortfoliosResponse.status(),200,'Account B must establish its own authenticated portfolio context')
+ const bPortfolioList=await bPortfoliosResponse.json()
+ const bPortfolio=bPortfolioList.portfolios.find(portfolio=>portfolio.id===bPortfolioList.active_portfolio_id)
+ assert(bPortfolio,'Account B must receive a default portfolio after first login')
+ assert(![portfolioA.id,portfolioB.id].includes(bPortfolio.id),'Account B default portfolio must not reuse either Account A portfolio')
+ const bLegacy=await page.request.get(new URL('/api/watchlist/legacy',base).href)
+ assert.equal(bLegacy.status(),200)
+ assert.deepEqual((await bLegacy.json()).items.map(item=>item.symbol),['NVDA'],'Account B may only see its own synthetic legacy row')
+ const bMine=await page.request.get(new URL('/api/scanner?universe=mine',base).href)
+ assert.equal(bMine.status(),200)
+ assert.deepEqual((await bMine.json()).items,[],'Account B Scanner mine must exclude Account B legacy-only data and Account A holdings/watchlists')
+ const foreignPortfolioAttempt=await page.request.post(new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioA.id}})
+ assert([403,404,409].includes(foreignPortfolioAttempt.status()),`Account B must be denied Account A portfolio; received ${foreignPortfolioAttempt.status()}`)
+ const bMineAfterForeign=await page.request.get(new URL('/api/scanner?universe=mine',base).href)
+ assert.equal(bMineAfterForeign.status(),200)
+ assert.deepEqual((await bMineAfterForeign.json()).items,[],'Denied cross-account portfolio selection must not expose old or foreign Scanner data')
+ pass('Same browser context Account A logout → Account B login/PIN preserves portfolio and Scanner isolation')
+
  await page.goto(new URL('/scanner',base).href)
  await page.getByRole('button',{name:/พื้นฐาน \/ มูลค่า/}).click()
  await page.getByRole('heading',{name:'วิเคราะห์พื้นฐานและมูลค่า'}).waitFor()
@@ -379,6 +465,7 @@ try {
     (path==='/api/daily-analyses/today'&&status===401&&['anonymous','login','pin-setup'].includes(stage))||
     (path==='/api/daily-analyses/today'&&status===401&&['lock-transition','pin-unlock'].includes(stage)&&authGate==='pin-required')||
     (path==='/api/fundamentals'&&status===503)||
+    (path==='/api/sec-risk'&&status===503)||
     (path==='/api/watchlist'&&status===503&&stage==='watchlist-missing-migration-ui')
   const unexpectedHttpFailures=browserHttpFailures.filter(failure=>!expectedHttpFailure(failure))
   const allowedHttpStatuses=new Set(browserHttpFailures.filter(expectedHttpFailure).map(failure=>failure.status))
@@ -410,6 +497,22 @@ function fixture(){
   make('AAPL','Apple Inc.','Apple Inc.','exact','0000320193'),
   make('MSFT','Microsoft Corp.','Microsoft Corporation','different','0000789019')
  ]}
+}
+
+function riskFixture(){
+ const positions=[
+  {symbol:'AAPL',shares:8,current_price:100,market_value:800,weight_pct:80,equity_weight_pct:80,industry:'Technology',stop_loss:null,stop_state:'MISSING',stop_risk_amount:null,stop_risk_pct_position:null,risk_contribution_pct:null},
+  {symbol:'MSFT',shares:2,current_price:100,market_value:200,weight_pct:20,equity_weight_pct:20,industry:'Software',stop_loss:null,stop_state:'MISSING',stop_risk_amount:null,stop_risk_pct_position:null,risk_contribution_pct:null},
+ ]
+ return {summary:{equity_market_value:1000,cash_balance:0,investable_portfolio_value:1000,cash_pct:0,largest_position_pct:80,largest_sector_pct:80,stop_coverage_pct:0,quantified_stop_risk_amount:0,quantified_stop_risk_pct:0,max_stop_loss_amount:null,max_stop_loss_pct:null,unprotected_symbols:['AAPL','MSFT'],breached_stop_symbols:[]},positions,sectors:[{industry:'Technology',market_value:800,weight_pct:80,equity_weight_pct:80},{industry:'Software',market_value:200,weight_pct:20,equity_weight_pct:20}],suggestions:[{severity:'WATCH',message:'Synthetic concentration warning'}],warnings:[],balances:{dime_balance:0,initial_capital:1000,dime_included_in_risk_total:false},methodology:{source:'synthetic'},data_quality:{priced_holding_count:2,unpriced_symbols:[],price_freshness:'unknown'}}
+}
+
+function secRiskFixture(){
+ const now=new Date().toISOString()
+ const evidence={concept:'SyntheticAssetsCurrent',value:1000,unit:'USD',periodStart:null,periodEnd:'2025-12-31',form:'10-K',filed:'2026-02-01',accession:'Synthetic Accession',sourceUrl:'https://www.sec.gov/Archives/edgar/data/synthetic/filing-index.htm'}
+ const indicator={status:'available',reason:'Synthetic fixture',value:1,unit:'ratio',periodEnd:'2025-12-31',filed:'2026-02-01',freshness:'fresh',evidence:[evidence]}
+ const unavailable={status:'unavailable',reason:'Synthetic fixture only',value:null,unit:null,periodEnd:null,filed:null,freshness:'unknown',evidence:[]}
+ return {results:[{symbol:'AAPL',risk:{status:'available',reason:'Synthetic fixture',identity:{cik:'0000000000',entityName:'Synthetic Issuer',exchange:'NASDAQ',status:'unverified'},companyFactsEntityName:'Synthetic Issuer',issuerNameMatch:'exact',fetchedAt:now,liquidity:indicator,liabilitiesToAssets:indicator,operatingCashFlow:unavailable,signals:['Synthetic risk signal'],methodology:['Synthetic only; no SEC request']},filings:[{cik:'0000000000',accession:'Synthetic Accession',form:'10-K',filingDate:'2026-02-01',sourceUrl:evidence.sourceUrl,contentAnalyzed:false}],filingStatus:'available'}],totalSymbols:1,metrics:{requestAttempts:0,maxHttpAttempts:12,deadlineMs:45000},coverage:{totalPortfolioSymbols:1,returnedSymbols:1,omittedSymbols:0,selectedSymbols:['AAPL'],selectionMethod:'synthetic fixture'}}
 }
 
 async function captureThemeSnapshot(page){
