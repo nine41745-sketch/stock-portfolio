@@ -129,6 +129,18 @@ function lightRiskColor(className, property) {
   assert.ok(value, `Light Risk theme must define ${property} for .${className}`)
   return value
 }
+function darkRiskColor(className) {
+  const escapedClass = className.replaceAll('/', '\\/')
+  const selector = `[data-theme="dark"] .risk-dashboard .${escapedClass}`
+  let value = null
+  riskCss.walkRules(rule => {
+    if (rule.selectors?.includes(selector)) rule.walkDecls('color', declaration => {
+      value = declaration.value.replace(/\s*!important$/, '')
+    })
+  })
+  assert.ok(value, `Dark Risk theme must define color for .${className}`)
+  return value
+}
 function rgb(hex) {
   assert.match(hex, /^#[\da-f]{6}$/i, `Expected opaque hex color, received ${hex}`)
   return [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16) / 255)
@@ -156,6 +168,15 @@ for (const [foregroundClass, backgroundClass] of [
   const ratio = contrast(lightRiskColor(foregroundClass, 'color'), lightRiskColor(backgroundClass, 'background-color'))
   assert.ok(ratio >= 4.5, `${foregroundClass} on ${backgroundClass} must meet WCAG AA normal-text contrast; got ${ratio.toFixed(2)}:1`)
 }
+for (const foregroundClass of ['text-gray-500', 'text-gray-600']) {
+  const foreground = darkRiskColor(foregroundClass)
+  for (const background of ['#030712', '#111827']) {
+    const ratio = contrast(foreground, background)
+    assert.ok(ratio >= 4.5, `${foregroundClass} on dark Risk surfaces must meet WCAG AA normal-text contrast; got ${ratio.toFixed(2)}:1`)
+  }
+}
+assert.ok(contrast(lightRiskColor('bg-blue-600.text-white', 'color'), '#2563eb') >= 4.5,
+  'Enabled primary Risk actions must retain accessible foreground contrast in Light Theme')
 for (const [borderClass, backgroundClass] of [
   ['border-yellow-500/30', 'bg-yellow-500/10'],
   ['border-red-500/30', 'bg-red-500/10'],

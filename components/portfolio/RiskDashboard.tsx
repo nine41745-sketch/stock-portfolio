@@ -199,7 +199,7 @@ export default function RiskDashboard() {
             <p className="text-xs text-gray-500">Stop Risk นับเฉพาะ Trade Plan สถานะ ENTERED ที่ Stop ต่ำกว่าราคาปัจจุบัน</p>
           </div>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500" role="region" aria-label="ความเสี่ยงรายหุ้น — ตารางเลื่อนแนวนอน" tabIndex={0}>
           <table className="w-full min-w-[920px] text-sm">
             <thead className="border-b border-gray-800 text-left text-xs text-gray-500">
               <tr>

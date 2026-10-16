@@ -168,6 +168,7 @@
 [data-theme="light"] .risk-dashboard .text-amber-200 { color: #854d0e !important; }
 [data-theme="light"] .risk-dashboard .text-gray-500 { color: #475569 !important; }
 [data-theme="light"] .risk-dashboard .text-white { color: #0f172a !important; }
+[data-theme="light"] .risk-dashboard .bg-blue-600.text-white { color: #ffffff !important; }
 [data-theme="light"] .risk-dashboard .bg-yellow-500\/10 { background-color: #fef9c3 !important; }
 [data-theme="light"] .risk-dashboard .bg-red-500\/10 { background-color: #fef2f2 !important; }
 [data-theme="light"] .risk-dashboard .bg-red-500\/15 { background-color: #fee2e2 !important; }
@@ -179,3 +180,7 @@
 [data-theme="light"] .risk-dashboard .border-red-500\/30,
 [data-theme="light"] .risk-dashboard .border-red-500\/50 { border-color: #b91c1c !important; }
 [data-theme="light"] .risk-dashboard .border-blue-500\/30 { border-color: #1d4ed8 !important; }
+
+/* Muted Risk dashboard copy must remain legible against the dark card surfaces. */
+[data-theme="dark"] .risk-dashboard .text-gray-500,
+[data-theme="dark"] .risk-dashboard .text-gray-600 { color: #9ca3af !important; }

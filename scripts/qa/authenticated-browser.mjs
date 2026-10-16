@@ -344,14 +344,20 @@ try {
   const themeButton=page.locator('button[title^="โหมดปัจจุบัน:"]')
   if(await page.locator('html').getAttribute('data-theme')!==appTheme) await themeButton.click()
   await page.waitForFunction(theme=>document.documentElement.getAttribute('data-theme')===theme,appTheme)
-  const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()
-  const relevant=axe.violations.filter(v=>v.impact==='critical'||v.impact==='serious'||v.id==='color-contrast')
-  assert.equal(relevant.length,0,`Risk UI axe violations ${appTheme}: `+JSON.stringify(relevant.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)}))))
+  await assertRiskAxe(page,appTheme,dir)
   pass(`Risk/SEC UI accessibility axe checks ${appTheme}`)
  }
  for(const width of [375,768,1440]){
   await page.setViewportSize({width,height:1000})
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,`Risk UI overflow at ${width}px`)
+  for(const appTheme of ['light','dark']){
+   await page.evaluate(theme=>{document.documentElement.setAttribute('data-theme',theme);window.dispatchEvent(new Event('stock-portfolio-theme-change'))},appTheme)
+   await assertRiskAxe(page,`${appTheme}-${width}`,dir)
+  }
+  const riskTable=page.getByRole('region',{name:'ความเสี่ยงรายหุ้น — ตารางเลื่อนแนวนอน'})
+  await riskTable.focus()
+  await page.keyboard.press('ArrowRight')
+  assert.equal(await riskTable.evaluate(element=>document.activeElement===element),true,'Risk table scroll region must be keyboard reachable')
   pass(`Risk/SEC UI responsive width ${width}px`)
  }
  await page.setViewportSize({width:1440,height:1000})
@@ -505,6 +511,22 @@ pass('Server outbound attempts blocked by guard: '+blocked)
 await writeFile(dir+'/results.json',JSON.stringify({status:'PASS',environment:'Disposable local Supabase loopback only',providers:'live credentials absent; synthetic UI fixture',checks,themeMatrix,consoleErrors:browserConsoleErrors.filter(error=>error.kind!=='http-status').length,expectedHttpConsoleErrors:browserConsoleErrors.filter(error=>error.kind==='http-status'),browserHttpFailures,runtimeErrors:browserRuntimeErrors.length,blockedExternalAttempts:blocked,blockedBrowserRequests:outside,data:'synthetic only'},null,2))
 await writeFile(dir+'/theme-matrix-evidence.json',JSON.stringify({status:'PASS',themeMatrix},null,2))
 console.log('Authenticated Browser QA passed: '+checks.length+' checks; external network is blocked by policy.')
+
+async function assertRiskAxe(page,label,evidenceDir){
+ const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()
+ const relevant=axe.violations.filter(v=>v.impact==='critical'||v.impact==='serious'||v.id==='color-contrast')
+ const computed=await page.locator('[data-app-shell-nav] button, [data-app-shell-nav] nav a, .risk-dashboard .text-gray-500, .risk-dashboard .text-gray-600').evaluateAll(elements=>elements.map(element=>{
+  const style=getComputedStyle(element)
+  const ancestors=[]
+  for(let parent=element;parent;parent=parent.parentElement){
+   const parentStyle=getComputedStyle(parent)
+   ancestors.push({tag:parent.tagName,classes:parent.className,color:parentStyle.color,background:parentStyle.backgroundColor,opacity:parentStyle.opacity})
+  }
+  return {tag:element.tagName,classes:element.className,color:style.color,background:style.backgroundColor,transition:style.transitionProperty,ancestors}
+ }))
+ await writeFile(`${evidenceDir}/risk-axe-${label}.json`,JSON.stringify({label,violations:relevant,computed},null,2))
+ assert.equal(relevant.length,0,`Risk UI axe violations ${label}: `+JSON.stringify(relevant.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)}))))
+}
 
 function fixture(){
  const now=new Date().toISOString()
