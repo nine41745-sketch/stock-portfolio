@@ -11,7 +11,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('scratchpad_notes')
-    .select('content')
+    .select('content, updated_at')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -20,10 +20,10 @@ export async function GET() {
     return NextResponse.json({ error: 'โหลดโน้ตไม่สำเร็จ' }, { status: 500 })
   }
 
-  return NextResponse.json({ content: data?.content ?? '' })
+  return NextResponse.json({ content: data?.content ?? '', revision: data?.updated_at ?? null, userId: user.id }, { headers: { 'Cache-Control': 'no-store' } })
 }
 
-// PUT /api/scratchpad — บันทึกโน้ต (upsert, เรียกแบบ debounce จากฝั่ง client หลังหยุดพิมพ์)
+// PUT /api/scratchpad — revision-guarded insert/update after client debounce.
 export async function PUT(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -45,13 +45,25 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: `โน้ตยาวเกิน ${MAX_SCRATCHPAD_LENGTH.toLocaleString('en-US')} ตัวอักษร` }, { status: 400 })
   }
 
-  const { error } = await supabase
-    .from('scratchpad_notes')
-    .upsert({ user_id: user.id, content: body.content, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
-
-  if (error) {
-    console.error('[scratchpad:PUT] upsert failed:', error)
-    return NextResponse.json({ error: 'บันทึกโน้ตไม่สำเร็จ' }, { status: 500 })
+  // Fail closed for older/cached clients; no caller may bypass compare-and-swap.
+  // Keep their draft in the browser and ask them to copy it before refreshing.
+  if (!Object.prototype.hasOwnProperty.call(body, 'expectedRevision')) {
+    return NextResponse.json({ error: 'ต้องโหลด Revision ก่อนบันทึก กรุณาคัดลอกข้อความไว้แล้วโหลดหน้าใหม่' }, { status: 428 })
   }
-  return NextResponse.json({ ok: true })
+  if (body.userId !== user.id) return NextResponse.json({ error: 'Session changed' }, { status: 403 })
+  if (body.expectedRevision !== null && (typeof body.expectedRevision !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(body.expectedRevision)
+    || !Number.isFinite(Date.parse(body.expectedRevision)))) {
+    return NextResponse.json({ error: 'Invalid revision' }, { status: 400 })
+  }
+  const row = { user_id: user.id, content: body.content, updated_at: new Date().toISOString() }
+  const result = body.expectedRevision === null
+    ? await supabase.from('scratchpad_notes').insert(row).select('updated_at').maybeSingle()
+    : await supabase.from('scratchpad_notes').update(row).eq('user_id', user.id)
+      .eq('updated_at', body.expectedRevision).select('updated_at').maybeSingle()
+  if (result.error?.code === '23505' || (!result.error && !result.data)) {
+    return NextResponse.json({ error: 'โน้ตมีการเปลี่ยนแปลงจากหน้าต่างอื่น กรุณาคัดลอกข้อความไว้แล้วเปิดหน้าใหม่' }, { status: 409 })
+  }
+  if (result.error) return NextResponse.json({ error: 'บันทึกโน้ตไม่สำเร็จ' }, { status: 500 })
+  return NextResponse.json({ ok: true, revision: result.data!.updated_at })
 }

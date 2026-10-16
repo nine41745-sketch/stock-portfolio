@@ -73,6 +73,9 @@ export async function resolveActivePortfolio(
         .eq('user_id', userId)
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: true })
+        // RSC fetch memoization may retain the initial empty GET. A signal
+        // opts this post-conflict read out so it can see the committed winner.
+        .abortSignal(new AbortController().signal)
       if (retry.error || !retry.data?.length) {
         console.error('[portfolio-context] default portfolio retry failed:', retry.error)
         throw new Error('PORTFOLIO_CONTEXT_CREATE_FAILED')

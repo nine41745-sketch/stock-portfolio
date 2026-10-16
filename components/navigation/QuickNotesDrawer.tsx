@@ -1,19 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { usePathname } from 'next/navigation'
-
-async function requireOk(response: Response, fallback: string): Promise<Response> {
-  if (response.ok) return response
-  let message = fallback
-  try {
-    const payload = await response.clone().json() as { error?: unknown }
-    if (typeof payload.error === 'string' && payload.error.trim()) message = payload.error
-  } catch {
-    // use fallback
-  }
-  throw new Error(message)
-}
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
+import { QuickNotesSession } from '@/lib/quick-notes-session'
 
 function buildAiPrompt(notes: string): string {
   const body = notes.trim() || '(ยังไม่ได้จดอะไรไว้ — เติมรายละเอียดตรงนี้ก่อน copy ไปสั่งงานจริง)'
@@ -32,56 +20,58 @@ ${body}
 }
 
 export default function QuickNotesDrawer() {
-  const pathname = usePathname()
-  const suppressedByLegacyDashboard = pathname === '/dashboard'
   const [isOpen, setIsOpen] = useState(false)
-  const [content, setContent] = useState('')
-  const [loaded, setLoaded] = useState(false)
-  const [loadFailed, setLoadFailed] = useState(false)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [session] = useState(() => new QuickNotesSession())
+  const { content, loaded, loadFailed, saveStatus } = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot)
+  const drawerId = useId()
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const [copied, setCopied] = useState(false)
   const [exported, setExported] = useState(false)
 
-  const loadScratchpad = useCallback(async () => {
-    try {
-      const res = await fetch('/api/scratchpad')
-      await requireOk(res, 'โหลดโน้ตไม่สำเร็จ')
-      const d = await res.json() as { content?: unknown }
-      setContent(typeof d.content === 'string' ? d.content : '')
-      setLoaded(true)
-      setLoadFailed(false)
-    } catch {
-      // สำคัญ: ถ้าอ่านไม่สำเร็จ ห้ามเปิด auto-save เพราะข้อความว่างอาจทับโน้ตเดิม
-      setLoaded(false)
-      setLoadFailed(true)
+  useEffect(() => {
+    void session.load()
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      if (session.hasUnsavedChanges()) { event.preventDefault(); event.returnValue = '' }
     }
-  }, [])
+    let navigation = 0
+    const flushBeforeLink = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !session.hasUnsavedChanges()) return
+      const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null
+      if (!link || link.hasAttribute('download') || (link.target && link.target !== '_self')) return
+      const destination = new URL(link.href, window.location.href)
+      if (destination.origin !== window.location.origin || destination.href === window.location.href) return
+      event.preventDefault()
+      const attempt = ++navigation
+      void session.flush().then(() => {
+        if (attempt !== navigation || !link.isConnected) return
+        if (session.hasUnsavedChanges()) setIsOpen(true)
+        else link.click()
+      })
+    }
+    window.addEventListener('beforeunload', warnUnsaved)
+    document.addEventListener('click', flushBeforeLink, true)
+    return () => {
+      navigation++
+      window.removeEventListener('beforeunload', warnUnsaved)
+      document.removeEventListener('click', flushBeforeLink, true)
+      session.leave()
+    }
+  }, [session])
 
   useEffect(() => {
-    if (suppressedByLegacyDashboard) return
-    const timer = window.setTimeout(() => void loadScratchpad(), 0)
-    return () => window.clearTimeout(timer)
-  }, [loadScratchpad, suppressedByLegacyDashboard])
-
-  useEffect(() => {
-    if (suppressedByLegacyDashboard || !loaded) return
-    const timer = setTimeout(async () => {
-      setSaveStatus('saving')
-      try {
-        const res = await fetch('/api/scratchpad', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content }),
-        })
-        await requireOk(res, 'บันทึกโน้ตไม่สำเร็จ')
-        setSaveStatus('saved')
-      } catch {
-        setSaveStatus('error')
-      }
-    }, 1000)
-
-    return () => clearTimeout(timer)
-  }, [content, loaded, suppressedByLegacyDashboard])
+    const dialog = dialogRef.current
+    if (!isOpen || !dialog) return
+    dialog.showModal()
+    const trigger = triggerRef.current
+    // Native modal dialog makes the background inert and traps Tab/Shift+Tab.
+    const target = dialog.querySelector<HTMLElement>('textarea:not(:disabled), button')
+    target?.focus()
+    return () => {
+      dialog.close()
+      if (trigger?.isConnected) trigger.focus()
+    }
+  }, [isOpen])
 
   function handleCopy() {
     navigator.clipboard.writeText(content)
@@ -94,7 +84,7 @@ export default function QuickNotesDrawer() {
 
   function handleClear() {
     if (content.trim() && !window.confirm('ล้างโน้ตทั้งหมด? กู้คืนไม่ได้')) return
-    setContent('')
+    session.edit('')
   }
 
   function handleExportPrompt() {
@@ -106,64 +96,77 @@ export default function QuickNotesDrawer() {
       .catch(() => {})
   }
 
-  if (suppressedByLegacyDashboard) return null
-
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setIsOpen(true)}
         aria-label="เปิด โน้ตด่วน"
-        className={`fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-purple-600 text-xl shadow-lg transition-all hover:scale-105 hover:bg-purple-500 ${isOpen ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+        aria-expanded={isOpen}
+        aria-controls={drawerId}
+        className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-purple-600 text-xl shadow-lg transition-all hover:scale-105 hover:bg-purple-500"
       >
         📝
       </button>
 
-      <div
-        aria-hidden="true"
-        onClick={() => setIsOpen(false)}
-        className={`fixed inset-0 z-40 bg-black/50 transition-opacity ${isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
-      />
-
-      <div
-        className={`fixed z-50 flex flex-col bg-gray-900 shadow-2xl transition-transform duration-300 ease-out
-          inset-x-0 bottom-0 h-[65vh] max-h-screen rounded-t-2xl border-t border-gray-800
-          sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:left-auto sm:h-auto sm:max-h-none sm:w-[360px] sm:rounded-none sm:rounded-l-2xl sm:border-l sm:border-t-0
-          ${isOpen ? 'translate-y-0 sm:translate-x-0' : 'translate-y-full sm:translate-y-0 sm:translate-x-full'}`}
-        role="dialog"
-        aria-modal="true"
+      <dialog
+        id={drawerId}
+        ref={dialogRef}
+        onCancel={() => setIsOpen(false)}
+        onClose={() => setIsOpen(false)}
+        onKeyDown={event => {
+          if (event.key !== 'Tab') return
+          const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), textarea:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])')).filter(node => node.getClientRects().length > 0)
+          const first = focusable[0], last = focusable.at(-1)
+          if (first && last && ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last))) {
+            event.preventDefault()
+            ;(event.shiftKey ? last : first).focus()
+          }
+        }}
+        onClick={event => {
+          if (event.target !== event.currentTarget) return
+          const box = event.currentTarget.getBoundingClientRect()
+          if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) setIsOpen(false)
+        }}
+        className="fixed m-0 w-full max-w-none flex-col bg-gray-900 shadow-2xl backdrop:bg-black/50 open:flex
+          inset-x-0 bottom-0 top-auto h-[65vh] max-h-screen rounded-t-2xl border border-gray-800
+          sm:inset-y-0 sm:right-0 sm:left-auto sm:h-dvh sm:max-h-none sm:w-[360px] sm:rounded-none sm:rounded-l-2xl"
+        aria-modal={isOpen ? true : undefined}
         aria-label="โน้ตด่วน"
       >
         <div className="flex shrink-0 items-center justify-between border-b border-gray-800 px-4 py-3">
           <span className="text-sm font-semibold text-gray-200">📝 โน้ตด่วน</span>
-          <button type="button" onClick={() => setIsOpen(false)} className="text-sm text-gray-500 hover:text-white" aria-label="ปิด โน้ตด่วน">✕</button>
+          <button type="button" onClick={() => setIsOpen(false)} className="text-sm text-gray-400 hover:text-white" aria-label="ปิด โน้ตด่วน">✕</button>
         </div>
 
         <div className="min-h-0 flex-1 p-3">
           {loadFailed ? (
             <div className="flex h-full flex-col items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-center">
-              <p className="text-sm font-medium text-red-300">โหลดโน้ตไม่สำเร็จ</p>
-              <p className="mt-1 text-xs text-gray-500">ระบบหยุด Auto-save ไว้เพื่อไม่ให้ข้อความว่างทับโน้ตเดิม</p>
-              <button type="button" onClick={() => void loadScratchpad()} className="mt-3 rounded bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700">ลองโหลดใหม่</button>
+              <p className="text-sm font-medium text-red-400">โหลดโน้ตไม่สำเร็จ</p>
+              <p className="mt-1 text-xs text-gray-400">ระบบหยุด Auto-save ไว้เพื่อไม่ให้ข้อความว่างทับโน้ตเดิม</p>
+              <button type="button" onClick={() => void session.load()} className="mt-3 rounded bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700">ลองโหลดใหม่</button>
             </div>
           ) : (
             <textarea
               value={content}
-              onChange={event => setContent(event.target.value)}
+              onChange={event => session.edit(event.target.value)}
+              aria-label="ข้อความโน้ตด่วน"
+              maxLength={50_000}
               disabled={!loaded}
               placeholder={loaded ? 'จดไอเดีย ฟีเจอร์ที่อยากทำเพิ่ม...' : 'กำลังโหลดโน้ต...'}
-              className="h-full w-full resize-none rounded-lg border border-gray-800 bg-gray-950/60 p-3 text-sm text-gray-200 placeholder-gray-600 focus:border-purple-500/50 focus:outline-none disabled:opacity-50"
+              className="h-full w-full resize-none rounded-lg border border-gray-800 bg-gray-950/60 p-3 text-sm text-gray-200 placeholder-gray-400 focus:border-purple-500/50 focus:outline-none disabled:opacity-50"
             />
           )}
         </div>
 
         <div className="flex shrink-0 flex-col gap-2 border-t border-gray-800 px-4 py-2.5">
-          <button type="button" onClick={handleExportPrompt} disabled={!loaded} className="w-full rounded border border-purple-500/30 bg-purple-600/20 px-2.5 py-1.5 text-xs font-medium text-purple-300 transition-colors hover:bg-purple-600/30 disabled:opacity-40">
+          <button type="button" onClick={handleExportPrompt} disabled={!loaded} className="w-full rounded border border-purple-500/30 bg-purple-600/20 px-2.5 py-1.5 text-xs font-medium text-purple-800 dark:text-purple-300 transition-colors hover:bg-purple-600/30 disabled:opacity-40">
             {exported ? '✓ คัดลอก Prompt แล้ว — พร้อมนำไปใช้กับ AI' : '📤 คัดลอก Prompt สำหรับ AI'}
           </button>
           <div className="flex items-center justify-between">
-            <span className={`text-xs ${saveStatus === 'error' ? 'text-red-400' : 'text-gray-500'}`}>
-              {saveStatus === 'saving' ? '⏳ กำลังบันทึก...' : saveStatus === 'saved' ? '✓ บันทึกอัตโนมัติแล้ว' : saveStatus === 'error' ? '⚠️ บันทึกไม่สำเร็จ' : ''}
+            <span role="status" className={`text-xs ${saveStatus === 'error' ? 'text-red-400' : 'text-gray-400'}`}>
+              {saveStatus === 'saving' ? '⏳ กำลังบันทึก...' : saveStatus === 'saved' ? '✓ บันทึกอัตโนมัติแล้ว' : saveStatus === 'error' ? '⚠️ บันทึกไม่สำเร็จ — คัดลอกข้อความไว้ แล้วเปิดหน้าใหม่ก่อนลองอีกครั้ง' : ''}
             </span>
             <div className="flex items-center gap-2">
               <button type="button" onClick={handleClear} disabled={!loaded} className="rounded bg-gray-800 px-2.5 py-1 text-xs text-gray-400 transition-colors hover:bg-red-900/40 hover:text-red-300 disabled:opacity-40">🗑️ ล้าง</button>
@@ -173,7 +176,7 @@ export default function QuickNotesDrawer() {
             </div>
           </div>
         </div>
-      </div>
+      </dialog>
     </>
   )
 }
