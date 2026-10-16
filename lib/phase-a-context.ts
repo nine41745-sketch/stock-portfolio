@@ -11,6 +11,9 @@ export class PhaseAError extends Error {
 export async function requirePhaseAPortfolio(expectedId?: string, requestClient?: Awaited<ReturnType<typeof createClient>>) {
   const supabase = requestClient ?? await createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
+  if (error && typeof error === 'object' && 'name' in error && error.name === 'AuthRetryableFetchError') {
+    throw new PhaseAError('บริการยืนยันตัวตนไม่พร้อม', 503)
+  }
   if (error || !user) throw new PhaseAError('Unauthorized', 401)
   const cookieStore = await cookies()
   const { data: { session } } = await supabase.auth.getSession()

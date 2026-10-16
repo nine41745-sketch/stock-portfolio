@@ -169,7 +169,7 @@ test('Budgeted Auth/REST preserves response status, headers and consumed data',a
  try{const result=await createDeadlineFetch(scope)('http://127.0.0.1/auth/v1/user');assert(ownedBody.bodyUsed);assert.equal(result.status,200);assert.equal(result.headers.get('x-test'),'preserved');assert.deepEqual(await result.json(),{id:'synthetic-user'});await scope.close()}finally{globalThis.fetch=original}
 })
 
-for (const stage of ['auth','portfolio']) test(`Actual Supabase SDK ${stage} hang stays fail-closed and drains`,async()=>{
+for (const stage of ['auth','auth-invalid','portfolio']) test(`Actual Supabase SDK ${stage} status mapping stays fail-closed and drains`,async()=>{
  const original=globalThis.fetch
  const savedUrl=process.env.NEXT_PUBLIC_SUPABASE_URL,savedKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
  process.env.NEXT_PUBLIC_SUPABASE_URL='http://127.0.0.1:54321';process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY='synthetic-local-key'
@@ -191,7 +191,7 @@ for (const stage of ['auth','portfolio']) test(`Actual Supabase SDK ${stage} han
    active++
    await new Promise((resolve,reject)=>init.signal.addEventListener('abort',()=>{active--;reject(init.signal.reason)},{once:true}))
   }
-  if(url.pathname.includes('/auth/'))return Response.json({id:'synthetic-owner'})
+  if(url.pathname.includes('/auth/'))return stage==='auth-invalid'?Response.json({code:'invalid_jwt',msg:'synthetic invalid session'},{status:401}):Response.json({id:'synthetic-owner'})
   return Response.json([{id:'synthetic-portfolio',name:'Synthetic',is_default:true}])
  }
  const startedAt=performance.now();const scope=new DiscoveryDeadline(undefined,1000,30)
@@ -199,8 +199,78 @@ for (const stage of ['auth','portfolio']) test(`Actual Supabase SDK ${stage} han
   const server=load('lib/supabase/server.ts',cache,overrides)
   const helper=load('lib/phase-a-context.ts',cache,overrides)
   const client=await server.createClient(scope)
-  await assert.rejects(helper.requirePhaseAPortfolio(undefined,client),error=>error instanceof helper.PhaseAError&&error.status===(stage==='auth'?401:503))
+  let mappedStatus
+  await assert.rejects(helper.requirePhaseAPortfolio(undefined,client),error=>{
+   assert(error instanceof helper.PhaseAError)
+   const response=helper.phaseAErrorResponse(error)
+   mappedStatus=response.status
+   return error.status===(stage==='auth-invalid'?401:503)
+  })
+  assert.equal(mappedStatus,stage==='auth-invalid'?401:503,'The Discovery route delegates PhaseAError HTTP status mapping to this response helper')
   await scope.close()
-  assert(performance.now()-startedAt<1000,'SDK retry sleeps must not outlive absolute budget');assert.equal(active,0);assert.equal(authCalls,1);assert.equal(pinChecks,stage==='auth'?0:1);assert.equal(restCalls,stage==='auth'?0:1)
+  assert(performance.now()-startedAt<1000,'SDK retry sleeps must not outlive absolute budget');assert.equal(active,0);assert.equal(authCalls,1);assert.equal(pinChecks,stage==='portfolio'?1:0);assert.equal(restCalls,stage==='portfolio'?1:0)
  }finally{await scope.close();globalThis.fetch=original;if(savedUrl===undefined)delete process.env.NEXT_PUBLIC_SUPABASE_URL;else process.env.NEXT_PUBLIC_SUPABASE_URL=savedUrl;if(savedKey===undefined)delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY=savedKey}
+})
+
+const yahooChart = load('lib/discovery-yahoo.ts')
+test('Direct Yahoo chart parsing accepts finite chart data with dates and provenance-ready bars', async()=>{
+ const tx=transport('normal'),scope=context(1000)
+ try{
+  const result=await yahooChart.getDiscoveryYahooChart('SYNTH/TEST',0,'1mo',scope)
+  assert.equal(result.quotes.length,260)
+  assert.equal(result.quotes[0].high,101)
+  assert(result.quotes[0].date instanceof Date)
+  assert(tx.requests[0].includes('SYNTH%2FTEST'))
+ }finally{scope.close()}
+})
+for(const payload of [null,{chart:{error:{code:'Not Found'},result:null}},{chart:{error:null,result:[{timestamp:'invalid',indicators:{quote:[{}]}}]}}]){
+ test(`Malformed or invalid Yahoo chart response fails closed: ${payload===null?'empty':payload.chart?.error?'provider-error':'invalid-shape'}`,async()=>{
+  const original=globalThis.fetch,scope=context(1000)
+  globalThis.fetch=async(input,init)=>{assert(init.signal instanceof AbortSignal);return Response.json(payload)}
+  try{await assert.rejects(yahooChart.getDiscoveryYahooChart('SYNTH',0,'1mo',scope))}finally{scope.close();globalThis.fetch=original}
+ })
+}
+for(const status of [401,429]) test(`Yahoo HTTP ${status} cancels an unread error body`,async()=>{
+ const original=globalThis.fetch,scope=context(1000);let cancelled=0
+ globalThis.fetch=async(input,init)=>{
+  assert(init.signal instanceof AbortSignal)
+  return new Response(new ReadableStream({start(controller){controller.enqueue(new Uint8Array([1,2,3]))},cancel(){cancelled++}}),{status})
+ }
+ try{await assert.rejects(yahooChart.getDiscoveryYahooChart('SYNTH',0,'1mo',scope));assert.equal(cancelled,1)}finally{scope.close();globalThis.fetch=original}
+})
+for(const status of [401,429]) test(`Yahoo HTTP ${status} falls back to synthetic Stooq bars without external access`,async()=>{
+ const original=globalThis.fetch,scope=context(1000),hosts=[]
+ globalThis.fetch=async(input,init)=>{
+  assert(init.signal instanceof AbortSignal)
+  const url=new URL(input);hosts.push(url.hostname)
+  if(url.hostname==='query2.finance.yahoo.com')return new Response('{}',{status})
+  assert.equal(url.hostname,'stooq.com')
+  return new Response('Date,Open,High,Low,Close,Volume\n'+Array.from({length:260},(_,i)=>`2026-01-01,${100+i},${102+i},${99+i},${101+i},1000`).join('\n'))
+ }
+ try{const result=await indicators.getTechnicalIndicators(`HTTP${status}FALLBACK`,scope);assert.equal(result.dataSource,'Stooq');assert(result.lastClose>0);assert(hosts.includes('stooq.com'))}finally{scope.close();globalThis.fetch=original}
+})
+test('Discovery ATH cache removes repeat per-symbol Yahoo requests without changing values',async()=>{
+ const original=globalThis.fetch,scopeA=context(1000),scopeB=context(1000);let calls=0
+ const symbols=Array.from({length:12},(_,i)=>`SYNTH-ATH-CACHE-${i}-20261016`)
+ globalThis.fetch=async(input,init)=>{calls++;assert(init.signal instanceof AbortSignal);return Response.json({chart:{error:null,result:[{timestamp:[1700000000],indicators:{quote:[{high:[123.45],close:[120],low:[119],volume:[500]}]}}]}})}
+ try{
+  const first=await Promise.all(symbols.map(symbol=>ath.getAllTimeHigh(symbol,scopeA)))
+  assert.equal(calls,12,'A cold 12-symbol scan makes one monthly ATH request per symbol')
+  const second=await Promise.all(symbols.map(symbol=>ath.getAllTimeHigh(symbol,scopeB)))
+  assert.deepEqual(second,first);assert.equal(calls,12,'A warm repeat scan makes no additional monthly ATH requests')
+  const retrySymbol='SYNTH-ATH-FAILED-NOT-CACHED-20261016';let attempts=0
+  globalThis.fetch=async(input,init)=>{attempts++;assert(init.signal instanceof AbortSignal);return attempts===1?new Response('{}',{status:503}):Response.json({chart:{error:null,result:[{timestamp:[1700000000],indicators:{quote:[{high:[123.45]}]}}]}})}
+  const failed=await ath.getAllTimeHigh(retrySymbol,scopeA)
+  const recovered=await ath.getAllTimeHigh(retrySymbol,scopeB)
+  assert.equal(failed.allTimeHigh,null);assert.equal(recovered.allTimeHigh,123.45);assert.equal(attempts,2,'Transient provider failure must not poison the six-hour cache')
+ }finally{scopeA.close();scopeB.close();globalThis.fetch=original}
+})
+test('Deadline signal abort cannot settle a provider that ignores it; ownership waits for settlement',async()=>{
+ const scope=new DiscoveryDeadline(undefined,500,25);let release,started,aborted=false,settled=false
+ const didStart=new Promise(resolve=>{started=resolve})
+ const task=scope.run(signal=>new Promise(resolve=>{release=resolve;started();signal.addEventListener('abort',()=>{aborted=true},{once:true})})).then(()=>{settled=true})
+ const observed=task.catch(error=>{settled=true;return error})
+ await didStart;await new Promise(resolve=>setTimeout(resolve,25))
+ assert(aborted);assert.equal(settled,false,'No race may return while an uncooperative provider remains outstanding')
+ release();const outcome=await observed;assert.equal(outcome,undefined);await scope.close();assert.equal(settled,true)
 })

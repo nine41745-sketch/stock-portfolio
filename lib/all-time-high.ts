@@ -70,7 +70,11 @@ export async function getAllTimeHigh(symbol: string, context?: DiscoveryProvider
   if (cached && cached.expiresAt > now) return cached.value
 
   const value = await fetchAllTimeHigh(normalized, context)
-  if (!context) cache.set(normalized, { expiresAt: now + CACHE_TTL_MS, value })
+  // ATH is public market data shared by all consumers. Discovery may reuse and
+  // populate the same bounded cache; never cache a failed/aborted scoped fetch.
+  if (!context || (value.allTimeHigh !== null && Number.isFinite(value.allTimeHigh) && !context.signal.aborted)) {
+    cache.set(normalized, { expiresAt: now + CACHE_TTL_MS, value })
+  }
   return value
 }
 
