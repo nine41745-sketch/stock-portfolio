@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import AllocationPlanner from './AllocationPlanner'
 import SmartDcaPlanner from './SmartDcaPlanner'
+import SecRiskPanel from './SecRiskPanel'
+import { calculatePortfolioStressScenario } from '@/lib/risk'
 
 interface RiskPosition {
   symbol: string
@@ -52,6 +54,11 @@ interface RiskResponse {
     dime_included_in_risk_total: boolean
   }
   methodology: Record<string, string>
+  data_quality?: {
+    priced_holding_count: number
+    unpriced_symbols: string[]
+    price_freshness: 'unknown'
+  }
 }
 
 function money(value: number | null): string {
@@ -81,6 +88,8 @@ export default function RiskDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+  const [scenarioMode, setScenarioMode] = useState<'market' | 'industry' | 'symbols'>('market')
+  const [scenarioIndustry, setScenarioIndustry] = useState('')
   const [scenarioSymbol, setScenarioSymbol] = useState('')
   const [shockPct, setShockPct] = useState(-20)
 
@@ -115,18 +124,12 @@ export default function RiskDashboard() {
   }, [reloadKey])
 
   const scenario = useMemo(() => {
-    if (!data || !scenarioSymbol || !Number.isFinite(shockPct)) return null
-    const position = data.positions.find(item => item.symbol === scenarioSymbol)
-    if (!position) return null
-    const bounded = Math.max(-100, Math.min(100, shockPct))
-    const impact = position.market_value * (bounded / 100)
-    const total = data.summary.investable_portfolio_value
-    return {
-      impact,
-      impactPct: total === 0 ? null : (impact / total) * 100,
-      newTotal: total + impact,
-    }
-  }, [data, scenarioSymbol, shockPct])
+    if (!data || !Number.isFinite(shockPct)) return null
+    const unpricedSymbols = data.data_quality?.unpriced_symbols ?? []
+    if (scenarioMode === 'market') return calculatePortfolioStressScenario(data, { type: 'market', shock_pct: shockPct }, unpricedSymbols)
+    if (scenarioMode === 'industry') return calculatePortfolioStressScenario(data, { type: 'industry', industry: scenarioIndustry || data.sectors[0]?.industry || '', shock_pct: shockPct }, unpricedSymbols)
+    return calculatePortfolioStressScenario(data, { type: 'symbols', shocks: { [scenarioSymbol || data.positions[0]?.symbol || '']: shockPct } }, unpricedSymbols)
+  }, [data, scenarioMode, scenarioIndustry, scenarioSymbol, shockPct])
 
   if (loading) {
     return <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400">กำลังคำนวณ Portfolio Risk...</div>
@@ -187,6 +190,7 @@ export default function RiskDashboard() {
           </ul>
         </section>
       )}
+      <p className="text-xs text-gray-500">ความสดใหม่ของราคา: {data.data_quality?.price_freshness === 'unknown' ? 'ไม่ทราบ — แหล่งราคาปัจจุบันไม่มีเวลารายตัวให้ตรวจ' : 'ไม่ทราบ'}; ราคาที่ไม่มีข้อมูลไม่ถูกใช้คำนวณและแสดงใน coverage</p>
 
       <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
@@ -262,16 +266,27 @@ export default function RiskDashboard() {
 
       <AllocationPlanner positions={data.positions} dimeBalance={data.balances.dime_balance} />
       <SmartDcaPlanner />
+      <SecRiskPanel />
 
       <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
         <h2 className="font-bold text-white">จำลองสถานการณ์</h2>
-        <p className="mt-1 text-xs text-gray-500">จำลองหุ้นตัวเดียวขยับตาม % ที่กำหนด โดยสมมติรายการอื่นคงที่</p>
+        <p className="mt-1 text-xs text-gray-500">คำนวณจากราคาที่มีอยู่ในคำขอนี้เท่านั้น; เงินสดคงเดิมและผลจำลองไม่ถูกบันทึก</p>
         <div className="mt-4 flex flex-wrap items-end gap-3">
-          <label className="text-xs text-gray-400">หุ้น
-            <select value={scenarioSymbol} onChange={event => setScenarioSymbol(event.target.value)} className="mt-1 block rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white">
-              {data.positions.map(position => <option key={position.symbol} value={position.symbol}>{position.symbol}</option>)}
+          <label className="text-xs text-gray-400">ประเภทสถานการณ์
+            <select value={scenarioMode} onChange={event => setScenarioMode(event.target.value as typeof scenarioMode)} className="mt-1 block rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white">
+              <option value="market">Market-wide shock</option><option value="industry">Industry shock</option><option value="symbols">หุ้นรายตัว</option>
             </select>
           </label>
+          {scenarioMode === 'industry' && <label className="text-xs text-gray-400">Industry
+            <select value={scenarioIndustry || data.sectors[0]?.industry || ''} onChange={event => setScenarioIndustry(event.target.value)} className="mt-1 block rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white">
+              {data.sectors.map(sector => <option key={sector.industry} value={sector.industry}>{sector.industry}</option>)}
+            </select>
+          </label>}
+          {scenarioMode === 'symbols' && <label className="text-xs text-gray-400">หุ้น
+            <select value={scenarioSymbol || data.positions[0]?.symbol || ''} onChange={event => setScenarioSymbol(event.target.value)} className="mt-1 block rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white">
+              {data.positions.map(position => <option key={position.symbol} value={position.symbol}>{position.symbol}</option>)}
+            </select>
+          </label>}
           <label className="text-xs text-gray-400">การเปลี่ยนแปลง %
             <input type="number" min="-100" max="100" step="1" value={shockPct} onChange={event => setShockPct(Number(event.target.value))} className="mt-1 block w-28 rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white" />
           </label>
@@ -282,10 +297,15 @@ export default function RiskDashboard() {
           </div>
         </div>
         {scenario && (
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg bg-gray-950/70 p-3"><p className="text-xs text-gray-500">ผลกระทบเงิน</p><p className={`mt-1 font-bold ${scenario.impact < 0 ? 'text-red-300' : 'text-green-300'}`}>{money(scenario.impact)}</p></div>
-            <div className="rounded-lg bg-gray-950/70 p-3"><p className="text-xs text-gray-500">ผลกระทบต่อพอร์ต</p><p className={`mt-1 font-bold ${(scenario.impactPct ?? 0) < 0 ? 'text-red-300' : 'text-green-300'}`}>{scenario.impactPct === null ? '—' : `${scenario.impactPct >= 0 ? '+' : ''}${scenario.impactPct.toFixed(2)}%`}</p></div>
-            <div className="rounded-lg bg-gray-950/70 p-3"><p className="text-xs text-gray-500">มูลค่าพอร์ตหลังจำลอง</p><p className="mt-1 font-bold text-white">{money(scenario.newTotal)}</p></div>
+          <div className="mt-4 space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg bg-gray-950/70 p-3"><p className="text-xs text-gray-500">มูลค่าพอร์ตก่อนจำลอง</p><p className="mt-1 font-bold text-white">{money(scenario.baseline_portfolio_value)}</p></div>
+              <div className="rounded-lg bg-gray-950/70 p-3"><p className="text-xs text-gray-500">Simulated P/L</p><p className={`mt-1 font-bold ${scenario.simulated_pnl < 0 ? 'text-red-300' : 'text-green-300'}`}>{money(scenario.simulated_pnl)}</p></div>
+              <div className="rounded-lg bg-gray-950/70 p-3"><p className="text-xs text-gray-500">มูลค่าพอร์ตหลังจำลอง</p><p className="mt-1 font-bold text-white">{money(scenario.new_portfolio_value)}</p></div>
+              <div className="rounded-lg bg-gray-950/70 p-3"><p className="text-xs text-gray-500">Coverage ของหุ้นที่จำลอง</p><p className="mt-1 font-bold text-white">{percent(scenario.coverage_pct)} · {scenario.affected_symbols.length}/{data.data_quality?.priced_holding_count ?? data.positions.length} หุ้นที่มีราคา</p></div>
+            </div>
+            <p className="text-xs text-gray-400">สมมติฐาน: {scenario.assumptions.join(' · ')}</p>
+            {scenario.unpriced_symbols.length > 0 && <p className="text-xs text-amber-300">ราคาขาดหาย จึงไม่รวมในการจำลอง: {scenario.unpriced_symbols.join(', ')}</p>}
           </div>
         )}
       </section>

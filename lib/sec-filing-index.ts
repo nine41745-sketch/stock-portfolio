@@ -1,5 +1,16 @@
-export type SecFilingForm = '10-K' | '10-K/A'
+export type SecFilingForm = '10-K' | '10-K/A' | '10-Q' | '10-Q/A' | '8-K' | '8-K/A'
 export type SecFilingResolutionStatus = 'resolved' | 'missing' | 'unverified' | 'ambiguous'
+
+export interface SecRecentFiling {
+  cik: string
+  accession: string
+  form: SecFilingForm
+  filingDate: string
+  primaryDocument: string
+  submissionsUrl: string
+  sourceUrl: string
+  contentAnalyzed: false
+}
 
 export interface SecFilingResolution {
   status: SecFilingResolutionStatus
@@ -16,6 +27,14 @@ const CIK = /^\d{10}$/
 const SUBMISSIONS_CIK = /^\d{1,10}$/
 const ACCESSION = /^\d{10}-\d{2}-\d{6}$/
 const DOCUMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,179}\.html?$/i
+const RECENT_FORMS = new Set<SecFilingForm>(['10-K', '10-K/A', '10-Q', '10-Q/A', '8-K', '8-K/A'])
+const DATE = /^\d{4}-\d{2}-\d{2}$/
+
+function validFilingDate(value: string): boolean {
+  if (!DATE.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
 
 function asRecord(value: unknown): JsonRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null
@@ -29,6 +48,42 @@ function normalizeSubmissionsCik(value: unknown): string | null {
   if (typeof value !== 'string' && typeof value !== 'number') return null
   const text = String(value)
   return SUBMISSIONS_CIK.test(text) ? text.padStart(10, '0') : null
+}
+
+/** Normalize only recent issuer Submissions rows; the linked filing body is not analyzed here. */
+export function selectSecRecentFilings(expectedCik: string, evidence: unknown): SecRecentFiling[] {
+  if (!CIK.test(expectedCik)) return []
+  const wrapper = asRecord(evidence)
+  const requestUrl = wrapper?.requestUrl
+  if (typeof requestUrl !== 'string') return []
+  let parsedUrl: URL
+  try { parsedUrl = new URL(requestUrl) } catch { return [] }
+  if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'data.sec.gov' ||
+      (parsedUrl.port && parsedUrl.port !== '443') || parsedUrl.username || parsedUrl.password ||
+      parsedUrl.search || parsedUrl.hash || parsedUrl.pathname !== `/submissions/CIK${expectedCik}.json`) return []
+  const payload = asRecord(wrapper?.payload)
+  if (normalizeSubmissionsCik(payload?.cik) !== expectedCik) return []
+  const recent = asRecord(asRecord(payload?.filings)?.recent)
+  const accessions = recent?.accessionNumber
+  const forms = recent?.form
+  const dates = recent?.filingDate
+  const documents = recent?.primaryDocument
+  if (!Array.isArray(accessions) || !Array.isArray(forms) || !Array.isArray(dates) || !Array.isArray(documents) ||
+      accessions.length !== forms.length || accessions.length !== dates.length || accessions.length !== documents.length) return []
+  const results: SecRecentFiling[] = []
+  for (let index = 0; index < accessions.length; index += 1) {
+    const accession = accessions[index]
+    const form = forms[index]
+    const filingDate = dates[index]
+    const document = documents[index]
+    if (typeof accession !== 'string' || !ACCESSION.test(accession) || typeof form !== 'string' ||
+        !RECENT_FORMS.has(form as SecFilingForm) || typeof filingDate !== 'string' || !validFilingDate(filingDate) || typeof document !== 'string' ||
+        !DOCUMENT.test(document) || document.includes('..') || document.includes('/') || document.includes('\\')) continue
+    const base = `https://www.sec.gov/Archives/edgar/data/${Number(expectedCik)}/${accession.replaceAll('-', '')}/`
+    results.push({ cik: expectedCik, accession, form: form as SecFilingForm, filingDate, primaryDocument: document,
+      submissionsUrl: requestUrl, sourceUrl: `${base}${encodeURIComponent(document)}`, contentAnalyzed: false })
+  }
+  return results.sort((a, b) => b.filingDate.localeCompare(a.filingDate) || b.accession.localeCompare(a.accession)).slice(0, 20)
 }
 
 /**

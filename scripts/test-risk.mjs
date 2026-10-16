@@ -57,6 +57,29 @@ assert.equal(shock.impact_amount, -200)
 assert.equal(shock.impact_pct_portfolio, -6.67)
 assert.equal(shock.new_portfolio_value, 2800)
 
+const marketShock = risk.calculatePortfolioStressScenario(full, { type: 'market', shock_pct: -20 }, ['CCC'])
+assert.ok(marketShock, 'Market shock must support the complete priced portfolio')
+assert.equal(marketShock.baseline_portfolio_value, 3000)
+assert.equal(marketShock.simulated_pnl, -400)
+assert.equal(marketShock.new_portfolio_value, 2600)
+assert.equal(marketShock.affected_symbols.length, 2)
+assert.deepEqual(marketShock.unpriced_symbols, ['CCC'])
+assert.equal(marketShock.coverage_pct, 100, 'Coverage is measured against priced equity and missing prices stay explicit')
+
+const industryShock = risk.calculatePortfolioStressScenario(full, { type: 'industry', industry: 'technology', shock_pct: -30 })
+assert.equal(industryShock.affected_symbols.length, 1)
+assert.equal(industryShock.simulated_pnl, -300)
+assert.equal(industryShock.new_portfolio_value, 2700)
+const perSymbolShock = risk.calculatePortfolioStressScenario(full, {
+  type: 'symbols', shocks: { AAA: -10, BBB: -25 },
+})
+assert.equal(perSymbolShock.simulated_pnl, -350)
+assert.equal(perSymbolShock.new_portfolio_value, 2650)
+assert.deepEqual(perSymbolShock.affected_symbols, ['AAA', 'BBB'])
+assert.equal(risk.calculatePortfolioStressScenario(full, { type: 'industry', industry: 'none', shock_pct: -20 }), null)
+assert.equal(risk.calculatePortfolioStressScenario(full, { type: 'market', shock_pct: Number.NaN }), null)
+assert.equal(risk.calculatePortfolioStressScenario(full, { type: 'symbols', shocks: { AAA: Number.NaN } }), null)
+
 for (const path of [
   'lib/risk.ts',
   'lib/company-profile.ts',
@@ -72,6 +95,9 @@ assert.match(api, /get_decrypted_trade_plans/, 'Risk should use Trade Plan stops
 assert.match(api, /getCompanyProfiles/, 'Risk must use a real industry source rather than invent sectors')
 assert.doesNotMatch(api, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/, 'Risk API must remain read-only')
 assert.doesNotMatch(api, /save_trade_plan|save_portfolio_transaction/, 'Risk must not execute trades or mutate plans')
+assert.match(api, /requirePhaseAPortfolio\(\)/, 'Risk must require an owned selected portfolio and PIN without default creation')
+assert.match(api, /p_user_id: userId, p_portfolio_id: portfolioId/, 'Holdings and plans must be scoped to owner and selected portfolio')
+assert.match(api, /price_freshness: 'unknown'/, 'Do not claim price freshness without provider timestamps')
 
 const ui = fs.readFileSync('components/portfolio/RiskDashboard.tsx', 'utf8')
 assert.match(ui, /🛡️ ความเสี่ยงพอร์ต/, 'Risk workspace title is required')
@@ -81,6 +107,10 @@ assert.match(ui, /สัดส่วนเงินสด/, 'Cash percentage mus
 assert.match(ui, /ขาดทุนหากถึง Stop/, 'Portfolio stop loss must be visible')
 assert.match(ui, /จำลองสถานการณ์/, 'Stress scenario must be available')
 assert.match(ui, /-20/, 'A -20% shock preset is required')
+assert.match(ui, /Market-wide shock/, 'Stress UI must include portfolio-wide scenario')
+assert.match(ui, /Industry shock/, 'Stress UI must include industry concentration scenario')
+assert.match(ui, /Simulated P\/L/, 'Stress UI must show multi-position simulated P/L')
+assert.match(ui, /Coverage ของหุ้นที่จำลอง/, 'Stress UI must disclose scenario coverage')
 assert.match(ui, /สัญญาณความเสี่ยง/, 'Deterministic rebalance flags must be visible')
 assert.match(ui, /ไม่สร้าง BUY\/SELL/, 'No-auto-trade safety must be explicit')
 

@@ -57,7 +57,12 @@ const scopedFiles = [
 ]
 for (const file of scopedFiles) {
   const source = fs.readFileSync(file, 'utf8')
-  assert.match(source, /resolveActivePortfolio/, `${file} must resolve the active portfolio`)
+  if (file === 'app/api/risk/route.ts') {
+    assert.match(source, /requirePhaseAPortfolio\(\)/, 'Risk must validate Auth/PIN/ownership and use the active portfolio without creating a default')
+    assert.match(source, /p_portfolio_id: portfolioId/, 'Risk service reads must be scoped to the validated active portfolio')
+  } else {
+    assert.match(source, /resolveActivePortfolio/, `${file} must resolve the active portfolio`)
+  }
   assert.match(source, /portfolio/, `${file} must contain portfolio scoping`)
 }
 

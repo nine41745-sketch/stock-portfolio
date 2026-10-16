@@ -82,12 +82,23 @@ export function secStatusFromHttp(status: number): SecStatus {
 }
 
 export interface SecFetchResult { status: SecStatus; body: unknown | null }
+export interface SecAttemptBudget {
+  readonly maxAttempts: number
+  readonly used: number
+  consume(): boolean
+}
+
+export function createSecAttemptBudget(maxAttempts = 10): SecAttemptBudget {
+  const cap = Number.isSafeInteger(maxAttempts) ? Math.max(0, Math.min(10, maxAttempts)) : 10
+  let used = 0
+  return { maxAttempts: cap, get used() { return used }, consume() { if (used >= cap) return false; used += 1; return true } }
+}
 type SecFetch = (url: string, init: RequestInit & { next?: { revalidate: number } }) => Promise<Response>
 
 export async function fetchSecJson(
   url: string, userAgent: string, fetcher: SecFetch = fetch,
   pause: (ms: number) => Promise<void> = ms => new Promise(resolve => setTimeout(resolve, ms)),
-  budget: { deadlineAt: number; timeoutMs?: number } = { deadlineAt: Date.now() + 18000 },
+  budget: { deadlineAt: number; timeoutMs?: number; attemptBudget?: SecAttemptBudget } = { deadlineAt: Date.now() + 18000 },
 ): Promise<SecFetchResult> {
   if (!validSecUserAgent(userAgent) || !isAllowedSecUrl(url)) {
     return { status: 'unavailable', body: null }
@@ -95,6 +106,7 @@ export async function fetchSecJson(
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const remainingMs = budget.deadlineAt - Date.now()
     if (remainingMs <= 0) return { status: 'provider_error', body: null }
+    if (budget.attemptBudget && !budget.attemptBudget.consume()) return { status: 'provider_error', body: null }
     try {
       const response = await fetcher(url, {
         headers: { 'User-Agent': userAgent, Accept: 'application/json' },
