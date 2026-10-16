@@ -148,6 +148,7 @@ for (const [foregroundClass, backgroundClass] of [
   ['text-red-200', 'bg-red-500/15'],
   ['text-green-200', 'bg-green-500/10'],
   ['text-blue-200', 'bg-blue-500/10'],
+  ['text-amber-200', 'bg-gray-950/50'],
   ['text-red-300', 'bg-gray-950/70'],
   ['text-gray-500', 'bg-gray-950/70'],
   ['text-white', 'bg-gray-950/70'],
