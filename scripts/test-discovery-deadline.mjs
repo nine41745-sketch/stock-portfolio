@@ -263,6 +263,16 @@ test('Discovery ATH cache removes repeat per-symbol Yahoo requests without chang
   const failed=await ath.getAllTimeHigh(retrySymbol,scopeA)
   const recovered=await ath.getAllTimeHigh(retrySymbol,scopeB)
   assert.equal(failed.allTimeHigh,null);assert.equal(recovered.allTimeHigh,123.45);assert.equal(attempts,2,'Transient provider failure must not poison the six-hour cache')
+  const abortedSymbol='SYNTH-ATH-ABORTED-NOT-CACHED-20261016';let abortAttempts=0
+  globalThis.fetch=async(input,init)=>{
+   abortAttempts++;assert(init.signal instanceof AbortSignal)
+   if(abortAttempts===1)return new Promise((resolve,reject)=>init.signal.addEventListener('abort',()=>reject(init.signal.reason),{once:true}))
+   return Response.json({chart:{error:null,result:[{timestamp:[1700000000],indicators:{quote:[{high:[345.67]}]}}]}})
+  }
+  const abortScope=context(40)
+  const aborted=await ath.getAllTimeHigh(abortedSymbol,abortScope);abortScope.close()
+  const afterAbort=await ath.getAllTimeHigh(abortedSymbol,scopeB)
+  assert.equal(aborted.allTimeHigh,null);assert.equal(afterAbort.allTimeHigh,345.67);assert.equal(abortAttempts,2,'Aborted Discovery requests must not create a negative cache entry')
  }finally{scopeA.close();scopeB.close();globalThis.fetch=original}
 })
 test('Deadline signal abort cannot settle a provider that ignores it; ownership waits for settlement',async()=>{
@@ -273,4 +283,27 @@ test('Deadline signal abort cannot settle a provider that ignores it; ownership 
  await didStart;await new Promise(resolve=>setTimeout(resolve,25))
  assert(aborted);assert.equal(settled,false,'No race may return while an uncooperative provider remains outstanding')
  release();const outcome=await observed;assert.equal(outcome,undefined);await scope.close();assert.equal(settled,true)
+})
+test('Discovery bypasses a negative ATH cached by a legacy consumer', async()=>{
+ const original=globalThis.fetch
+ let legacyCalls=0,discoveryCalls=0
+ const isolatedAth=load('lib/all-time-high.ts',new Map(),{
+  'yahoo-finance2':class {chart(){legacyCalls++;return Promise.resolve({quotes:[]})}}
+ })
+ const symbol='SYNTH-LEGACY-NEGATIVE-THEN-DISCOVERY-20261016'
+ try{
+  const legacyFirst=await isolatedAth.getAllTimeHigh(symbol)
+  assert.equal(legacyFirst.allTimeHigh,null)
+  const legacyCached=await isolatedAth.getAllTimeHigh(symbol)
+  assert.equal(legacyCached.allTimeHigh,null)
+  assert.equal(legacyCalls,1,'Legacy callers should retain the existing negative cache behavior')
+  globalThis.fetch=async(input,init)=>{
+   discoveryCalls++
+   assert(init.signal instanceof AbortSignal)
+   return Response.json({chart:{error:null,result:[{timestamp:[1700000000],indicators:{quote:[{high:[234.56]}]}}]}})
+  }
+  const discovered=await isolatedAth.getAllTimeHigh(symbol,context(1000))
+  assert.equal(discovered.allTimeHigh,234.56,'Discovery should retry a negative cache entry and use newly available provider data')
+  assert.equal(discoveryCalls,1)
+ }finally{globalThis.fetch=original}
 })

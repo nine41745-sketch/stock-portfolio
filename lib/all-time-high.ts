@@ -67,7 +67,7 @@ export async function getAllTimeHigh(symbol: string, context?: DiscoveryProvider
   if (context && !context.canStart()) return { symbol: normalized, allTimeHigh: null, asOf: null }
   const now = Date.now()
   const cached = cache.get(normalized)
-  if (cached && cached.expiresAt > now) return cached.value
+  if (cached && cached.expiresAt > now && (!context || cached.value.allTimeHigh !== null)) return cached.value
 
   const value = await fetchAllTimeHigh(normalized, context)
   // ATH is public market data shared by all consumers. Discovery may reuse and
