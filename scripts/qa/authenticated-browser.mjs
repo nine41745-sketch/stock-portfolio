@@ -171,7 +171,7 @@ try {
  qaStage='watchlist-missing-migration-ui'
  watchlistMode='missing-schema'
  await page.goto(new URL('/scanner',base).href)
- await page.getByRole('button',{name:'⭐ หุ้นที่เล็งไว้',exact:true}).click()
+ await page.getByRole('button',{name:/^⭐ หุ้นที่เล็งไว้/}).click()
  await page.getByRole('alert').filter({hasText:'Synthetic missing portfolio Watchlist migration'}).waitFor()
  assert.equal(await page.getByText(/ยังไม่มีรายการ Watchlist ที่ผูกกับพอร์ตนี้/).count(),0,'Migration failure must not be presented as an empty portfolio Watchlist')
  assert(await page.getByText(/Legacy แสดงแยกแบบอ่านอย่างเดียว/).count()===1,'Legacy Watchlist must be disclosed separately as read-only and unmapped')
