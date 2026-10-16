@@ -56,7 +56,14 @@ function expectedDailyAnalysisAuthFailure(failure, lifecycle) {
   const setupStage = attempt.account === 'A'
     ? failure.stage === 'pin-setup' || (failure.stage === 'login' && failure.authPhase === 'authenticating')
     : ['account-switch-b-authenticating', 'account-switch-b-pin-setup'].includes(failure.stage)
-  const authControlOrderMatchesStage = failure.stage === 'account-switch-b-authenticating'
+  const accountAInitialPinSetupRace = attempt.account === 'A' &&
+    failure.stage === 'pin-setup' && failure.authPhase === 'authenticating' &&
+    Number.isInteger(attempt.unauthenticatedControlSequence) &&
+    Number.isInteger(attempt.authRequestSequence) &&
+    attempt.unauthenticatedControlSequence < attempt.authRequestSequence &&
+    attempt.authRequestSequence < failure.sequence &&
+    failure.sequence < attempt.authenticatedControlSequence
+  const authControlOrderMatchesStage = failure.stage === 'account-switch-b-authenticating' || accountAInitialPinSetupRace
     ? attempt.authenticatedControlSequence > failure.sequence
     : attempt.authenticatedControlSequence < failure.sequence
   if (setupStage &&

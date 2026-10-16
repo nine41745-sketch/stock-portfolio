@@ -117,6 +117,32 @@ test('PIN-required is accepted only before PIN submission and its positive prote
   }), lifecycle), false)
 })
 
+test('Account A PIN-required daily analysis may race ahead of the auth-status positive control only during initial PIN setup', () => {
+  const racingLifecycle = {
+    authAttempts: [{
+      id: 'account-a-racing-attempt', account: 'A', startedSequence: 1,
+      authRequestSequence: 4, unauthenticatedControlSequence: 0,
+      authenticatedControlSequence: 34, authenticatedHasPin: false,
+      pinSetupControlSequence: 34, pinSetupHasPin: false,
+      pinSubmissionSequence: 40, pinReadyControlSequence: 50, pinLockTransitions: [],
+    }],
+    controls: [
+      { sequence: 0, kind: 'unauthenticated-negative-control', account: 'A', status: 401, authGate: 'unauthorized' },
+      { sequence: 34, kind: 'auth-positive-control', account: 'A', status: 200, hasPin: false },
+      { sequence: 50, kind: 'protected-api-positive-control', account: 'A', status: 200 },
+    ],
+  }
+  const racingPinRequired = failure({
+    stage: 'pin-setup', authPhase: 'authenticating', sequence: 32,
+    authAttemptId: 'account-a-racing-attempt', authGate: 'pin-required',
+  })
+
+  assert.equal(isExpectedHttpFailure(racingPinRequired, racingLifecycle), true)
+  assert.equal(isExpectedHttpFailure({ ...racingPinRequired, authGate: 'unauthorized' }, racingLifecycle), false)
+  assert.equal(isExpectedHttpFailure({ ...racingPinRequired, stage: 'account-switch-b-unlocked' }, racingLifecycle), false)
+  assert.equal(isExpectedHttpFailure({ ...racingPinRequired, sequence: 41 }, racingLifecycle), false)
+})
+
 test('simulated provider failures are scoped to matching endpoint, stage, and fixture mode', () => {
   assert.equal(isExpectedHttpFailure(failure({
     path: '/api/risk', status: 503, stage: 'risk-dashboard', fixtureMode: 'error',
