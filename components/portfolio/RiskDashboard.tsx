@@ -132,12 +132,12 @@ export default function RiskDashboard() {
   }, [data, scenarioMode, scenarioIndustry, scenarioSymbol, shockPct])
 
   if (loading) {
-    return <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400">กำลังคำนวณ Portfolio Risk...</div>
+    return <div data-risk-dashboard className="risk-dashboard rounded-xl border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400">กำลังคำนวณ Portfolio Risk...</div>
   }
 
   if (error || !data) {
     return (
-      <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-5">
+      <div data-risk-dashboard className="risk-dashboard rounded-xl border border-red-500/30 bg-red-500/10 p-5">
         <p className="font-semibold text-red-300">โหลด Risk ไม่สำเร็จ</p>
         <p className="mt-1 text-sm text-gray-300">{error ?? 'ไม่พบข้อมูล'}</p>
         <button type="button" onClick={reload} className="mt-4 rounded-lg bg-gray-800 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700">ลองใหม่</button>
@@ -150,7 +150,7 @@ export default function RiskDashboard() {
     : money(data.summary.max_stop_loss_amount)
 
   return (
-    <main className="mx-auto max-w-7xl space-y-5">
+    <main data-risk-dashboard className="risk-dashboard mx-auto max-w-7xl space-y-5">
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">🛡️ ความเสี่ยงพอร์ต</h1>

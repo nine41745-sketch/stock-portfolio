@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import ts from 'typescript'
+import postcss from 'postcss'
 
 async function importTsModule(filePath) {
   const source = fs.readFileSync(filePath, 'utf8')
@@ -113,6 +114,56 @@ assert.match(ui, /Simulated P\/L/, 'Stress UI must show multi-position simulated
 assert.match(ui, /Coverage ของหุ้นที่จำลอง/, 'Stress UI must disclose scenario coverage')
 assert.match(ui, /สัญญาณความเสี่ยง/, 'Deterministic rebalance flags must be visible')
 assert.match(ui, /ไม่สร้าง BUY\/SELL/, 'No-auto-trade safety must be explicit')
+assert.match(ui, /data-risk-dashboard/, 'Risk-specific light-theme contrast rules must be scoped to the Risk dashboard')
+
+const riskCss = postcss.parse(fs.readFileSync('app/globals.css', 'utf8'))
+function lightRiskColor(className, property) {
+  const escapedClass = className.replaceAll('/', '\\/')
+  const selector = `[data-theme="light"] .risk-dashboard .${escapedClass}`
+  let value = null
+  riskCss.walkRules(rule => {
+    if (rule.selectors?.includes(selector)) rule.walkDecls(property, declaration => {
+      value = declaration.value.replace(/\s*!important$/, '')
+    })
+  })
+  assert.ok(value, `Light Risk theme must define ${property} for .${className}`)
+  return value
+}
+function rgb(hex) {
+  assert.match(hex, /^#[\da-f]{6}$/i, `Expected opaque hex color, received ${hex}`)
+  return [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16) / 255)
+    .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+}
+function luminance(hex) {
+  return rgb(hex).reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index], 0)
+}
+function contrast(foreground, background) {
+  const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a)
+  return (values[0] + 0.05) / (values[1] + 0.05)
+}
+for (const [foregroundClass, backgroundClass] of [
+  ['text-yellow-200', 'bg-yellow-500/10'],
+  ['text-yellow-100/80', 'bg-yellow-500/10'],
+  ['text-red-200', 'bg-red-500/10'],
+  ['text-red-200', 'bg-red-500/15'],
+  ['text-green-200', 'bg-green-500/10'],
+  ['text-blue-200', 'bg-blue-500/10'],
+  ['text-red-300', 'bg-gray-950/70'],
+  ['text-gray-500', 'bg-gray-950/70'],
+  ['text-white', 'bg-gray-950/70'],
+]) {
+  const ratio = contrast(lightRiskColor(foregroundClass, 'color'), lightRiskColor(backgroundClass, 'background-color'))
+  assert.ok(ratio >= 4.5, `${foregroundClass} on ${backgroundClass} must meet WCAG AA normal-text contrast; got ${ratio.toFixed(2)}:1`)
+}
+for (const [borderClass, backgroundClass] of [
+  ['border-yellow-500/30', 'bg-yellow-500/10'],
+  ['border-red-500/30', 'bg-red-500/10'],
+  ['border-red-500/50', 'bg-red-500/15'],
+  ['border-blue-500/30', 'bg-blue-500/10'],
+]) {
+  const ratio = contrast(lightRiskColor(borderClass, 'border-color'), lightRiskColor(backgroundClass, 'background-color'))
+  assert.ok(ratio >= 3, `${borderClass} against ${backgroundClass} must meet WCAG non-text contrast; got ${ratio.toFixed(2)}:1`)
+}
 
 const nav = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')
 assert.match(nav, /href: '\/risk'/, 'Risk must be a main navigation tab')

@@ -82,6 +82,7 @@ assert.match(ui, /เงินในธนาคารไม่นำมาร�
 assert.match(ui, /Rebalance Gap/, 'Full rebalance delta view is required')
 assert.match(ui, /เติมเงินใหม่โดยไม่ขาย/, 'No-sell new-money planner is required')
 assert.match(ui, /ไม่สร้าง BUY\/SELL/, 'No-auto-trade safety must be explicit')
+assert.match(ui, /aria-label=\{`Target allocation percentage for \$\{row\.asset_key\}`\}/, 'Every target percentage input must have a symbol-specific accessible name')
 
 const riskUi = fs.readFileSync('components/portfolio/RiskDashboard.tsx', 'utf8')
 assert.match(riskUi, /<AllocationPlanner positions=\{data\.positions\} dimeBalance=\{data\.balances\.dime_balance\} \/>/, 'Risk page must mount Allocation Planner')

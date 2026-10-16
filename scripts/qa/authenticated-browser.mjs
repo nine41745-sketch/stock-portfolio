@@ -67,7 +67,9 @@ try {
   if(u.pathname==='/api/risk'){
    if(riskMode==='loading') await new Promise(resolve=>setTimeout(resolve,400))
    if(riskMode==='error') return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic risk unavailable'})})
-   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(riskFixture())})
+   const riskData=riskFixture()
+   if(riskMode==='empty'){riskData.positions=[];riskData.sectors=[]}
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(riskData)})
   }
   if(u.pathname==='/api/sec-risk'){
    if(secRiskMode==='error') return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic SEC risk unavailable'})})
@@ -307,6 +309,26 @@ try {
  await scenarioPanel.getByText('-$160.00',{exact:true}).waitFor()
  await scenarioSelect.selectOption('symbols')
  await scenarioPanel.getByText('-$160.00',{exact:true}).waitFor()
+ const allocationNames=await page.locator('input[aria-label^="Target allocation percentage for "]').evaluateAll(inputs=>inputs.map(input=>input.getAttribute('aria-label')).sort())
+ assert.deepEqual(allocationNames,['Target allocation percentage for AAPL','Target allocation percentage for DIME','Target allocation percentage for MSFT'])
+ pass('All synthetic Target Allocation fields expose accessible names that identify their symbols')
+ riskMode='error'
+ await page.reload()
+ await page.getByText('โหลด Risk ไม่สำเร็จ').waitFor()
+ await page.emulateMedia({colorScheme:'light'})
+ if(await page.locator('html').getAttribute('data-theme')!=='light') await page.locator('button[title^="โหมดปัจจุบัน:"]').click()
+ const riskErrorAxe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()
+ assert.equal(riskErrorAxe.violations.filter(v=>v.impact==='critical'||v.impact==='serious'||v.id==='color-contrast').length,0,'Risk error state must pass critical/serious axe checks in light theme')
+ pass('Risk unavailable/error state passes critical/serious Light Theme axe checks')
+ riskMode='empty'
+ await page.reload()
+ await page.getByText('ยังไม่มี Holdings ที่มีราคาปัจจุบันสำหรับคำนวณ').waitFor()
+ const riskEmptyAxe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()
+ assert.equal(riskEmptyAxe.violations.filter(v=>v.impact==='critical'||v.impact==='serious'||v.id==='color-contrast').length,0,'Risk empty state must pass critical/serious axe checks in light theme')
+ pass('Risk empty state passes critical/serious Light Theme axe checks')
+ riskMode='synthetic'
+ await page.reload()
+ await page.getByRole('heading',{name:'🛡️ ความเสี่ยงพอร์ต'}).waitFor()
  pass('Risk Dashboard loading and market/industry/symbol stress simulations render from synthetic fixtures')
  secRiskMode='error'
  await page.getByRole('button',{name:'โหลดข้อมูล SEC'}).click()
@@ -505,7 +527,7 @@ function riskFixture(){
   {symbol:'AAPL',shares:8,current_price:100,market_value:800,weight_pct:80,equity_weight_pct:80,industry:'Technology',stop_loss:null,stop_state:'MISSING',stop_risk_amount:null,stop_risk_pct_position:null,risk_contribution_pct:null},
   {symbol:'MSFT',shares:2,current_price:100,market_value:200,weight_pct:20,equity_weight_pct:20,industry:'Software',stop_loss:null,stop_state:'MISSING',stop_risk_amount:null,stop_risk_pct_position:null,risk_contribution_pct:null},
  ]
- return {summary:{equity_market_value:1000,cash_balance:0,investable_portfolio_value:1000,cash_pct:0,largest_position_pct:80,largest_sector_pct:80,stop_coverage_pct:0,quantified_stop_risk_amount:0,quantified_stop_risk_pct:0,max_stop_loss_amount:null,max_stop_loss_pct:null,unprotected_symbols:['AAPL','MSFT'],breached_stop_symbols:[]},positions,sectors:[{industry:'Technology',market_value:800,weight_pct:80,equity_weight_pct:80},{industry:'Software',market_value:200,weight_pct:20,equity_weight_pct:20}],suggestions:[{severity:'WATCH',message:'Synthetic concentration warning'}],warnings:[],balances:{dime_balance:0,initial_capital:1000,dime_included_in_risk_total:false},methodology:{source:'synthetic'},data_quality:{priced_holding_count:2,unpriced_symbols:[],price_freshness:'unknown'}}
+ return {summary:{equity_market_value:1000,cash_balance:0,investable_portfolio_value:1000,cash_pct:0,largest_position_pct:80,largest_sector_pct:80,stop_coverage_pct:0,quantified_stop_risk_amount:0,quantified_stop_risk_pct:0,max_stop_loss_amount:null,max_stop_loss_pct:null,unprotected_symbols:['AAPL','MSFT'],breached_stop_symbols:[]},positions,sectors:[{industry:'Technology',market_value:800,weight_pct:80,equity_weight_pct:80},{industry:'Software',market_value:200,weight_pct:20,equity_weight_pct:20}],suggestions:[{severity:'WATCH',message:'Synthetic concentration warning'}],warnings:['Synthetic stale-price warning'],balances:{dime_balance:0,initial_capital:1000,dime_included_in_risk_total:false},methodology:{source:'synthetic'},data_quality:{priced_holding_count:2,unpriced_symbols:[],price_freshness:'unknown'}}
 }
 
 function secRiskFixture(){

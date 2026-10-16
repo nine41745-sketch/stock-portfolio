@@ -259,6 +259,7 @@ export default function AllocationPlanner({
                   <input type="number" min="0" max="100" step="0.01"
                     value={targets[row.asset_key] ?? '0'}
                     onChange={event => setTargets(current => ({ ...current, [row.asset_key]: event.target.value }))}
+                    aria-label={`Target allocation percentage for ${row.asset_key}`}
                     className="w-24 rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 text-right text-sm text-white" />
                 </td>
                 <td className={`px-2 py-3 text-right font-semibold ${(row.gap_amount ?? 0) > 0 ? 'text-green-300' : (row.gap_amount ?? 0) < 0 ? 'text-red-300' : 'text-gray-400'}`}>
