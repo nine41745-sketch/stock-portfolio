@@ -176,6 +176,17 @@ for (const [status, expected] of [[503, 'provider_error']]) {
 let timeoutCount = 0
 assert.equal((await sec.fetchSecJson('https://data.sec.gov/test', agent, async () => { timeoutCount++; throw new DOMException('timeout', 'TimeoutError') }, async () => {})).status, 'provider_error')
 assert.equal(timeoutCount, 1, 'A timeout ends this SEC request without a second attempt')
+const sharedBudget = sec.createSecAttemptBudget(1)
+let sharedBudgetCalls = 0
+const budgetLimited = await sec.fetchSecJson('https://data.sec.gov/test', agent, async () => {
+  sharedBudgetCalls += 1
+  return response(503)
+}, async () => {}, { deadlineAt: Date.now() + 5000, attemptBudget: sharedBudget })
+assert.equal(budgetLimited.status, 'provider_error')
+assert.equal(sharedBudget.used, 1)
+assert.equal(sharedBudgetCalls, 1, 'Invocation-wide attempt budget prevents hidden 5xx retries')
+const cappedBudget = sec.createSecAttemptBudget(100)
+assert.equal(cappedBudget.maxAttempts, 10, 'Global SEC attempt budget cannot exceed ten')
 let deadlineCalls = 0
 const deadlineResult = await sec.fetchSecJson('https://data.sec.gov/test', agent, async (_url, init) => {
   deadlineCalls += 1

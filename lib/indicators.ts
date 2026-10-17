@@ -10,6 +10,8 @@
 // ============================================================
 import { EMA, RSI, MACD, BollingerBands, ATR } from 'technicalindicators'
 import YahooFinance from 'yahoo-finance2'
+import { discoveryFetch, type DiscoveryProviderContext } from '@/lib/discovery-deadline'
+import { getDiscoveryYahooChart } from '@/lib/discovery-yahoo'
 import { calculateImportantSupport } from '@/lib/important-support'
 
 const yahooFinance = new YahooFinance()
@@ -23,6 +25,9 @@ interface Bar {
 }
 
 export interface TechnicalIndicators {
+  /** Daily OHLCV adapter provenance, not a live quote-source guarantee. */
+  dataSource?: 'Yahoo Finance' | 'Stooq' | 'unavailable'
+  lastBarAt?: string | null
   ema50: number | null
   ema100: number | null
   ema200: number | null
@@ -93,49 +98,47 @@ function toBars(raw: Array<{ close: number | null; high: number | null; low: num
     }))
 }
 
-async function fetchFromYahoo(symbol: string): Promise<Bar[]> {
+async function fetchFromYahoo(symbol: string, context?: DiscoveryProviderContext): Promise<Bar[]> {
   try {
     const period1 = new Date()
     period1.setFullYear(period1.getFullYear() - 1)
 
-    const result = await yahooFinance.chart(symbol, {
-      period1,
-      interval: '1d',
-    })
+    const result = context
+      ? await getDiscoveryYahooChart(symbol, period1, '1d', context)
+      : await yahooFinance.chart(symbol, { period1, interval: '1d' })
 
     return toBars((result.quotes ?? []).map(q => ({ close: q.close, high: q.high, low: q.low, volume: q.volume, date: q.date })))
   } catch (e) {
-    console.error(`[indicators] yahoo-finance2 error for ${symbol}:`, e)
+    if (!context) console.error(`[indicators] yahoo-finance2 error for ${symbol}:`, e)
     return []
   }
 }
 
-async function fetchFromYahooWeekly(symbol: string): Promise<Bar[]> {
+async function fetchFromYahooWeekly(symbol: string, context?: DiscoveryProviderContext): Promise<Bar[]> {
   try {
     const period1 = new Date()
     period1.setFullYear(period1.getFullYear() - 2)
 
-    const result = await yahooFinance.chart(symbol, {
-      period1,
-      interval: '1wk',
-    })
+    const result = context
+      ? await getDiscoveryYahooChart(symbol, period1, '1wk', context)
+      : await yahooFinance.chart(symbol, { period1, interval: '1wk' })
 
     return toBars((result.quotes ?? []).map(q => ({ close: q.close, high: q.high, low: q.low, volume: q.volume })))
   } catch (e) {
-    console.error(`[indicators] yahoo-finance2 weekly error for ${symbol}:`, e)
+    if (!context) console.error(`[indicators] yahoo-finance2 weekly error for ${symbol}:`, e)
     return []
   }
 }
 
-async function fetchFromStooq(symbol: string): Promise<Bar[]> {
+async function fetchFromStooq(symbol: string, context?: DiscoveryProviderContext): Promise<Bar[]> {
   const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol.toLowerCase())}.us&i=d`
   try {
-    const res = await fetch(url, { next: { revalidate: 3600 } })
-    if (!res.ok) {
-      console.error(`[indicators] Stooq HTTP ${res.status} for ${symbol}`)
+    const res = context ? null : await fetch(url, { next: { revalidate: 3600 } })
+    if (res && !res.ok) {
+      if (!context) console.error(`[indicators] Stooq HTTP ${res.status} for ${symbol}`)
       return []
     }
-    const csv = await res.text()
+    const csv = context ? await discoveryFetch(context, url, response => response.text()) : await res!.text()
     const lines = csv.trim().split('\n').slice(1)
     const bars = toBars(lines.map(line => {
       const cols = line.split(',')
@@ -149,20 +152,20 @@ async function fetchFromStooq(symbol: string): Promise<Bar[]> {
     }))
     return bars.slice(-260)
   } catch (e) {
-    console.error(`[indicators] Stooq fetch error for ${symbol}:`, e)
+    if (!context) console.error(`[indicators] Stooq fetch error for ${symbol}:`, e)
     return []
   }
 }
 
-async function fetchFromStooqWeekly(symbol: string): Promise<Bar[]> {
+async function fetchFromStooqWeekly(symbol: string, context?: DiscoveryProviderContext): Promise<Bar[]> {
   const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol.toLowerCase())}.us&i=w`
   try {
-    const res = await fetch(url, { next: { revalidate: 3600 } })
-    if (!res.ok) {
-      console.error(`[indicators] Stooq weekly HTTP ${res.status} for ${symbol}`)
+    const res = context ? null : await fetch(url, { next: { revalidate: 3600 } })
+    if (res && !res.ok) {
+      if (!context) console.error(`[indicators] Stooq weekly HTTP ${res.status} for ${symbol}`)
       return []
     }
-    const csv = await res.text()
+    const csv = context ? await discoveryFetch(context, url, response => response.text()) : await res!.text()
     const lines = csv.trim().split('\n').slice(1)
     const bars = toBars(lines.map(line => {
       const cols = line.split(',')
@@ -175,7 +178,7 @@ async function fetchFromStooqWeekly(symbol: string): Promise<Bar[]> {
     }))
     return bars.slice(-110)
   } catch (e) {
-    console.error(`[indicators] Stooq weekly fetch error for ${symbol}:`, e)
+    if (!context) console.error(`[indicators] Stooq weekly fetch error for ${symbol}:`, e)
     return []
   }
 }
@@ -184,21 +187,21 @@ async function fetchHistoricalBars(symbol: string): Promise<Bar[]> {
   return (await fetchHistoricalBarsWithSource(symbol)).bars
 }
 
-async function fetchHistoricalBarsWithSource(symbol: string): Promise<{ bars: Bar[]; source: 'Yahoo Finance' | 'Stooq' | 'unavailable' }> {
-  const yahoo = await fetchFromYahoo(symbol)
+async function fetchHistoricalBarsWithSource(symbol: string, context?: DiscoveryProviderContext): Promise<{ bars: Bar[]; source: 'Yahoo Finance' | 'Stooq' | 'unavailable' }> {
+  const yahoo = await fetchFromYahoo(symbol, context)
   if (yahoo.length >= 200) return { bars: yahoo, source: 'Yahoo Finance' }
 
-  const stooq = await fetchFromStooq(symbol)
+  const stooq = !context || context.canStart() ? await fetchFromStooq(symbol, context) : []
   if (stooq.length > yahoo.length) return { bars: stooq, source: 'Stooq' }
   if (yahoo.length) return { bars: yahoo, source: 'Yahoo Finance' }
   return { bars: [], source: 'unavailable' }
 }
 
-async function fetchHistoricalWeeklyBars(symbol: string): Promise<Bar[]> {
-  const yahoo = await fetchFromYahooWeekly(symbol)
+async function fetchHistoricalWeeklyBars(symbol: string, context?: DiscoveryProviderContext): Promise<Bar[]> {
+  const yahoo = await fetchFromYahooWeekly(symbol, context)
   if (yahoo.length >= 15) return yahoo
 
-  const stooq = await fetchFromStooqWeekly(symbol)
+  const stooq = !context || context.canStart() ? await fetchFromStooqWeekly(symbol, context) : []
   if (stooq.length > yahoo.length) return stooq
 
   return yahoo
@@ -289,15 +292,16 @@ function calcWeek52Range(bars: Bar[]): { week52High: number | null; week52Low: n
   }
 }
 
-export async function getTechnicalIndicators(symbol: string): Promise<TechnicalIndicators> {
-  const [bars, weeklyBars] = await Promise.all([
-    fetchHistoricalBars(symbol),
-    fetchHistoricalWeeklyBars(symbol),
+export async function getTechnicalIndicators(symbol: string, context?: DiscoveryProviderContext): Promise<TechnicalIndicators> {
+  const [{ bars, source }, weeklyBars] = await Promise.all([
+    fetchHistoricalBarsWithSource(symbol, context),
+    fetchHistoricalWeeklyBars(symbol, context),
   ])
+  const lastBarAt = bars.at(-1)?.date ?? null
 
   const weeklyRsi14 = calcWeeklyRsi(weeklyBars)
 
-  if (bars.length < 15) return { ...EMPTY_INDICATORS, weeklyRsi14 }
+  if (bars.length < 15) return { ...EMPTY_INDICATORS, weeklyRsi14, dataSource: source, lastBarAt }
 
   const closes = bars.map(b => b.close)
   const lastClose = last(closes)
@@ -343,6 +347,8 @@ export async function getTechnicalIndicators(symbol: string): Promise<TechnicalI
   const range52 = calcWeek52Range(bars)
 
   return {
+    dataSource: source,
+    lastBarAt,
     ema50,
     ema100: round2(last(ema100arr)),
     ema200,

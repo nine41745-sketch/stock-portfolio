@@ -133,7 +133,7 @@ export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) 
           type="button"
           onClick={() => void createPortfolio()}
           disabled={busy || loading}
-          className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white disabled:text-gray-300 disabled:opacity-100"
+          className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 hover:bg-gray-800 hover:text-white disabled:text-gray-300 disabled:opacity-100"
         >
           ＋ เพิ่มพอร์ต
         </button>

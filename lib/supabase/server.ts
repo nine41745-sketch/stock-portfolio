@@ -1,14 +1,17 @@
+import { createDeadlineFetch, type DiscoveryProviderContext } from '@/lib/discovery-deadline'
 import { createServerClient } from '@supabase/ssr'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
-export async function createClient() {
+export async function createClient(context?: DiscoveryProviderContext) {
   const cookieStore = await cookies()
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      // Discovery owns retries through one absolute budget; SDK retry sleeps cannot escape it.
+      ...(context ? { global: { fetch: createDeadlineFetch(context) }, db: { retry: false } } : {}),
       cookies: {
         getAll() {
           return cookieStore.getAll()
