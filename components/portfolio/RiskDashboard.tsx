@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import AllocationPlanner from './AllocationPlanner'
 import SmartDcaPlanner from './SmartDcaPlanner'
+import SmartDipBuying from './SmartDipBuying'
 import SecRiskPanel from './SecRiskPanel'
 import { calculatePortfolioStressScenario } from '@/lib/risk'
 
@@ -266,6 +267,7 @@ export default function RiskDashboard() {
 
       <AllocationPlanner positions={data.positions} dimeBalance={data.balances.dime_balance} />
       <SmartDcaPlanner />
+      <SmartDipBuying />
       <SecRiskPanel />
 
       <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
