@@ -20,10 +20,13 @@ export interface StockMetrics {
   week52Low: number | null
 }
 
-export async function getQuote(symbol: string): Promise<FinnhubQuote | null> {
+export async function getQuote(symbol: string, signal?: AbortSignal): Promise<FinnhubQuote | null> {
   if (!KEY) return null
   try {
-    const res = await fetch(`${BASE}/quote?symbol=${symbol}&token=${KEY}`, { next: { revalidate: 60 } })
+    const res = await fetch(`${BASE}/quote?symbol=${symbol}&token=${KEY}`, {
+      next: { revalidate: 60 },
+      ...(signal ? { signal } : {}),
+    })
     if (!res.ok) return null
     const d = await res.json()
     if (!d.c) return null
@@ -41,14 +44,20 @@ export interface QuoteObservation {
 
 // Explicitly requested, bounded quote snapshot for Watchlist alerts. Do not poll or
 // fetch automatically on page load; getQuote's Next cache is limited to 60 seconds.
-export async function getQuoteObservations(symbols: string[]): Promise<Record<string, QuoteObservation>> {
+export async function getQuoteObservations(symbols: string[], options?: { signal?: AbortSignal }): Promise<Record<string, QuoteObservation>> {
   const fetchedAt = new Date().toISOString()
   const uniqueSymbols = normalizeSymbols(symbols)
   const result: Record<string, QuoteObservation> = {}
 
   for (let i = 0; i < uniqueSymbols.length; i += CHUNK_SIZE) {
+    if (options?.signal?.aborted) {
+      for (const symbol of uniqueSymbols.slice(i)) {
+        result[symbol] = { price: null, source: 'Finnhub', fetchedAt, providerTimestamp: null, freshness: 'unavailable' }
+      }
+      break
+    }
     const chunk = uniqueSymbols.slice(i, i + CHUNK_SIZE)
-    const settled = await Promise.allSettled(chunk.map(async symbol => ({ symbol, quote: await getQuote(symbol) })))
+    const settled = await Promise.allSettled(chunk.map(async symbol => ({ symbol, quote: await getQuote(symbol, options?.signal) })))
     for (let index = 0; index < settled.length; index += 1) {
       const symbol = chunk[index]
       const entry = settled[index]

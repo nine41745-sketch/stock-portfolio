@@ -1,6 +1,6 @@
 # Stock Portfolio — Roadmap
 
-Status: v1.39.0 Smart Dip Buying Release Candidate / Unreleased is in local development from v1.38.0 candidate baseline `7974ba6352c704a0f97e24e04e4224421c3cbf26`. v1.35.1–v1.38.0 remain unreleased candidates. Security / Production Release Gate: HOLD — Full Audit 7 High. See [v1.39.0 candidate release checklist](docs/release-v1390.md).
+Status: v1.40.0 Personal Investment Command Center Release Candidate / Unreleased is in local development from authorized v1.39.0 candidate commit `867d38c7bf111053cbe7f8280a42f369189c7e82`. v1.35.1–v1.39.0 remain unreleased candidates. Security / Production Release Gate: HOLD — Full Audit baseline 7 High. See [v1.40.0 candidate release handoff](docs/release-v1400.md).
 
 Historical status (2026-10-15): v1.35.1 Hotfix is pushed to `fix/v1.35.1-contrast-notes` as Draft PR #67; source, security guards and metadata are prepared but UNRELEASED. Separate v1.35.1 Security Decision and Merge/Production approval remain pending.
 Release-preparation review: 2026-10-17 (Asia/Bangkok). Historical Production evidence below was not revalidated in this local-only task.
