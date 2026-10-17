@@ -154,6 +154,9 @@ export async function GET() {
     items,
     summary: buildSummary(items),
     reconciliation: buildReconciliation(items, holdings),
+    portfolio: portfolio.mode === 'portfolio'
+      ? { id: portfolio.portfolioId, name: portfolio.portfolio.name }
+      : null,
   }, { headers: { 'Cache-Control': 'no-store' } })
 }
 

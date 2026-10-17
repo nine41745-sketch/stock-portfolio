@@ -9,6 +9,7 @@ import {
   type PerformanceTransactionType,
 } from '@/lib/performance'
 import { getPerformanceHistory } from '@/lib/performance-history'
+import { summarizeTradeStatistics } from '@/lib/trade-statistics'
 
 export const maxDuration = 60
 
@@ -107,6 +108,17 @@ export async function GET() {
   }))
 
   const performance = calculatePerformance(transactions, holdings)
+  const totalRecordedFees = transactions.reduce((sum, item) => sum + Math.max(0, item.fee ?? 0), 0)
+  const tradeStatistics = summarizeTradeStatistics(performance.closed_trades, totalRecordedFees)
+  const tradeStatisticsBySymbol = performance.by_symbol.map(row => ({
+    symbol: row.symbol,
+    ...summarizeTradeStatistics(
+      performance.closed_trades.filter(trade => trade.symbol === row.symbol),
+      transactions
+        .filter(item => item.symbol === row.symbol)
+        .reduce((sum, item) => sum + Math.max(0, item.fee ?? 0), 0),
+    ),
+  }))
   let history
   try {
     history = await getPerformanceHistory(transactions)
@@ -131,6 +143,17 @@ export async function GET() {
 
   return NextResponse.json({
     ...performance,
+    trade_statistics: tradeStatistics,
+    trade_statistics_by_symbol: tradeStatisticsBySymbol,
+    fx_attribution: {
+      status: 'unavailable',
+      reason: 'Transaction Ledger ปัจจุบันไม่มีสกุลเงินหรืออัตรา FX ณ วันซื้อและขาย จึงไม่สร้างตัวเลขประมาณการ',
+      source_currency: null,
+      reporting_currency: null,
+      source: null,
+      acquisition_rate_date: null,
+      disposal_rate_date: null,
+    },
     history,
     portfolio: portfolio.mode === 'portfolio'
       ? { id: portfolio.portfolioId, name: portfolio.portfolio.name }

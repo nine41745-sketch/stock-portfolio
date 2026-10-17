@@ -67,6 +67,42 @@ interface PerformancePayload {
   }
   by_symbol: SymbolPerformance[]
   closed_trades: ClosedTrade[]
+  trade_statistics: {
+    closedTrades: number
+    winningTrades: number
+    losingTrades: number
+    breakevenTrades: number
+    winRatePct: number | null
+    averageWin: number | null
+    averageLoss: number | null
+    profitFactor: number | null
+    expectancy: number | null
+    grossWins: number
+    grossLosses: number
+    realizedPnl: number
+    totalRecordedFees: number
+  }
+  trade_statistics_by_symbol: Array<{
+    symbol: string
+    closedTrades: number
+    winningTrades: number
+    losingTrades: number
+    breakevenTrades: number
+    averageWin: number | null
+    averageLoss: number | null
+    profitFactor: number | null
+    expectancy: number | null
+    totalRecordedFees: number
+  }>
+  fx_attribution: {
+    status: 'unavailable' | 'available'
+    reason: string
+    source_currency: string | null
+    reporting_currency: string | null
+    source: string | null
+    acquisition_rate_date: string | null
+    disposal_rate_date: string | null
+  }
   history: {
     points: CurvePoint[]
     start_date: string | null
@@ -294,6 +330,55 @@ export default function PerformanceDashboard() {
         <StatCard label="Win Rate" value={summary.win_rate_pct === null ? '—' : `${summary.win_rate_pct.toFixed(1)}%`} sub={`${summary.wins} ชนะ / ${summary.losses} แพ้`} />
         <StatCard label="กระแสเงินสุทธิ" value={money(summary.net_cash_flow)} sub={`ฝาก ${money(summary.deposits)} · ถอน ${money(summary.withdrawals)}`} />
         <StatCard label="มูลค่ารวมตามระบบ" value={money(data.balances.configured_total_value)} sub={`หุ้น + เงินสด ${money(data.balances.cash_balance)} + Dime ${money(data.balances.dime_balance)}`} />
+      </section>
+
+      <section aria-labelledby="advanced-trade-stats-title" className="space-y-3 rounded-xl border border-gray-800 bg-gray-900/40 p-4 sm:p-5">
+        <div>
+          <h2 id="advanced-trade-stats-title" className="font-semibold text-gray-200">สถิติการเทรดขั้นสูง</h2>
+          <p className="mt-1 text-xs text-gray-400">หนึ่งดีลคือ SELL ที่ FIFO ยอมรับหนึ่งรายการ แม้จะจับคู่กับหลาย Lot · แสดงเฉพาะ Realized P/L</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard label="ดีลปิดแล้ว" value={String(data.trade_statistics.closedTrades)} sub={`${data.trade_statistics.winningTrades} ชนะ · ${data.trade_statistics.losingTrades} แพ้ · ${data.trade_statistics.breakevenTrades} เสมอ`} />
+          <StatCard label="Average Win" value={money(data.trade_statistics.averageWin)} />
+          <StatCard label="Average Loss" value={money(data.trade_statistics.averageLoss)} />
+          <StatCard label="Profit Factor" value={data.trade_statistics.profitFactor === null ? 'N/A' : number(data.trade_statistics.profitFactor, 2)} sub="กำไรขั้นต้น ÷ ขาดทุนขั้นต้น" />
+          <StatCard label="Expectancy" value={money(data.trade_statistics.expectancy)} sub="Realized P/L เฉลี่ยต่อดีลปิด" />
+          <StatCard label="ค่าธรรมเนียมที่บันทึก" value={money(data.trade_statistics.totalRecordedFees)} sub="รวมแยกไว้แล้ว; FIFO P/L หักค่าธรรมเนียม BUY/SELL อยู่แล้ว" />
+        </div>
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/15 p-3" role="status">
+          <p className="font-semibold text-yellow-400">FX Attribution · ยังไม่พร้อมคำนวณ</p>
+          <p className="mt-1 text-sm text-yellow-400">{data.fx_attribution.reason}</p>
+          <p className="mt-1 text-xs text-gray-400">ไม่มี source currency, reporting currency หรือ rate date ที่ตรวจสอบได้ จึงไม่ใช้ Spot Rate ปัจจุบันแทนอัตราย้อนหลัง</p>
+        </div>
+        {data.trade_statistics_by_symbol.length > 0 && (
+          <div className="overflow-x-auto rounded-lg border border-gray-800">
+            <table className="min-w-[760px] w-full text-left text-xs">
+              <caption className="px-3 py-2 text-left font-semibold text-gray-300">สถิติ Realized แยกตาม Symbol ในพอร์ตที่เลือก</caption>
+              <thead className="bg-gray-950/60 text-gray-400">
+                <tr>
+                  <th className="px-3 py-2">Symbol</th><th className="px-3 py-2 text-right">ดีล</th>
+                  <th className="px-3 py-2 text-right">ชนะ/แพ้/เสมอ</th><th className="px-3 py-2 text-right">Average Win</th>
+                  <th className="px-3 py-2 text-right">Average Loss</th><th className="px-3 py-2 text-right">Profit Factor</th>
+                  <th className="px-3 py-2 text-right">Expectancy</th><th className="px-3 py-2 text-right">Fees</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800">
+                {data.trade_statistics_by_symbol.map(row => (
+                  <tr key={row.symbol} className="text-gray-300">
+                    <th scope="row" className="px-3 py-2 font-semibold text-white">{row.symbol}</th>
+                    <td className="px-3 py-2 text-right">{row.closedTrades}</td>
+                    <td className="px-3 py-2 text-right">{row.winningTrades}/{row.losingTrades}/{row.breakevenTrades}</td>
+                    <td className="px-3 py-2 text-right">{money(row.averageWin)}</td>
+                    <td className="px-3 py-2 text-right">{money(row.averageLoss)}</td>
+                    <td className="px-3 py-2 text-right">{row.profitFactor === null ? 'N/A' : number(row.profitFactor, 2)}</td>
+                    <td className="px-3 py-2 text-right">{money(row.expectancy)}</td>
+                    <td className="px-3 py-2 text-right">{money(row.totalRecordedFees)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">

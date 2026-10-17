@@ -140,3 +140,7 @@ Before adding work, compare it with current repository code and reuse existing c
 ## v1.37.0 release-preparation status
 
 PR #71 already descends from PR #70 (PR #67 + PR #69 integration). No merge or cherry-pick is needed to restore those features. PR #72 remains separate. Baseline CI #376 and Authenticated Browser QA #22 passed at fbdbaf21; the QA log reports 51 checks, mock provider isolation and empty disposable-resource post-checks. These are baseline results, not Production or live SEC verification. See [release notes, limitations and unchecked gates](docs/release-v1370.md). New local metadata validation is reported separately in the handoff. Development completion does not approve release; the gate remains HOLD.
+
+## v1.38.0 local development candidate
+
+The authorized local candidate adds transaction-linked, in-memory-only Journal drafts and deterministic trade statistics using the existing FIFO ledger. FX attribution remains unavailable until transaction currency and verified historical acquisition/disposal rates exist; no rates are inferred. No schema or migration is included. See [v1.38.0 candidate notes](docs/release-v1380.md) and the [future persistence proposal](docs/trading-journal-persistence-proposal-v1380.md). This is not a Released version and does not change the v1.37.0 PR or Security Gate; Full Audit remains 7 High and HOLD.
