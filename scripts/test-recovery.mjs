@@ -6,13 +6,15 @@ import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { assertOwned, verifyManifest, assertInventory } from './qa/recovery-safety.mjs'
 const expected = { run: 'synthetic-run', name: 'stock-recovery-synthetic-source', id: 'synthetic-id' }
-const good = () => ({ Id: expected.id, Name: '/' + expected.name, Config: { Labels: { 'stock-portfolio.qa.run': expected.run, 'stock-portfolio.qa.purpose': 'recovery-v1370' } }, HostConfig: { NetworkMode: 'none', PortBindings: {}, Tmpfs: { '/var/lib/postgresql/data': 'rw', '/var/run/postgresql': 'rw', '/tmp': 'rw' } }, Mounts: [{ Type: 'tmpfs', Destination: '/var/lib/postgresql/data' }, { Type: 'tmpfs', Destination: '/var/run/postgresql' }, { Type: 'tmpfs', Destination: '/tmp' }] })
-test('owned network-isolated tmpfs resource accepted', () => assertOwned(good(), expected))
+const good = () => ({ Id: expected.id, Name: '/' + expected.name, Config: { Labels: { 'stock-portfolio.qa.run': expected.run, 'stock-portfolio.qa.purpose': 'recovery-v1370' } }, HostConfig: { NetworkMode: 'none', ReadonlyRootfs: true, PortBindings: {}, Tmpfs: { '/var/lib/postgresql/data': 'rw', '/var/run/postgresql': 'rw', '/tmp': 'rw' } }, Mounts: [{ Type: 'tmpfs', Destination: '/var/lib/postgresql/data' }, { Type: 'tmpfs', Destination: '/var/run/postgresql' }, { Type: 'tmpfs', Destination: '/tmp' }] })
+test('owned read-only network-isolated tmpfs resource accepted', () => assertOwned(good(), expected))
 for (const [name, mutate] of [
   ['foreign run', d => { d.Config.Labels['stock-portfolio.qa.run'] = 'other' }],
   ['missing label', d => { delete d.Config.Labels['stock-portfolio.qa.purpose'] }],
   ['reused name with different ID', d => { d.Id = 'prior-resource' }],
   ['network attached', d => { d.HostConfig.NetworkMode = 'bridge' }],
+  ['writable root filesystem', d => { d.HostConfig.ReadonlyRootfs = false }],
+  ['root filesystem mode missing', d => { delete d.HostConfig.ReadonlyRootfs }],
   ['host port', d => { d.HostConfig.PortBindings = { '5432/tcp': [{ HostPort: '54322' }] } }],
   ['persistent mount', d => { d.Mounts[0].Type = 'volume' }],
 ]) test(`refuse ${name}`, () => { const d = good(); mutate(d); assert.throws(() => assertOwned(d, expected)) })

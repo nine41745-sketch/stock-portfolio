@@ -133,8 +133,10 @@ try {
   const restoreStart=performance.now()
   sql(target,roles)
   own(target)
+  const pgRestoreStart=performance.now()
   docker(['exec','-i',target.id,'pg_restore','-U','postgres','-d','postgres','--exit-on-error','--single-transaction'],dump)
-  report.restoreMs=Math.round(performance.now()-restoreStart);report.backupAndRestoreMs=Math.round(performance.now()-started)
+  report.pgRestoreMs=Math.round(performance.now()-pgRestoreStart)
+  report.restoreRolesAndPgRestoreMs=Math.round(performance.now()-restoreStart);report.backupAndRestoreMs=Math.round(performance.now()-started)
   const restored=inventory(target)
   writeFileSync(join(dir,'inventory-source.json'),JSON.stringify(expected,null,2))
   writeFileSync(join(dir,'inventory-restored.json'),JSON.stringify(restored,null,2))
@@ -206,5 +208,5 @@ try {
   const names=['database.dump','roles.sql','backup-manifest.json','results.json'].filter(name=>existsSync(join(dir,name)))
   writeFileSync(join(dir,'evidence-manifest.json'),JSON.stringify({run,files:names.map(name=>({name,sha256:sha256(readFileSync(join(dir,name)))}))},null,2))
 }
-console.log(JSON.stringify({result:report.result,checks:checks.length,restoreMs:report.restoreMs,cleanup:report.cleanup,evidence:dir,failure:report.failure}))
+console.log(JSON.stringify({result:report.result,checks:checks.length,pgRestoreMs:report.pgRestoreMs,restoreRolesAndPgRestoreMs:report.restoreRolesAndPgRestoreMs,cleanup:report.cleanup,evidence:dir,failure:report.failure}))
 if(failure||cleanupFailure)process.exitCode=1

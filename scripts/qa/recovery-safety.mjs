@@ -13,6 +13,7 @@ export function assertOwned(resource, expected) {
   assert.equal(resource.Config?.Labels?.['stock-portfolio.qa.run'], expected.run, 'Foreign run')
   assert.equal(resource.Config?.Labels?.['stock-portfolio.qa.purpose'], 'recovery-v1370', 'Foreign purpose')
   assert.equal(resource.HostConfig?.NetworkMode, 'none', 'Network must be disabled')
+  assert.equal(resource.HostConfig?.ReadonlyRootfs, true, 'Container root filesystem must be read-only')
   assert.equal(Object.keys(resource.HostConfig?.PortBindings ?? {}).length, 0, 'No host ports allowed')
   assert.deepEqual(Object.keys(resource.HostConfig?.Tmpfs ?? {}).sort(), ['/tmp', '/var/lib/postgresql/data', '/var/run/postgresql'].sort(), 'Expected declared tmpfs paths')
   for (const mount of resource.Mounts) {
