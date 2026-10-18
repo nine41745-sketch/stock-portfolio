@@ -126,3 +126,10 @@ test('browser runner uses bounded action/API waits and closes context before dra
   const responseDrain = script.indexOf('await Promise.allSettled([...responseTasks])', contextClose)
   assert(contextClose >= 0 && responseDrain > contextClose, 'response tasks must be drained only after closing their browser context')
 })
+
+test('browser runner validates Cache-Control with a RegExp accepted by assert.match', async () => {
+  const scriptPath = fileURLToPath(new URL('./qa/authenticated-browser.mjs', import.meta.url))
+  const script = await readFile(scriptPath, 'utf8')
+  assert.match(script, /assert\.match\([^,\n]+,\s*\/no-store\/\)/)
+  assert.doesNotMatch(script, /assert\.match\([^,\n]+,\s*'no-store'\)/)
+})
