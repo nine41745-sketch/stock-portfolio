@@ -128,6 +128,34 @@ const benchmarkFailure = await historyModule.getPerformanceHistory(historyTransa
 assert.equal(benchmarkFailure.complete, false, 'an unavailable SPY benchmark is not presented as complete history')
 assert.deepEqual(benchmarkFailure.points, [])
 assert.ok(benchmarkFailure.missing_symbols.includes('SPY'))
+
+const spyQuotes = [
+  { date: new Date('2026-01-01T00:00:00Z'), close: 10 },
+  { date: new Date('2026-01-02T00:00:00Z'), close: 11 },
+]
+async function verifySpyDeduplication(symbols, label) {
+  const calls = []
+  globalThis.__testYahoo.chart = async symbol => {
+    calls.push(symbol)
+    return { quotes: spyQuotes }
+  }
+  const transactions = symbols.map((symbol, index) => ({
+    id: `${label}-${index}`, transaction_type: 'BUY', symbol,
+    shares: 1, price: 10, fee: 0, amount: null, trade_date: '2026-01-01',
+  }))
+  const history = await historyModule.getPerformanceHistory(transactions)
+  assert.equal(calls.filter(symbol => symbol === 'SPY').length, 1, `${label}: benchmark SPY is fetched exactly once`)
+  assert.equal(calls.length, new Set(calls).size, `${label}: the request budget contains unique symbols`)
+  assert.ok(calls.length <= 12, `${label}: total requests remain within the twelve-symbol cap`)
+  assert.equal(history.complete, true, `${label}: valid complete price coverage remains complete`)
+  assert.equal(history.missing_symbols.includes('SPY'), false, `${label}: successful SPY is not marked missing`)
+}
+
+await verifySpyDeduplication(['AAA', 'SPY', 'ZZZ'], 'spy-inside-first-eleven')
+await verifySpyDeduplication([
+  'AAPL', 'AMZN', 'BRK.B', 'C', 'DIS', 'F', 'GOOGL', 'JPM', 'MSFT', 'NVDA', 'QQQ', 'SPY',
+], 'spy-last-sorted')
+await verifySpyDeduplication(['AAA', 'BBB'], 'spy-absent-from-portfolio')
 const emptyHistory = await historyModule.getPerformanceHistory([])
 assert.equal(emptyHistory.complete, true)
 assert.deepEqual(emptyHistory.points, [])

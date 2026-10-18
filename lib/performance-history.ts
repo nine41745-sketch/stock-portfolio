@@ -103,8 +103,9 @@ export async function getPerformanceHistory(
   const effectiveStart = requestedStart < capStart ? capStart : requestedStart
   const truncated = effectiveStart !== requestedStart
   const allSymbols = [...new Set(stockTransactions.map(item => String(item.symbol).toUpperCase()))].sort()
-  const symbols = allSymbols.slice(0, MAX_HISTORY_SYMBOLS - 1)
-  const unrequestedSymbols = allSymbols.slice(MAX_HISTORY_SYMBOLS - 1)
+  const stockSymbols = allSymbols.filter(symbol => symbol !== 'SPY')
+  const symbols = stockSymbols.slice(0, MAX_HISTORY_SYMBOLS - 1)
+  const unrequestedSymbols = stockSymbols.slice(MAX_HISTORY_SYMBOLS - 1)
   const symbolsToFetch = [...symbols, 'SPY']
   const deadline = new AbortController()
   const timer = setTimeout(() => deadline.abort(new DOMException('Historical price request deadline exceeded', 'TimeoutError')), HISTORY_DEADLINE_MS)

@@ -322,6 +322,38 @@ assert.equal(partialPayload.sections.collections.data.length, 12)
 assert.equal(partialPayload.sections.allocations.data.length, 50)
 assert.equal(partialPayload.sections.rules.data, null, 'rule totals are not presented from a truncated source')
 
+// Explicit market refresh must retain available Watchlist symbols even when the source is PARTIAL.
+apiState.holdings = []
+apiState.tableRows.portfolio_watchlist_items = Array.from({ length: 12 }, (_, index) => ({
+  ...row(index, 'watch'), symbol: `W${String(index).padStart(2, '0')}`,
+}))
+apiState.providerCalls.length = 0
+const twelveWatchlistResponse = await apiRoute.GET(makeRequest(
+  `/api/investment-command-center?portfolio_id=${apiState.activePortfolioId}&refresh=market`,
+  { origin: 'http://synthetic.test' },
+))
+assert.equal(twelveWatchlistResponse.status, 200)
+assert.equal(twelveWatchlistResponse.headers.get('cache-control'), 'private, no-store')
+assert.deepEqual(apiState.providerCalls.map(call => call.symbols), [[
+  'W00', 'W01', 'W02', 'W03', 'W04', 'W05', 'W06', 'W07', 'W08', 'W09', 'W10', 'W11',
+]])
+
+apiState.tableRows.portfolio_watchlist_items.push({ ...row(12, 'watch'), symbol: 'W12' })
+apiState.providerCalls.length = 0
+const thirteenWatchlistResponse = await apiRoute.GET(makeRequest(
+  `/api/investment-command-center?portfolio_id=${apiState.activePortfolioId}&refresh=market`,
+  { origin: 'http://synthetic.test' },
+))
+const thirteenWatchlistPayload = await thirteenWatchlistResponse.json()
+assert.equal(thirteenWatchlistResponse.status, 200)
+assert.equal(thirteenWatchlistResponse.headers.get('cache-control'), 'private, no-store')
+assert.equal(thirteenWatchlistPayload.sections.watchlist.status, 'PARTIAL')
+assert.equal(thirteenWatchlistPayload.sections.watchlist.data.length, 12)
+assert.match(thirteenWatchlistPayload.sections.watchlist.message, /รายการเพิ่มเติม/)
+assert.deepEqual(apiState.providerCalls.map(call => call.symbols), [[
+  'W00', 'W01', 'W02', 'W03', 'W04', 'W05', 'W06', 'W07', 'W08', 'W09', 'W10', 'W11',
+]], 'a PARTIAL Watchlist still refreshes its available eligible symbols, capped at twelve')
+
 apiState.queries.length = 0
 apiState.rpcCalls.length = 0
 apiState.providerCalls.length = 0

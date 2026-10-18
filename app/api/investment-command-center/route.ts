@@ -205,7 +205,9 @@ export async function GET(request: NextRequest) {
   let marketFetchedAt: string | undefined
   if (marketRequested) {
     const heldSymbols = holdingsSource.status === 'READY' ? holdingsSource.data ?? [] : []
-    const watchSymbols = watchlistSource.status === 'READY' ? watchlistSource.data ?? [] : []
+    const watchSymbols = watchlistSource.status === 'READY' || watchlistSource.status === 'PARTIAL'
+      ? watchlistSource.data ?? []
+      : []
     const candidateSymbols = Array.from(new Set([
       ...heldSymbols.map(row => row.symbol),
       ...watchSymbols.map(row => row.symbol),
