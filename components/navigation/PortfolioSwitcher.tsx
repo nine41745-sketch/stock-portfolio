@@ -10,9 +10,10 @@ interface PortfolioItem {
 }
 
 interface PortfolioPayload {
-  active_portfolio_id: string
-  portfolios: PortfolioItem[]
+  active_portfolio_id?: string | null
+  portfolios?: PortfolioItem[]
   migration_required?: boolean
+  portfolio_required?: boolean
 }
 
 async function readError(response: Response, fallback: string): Promise<string> {
@@ -43,6 +44,10 @@ export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) 
             if (!cancelled) setAvailable(false)
             return null
           }
+        }
+        if (response.status === 409) {
+          const payload = await response.json().catch(() => ({})) as PortfolioPayload
+          if (payload.portfolio_required) return payload
         }
         if (!response.ok) throw new Error(await readError(response, 'โหลดรายการพอร์ตไม่สำเร็จ'))
         return response.json() as Promise<PortfolioPayload>

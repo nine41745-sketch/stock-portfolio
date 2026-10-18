@@ -54,17 +54,21 @@ function rowsSource<T>(
   source: string,
   fetchedAt: string,
   map: (row: Record<string, unknown>) => T,
+  maximumRows = Number.POSITIVE_INFINITY,
 ): SnapshotSource<T[]> {
   if (result.error) {
     return { status: statusForError(result.error), source, fetchedAt, observedAt: null, data: null, message: 'ข้อมูลส่วนนี้ยังโหลดไม่ได้' }
   }
-  const rows = result.data ?? []
+  const allRows = result.data ?? []
+  const partial = allRows.length > maximumRows
+  const rows = partial ? allRows.slice(0, maximumRows) : allRows
   return {
-    status: 'READY',
+    status: partial ? 'PARTIAL' : 'READY',
     source,
     fetchedAt,
     observedAt: rows.map(row => typeof row.updated_at === 'string' ? row.updated_at : null).filter((value): value is string => value !== null).sort().at(-1) ?? null,
     data: rows.map(map),
+    ...(partial ? { message: `แสดง ${maximumRows} รายการแรก; แหล่งข้อมูลมีรายการเพิ่มเติมและไม่ได้โหลดทั้งหมด` } : {}),
   }
 }
 
@@ -113,14 +117,14 @@ export async function GET(request: NextRequest) {
 
   const watchlistQuery = context.supabase.from('portfolio_watchlist_items')
     .select('id, symbol, collection_id, target_price, alert_enabled, updated_at')
-    .eq('user_id', context.userId).eq('portfolio_id', context.portfolioId).order('created_at', { ascending: false }).limit(12)
+    .eq('user_id', context.userId).eq('portfolio_id', context.portfolioId).order('created_at', { ascending: false }).limit(13)
   const collectionsQuery = context.supabase.from('portfolio_watchlist_collections')
     .select('id, name, sort_order, updated_at').eq('user_id', context.userId).eq('portfolio_id', context.portfolioId)
-    .order('sort_order', { ascending: true }).limit(12)
+    .order('sort_order', { ascending: true }).limit(13)
   const allocationsQuery = context.supabase.from('portfolio_allocation_targets')
-    .select('asset_key, target_pct, updated_at').eq('user_id', context.userId).eq('portfolio_id', context.portfolioId).limit(50)
+    .select('asset_key, target_pct, updated_at').eq('user_id', context.userId).eq('portfolio_id', context.portfolioId).limit(51)
   const rulesQuery = context.supabase.from('portfolio_investment_rules')
-    .select('id, enabled, updated_at').eq('user_id', context.userId).eq('portfolio_id', context.portfolioId).limit(50)
+    .select('id, enabled, updated_at').eq('user_id', context.userId).eq('portfolio_id', context.portfolioId).limit(51)
 
   const [holdingsResult, plansResult, settingsResult, watchlistResult, collectionsResult, allocationsResult, rulesResult] = await Promise.all([
     serviceClient.rpc('get_decrypted_holdings', holdingArgs),
@@ -137,8 +141,6 @@ export async function GET(request: NextRequest) {
     : {
         status: 'READY', source: 'get_decrypted_holdings(selected portfolio)', fetchedAt, observedAt: latestObservedAt((holdingsResult.data ?? []) as Array<Record<string, unknown>>),
         data: ((holdingsResult.data ?? []) as Array<Record<string, unknown>>).map(row => ({
-          userId: context.userId,
-          portfolioId: context.portfolioId,
           symbol: String(row.symbol ?? '').trim().toUpperCase(),
           shares: numberOrNull(row.shares) ?? Number.NaN,
           costBasis: numberOrNull(row.cost_basis),
@@ -171,11 +173,11 @@ export async function GET(request: NextRequest) {
         collectionId: typeof row.collection_id === 'string' ? row.collection_id : null,
         targetPrice: numberOrNull(row.target_price), alertEnabled: row.alert_enabled === true,
         updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
-      }))
+      }), 12)
   const collectionsSource = rowsSource<CommandCenterCollection>(collectionsResult, context, 'portfolio_watchlist_collections', fetchedAt, row => ({
     userId: context.userId, portfolioId: context.portfolioId, id: String(row.id), name: String(row.name),
     sortOrder: numberOrNull(row.sort_order) ?? 0, updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
-  }))
+  }), 12)
   const invalidAllocation = !allocationsResult.error && (allocationsResult.data ?? []).some(row => {
         const targetPct = numberOrNull(row.target_pct)
         return targetPct === null || targetPct < 0 || targetPct > 100
@@ -185,17 +187,16 @@ export async function GET(request: NextRequest) {
     : rowsSource<CommandCenterAllocation>(allocationsResult, context, 'portfolio_allocation_targets', fetchedAt, row => ({
           userId: context.userId, portfolioId: context.portfolioId, assetKey: String(row.asset_key),
           targetPct: numberOrNull(row.target_pct)!, updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
-        }))
+        }), 50)
   const rulesSource = rowsSource<CommandCenterRule>(rulesResult, context, 'portfolio_investment_rules', fetchedAt, row => ({
     userId: context.userId, portfolioId: context.portfolioId, id: String(row.id), enabled: row.enabled === true,
     updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
-  }))
+  }), 50)
   const plansSource: SnapshotSource<CommandCenterPlan[]> = plansResult.error
     ? { status: statusForError(plansResult.error), source: 'get_decrypted_trade_plans(selected portfolio)', fetchedAt, observedAt: null, data: null, message: 'อ่าน Trade Plans ไม่สำเร็จ' }
     : {
         status: 'READY', source: 'get_decrypted_trade_plans(selected portfolio)', fetchedAt, observedAt: latestObservedAt((plansResult.data ?? []) as Array<Record<string, unknown>>),
         data: ((plansResult.data ?? []) as Array<Record<string, unknown>>).map(row => ({
-          userId: context.userId, portfolioId: context.portfolioId,
           symbol: String(row.symbol ?? '').trim().toUpperCase(), status: String(row.status ?? '').toUpperCase(),
         })),
       }

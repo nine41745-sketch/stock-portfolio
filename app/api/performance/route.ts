@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { resolveActivePortfolio } from '@/lib/portfolio-context'
+import { noPortfolioResponse, resolveActivePortfolio } from '@/lib/portfolio-context'
 import { getMultipleQuotesWithMetrics } from '@/lib/finnhub'
 import {
   calculatePerformance,
@@ -50,11 +50,12 @@ function migrationMissing(error: { code?: string; message?: string } | null): bo
     || message.includes('portfolio_transactions') && message.includes('does not exist')
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const portfolio = await resolveActivePortfolio(user.id, supabase)
+  if (portfolio.mode === 'empty') return noPortfolioResponse()
 
   const serviceClient = createServiceClient()
   const transactionArgs = portfolio.mode === 'portfolio'
@@ -121,7 +122,7 @@ export async function GET() {
   }))
   let history
   try {
-    history = await getPerformanceHistory(transactions)
+    history = await getPerformanceHistory(transactions, request.signal)
   } catch (error) {
     console.error('[performance] history load failed:', error)
     history = {
@@ -131,6 +132,7 @@ export async function GET() {
       spy_return_pct: null,
       truncated: false,
       missing_symbols: [],
+      complete: false,
     }
   }
 

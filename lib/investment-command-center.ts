@@ -1,4 +1,4 @@
-export type CommandCenterStatus = 'READY' | 'STALE' | 'UNAVAILABLE' | 'ERROR' | 'NOT_REQUESTED'
+export type CommandCenterStatus = 'READY' | 'PARTIAL' | 'STALE' | 'UNAVAILABLE' | 'ERROR' | 'NOT_REQUESTED'
 
 export interface SnapshotSource<T> {
   status: CommandCenterStatus
@@ -14,7 +14,7 @@ interface ScopedRow {
   portfolioId: string
 }
 
-export interface CommandCenterHolding extends ScopedRow {
+export interface CommandCenterHolding {
   symbol: string
   shares: number
   costBasis: number | null
@@ -56,7 +56,7 @@ export interface CommandCenterRule extends ScopedRow {
   updatedAt: string | null
 }
 
-export interface CommandCenterPlan extends ScopedRow {
+export interface CommandCenterPlan {
   symbol: string
   status: string
 }
@@ -111,7 +111,7 @@ function scopedSection<T>(portfolioId: string, source: SnapshotSource<T>) {
     source: source.source,
     fetchedAt: source.fetchedAt,
     observedAt: source.observedAt,
-    data: source.status === 'READY' ? source.data : null,
+    data: source.status === 'READY' || source.status === 'PARTIAL' ? source.data : null,
     ...(source.message ? { message: source.message } : {}),
   }
 }
@@ -120,19 +120,17 @@ export function buildInvestmentCommandCenterSnapshot(input: InvestmentCommandCen
   const { userId, portfolio } = input
   const portfolioId = portfolio.id
 
-  if (input.holdings.status === 'READY') assertRowsScoped(input.holdings.data ?? [], userId, portfolioId)
-  if (input.watchlist.status === 'READY') assertRowsScoped(input.watchlist.data ?? [], userId, portfolioId)
-  if (input.collections.status === 'READY') assertRowsScoped(input.collections.data ?? [], userId, portfolioId)
-  if (input.allocations.status === 'READY') assertRowsScoped(input.allocations.data ?? [], userId, portfolioId)
-  if (input.rules.status === 'READY') assertRowsScoped(input.rules.data ?? [], userId, portfolioId)
-  if (input.plans.status === 'READY') assertRowsScoped(input.plans.data ?? [], userId, portfolioId)
+  if (input.watchlist.status === 'READY' || input.watchlist.status === 'PARTIAL') assertRowsScoped(input.watchlist.data ?? [], userId, portfolioId)
+  if (input.collections.status === 'READY' || input.collections.status === 'PARTIAL') assertRowsScoped(input.collections.data ?? [], userId, portfolioId)
+  if (input.allocations.status === 'READY' || input.allocations.status === 'PARTIAL') assertRowsScoped(input.allocations.data ?? [], userId, portfolioId)
+  if (input.rules.status === 'READY' || input.rules.status === 'PARTIAL') assertRowsScoped(input.rules.data ?? [], userId, portfolioId)
 
   const holdings = input.holdings.status === 'READY' ? input.holdings.data ?? [] : []
   const balances = input.balances.status === 'READY' ? input.balances.data : null
-  const watchlist = input.watchlist.status === 'READY' ? input.watchlist.data ?? [] : []
-  const collections = input.collections.status === 'READY' ? input.collections.data ?? [] : []
-  const allocations = input.allocations.status === 'READY' ? input.allocations.data ?? [] : []
-  const rules = input.rules.status === 'READY' ? input.rules.data ?? [] : []
+  const watchlist = input.watchlist.status === 'READY' || input.watchlist.status === 'PARTIAL' ? input.watchlist.data ?? [] : []
+  const collections = input.collections.status === 'READY' || input.collections.status === 'PARTIAL' ? input.collections.data ?? [] : []
+  const allocations = input.allocations.status === 'READY' || input.allocations.status === 'PARTIAL' ? input.allocations.data ?? [] : []
+  const rules = input.rules.status === 'READY' || input.rules.status === 'PARTIAL' ? input.rules.data ?? [] : []
   const plans = input.plans.status === 'READY' ? input.plans.data ?? [] : []
 
   const holdingsKnown = input.holdings.status === 'READY'
@@ -238,19 +236,19 @@ export function buildInvestmentCommandCenterSnapshot(input: InvestmentCommandCen
       ...sections,
       watchlist: {
         ...sections.watchlist,
-        data: sections.watchlist.status === 'READY'
+        data: sections.watchlist.status === 'READY' || sections.watchlist.status === 'PARTIAL'
           ? watchlist.map(({ id, symbol, collectionId, targetPrice, alertEnabled, updatedAt }) => ({ id, symbol, collectionId, targetPrice, alertEnabled, updatedAt }))
           : null,
       },
       collections: {
         ...sections.collections,
-        data: sections.collections.status === 'READY'
+        data: sections.collections.status === 'READY' || sections.collections.status === 'PARTIAL'
           ? collections.map(({ id, name, sortOrder, updatedAt }) => ({ id, name, sortOrder, updatedAt }))
           : null,
       },
       allocations: {
         ...sections.allocations,
-        data: sections.allocations.status === 'READY'
+        data: sections.allocations.status === 'READY' || sections.allocations.status === 'PARTIAL'
           ? allocations.map(({ assetKey, targetPct, updatedAt }) => ({ assetKey, targetPct, updatedAt }))
           : null,
       },

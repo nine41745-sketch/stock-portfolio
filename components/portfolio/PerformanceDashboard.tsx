@@ -110,6 +110,7 @@ interface PerformancePayload {
     spy_return_pct: number | null
     truncated: boolean
     missing_symbols: string[]
+    complete: boolean
   }
   balances: {
     cash_balance: number
@@ -308,6 +309,13 @@ export default function PerformanceDashboard() {
       {noLedger && (
         <div className="rounded-xl border border-blue-900/60 bg-blue-950/20 p-5 text-sm text-blue-100">
           ยังไม่มีฐาน Transaction สำหรับวัดผลงานย้อนหลัง ถ้ามีหุ้นเดิมอยู่แล้ว ให้ไปที่ <Link href="/transactions" className="font-semibold underline">🧾 ธุรกรรม</Link> แล้วเพิ่ม “ยอดหุ้นตั้งต้น” ก่อน ระบบจะไม่สร้างประวัติ BUY ปลอมย้อนหลังให้เอง
+        </div>
+      )}
+
+      {!data.history.complete && (
+        <div role="status" className="rounded-xl border border-yellow-800/60 bg-yellow-950/20 p-4 text-sm text-yellow-100">
+          ประวัติราคาไม่ครบ จึงซ่อนกราฟผลตอบแทนและค่าเปรียบเทียบ SPY ไว้ก่อน
+          {data.history.missing_symbols.length > 0 && <span className="mt-1 block text-xs text-yellow-200/80">ข้อมูลที่ขาด: {data.history.missing_symbols.join(', ')}</span>}
         </div>
       )}
 

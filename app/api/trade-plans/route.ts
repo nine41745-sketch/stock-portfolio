@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { resolveActivePortfolio } from '@/lib/portfolio-context'
+import { noPortfolioResponse, resolveActivePortfolio } from '@/lib/portfolio-context'
 import {
   parseTradePlanId,
   parseTradePlanInput,
@@ -79,11 +79,14 @@ async function requireUser() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { user: null, portfolio: null }
   const portfolio = await resolveActivePortfolio(user.id, supabase)
+  if (portfolio.mode === 'empty') return { user, portfolio, response: noPortfolioResponse() }
   return { user, portfolio }
 }
 
 export async function GET() {
-  const { user, portfolio } = await requireUser()
+  const context = await requireUser()
+  if ('response' in context) return context.response
+  const { user, portfolio } = context
   if (!user || !portfolio) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const serviceClient = createServiceClient()
@@ -104,7 +107,9 @@ export async function GET() {
 }
 
 async function saveTradePlan(request: NextRequest, id: string | null) {
-  const { user, portfolio } = await requireUser()
+  const context = await requireUser()
+  if ('response' in context) return context.response
+  const { user, portfolio } = context
   if (!user || !portfolio) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let input: TradePlanInput
@@ -174,7 +179,9 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { user, portfolio } = await requireUser()
+  const context = await requireUser()
+  if ('response' in context) return context.response
+  const { user, portfolio } = context
   if (!user || !portfolio) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let id: string

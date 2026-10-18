@@ -16,14 +16,14 @@ export interface CompanyProfileResult {
   fetchedAt: string | null
 }
 
-async function getCompanyProfileResult(symbol: string): Promise<CompanyProfileResult> {
+async function getCompanyProfileResult(symbol: string, signal?: AbortSignal): Promise<CompanyProfileResult> {
   const normalized = symbol.trim().toUpperCase()
   const emptyProfile = { symbol: normalized, name: null, industry: null, currency: null }
   if (!KEY) return { profile: emptyProfile, status: 'unavailable', fetchedAt: null }
   try {
     const response = await fetch(`${BASE}/stock/profile2?symbol=${encodeURIComponent(normalized)}&token=${KEY}`, {
       next: { revalidate: 86400 },
-      signal: AbortSignal.timeout(8000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(8000)]) : AbortSignal.timeout(8000),
     })
     if (!response.ok) return {
       profile: emptyProfile,
@@ -53,22 +53,28 @@ async function getCompanyProfileResult(symbol: string): Promise<CompanyProfileRe
   }
 }
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+const delay = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  if (signal?.aborted) return reject(signal.reason)
+  const timer = setTimeout(done, ms)
+  function done() { signal?.removeEventListener('abort', abort); resolve() }
+  function abort() { clearTimeout(timer); signal?.removeEventListener('abort', abort); reject(signal?.reason) }
+  signal?.addEventListener('abort', abort, { once: true })
+})
 
-export async function getCompanyProfiles(symbols: string[]): Promise<Record<string, CompanyProfileLite>> {
-  const results = await getCompanyProfileResults(symbols)
+export async function getCompanyProfiles(symbols: string[], options?: { signal?: AbortSignal }): Promise<Record<string, CompanyProfileLite>> {
+  const results = await getCompanyProfileResults(symbols, options)
   return Object.fromEntries(Object.entries(results).map(([symbol, result]) => [symbol, result.profile]))
 }
 
-export async function getCompanyProfileResults(symbols: string[]): Promise<Record<string, CompanyProfileResult>> {
+export async function getCompanyProfileResults(symbols: string[], options?: { signal?: AbortSignal }): Promise<Record<string, CompanyProfileResult>> {
   const unique = Array.from(new Set(symbols.map(symbol => symbol.trim().toUpperCase()).filter(Boolean)))
   const result: Record<string, CompanyProfileResult> = {}
 
   for (let i = 0; i < unique.length; i += CHUNK_SIZE) {
     const chunk = unique.slice(i, i + CHUNK_SIZE)
-    const profiles = await Promise.all(chunk.map(getCompanyProfileResult))
+    const profiles = await Promise.all(chunk.map(symbol => getCompanyProfileResult(symbol, options?.signal)))
     profiles.forEach(item => { result[item.profile.symbol] = item })
-    if (i + CHUNK_SIZE < unique.length) await delay(CHUNK_DELAY_MS)
+    if (i + CHUNK_SIZE < unique.length) await delay(CHUNK_DELAY_MS, options?.signal)
   }
 
   return result

@@ -37,7 +37,11 @@ assert.doesNotMatch(verifyNoComments, /\b(INSERT|UPDATE|DELETE|ALTER|DROP|TRUNCA
 const context = fs.readFileSync('lib/portfolio-context.ts', 'utf8')
 assert.match(context, /mode: 'legacy'/, 'Code-first fallback must support the pre-migration schema')
 assert.match(context, /isPortfolioFoundationMissing/, 'Missing schema must be detected explicitly')
-assert.match(context, /name: 'เจน'/, 'The first/default portfolio must be Jane')
+assert.match(context, /mode: 'empty'/, 'A read-only lookup must explicitly report an account without a portfolio')
+const resolver = context.slice(context.indexOf('export async function resolveActivePortfolio'))
+assert.doesNotMatch(resolver, /\.insert\(/, 'Portfolio resolution must never create records during a read')
+const portfolioRoute = fs.readFileSync('app/api/portfolios/route.ts', 'utf8')
+assert.match(portfolioRoute, /is_default: isFirstPortfolio/, 'Only explicit first-portfolio creation may set the default')
 
 const nav = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')
 assert.match(nav, /PortfolioSwitcher/, 'Portfolio selector must be global through AppTabs')

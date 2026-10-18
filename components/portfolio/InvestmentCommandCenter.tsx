@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
-type Status = 'READY' | 'STALE' | 'UNAVAILABLE' | 'ERROR' | 'NOT_REQUESTED'
+type Status = 'READY' | 'PARTIAL' | 'STALE' | 'UNAVAILABLE' | 'ERROR' | 'NOT_REQUESTED'
 type Quote = { price: number | null; source: string; fetchedAt: string; providerTimestamp: string | null; freshness: string }
 type Snapshot = {
   generatedAt: string
@@ -43,6 +43,7 @@ type Snapshot = {
 
 const STATUS_LABEL: Record<Status, string> = {
   READY: 'พร้อม · ข้อมูลยืนยันได้',
+  PARTIAL: 'ข้อมูลบางส่วน · มีรายการเพิ่มเติม',
   STALE: 'ข้อมูลเก่า/เวลาไม่ยืนยัน',
   UNAVAILABLE: 'ข้อมูลไม่พร้อม',
   ERROR: 'โหลดข้อมูลไม่สำเร็จ',
@@ -63,6 +64,7 @@ function formatTime(value: string | null | undefined): string {
 function StatusPill({ status }: { status: Status }) {
   const classes: Record<Status, string> = {
     READY: 'border-green-500/30 bg-green-500/15 text-green-400',
+    PARTIAL: 'border-yellow-500/30 bg-yellow-500/15 text-yellow-400',
     STALE: 'border-yellow-500/30 bg-yellow-500/15 text-yellow-400',
     UNAVAILABLE: 'border-orange-500/30 bg-orange-500/15 text-orange-400',
     ERROR: 'border-red-500/30 bg-red-500/15 text-red-400',

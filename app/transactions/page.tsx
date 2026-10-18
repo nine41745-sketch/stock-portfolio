@@ -8,6 +8,7 @@ import DividendIntelligence from '@/components/portfolio/DividendIntelligence'
 import AutoTradeEntry from '@/components/portfolio/AutoTradeEntry'
 import InvestingSinceBadge from '@/components/portfolio/InvestingSinceBadge'
 import InactivityPinLock from '@/components/auth/InactivityPinLock'
+import PortfolioRequiredNotice from '@/components/portfolio/PortfolioRequiredNotice'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +17,11 @@ export default async function TransactionsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const portfolio = await resolveActivePortfolio(user.id, supabase)
+  if (portfolio.mode === 'empty') return (
+    <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+      <InactivityPinLock /><InvestingSinceBadge /><AppTabs /><PortfolioRequiredNotice />
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8">

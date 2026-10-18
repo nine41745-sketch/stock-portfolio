@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import {
   ACTIVE_PORTFOLIO_COOKIE,
   isPortfolioFoundationMissing,
+  noPortfolioResponse,
   resolveActivePortfolio,
 } from '@/lib/portfolio-context'
 
@@ -38,6 +39,7 @@ export async function GET() {
 
   const context = await resolveActivePortfolio(user.id, supabase)
   if (context.mode === 'legacy') return migrationRequired()
+  if (context.mode === 'empty') return noPortfolioResponse()
 
   const response = NextResponse.json({
     active_portfolio_id: context.portfolioId,
@@ -63,9 +65,10 @@ export async function POST(request: NextRequest) {
   const context = await resolveActivePortfolio(user.id, supabase)
   if (context.mode === 'legacy') return migrationRequired()
 
+  const isFirstPortfolio = context.mode === 'empty'
   const { data, error } = await supabase
     .from('portfolios')
-    .insert({ user_id: user.id, name, is_default: false })
+    .insert({ user_id: user.id, name, is_default: isFirstPortfolio })
     .select('id, name, is_default, created_at')
     .single()
 

@@ -12,7 +12,16 @@ export interface PortfolioSummary {
 
 export type ActivePortfolioContext =
   | { mode: 'legacy'; portfolioId: null; portfolio: null; portfolios: [] }
+  | { mode: 'empty'; portfolioId: null; portfolio: null; portfolios: [] }
   | { mode: 'portfolio'; portfolioId: string; portfolio: PortfolioSummary; portfolios: PortfolioSummary[] }
+
+export function noPortfolioResponse(): Response {
+  return Response.json({
+    error: 'ยังไม่มี Portfolio สำหรับบัญชีนี้ กรุณาสร้างพอร์ตก่อน',
+    code: 'PORTFOLIO_REQUIRED',
+    portfolio_required: true,
+  }, { status: 409, headers: { 'Cache-Control': 'no-store' } })
+}
 
 function isUuid(value: string | undefined): value is string {
   return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))
@@ -47,7 +56,7 @@ export async function resolveActivePortfolio(
     throw new Error('PORTFOLIO_CONTEXT_LOAD_FAILED')
   }
 
-  let portfolios = (data ?? []).map(row => ({
+  const portfolios = (data ?? []).map(row => ({
     id: String(row.id),
     name: String(row.name),
     is_default: Boolean(row.is_default),
@@ -55,45 +64,7 @@ export async function resolveActivePortfolio(
   }))
 
   if (portfolios.length === 0) {
-    const { data: created, error: createError } = await supabase
-      .from('portfolios')
-      .insert({ user_id: userId, name: 'เจน', is_default: true })
-      .select('id, name, is_default, created_at')
-      .single()
-
-    if (createError) {
-      // A concurrent request may have created the first portfolio already.
-      if (String(createError.code ?? '') !== '23505') {
-        console.error('[portfolio-context] default portfolio create failed:', createError)
-        throw new Error('PORTFOLIO_CONTEXT_CREATE_FAILED')
-      }
-      const retry = await supabase
-        .from('portfolios')
-        .select('id, name, is_default, created_at')
-        .eq('user_id', userId)
-        .order('is_default', { ascending: false })
-        .order('created_at', { ascending: true })
-        // RSC fetch memoization may retain the initial empty GET. A signal
-        // opts this post-conflict read out so it can see the committed winner.
-        .abortSignal(new AbortController().signal)
-      if (retry.error || !retry.data?.length) {
-        console.error('[portfolio-context] default portfolio retry failed:', retry.error)
-        throw new Error('PORTFOLIO_CONTEXT_CREATE_FAILED')
-      }
-      portfolios = retry.data.map(row => ({
-        id: String(row.id),
-        name: String(row.name),
-        is_default: Boolean(row.is_default),
-        created_at: String(row.created_at),
-      }))
-    } else {
-      portfolios = [{
-        id: String(created.id),
-        name: String(created.name),
-        is_default: Boolean(created.is_default),
-        created_at: String(created.created_at),
-      }]
-    }
+    return { mode: 'empty', portfolioId: null, portfolio: null, portfolios: [] }
   }
 
   const cookieStore = await cookies()

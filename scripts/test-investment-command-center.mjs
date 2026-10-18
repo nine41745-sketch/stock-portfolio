@@ -22,7 +22,7 @@ const base = {
   userId: 'user-a',
   portfolio: { id: 'portfolio-a1', name: 'A1' },
   holdings: { status: 'READY', source: 'selected-portfolio holdings RPC', fetchedAt, observedAt, data: [
-    { userId: 'user-a', portfolioId: 'portfolio-a1', symbol: 'AAA', shares: 2, costBasis: 10, updatedAt: observedAt },
+    { symbol: 'AAA', shares: 2, costBasis: 10, updatedAt: observedAt },
   ] },
   balances: { status: 'READY', source: 'user_settings', fetchedAt, observedAt, data: { cashBalance: 50, dimeBalance: 30, initialCapital: 100, dimeUpdatedAt: observedAt } },
   watchlist: { status: 'READY', source: 'portfolio_watchlist_items', fetchedAt, observedAt, data: [
@@ -33,7 +33,7 @@ const base = {
   ] },
   allocations: { status: 'READY', source: 'portfolio_allocation_targets', fetchedAt, observedAt, data: [{ userId: 'user-a', portfolioId: 'portfolio-a1', assetKey: 'AAA', targetPct: 50, updatedAt: observedAt }] },
   rules: { status: 'READY', source: 'portfolio_investment_rules', fetchedAt, observedAt, data: [{ userId: 'user-a', portfolioId: 'portfolio-a1', id: 'rule-1', enabled: true, updatedAt: observedAt }] },
-  plans: { status: 'READY', source: 'selected-portfolio trade plan RPC', fetchedAt, observedAt, data: [{ userId: 'user-a', portfolioId: 'portfolio-a1', symbol: 'AAA', status: 'WAITING' }] },
+  plans: { status: 'READY', source: 'selected-portfolio trade plan RPC', fetchedAt, observedAt, data: [{ symbol: 'AAA', status: 'WAITING' }] },
   market: { requested: false, observations: {} },
 }
 
@@ -90,14 +90,22 @@ assert.equal(staleQuote.sections.market.status, 'STALE')
 assert.equal(staleQuote.sections.market.data.coverageComplete, false)
 assert.equal(staleQuote.overview.marketValue, null, 'stale source observations do not produce a complete live value')
 
-for (const sectionName of ['holdings', 'watchlist', 'collections', 'allocations', 'rules', 'plans']) {
-  const rowField = sectionName === 'holdings' || sectionName === 'watchlist' || sectionName === 'allocations' || sectionName === 'rules' || sectionName === 'plans'
-  if (!rowField) continue
+for (const sectionName of ['watchlist', 'collections', 'allocations', 'rules']) {
   const badRows = { ...base[sectionName], data: [{ ...base[sectionName].data[0], portfolioId: 'portfolio-b' }] }
   assert.throws(() => buildInvestmentCommandCenterSnapshot({ ...base, [sectionName]: badRows }), InvestmentCommandCenterScopeError, `${sectionName} rejects a foreign portfolio row`)
   const foreignUserRows = { ...base[sectionName], data: [{ ...base[sectionName].data[0], userId: 'user-b' }] }
   assert.throws(() => buildInvestmentCommandCenterSnapshot({ ...base, [sectionName]: foreignUserRows }), InvestmentCommandCenterScopeError, `${sectionName} rejects another user's row`)
 }
+
+const partialSnapshot = buildInvestmentCommandCenterSnapshot({
+  ...base,
+  watchlist: { ...base.watchlist, status: 'PARTIAL', message: 'แสดง 12 รายการแรก; ยังมีรายการเพิ่มเติม' },
+  rules: { ...base.rules, status: 'PARTIAL', message: 'แสดงบางส่วน' },
+})
+assert.equal(partialSnapshot.sections.watchlist.status, 'PARTIAL')
+assert.equal(partialSnapshot.sections.watchlist.data.length, 1, 'partial rows remain visible with an explicit partial status')
+assert.equal(partialSnapshot.sections.rules.status, 'PARTIAL')
+assert.equal(partialSnapshot.sections.rules.data, null, 'aggregate counts are hidden when the underlying row set is incomplete')
 
 const settingsUnavailable = buildInvestmentCommandCenterSnapshot({
   ...base,
@@ -142,6 +150,7 @@ assert.equal(holdingsUnavailable.overview.marketValue, null, 'failed holdings re
 assert.equal(holdingsUnavailable.sections.market.status, 'UNAVAILABLE')
 
 const route = fs.readFileSync('app/api/investment-command-center/route.ts', 'utf8')
+const sql = fs.readFileSync('supabase/migration_multi_portfolio_v1.27.0.sql', 'utf8')
 assert.ok(route.indexOf('requirePhaseAPortfolio') < route.indexOf('createServiceClient'), 'Auth/PIN/ownership guard must precede service-role access')
 assert.match(route, /requirePhaseAPortfolio\(rawPortfolioId/)
 assert.match(route, /UUID_PATTERN\.test\(rawPortfolioId\)/, 'invalid portfolio identifiers are rejected before querying data')
@@ -156,6 +165,21 @@ assert.match(route, /AbortSignal\.any\(\[request\.signal, AbortSignal\.timeout/)
 assert.match(route, /marketRequested/)
 assert.match(route, /\.eq\('user_id', context\.userId\)/)
 assert.match(route, /\.eq\('portfolio_id', context\.portfolioId\)/)
+assert.match(route, /\.limit\(13\)/, '12-row sections fetch one extra row to detect truncation')
+assert.match(route, /\.limit\(51\)/, '50-row sections fetch one extra row to detect truncation')
+assert.match(route, /status: partial \? 'PARTIAL' : 'READY'/)
+assert.doesNotMatch(route.slice(route.indexOf('const holdingsSource'), route.indexOf('const balancesSource')), /userId: context\.userId|portfolioId: context\.portfolioId/, 'RPC holdings rows must not be assigned synthetic scope fields')
+assert.doesNotMatch(route.slice(route.indexOf('const plansSource'), route.indexOf('let observations')), /userId: context\.userId|portfolioId: context\.portfolioId/, 'RPC trade plan rows must not be assigned synthetic scope fields')
+const holdingsStart = sql.indexOf('CREATE OR REPLACE FUNCTION public.get_decrypted_holdings(')
+const holdingsFunction = sql.slice(holdingsStart, sql.indexOf('$$;', holdingsStart))
+const plansStart = sql.indexOf('CREATE OR REPLACE FUNCTION public.get_decrypted_trade_plans(')
+const plansFunction = sql.slice(plansStart, sql.indexOf('$$;', plansStart))
+assert.match(holdingsFunction, /WHERE h\.user_id = p_user_id\s+AND h\.portfolio_id = p_portfolio_id/i, 'decrypted Holdings RPC SQL filters both authenticated user and selected portfolio')
+assert.match(plansFunction, /WHERE t\.user_id = p_user_id AND t\.portfolio_id = p_portfolio_id/i, 'decrypted Trade Plans RPC SQL filters both authenticated user and selected portfolio')
+assert.match(sql, /REVOKE ALL ON FUNCTION public\.get_decrypted_holdings\(UUID, UUID, TEXT\) FROM PUBLIC, anon, authenticated/)
+assert.match(sql, /REVOKE ALL ON FUNCTION public\.get_decrypted_trade_plans\(UUID, UUID, TEXT\) FROM PUBLIC, anon, authenticated/)
+assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.get_decrypted_holdings\(UUID, UUID, TEXT\) TO service_role/)
+assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.get_decrypted_trade_plans\(UUID, UUID, TEXT\) TO service_role/)
 assert.doesNotMatch(route, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/, 'snapshot endpoint must be read-only')
 assert.doesNotMatch(route, /getCompanyProfiles|getMultipleAllTimeHigh|getUpcomingEarnings|Groq|discovery|scanner/i, 'initial snapshot must not fan out providers or launch scans')
 const providerCallIndex = route.indexOf('getQuoteObservations(candidateSymbols')
@@ -204,7 +228,7 @@ function createSyntheticQuery(table) {
     apiState.queries.push({ table, filters: [...filters] })
     const source = apiState.tableRows[table] ?? []
     const data = source.filter(row => filters.every(([field, value]) => row[field] === value)).slice(0, rowLimit)
-    return { data, error: null }
+  return { data, error: null }
   }
   return query
 }
@@ -275,6 +299,28 @@ for (const query of apiState.queries) {
   assert(query.filters.some(([field, value]) => field === 'portfolio_id' && value === apiState.activePortfolioId), `${query.table} is portfolio-scoped`)
 }
 assert.ok(apiState.rpcCalls.every(call => call.args.p_user_id === 'user-a' && call.args.p_portfolio_id === apiState.activePortfolioId))
+
+const row = (index, table) => ({ user_id: 'user-a', portfolio_id: apiState.activePortfolioId,
+  id: `${table}-${index}`, symbol: `S${index}`, asset_key: `S${index}`, target_pct: 1,
+  name: `Collection ${index}`, sort_order: index, enabled: index % 2 === 0, updated_at: observedAt })
+apiState.tableRows.portfolio_watchlist_items = Array.from({ length: 12 }, (_, index) => row(index, 'watch'))
+let atLimitResponse = await apiRoute.GET(makeRequest('/api/investment-command-center'))
+let atLimitPayload = await atLimitResponse.json()
+assert.equal(atLimitPayload.sections.watchlist.status, 'READY', 'exactly the configured limit remains complete')
+apiState.tableRows.portfolio_watchlist_items.push(row(12, 'watch'))
+apiState.tableRows.portfolio_watchlist_collections = Array.from({ length: 13 }, (_, index) => row(index, 'collection'))
+apiState.tableRows.portfolio_allocation_targets = Array.from({ length: 51 }, (_, index) => row(index, 'allocation'))
+apiState.tableRows.portfolio_investment_rules = Array.from({ length: 51 }, (_, index) => row(index, 'rule'))
+const partialResponse = await apiRoute.GET(makeRequest('/api/investment-command-center'))
+const partialPayload = await partialResponse.json()
+for (const section of ['watchlist', 'collections', 'allocations', 'rules']) {
+  assert.equal(partialPayload.sections[section].status, 'PARTIAL', `${section} limit+1 response is explicit partial data`)
+  assert.match(partialPayload.sections[section].message, /รายการเพิ่มเติม/)
+}
+assert.equal(partialPayload.sections.watchlist.data.length, 12)
+assert.equal(partialPayload.sections.collections.data.length, 12)
+assert.equal(partialPayload.sections.allocations.data.length, 50)
+assert.equal(partialPayload.sections.rules.data, null, 'rule totals are not presented from a truncated source')
 
 apiState.queries.length = 0
 apiState.rpcCalls.length = 0

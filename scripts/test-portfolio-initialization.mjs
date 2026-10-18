@@ -47,7 +47,7 @@ function harness(responses, cookieValue, memoized = false) {
     assert.ok(next, 'Unexpected extra database operation')
     assert.equal(method, next.method)
     if (method === 'GET') assert.equal(url.searchParams.get('user_id'), 'eq.user-a')
-    if (method === 'POST') assert.deepEqual(JSON.parse(init.body), { user_id: 'user-a', name: 'เจน', is_default: true })
+    if (method === 'POST') assert.deepEqual(JSON.parse(init.body), { user_id: 'user-a', name: 'พอร์ตทดลอง', is_default: true })
     return new Response(JSON.stringify(next.body), { status: next.status ?? 200, headers: { 'Content-Type': 'application/json' } })
   }
   const client = createClient('http://127.0.0.1:1', 'test-anon-key', {
@@ -61,7 +61,7 @@ function harness(responses, cookieValue, memoized = false) {
     if (name === '@/lib/supabase/server') return { createClient: async () => client }
     throw new Error(`Unexpected dependency: ${name}`)
   }, loaded, loaded.exports, { error: (...args) => diagnostics.push(args) })
-  return { resolve: () => loaded.exports.resolveActivePortfolio('user-a', client), requests, responses, diagnostics }
+  return { resolve: () => loaded.exports.resolveActivePortfolio('user-a', client), requests, responses, diagnostics, exports: loaded.exports, client }
 }
 
 const read = rows => ({ method: 'GET', body: rows })
@@ -78,30 +78,13 @@ test('owned portfolio list replaces a stale account cookie without creating a po
   assert.equal(h.requests.length, 1)
 })
 
-test('first-time initialization returns the newly created owned default', async () => {
-  const h = harness([read([]), created(row)])
-  assert.equal((await h.resolve()).portfolioId, portfolioId)
+test('empty portfolio lookup is read-only and returns an explicit empty context', async () => {
+  const h = harness([read([])])
+  const result = await h.resolve()
+  assert.equal(result.mode, 'empty')
+  assert.equal(result.portfolioId, null)
+  assert.deepEqual(h.requests.map(request => request.method), ['GET'])
   assert.equal(h.responses.length, 0)
-})
-
-// PostgreSQL serializes the unique-index conflict before returning 23505;
-// the next statement may read the committed winner under READ COMMITTED.
-test('concurrent first-time unique conflict reads the committed owned winner', async () => {
-  const h = harness([read([]), failure('23505'), read([row])])
-  assert.equal((await h.resolve()).portfolioId, portfolioId)
-  assert.deepEqual(h.requests.map(request => request.method), ['GET', 'POST', 'GET'])
-})
-
-test('a failed initialization does not poison a later explicit account-context retry', async () => {
-  const h = harness([read([]), failure('42501'), read([]), created(row)])
-  await assert.rejects(h.resolve(), /PORTFOLIO_CONTEXT_CREATE_FAILED/)
-  assert.equal((await h.resolve()).portfolioId, portfolioId)
-  assert.equal(h.responses.length, 0)
-})
-
-test('concurrent conflict without an owned winner fails closed', async () => {
-  const h = harness([read([]), failure('23505'), read([])])
-  await assert.rejects(h.resolve(), /PORTFOLIO_CONTEXT_CREATE_FAILED/)
 })
 
 test('database permission failures never fall back to a legacy context', async () => {
@@ -109,12 +92,45 @@ test('database permission failures never fall back to a legacy context', async (
   await assert.rejects(h.resolve(), /PORTFOLIO_CONTEXT_LOAD_FAILED/)
 })
 
-// Break caught: reusing the RSC memoized initial empty GET after PostgreSQL
-// reports that a concurrent request committed the one permitted default.
-test('concurrent first-time initialization bypasses the memoized empty ownership lookup', async () => {
-  const h = harness([read([]), failure('23505'), read([row])], undefined, true)
+test('an existing selected owned portfolio is returned without writes', async () => {
+  const second = { ...row, id: otherPortfolioId, name: 'Second', is_default: false, created_at: '2026-10-17T00:00:00Z' }
+  const h = harness([read([row, second])], otherPortfolioId)
   const result = await h.resolve()
-  assert.equal(result.portfolioId, portfolioId)
-  assert.deepEqual(result.portfolios, [row])
+  assert.equal(result.portfolioId, otherPortfolioId)
+  assert.equal(result.portfolio.name, 'Second')
+  assert.deepEqual(h.requests.map(request => request.method), ['GET'])
+})
+
+test('legacy fallback is limited to missing portfolio foundation schema', async () => {
+  const h = harness([{ method: 'GET', status: 404, body: { code: '42P01', message: 'portfolios missing' } }])
+  const result = await h.resolve()
+  assert.equal(result.mode, 'legacy')
+  assert.equal(h.requests.length, 1)
+})
+
+test('explicit first portfolio creation runs only through authenticated POST', async () => {
+  const h = harness([read([]), read([]), created(row)])
+  h.client.auth.getUser = async () => ({ data: { user: { id: 'user-a' } }, error: null })
+  const require = createRequire(import.meta.url)
+  const { NextResponse } = require('next/server')
+  const compiledRoute = ts.transpileModule(fs.readFileSync('app/api/portfolios/route.ts', 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText
+  const routeModule = { exports: {} }
+  new Function('require', 'module', 'exports', compiledRoute)(name => {
+    if (name === 'next/server') return { NextResponse }
+    if (name === '@/lib/supabase/server') return { createClient: async () => h.client }
+    if (name === '@/lib/portfolio-context') return h.exports
+    throw new Error(`Unexpected route dependency: ${name}`)
+  }, routeModule, routeModule.exports)
+  const emptyResponse = await routeModule.exports.GET()
+  assert.equal(emptyResponse.status, 409)
+  assert.equal((await emptyResponse.json()).code, 'PORTFOLIO_REQUIRED')
+  assert.equal(emptyResponse.headers.get('cache-control'), 'no-store')
+  const response = await routeModule.exports.POST(new Request('http://synthetic.test/api/portfolios', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'พอร์ตทดลอง' }),
+  }))
+  assert.equal(response.status, 200)
+  assert.deepEqual(h.requests.map(request => request.method), ['GET', 'GET', 'POST'])
   assert.equal(h.responses.length, 0)
 })

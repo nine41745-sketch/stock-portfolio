@@ -98,14 +98,14 @@ function toBars(raw: Array<{ close: number | null; high: number | null; low: num
     }))
 }
 
-async function fetchFromYahoo(symbol: string, context?: DiscoveryProviderContext): Promise<Bar[]> {
+async function fetchFromYahoo(symbol: string, context?: DiscoveryProviderContext, signal?: AbortSignal): Promise<Bar[]> {
   try {
     const period1 = new Date()
     period1.setFullYear(period1.getFullYear() - 1)
 
     const result = context
       ? await getDiscoveryYahooChart(symbol, period1, '1d', context)
-      : await yahooFinance.chart(symbol, { period1, interval: '1d' })
+      : await yahooFinance.chart(symbol, { period1, interval: '1d' }, { fetchOptions: { signal } })
 
     return toBars((result.quotes ?? []).map(q => ({ close: q.close, high: q.high, low: q.low, volume: q.volume, date: q.date })))
   } catch (e) {
@@ -130,10 +130,10 @@ async function fetchFromYahooWeekly(symbol: string, context?: DiscoveryProviderC
   }
 }
 
-async function fetchFromStooq(symbol: string, context?: DiscoveryProviderContext): Promise<Bar[]> {
+async function fetchFromStooq(symbol: string, context?: DiscoveryProviderContext, signal?: AbortSignal): Promise<Bar[]> {
   const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol.toLowerCase())}.us&i=d`
   try {
-    const res = context ? null : await fetch(url, { next: { revalidate: 3600 } })
+    const res = context ? null : await fetch(url, { next: { revalidate: 3600 }, signal })
     if (res && !res.ok) {
       if (!context) console.error(`[indicators] Stooq HTTP ${res.status} for ${symbol}`)
       return []
@@ -187,11 +187,11 @@ async function fetchHistoricalBars(symbol: string): Promise<Bar[]> {
   return (await fetchHistoricalBarsWithSource(symbol)).bars
 }
 
-async function fetchHistoricalBarsWithSource(symbol: string, context?: DiscoveryProviderContext): Promise<{ bars: Bar[]; source: 'Yahoo Finance' | 'Stooq' | 'unavailable' }> {
-  const yahoo = await fetchFromYahoo(symbol, context)
+async function fetchHistoricalBarsWithSource(symbol: string, context?: DiscoveryProviderContext, signal?: AbortSignal): Promise<{ bars: Bar[]; source: 'Yahoo Finance' | 'Stooq' | 'unavailable' }> {
+  const yahoo = await fetchFromYahoo(symbol, context, signal)
   if (yahoo.length >= 200) return { bars: yahoo, source: 'Yahoo Finance' }
 
-  const stooq = !context || context.canStart() ? await fetchFromStooq(symbol, context) : []
+  const stooq = !signal?.aborted && (!context || context.canStart()) ? await fetchFromStooq(symbol, context, signal) : []
   if (stooq.length > yahoo.length) return { bars: stooq, source: 'Stooq' }
   if (yahoo.length) return { bars: yahoo, source: 'Yahoo Finance' }
   return { bars: [], source: 'unavailable' }
@@ -420,8 +420,8 @@ export interface SupportResistanceLadderSnapshot {
 
 // Reuses the existing scanner levels and important-support calculation; this endpoint
 // does not introduce a separate indicator model or background refresh.
-export async function getSupportResistanceLadder(symbol: string): Promise<SupportResistanceLadderSnapshot> {
-  const { bars, source } = await fetchHistoricalBarsWithSource(symbol)
+export async function getSupportResistanceLadder(symbol: string, options?: { signal?: AbortSignal }): Promise<SupportResistanceLadderSnapshot> {
+  const { bars, source } = await fetchHistoricalBarsWithSource(symbol, undefined, options?.signal)
   const lastBar = bars.length ? bars[bars.length - 1] : undefined
   const currentPrice = lastBar ? round2(lastBar.close) : null
   const levels = calcScannerSupportResistance(bars)

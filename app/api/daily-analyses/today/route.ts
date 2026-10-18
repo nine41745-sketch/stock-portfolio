@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { resolveActivePortfolio } from '@/lib/portfolio-context'
+import { noPortfolioResponse, resolveActivePortfolio } from '@/lib/portfolio-context'
 import { isAnalysisStale, latestPortfolioChangeTimestamp, parseOptionalTimestamp } from '@/lib/analysis-freshness'
 import { getResultTimestamp, shouldReplaceAnalysis } from '@/lib/latest-analysis'
 import { DetailedAnalysisResult } from '@/types'
@@ -22,6 +22,7 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const portfolio = await resolveActivePortfolio(user.id, supabase)
+  if (portfolio.mode === 'empty') return noPortfolioResponse()
 
   let holdingsQuery = supabase
     .from('holdings')

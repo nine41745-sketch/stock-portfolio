@@ -65,6 +65,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  let deadlineController: AbortController | null = null
+  let deadlineTimer: ReturnType<typeof setTimeout> | null = null
   try {
     const origin = request.headers.get('origin')
     if (origin !== new URL(request.url).origin || request.headers.get('sec-fetch-site') === 'cross-site') {
@@ -118,10 +120,13 @@ export async function POST(request: NextRequest) {
 
     const symbols = [...new Set([...state.holdingSymbols, params.symbol])].sort()
     if (symbols.length > MAX_SYMBOLS) throw new PhaseAError(`Smart Dip จำกัดไม่เกิน ${MAX_SYMBOLS} หุ้นต่อคำขอ`, 409)
-    const [observations, profiles, supportResult, tradePlanResult] = await Promise.all([
-      getQuoteObservations(symbols),
-      getCompanyProfileResults(symbols),
-      getSupportResistanceLadder(params.symbol).catch(() => null),
+    deadlineController = new AbortController()
+    deadlineTimer = setTimeout(() => deadlineController?.abort(new DOMException('Smart Dip provider deadline exceeded', 'TimeoutError')), 8_000)
+    const signal = AbortSignal.any([request.signal, deadlineController.signal])
+    const providerResults = await Promise.allSettled([
+      getQuoteObservations(symbols, { signal }),
+      getCompanyProfileResults(symbols, { signal }),
+      getSupportResistanceLadder(params.symbol, { signal }).catch(() => null),
       (async () => {
         try {
           const service = createServiceClient()
@@ -129,10 +134,17 @@ export async function POST(request: NextRequest) {
             p_user_id: context.userId,
             p_portfolio_id: context.portfolioId,
             p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY!,
-          })
+          }).abortSignal(signal)
         } catch { return { data: null, error: { code: 'unavailable' } } as const }
       })(),
     ])
+    if (deadlineController.signal.aborted) {
+      throw new PhaseAError(request.signal.aborted ? 'คำขอถูกยกเลิก' : 'ข้อมูลผู้ให้บริการใช้เวลาเกินกำหนด', request.signal.aborted ? 499 : 504)
+    }
+    if (providerResults.some(result => result.status === 'rejected')) {
+      throw new PhaseAError('ข้อมูลผู้ให้บริการบางส่วนยังไม่พร้อม', 503)
+    }
+    const [observations, profiles, supportResult, tradePlanResult] = providerResults.map(result => (result as PromiseFulfilledResult<any>).value)
 
     const holdingRows = state.holdingRows.map(row => {
       const symbol = String(row.symbol ?? '').trim().toUpperCase()
@@ -202,6 +214,12 @@ export async function POST(request: NextRequest) {
       quotePolicy: 'Finnhub observation ต้องไม่เกิน 24 ชั่วโมงและ timestamp ต้องไม่อยู่ในอนาคตเกิน 5 นาที; support ใช้ข้อมูล Yahoo/Stooq ไม่เกิน 24 ชั่วโมง',
     }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
+    if (deadlineController?.signal.aborted) {
+      const status = request.signal.aborted ? 499 : 504
+      return phaseAErrorResponse(new PhaseAError(status === 504 ? 'ข้อมูลผู้ให้บริการใช้เวลาเกินกำหนด' : 'คำขอถูกยกเลิก', status))
+    }
     return phaseAErrorResponse(error)
+  } finally {
+    if (deadlineTimer) clearTimeout(deadlineTimer)
   }
 }
