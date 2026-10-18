@@ -5,6 +5,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, unexpectedConsoleHttpErrors } from './expected-http-failures.mjs'
 import { markQaStageSync, recordQaCheckSync, recordInterruptedRunSync } from './qa-runner-evidence.mjs'
+import { getVerifiedLocalUserAccessToken } from './local-user-auth-token.mjs'
 const base = new URL(process.env.QA_BASE_URL ?? '')
 const local = h => ['localhost', '127.0.0.1', '::1'].includes(h)
 const sb = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
@@ -297,15 +298,17 @@ try {
   assert.equal(accountAList.status(),200)
   assert.equal((await accountAList.json()).active_portfolio_id,accountAFirstPortfolio.id)
   pass('Account A first portfolio is created explicitly once and selected')
-  const accountAAccessToken=await page.evaluate(()=>{
-   for(let index=0;index<localStorage.length;index++){
-    const key=localStorage.key(index)
-    if(!key?.endsWith('-auth-token'))continue
-    try{const session=JSON.parse(localStorage.getItem(key)||'{}');if(typeof session.access_token==='string')return session.access_token}catch{}
-   }
-   return null
+  // This is a separate Local Auth password-grant session for the same synthetic user,
+  // verified by Auth /user; it is not extracted from the browser's cookie-backed session.
+  const accountAAccessToken=await getVerifiedLocalUserAccessToken({
+   baseUrl:process.env.NEXT_PUBLIC_SUPABASE_URL,
+   expectedPort:process.env.QA_SUPABASE_API_PORT,
+   anonKey:process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+   email,
+   password,
+   expectedUserId:qaUser.id,
   })
-  assert.equal(typeof accountAAccessToken,'string','Account A local Auth session must expose an in-memory access token for RLS negative controls')
+  pass('Local Auth verified a synthetic Account A JWT for PostgREST RLS controls')
  setStage('unlocked')
  const legacyInsert=await fetch(new URL('/rest/v1/watchlist?on_conflict=user_id,symbol',sb),localFetchOptions({
   method:'POST',headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY,'content-type':'application/json',Prefer:'resolution=merge-duplicates'},
