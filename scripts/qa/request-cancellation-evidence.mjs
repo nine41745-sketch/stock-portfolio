@@ -14,10 +14,45 @@ export function requestFailureReason(errorText) {
 
 /** Private IDs/scopes are used for equality only, never copied into diagnostics. */
 export function createRequestCancellationEvidence() {
-  const records = new WeakMap(), clients = new Map(), requests = new Map(), events = []
+  const records = new WeakMap(), clients = new Map(), requests = new Map(), events = [], waiters = new Set()
   let sequence = 0, navigation = 0, invalid = false
-  const add = row => { if (events.length >= 2000) invalid = true; else events.push(row) }
+  const notify = () => { for (const resolve of waiters) resolve() }
+  const add = row => { if (events.length >= 2000) invalid = true; else events.push(row); notify() }
+  const validScope = scope => !!scope && Object.hasOwn(rules, scope.pathname) && rules[scope.pathname].stages.has(scope.stage) &&
+    scope.documentPath === rules[scope.pathname].documentPath && scope.epoch && typeof scope.portfolioId === 'string' && scope.portfolioId.length > 0 &&
+    scope.expectedFrame && Number.isInteger(scope.afterSequence) && Number.isInteger(scope.afterNavigation)
+  const matchesScope = (record, scope) => record.pathname === scope.pathname && record.stage === scope.stage && record.epoch === scope.epoch &&
+    record.portfolioId === scope.portfolioId && record.documentPath === scope.documentPath && record.frame === scope.expectedFrame &&
+    record.navigation > scope.afterNavigation && record.sequence > scope.afterSequence
+  const lifecycleStatus = scope => {
+    const rows = [...requests.values()].filter(record => record.pathname === scope.pathname && record.navigation > scope.afterNavigation && record.sequence > scope.afterSequence)
+    if (rows.some(record => !matchesScope(record, scope))) throw new Error('Risk request lifecycle crossed its verified stage, document, account, portfolio or frame boundary')
+    if (!rows.length || !rows.some(record => record.ownedSuccess && record.completedSequence)) return { ready: false, sequence: sequence }
+    for (const record of rows) {
+      if (record.failedReason && !isExpectedRecord(record, record.failedReason)) throw new Error('Risk request lifecycle contains an unexpected failed request')
+      if (!record.finished && !record.failedReason) return { ready: false, sequence: sequence }
+    }
+    const last = rows.reduce((a, b) => a.sequence > b.sequence ? a : b)
+    if (!last.ownedSuccess || !last.completedSequence) return { ready: false, sequence: sequence }
+    return { ready: true, sequence, responseSequence: last.completedSequence }
+  }
+  const isExpectedRecord = (record, reason) => {
+    const client = record && clients.get(record.id)
+    if (invalid || reason !== 'ABORTED' || !record?.eligible || record.responseReceived || client?.frame !== record.frame || client?.pathname !== record.pathname ||
+      !client?.['fetch-start'] || !(client['signal-abort'] > client['fetch-start'])) return false
+    for (const replacement of requests.values()) {
+      const proof = clients.get(replacement.id)
+      if (replacement !== record && replacement.eligible && replacement.ownedSuccess && replacement.pathname === record.pathname &&
+        replacement.id.split(':')[0] === record.id.split(':')[0] && replacement.frame === record.frame &&
+        replacement.epoch === record.epoch && replacement.portfolioId === record.portfolioId &&
+        replacement.stage === record.stage && replacement.navigation === record.navigation &&
+        replacement.sequence > record.sequence && replacement.completed - record.started <= 5_000 &&
+        proof?.frame === record.frame && proof?.['fetch-start'] > client['signal-abort']) return true
+    }
+    return false
+  }
   return {
+    checkpoint: () => Object.freeze({ sequence, navigation }),
     navigationObserved(pathname, stage) {
       navigation++
       add({ eventType: 'navigation', pathname: ['/scanner', '/pin', '/dashboard', '/risk'].includes(pathname) ? pathname : '/[redacted]',
@@ -41,7 +76,7 @@ export function createRequestCancellationEvidence() {
       try { frame = request.frame() } catch { return }
       if (requests.has(id) || requests.size >= 1000) { invalid = true; return }
       const url = new URL(request.url()), rule = Object.hasOwn(rules, url.pathname) ? rules[url.pathname] : null
-      const record = { id, frame, stage, epoch, portfolioId, pathname: rule ? url.pathname : '/[redacted]', navigation, sequence: ++sequence, started: performance.now(),
+      const record = { id, frame, stage, epoch, portfolioId, documentPath, pathname: rule ? url.pathname : '/[redacted]', navigation, sequence: ++sequence, started: performance.now(),
         eligible: !!rule && rule.stages.has(stage) && documentPath === rule.documentPath && frame === expectedFrame && !!epoch && typeof portfolioId === 'string' && request.method() === 'GET' &&
           url.search === '', responseReceived: false, ownedSuccess: false }
       records.set(request, record)
@@ -73,25 +108,73 @@ export function createRequestCancellationEvidence() {
         add({ requestId: record.id, eventType: record.ownedSuccess ? 'owned-success' : 'unproved-response', pathname: record.pathname, sequence })
       } catch { record.ownedSuccess = false } finally { clearTimeout(timer) }
     },
-    isExpected(request, reason) {
-      const record = records.get(request)
-      const client = record && clients.get(record.id)
-      if (invalid || reason !== 'ABORTED' || !record?.eligible || record.responseReceived || client?.frame !== record.frame || client?.pathname !== record.pathname ||
-        !client?.['fetch-start'] || !(client['signal-abort'] > client['fetch-start'])) return false
-      for (const replacement of requests.values()) {
-        const proof = clients.get(replacement.id)
-        if (replacement !== record && replacement.eligible && replacement.ownedSuccess && replacement.pathname === record.pathname &&
-          replacement.id.split(':')[0] === record.id.split(':')[0] && replacement.frame === record.frame &&
-          replacement.epoch === record.epoch && replacement.portfolioId === record.portfolioId &&
-          replacement.stage === record.stage && replacement.navigation === record.navigation &&
-          replacement.sequence > record.sequence && replacement.completed - record.started <= 5_000 &&
-          proof?.frame === record.frame && proof?.['fetch-start'] > client['signal-abort']) return true
+    requestFinished(request) { const record = records.get(request); if (record) { record.finished = true; add({ requestId: record.id, eventType: 'requestfinished', pathname: record.pathname, sequence: ++sequence }) } },
+    requestFailed(request, reason) { const record = records.get(request); if (record) { record.failedReason = reason; add({ requestId: record.id, eventType: 'requestfailed', pathname: record.pathname, failureReason: reason, sequence: ++sequence }) } },
+    isExpected(request, reason) { return isExpectedRecord(records.get(request), reason) },
+    async waitForOwnedSuccess(scope, { timeoutMs = 5_000, afterRequestSequence = scope?.afterSequence } = {}) {
+      if (!validScope(scope) || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5_000) throw new Error('Invalid bounded risk lifecycle wait')
+      if (!Number.isInteger(afterRequestSequence) || afterRequestSequence < scope.afterSequence) throw new Error('Invalid owned response cursor')
+      const deadline = performance.now() + timeoutMs
+      for (;;) {
+        if (invalid) throw new Error('Invalid cancellation evidence blocks the risk lifecycle barrier')
+        const record = [...requests.values()].filter(row => row.sequence > afterRequestSequence && matchesScope(row, scope) && row.ownedSuccess && row.completedSequence)
+          .sort((a, b) => b.sequence - a.sequence)[0]
+        if (record) return Object.freeze({ sequence: record.completedSequence, requestSequence: record.sequence, pathname: record.pathname, stage: record.stage })
+        const remaining = deadline - performance.now()
+        if (remaining <= 0) throw new Error('Owned risk response deadline exceeded')
+        await new Promise((resolve, reject) => {
+          const done = () => { clearTimeout(timer); waiters.delete(done); resolve() }
+          const timer = setTimeout(() => { waiters.delete(done); reject(new Error('Owned risk response deadline exceeded')) }, remaining)
+          waiters.add(done)
+        })
       }
-      return false
+    },
+    lifecycleStatus(scope) {
+      if (!validScope(scope) || invalid) throw new Error('Invalid risk lifecycle scope or evidence')
+      return lifecycleStatus(scope)
     },
     assertHealthy() { if (invalid) throw new Error('Invalid or excessive cancellation correlation evidence') },
     diagnostics: () => ({ invalid, events: events.map(row => ({ ...row })) }),
   }
+}
+
+/** Wait for a completed, owned response, drain its browser requests, and verify a quiet bounded boundary. */
+export async function waitForOwnedRequestLifecycle({ evidence, flush, drain, scope, checkpoint, timeoutMs = 5_000, quietMs = 50 }) {
+  if (!evidence || typeof flush !== 'function' || typeof drain !== 'function' || !checkpoint ||
+    !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5_000 || !Number.isInteger(quietMs) || quietMs < 1 || quietMs > 250) {
+    throw new Error('Invalid bounded risk lifecycle barrier configuration')
+  }
+  const boundedScope = { ...scope, afterSequence: checkpoint.sequence, afterNavigation: checkpoint.navigation }
+  if (!validBarrierScope(boundedScope)) throw new Error('Invalid owned risk lifecycle scope')
+  const deadline = performance.now() + timeoutMs
+  let afterRequestSequence = checkpoint.sequence
+  for (;;) {
+    const remaining = deadline - performance.now()
+    if (remaining <= 0) throw new Error('Risk lifecycle barrier deadline exceeded')
+    await flush()
+    const proof = await evidence.waitForOwnedSuccess(boundedScope, { timeoutMs: Math.max(1, Math.floor(remaining)), afterRequestSequence })
+    afterRequestSequence = proof.requestSequence
+    const drainBudget = Math.floor(deadline - performance.now())
+    if (drainBudget < 1) throw new Error('Risk lifecycle barrier deadline exceeded')
+    await drain(drainBudget)
+    await flush()
+    const first = evidence.lifecycleStatus(boundedScope)
+    if (first.ready) {
+      await new Promise(resolve => setTimeout(resolve, Math.min(quietMs, Math.max(1, deadline - performance.now()))))
+      await flush()
+      const stable = evidence.lifecycleStatus(boundedScope)
+      if (stable.ready && stable.sequence === first.sequence && stable.responseSequence === first.responseSequence) {
+        return Object.freeze({ status: 'stable-owned-response', pathname: boundedScope.pathname, stage: boundedScope.stage,
+          completedSequence: stable.responseSequence, elapsedMs: Math.round(timeoutMs - Math.max(0, deadline - performance.now())) })
+      }
+    }
+  }
+}
+
+function validBarrierScope(scope) {
+  return !!scope && Object.hasOwn(rules, scope.pathname) && rules[scope.pathname].stages.has(scope.stage) &&
+    scope.documentPath === rules[scope.pathname].documentPath && scope.epoch && typeof scope.portfolioId === 'string' && scope.portfolioId.length > 0 &&
+    scope.expectedFrame && Number.isInteger(scope.afterSequence) && Number.isInteger(scope.afterNavigation)
 }
 
 /** Non-secret QA header on two verified effect-cleanup reads only; no extra requests. */

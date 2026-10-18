@@ -7,7 +7,7 @@ import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, readHttpFailureE
 import { markQaStageSync, recordQaCheckSync, recordInterruptedRunSync } from './qa-runner-evidence.mjs'
 import { getVerifiedLocalUserAccessToken } from './local-user-auth-token.mjs'
 import { createHttpEvidenceLifecycle, installDailyAnalysisBodyObserver } from './http-response-evidence.mjs'
-import { createRequestCancellationEvidence, installRequestCancellationObserver, flushRequestCancellationEvidence, requestFailureReason } from './request-cancellation-evidence.mjs'
+import { createRequestCancellationEvidence, installRequestCancellationObserver, flushRequestCancellationEvidence, requestFailureReason, waitForOwnedRequestLifecycle } from './request-cancellation-evidence.mjs'
 const base = new URL(process.env.QA_BASE_URL ?? '')
 const local = h => ['localhost', '127.0.0.1', '::1'].includes(h)
 const sb = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
@@ -169,7 +169,10 @@ try {
  setStage('BROWSER_READY')
  const page=await context.newPage()
  flushCancellation=()=>flushRequestCancellationEvidence(page,cancellationEvidence)
- const drainEvidence=async()=>{await flushCancellation();await httpEvidence.drain()}
+ const drainEvidence=async(timeoutMs)=>{await flushCancellation();await httpEvidence.drain(timeoutMs?{timeoutMs}:undefined)}
+ const waitForRiskLifecycle=checkpoint=>waitForOwnedRequestLifecycle({evidence:cancellationEvidence,flush:flushCancellation,
+  drain:drainEvidence,checkpoint,timeoutMs:5_000,quietMs:50,
+  scope:{pathname:'/api/smart-dca',stage:'risk-dashboard',epoch:activeAuthAttempt,portfolioId:verifiedPortfolioScopes.get(activeAccount),documentPath:'/risk',expectedFrame:page.mainFrame()}})
  const navigate=async url=>{await flushCancellation();return httpEvidence.beforeNavigation(()=>page.goto(url))}
  const reload=async()=>{await flushCancellation();return httpEvidence.beforeNavigation(()=>page.reload())}
  page.on('framenavigated',frame=>{if(frame===page.mainFrame())cancellationEvidence.navigationObserved(new URL(frame.url()).pathname,qaStage)})
@@ -203,8 +206,8 @@ try {
    cancellationEvidence.requestStarted(request,{stage:qaStage,epoch:activeAuthAttempt,portfolioId:verifiedPortfolioScopes.get(activeAccount),documentPath:new URL(page.url()).pathname,expectedFrame:page.mainFrame()})
   }
  })
- page.on('requestfinished',request=>httpEvidence.requestFinished(request))
- page.on('requestfailed',request=>httpEvidence.requestFailed(request,requestFailureReason(request.failure()?.errorText)))
+ page.on('requestfinished',request=>{httpEvidence.requestFinished(request);cancellationEvidence.requestFinished(request)})
+ page.on('requestfailed',request=>{const reason=requestFailureReason(request.failure()?.errorText);httpEvidence.requestFailed(request,reason);cancellationEvidence.requestFailed(request,reason)})
  page.on('response',response=>{
   httpEvidence.responseReceived(response.request())
   httpEvidence.trackResponse(cancellationEvidence.responseReceived(response.request(),response))
@@ -589,9 +592,12 @@ try {
  // Exercise v1.37 risk and SEC UI with synthetic-only API fixtures.
  setStage('risk-dashboard')
  riskMode='loading'
+ const riskPageCheckpoint=cancellationEvidence.checkpoint()
  await navigate(new URL('/risk',base).href)
  await page.getByText('กำลังคำนวณ Portfolio Risk...').waitFor()
  await page.getByRole('heading',{name:'🛡️ ความเสี่ยงพอร์ต'}).waitFor()
+ const riskPageLifecycle=await waitForRiskLifecycle(riskPageCheckpoint)
+ pass(`Risk page owned Smart DCA response and request lifecycle settled (${riskPageLifecycle.elapsedMs} ms)`)
   await page.getByRole('heading',{name:/Smart Dip Buying/}).waitFor()
  const scenarioSelect=page.locator('label').filter({hasText:'ประเภทสถานการณ์'}).locator('select')
  const scenarioPanel=page.locator('section').filter({hasText:'จำลองสถานการณ์'}).last()
@@ -618,8 +624,11 @@ try {
  assert.equal(riskEmptyAxe.violations.filter(v=>v.impact==='critical'||v.impact==='serious'||v.id==='color-contrast').length,0,'Risk empty state must pass critical/serious axe checks in light theme')
  pass('Risk empty state passes critical/serious Light Theme axe checks')
  riskMode='synthetic'
+ const riskSecCheckpoint=cancellationEvidence.checkpoint()
  await reload()
  await page.getByRole('heading',{name:'🛡️ ความเสี่ยงพอร์ต'}).waitFor()
+ const riskSecLifecycle=await waitForRiskLifecycle(riskSecCheckpoint)
+ pass(`Risk/SEC lifecycle barrier verified the selected portfolio response before SEC stage changes (${riskSecLifecycle.elapsedMs} ms)`)
  pass('Risk Dashboard loading and market/industry/symbol stress simulations render from synthetic fixtures')
  secRiskMode='error'
  setStage('risk-sec-error')

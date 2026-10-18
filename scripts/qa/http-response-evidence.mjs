@@ -43,8 +43,11 @@ export function createHttpEvidenceLifecycle({ timeoutMs = 15_000, isExpectedCanc
     return { pendingRequests: requests.size, pendingResponses: responses.size, failedRequests: failedRequests.size - acceptedCancellations,
       collectionErrors, rawFailedRequests: failedRequests.size, acceptedCancellations }
   }
-  const drain = async () => {
-    const deadline = performance.now() + timeoutMs
+  const drain = async ({ timeoutMs: drainTimeoutMs = timeoutMs } = {}) => {
+    if (!Number.isInteger(drainTimeoutMs) || drainTimeoutMs < 1 || drainTimeoutMs > timeoutMs) {
+      throw new Error('HTTP evidence drain deadline must stay within its configured bound')
+    }
+    const deadline = performance.now() + drainTimeoutMs
     for (;;) {
       if (!requests.size && !responses.size) {
         if (summary().failedRequests) throw new Error('HTTP evidence contains failed requests')

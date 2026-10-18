@@ -311,6 +311,76 @@ test('Smart DCA replay requires its own risk-page/stage and portfolio response c
   }
 })
 
+async function riskLifecycleFixture(change = {}) {
+  const { createHttpEvidenceLifecycle } = await import('./qa/http-response-evidence.mjs')
+  const { createRequestCancellationEvidence, waitForOwnedRequestLifecycle } = await import('./qa/request-cancellation-evidence.mjs')
+  const evidence = createRequestCancellationEvidence()
+  const tracker = createHttpEvidenceLifecycle({ timeoutMs: 500, isExpectedCancellation: (request, reason) => evidence.isExpected(request, reason) })
+  const document = '11111111-1111-1111-1111-111111111111', frame = {}, epoch = {}
+  const scope = { pathname: '/api/smart-dca', stage: 'risk-dashboard', epoch, portfolioId: 'synthetic-owned', documentPath: '/risk', expectedFrame: frame }
+  const checkpoint = evidence.checkpoint()
+  evidence.navigationObserved('/risk', 'risk-dashboard')
+  const makeRequest = id => ({ headers: () => ({ 'x-stock-qa-request-id': id }), frame: () => frame, method: () => 'GET', url: () => 'http://127.0.0.1/api/smart-dca' })
+  const first = makeRequest(document + ':1')
+  evidence.clientEvent(frame, { id: document + ':1', kind: 'fetch-start', pathname: '/api/smart-dca' })
+  evidence.requestStarted(first, scope); tracker.requestStarted(first)
+  evidence.clientEvent(frame, { id: document + ':1', kind: 'signal-abort', pathname: '/api/smart-dca' })
+  evidence.requestFailed(first, 'ABORTED'); tracker.requestFailed(first, 'ABORTED')
+  if (change.noReplacement) return { evidence, tracker, waitForOwnedRequestLifecycle, checkpoint, scope }
+  if (change.navigation) evidence.navigationObserved('/risk', 'risk-dashboard')
+  const second = makeRequest((change.document ?? document) + ':2')
+  evidence.clientEvent(frame, { id: (change.document ?? document) + ':2', kind: 'fetch-start', pathname: '/api/smart-dca' })
+  evidence.requestStarted(second, { ...scope, ...(change.scope ?? {}) }); tracker.requestStarted(second)
+  const response = { status: () => change.status ?? 200, headers: () => ({ 'cache-control': change.cacheControl ?? 'no-store' }),
+    finished: async () => null, body: async () => Buffer.from(JSON.stringify(change.payload ?? { portfolio: { id: 'synthetic-owned' } })) }
+  tracker.responseReceived(second)
+  const responseWork = evidence.responseReceived(second, response)
+  tracker.trackResponse(responseWork)
+  await responseWork
+  evidence.requestFinished(second); tracker.requestFinished(second)
+  return { evidence, tracker, waitForOwnedRequestLifecycle, checkpoint, scope }
+}
+
+test('per-call HTTP evidence deadlines stay positive and within the configured maximum', async () => {
+  const { createHttpEvidenceLifecycle } = await import('./qa/http-response-evidence.mjs')
+  const tracker = createHttpEvidenceLifecycle({ timeoutMs: 100 })
+  await assert.rejects(tracker.drain({ timeoutMs: 101 }), /configured bound/)
+  await assert.rejects(tracker.drain({ timeoutMs: 0 }), /configured bound/)
+  await tracker.drain({ timeoutMs: 100 })
+})
+
+test('Risk stage barrier waits for a bounded owned response after the route checkpoint', async () => {
+  const { evidence, tracker, waitForOwnedRequestLifecycle, checkpoint, scope } = await riskLifecycleFixture()
+  let stage = 'risk-dashboard'
+  const result = await waitForOwnedRequestLifecycle({ evidence, checkpoint, scope, timeoutMs: 200, quietMs: 5,
+    flush: async () => {}, drain: timeoutMs => tracker.drain({ timeoutMs }) })
+  stage = 'risk-sec-error'
+  assert.equal(result.status, 'stable-owned-response')
+  assert.equal(result.pathname, '/api/smart-dca')
+  assert.equal(stage, 'risk-sec-error', 'Stage advances only after the owned lifecycle barrier completes')
+  assert.equal(tracker.summary().acceptedCancellations, 1)
+})
+
+test('Risk lifecycle barrier rejects a cross-stage replacement even when it returns an owned portfolio body', async () => {
+  const { evidence, tracker, waitForOwnedRequestLifecycle, checkpoint, scope } = await riskLifecycleFixture({ scope: { stage: 'risk-sec-error' } })
+    await assert.rejects(waitForOwnedRequestLifecycle({ evidence, checkpoint, scope, timeoutMs: 60, quietMs: 2,
+      flush: async () => {}, drain: timeoutMs => tracker.drain({ timeoutMs }) }), /deadline|crossed|failed requests/i)
+  assert.equal(tracker.summary().acceptedCancellations, 0)
+})
+
+test('Risk lifecycle barrier rejects missing, failed, foreign and uncached ownership proofs', async () => {
+  for (const change of [
+    { noReplacement: true }, { status: 403 }, { status: 200, cacheControl: 'public, max-age=20' },
+    { payload: { portfolio: { id: 'foreign' } } }, { scope: { epoch: {} } }, { scope: { portfolioId: 'foreign' } },
+    { document: '22222222-2222-2222-2222-222222222222' },
+  ]) {
+    const { evidence, tracker, waitForOwnedRequestLifecycle, checkpoint, scope } = await riskLifecycleFixture(change)
+    await assert.rejects(waitForOwnedRequestLifecycle({ evidence, checkpoint, scope, timeoutMs: 60, quietMs: 2,
+      flush: async () => {}, drain: timeoutMs => tracker.drain({ timeoutMs }) }), /deadline|crossed|failed requests/i, JSON.stringify(change))
+    assert.equal(tracker.summary().acceptedCancellations, 0)
+  }
+})
+
 test('genuine/unknown failures, navigation, cross-account/stage/document and invalid ownership stay fatal', async () => {
   for (const change of [
     { reason: 'UNKNOWN' }, { reason: 'CONNECTION_RESET' }, { reason: 'NETWORK_FAILURE' }, { reason: 'DNS_FAILURE' },
