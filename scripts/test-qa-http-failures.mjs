@@ -170,6 +170,31 @@ test('unexpected 401, 403, 500, and 503 failures remain QA failures', () => {
   }
 })
 
+test('portfolio-required 409 is allowed only for a proved empty-account GET before explicit first creation', () => {
+  const lifecycle = {
+    controls: [
+      { sequence: 12, kind: 'empty-portfolio-negative-control', account: 'A', path: '/api/portfolios', status: 409, code: 'PORTFOLIO_REQUIRED', requestSequence: 10 },
+      { sequence: 30, kind: 'first-portfolio-created-control', account: 'A', status: 200, portfolioCount: 1, defaultCount: 1 },
+    ],
+    portfolioInitializations: [{
+      account: 'A', state: 'created', emptyDatabaseCount: 0, createdControlSequence: 30,
+      emptyControls: [{ path: '/api/portfolios', requestSequence: 10, controlSequence: 12 }],
+    }],
+  }
+  const expected = failure({
+    path: '/api/portfolios', status: 409, method: 'GET', failureCode: 'PORTFOLIO_REQUIRED',
+    portfolioState: 'empty', authReady: true, pinReady: true, account: 'A', sequence: 20,
+  })
+  assert.equal(isExpectedHttpFailure(expected, lifecycle), true)
+  assert.equal(isExpectedHttpFailure({ ...expected, method: 'POST' }, lifecycle), false)
+  assert.equal(isExpectedHttpFailure({ ...expected, path: '/api/smart-dip' }, lifecycle), false)
+  assert.equal(isExpectedHttpFailure({ ...expected, failureCode: 'INTERNAL_ERROR' }, lifecycle), false)
+  assert.equal(isExpectedHttpFailure({ ...expected, pinReady: false }, lifecycle), false)
+  assert.equal(isExpectedHttpFailure({ ...expected, sequence: 31 }, lifecycle), false, 'A response after explicit first creation must fail')
+  assert.equal(isExpectedHttpFailure({ ...expected, account: 'B' }, lifecycle), false)
+  assert.equal(isExpectedHttpFailure({ ...expected, status: 500 }, lifecycle), false)
+})
+
 test('invalid PIN is expected only for the explicit wrong-PIN attempt', () => {
   assert.equal(isExpectedHttpFailure(failure({
     path: '/api/pin/verify', stage: 'pin-unlock', authGate: 'pin-invalid', authReady: true,

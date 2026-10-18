@@ -23,7 +23,9 @@ let qaStage='startup'
 let authReady=false, pinReady=false
 let lifecycleSequence=0
 let activeAuthAttempt=null
-const lifecycleEvidence={authAttempts:[],controls:[]}
+const portfolioLifecycle={accounts:[]}
+const lifecycleEvidence={authAttempts:[],controls:[],portfolioInitializations:portfolioLifecycle.accounts}
+let activeAccount='A'
 const requestContexts=new WeakMap()
 const pass=name=>checks.push({name,status:'PASS'})
 const nextLifecycleSequence=()=>++lifecycleSequence
@@ -68,6 +70,38 @@ function recordPinReadyControl(attempt,response,transition=null){
  if(transition)transition.unlockedControlSequence=control.sequence
  return control
 }
+async function syntheticPortfolioCount(userId){
+ const response=await fetch(new URL(`/rest/v1/portfolios?select=id,is_default&user_id=eq.${encodeURIComponent(userId)}`,sb),{
+  headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY},
+ })
+ assert.equal(response.status,200,'Disposable Supabase Admin must verify the synthetic portfolio count')
+ return response.json()
+}
+async function readNetworkGuardAttempts(){
+ try{return (await readFile(process.env.QA_NETWORK_GUARD_LOG,'utf8')).split('\n').filter(Boolean).length}
+ catch{return 0}
+}
+function startPortfolioInitialization(account){
+ const initialization={account,state:'empty',emptyDatabaseCount:0,emptyControls:[],createdControlSequence:null}
+ portfolioLifecycle.accounts.push(initialization)
+ return initialization
+}
+function recordPortfolioRequiredControl(initialization,path,response,payload,requestSequence){
+ assert.equal(response.status(),409,`${path} must explicitly require a portfolio for a new account`)
+ assert.equal(payload.code,'PORTFOLIO_REQUIRED',`${path} must distinguish an empty portfolio from another failure`)
+ assert.match(response.headers()['cache-control']??'','no-store',`${path} must not cache an empty portfolio response`)
+ assert(Number.isInteger(requestSequence),'Empty-portfolio failure must be tied to its observed request lifecycle')
+ const control=recordLifecycleControl({kind:'empty-portfolio-negative-control',account:initialization.account,path,status:409,code:'PORTFOLIO_REQUIRED',requestSequence})
+ initialization.emptyControls.push({path,requestSequence,controlSequence:control.sequence})
+}
+function recordFirstPortfolioCreated(initialization,response,rows){
+ assert.equal(response.status(),200,'Authenticated POST must explicitly create the first portfolio')
+ assert.equal(rows.length,1,'Explicit first creation must produce exactly one portfolio')
+ assert.equal(rows.filter(row=>row.is_default).length,1,'Exactly one synthetic default portfolio must exist after creation')
+ const control=recordLifecycleControl({kind:'first-portfolio-created-control',account:initialization.account,status:200,portfolioCount:rows.length,defaultCount:rows.filter(row=>row.is_default).length})
+ initialization.createdControlSequence=control.sequence
+ initialization.state='created'
+}
 async function recordUnauthenticatedControl(response,account){
  assert.equal(response.status(),401,`${account} logged-out control must be rejected`)
  const payload=await response.json()
@@ -106,6 +140,9 @@ try {
   pinReady,
    authAttemptId:activeAuthAttempt?.id??null,
    authPhase:activeAuthAttempt?.phase??'none',
+   method:request.method(),
+   account:activeAccount,
+   portfolioState:portfolioLifecycle.accounts.find(item=>item.account===activeAccount)?.state??'unknown',
   fixtureMode:request.url().includes('/api/risk')?riskMode:
     request.url().includes('/api/sec-risk')?secRiskMode:
     request.url().includes('/api/fundamentals')?mode:
@@ -121,7 +158,12 @@ try {
     else if(body.includes('PIN ไม่ถูกต้อง'))authGate='pin-invalid'
     else if(body.includes('Unauthorized'))authGate='unauthorized'
    }
-   browserHttpFailures.push({path:new URL(response.url()).pathname,status:response.status(),...(requestContexts.get(response.request())??{stage:'unknown',authReady:false,pinReady:false}),authGate})
+    const failure={path:new URL(response.url()).pathname,status:response.status(),...(requestContexts.get(response.request())??{stage:'unknown',authReady:false,pinReady:false}),authGate}
+    if(response.status()===409){
+     const body=await response.text().catch(()=> '')
+     if(body.includes('PORTFOLIO_REQUIRED'))failure.failureCode='PORTFOLIO_REQUIRED'
+    }
+    browserHttpFailures.push(failure)
    })().finally(()=>responseTasks.delete(task))
    responseTasks.add(task)
   }
@@ -194,6 +236,43 @@ try {
   recordPinReadyControl(authAttemptA,initialPinReady)
   authAttemptA.phase='pin-ready'
  pinReady=true
+  qaStage='account-a-empty-portfolio-initialization'
+  const accountAInitialization=startPortfolioInitialization('A')
+  const accountAEmptyCount=await syntheticPortfolioCount(qaUser.id)
+  assert.equal(accountAEmptyCount.length,0,'Fresh Account A must start with no portfolios')
+  accountAInitialization.emptyDatabaseCount=accountAEmptyCount.length
+  for(const path of ['/api/portfolios','/api/performance','/api/transactions']){
+   const requestSequence=nextLifecycleSequence()
+   const response=await page.request.get(new URL(path,base).href)
+   const payload=await response.json()
+   recordPortfolioRequiredControl(accountAInitialization,path,response,payload,requestSequence)
+   assert.equal((await syntheticPortfolioCount(qaUser.id)).length,0,`${path} GET must not create a portfolio`)
+  }
+  for(const path of ['/dashboard','/transactions','/performance']){
+   await page.goto(new URL(path,base).href)
+   if(path==='/dashboard'||path==='/transactions') await page.getByRole('heading',{name:'ยังไม่มีพอร์ตสำหรับบัญชีนี้'}).waitFor()
+   assert.equal((await syntheticPortfolioCount(qaUser.id)).length,0,`Opening read-only ${path} must not create a portfolio`)
+  }
+  pass('Fresh Account A remains empty through portfolio, performance, transaction GETs and read-only page loads')
+  qaStage='account-a-first-portfolio-create'
+  const accountAFirstPortfolioResponse=await page.request.post(new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio A1'}})
+  assert.equal(accountAFirstPortfolioResponse.status(),200)
+  const accountAFirstPortfolio=(await accountAFirstPortfolioResponse.json()).portfolio
+  const accountAAfterCreate=await syntheticPortfolioCount(qaUser.id)
+  recordFirstPortfolioCreated(accountAInitialization,accountAFirstPortfolioResponse,accountAAfterCreate)
+  const accountAList=await page.request.get(new URL('/api/portfolios',base).href)
+  assert.equal(accountAList.status(),200)
+  assert.equal((await accountAList.json()).active_portfolio_id,accountAFirstPortfolio.id)
+  pass('Account A first portfolio is created explicitly once and selected')
+  const accountAAccessToken=await page.evaluate(()=>{
+   for(let index=0;index<localStorage.length;index++){
+    const key=localStorage.key(index)
+    if(!key?.endsWith('-auth-token'))continue
+    try{const session=JSON.parse(localStorage.getItem(key)||'{}');if(typeof session.access_token==='string')return session.access_token}catch{}
+   }
+   return null
+  })
+  assert.equal(typeof accountAAccessToken,'string','Account A local Auth session must expose an in-memory access token for RLS negative controls')
  qaStage='unlocked'
  const legacyInsert=await fetch(new URL('/rest/v1/watchlist?on_conflict=user_id,symbol',sb),{
   method:'POST',headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY,'content-type':'application/json',Prefer:'resolution=merge-duplicates'},
@@ -392,12 +471,56 @@ try {
  pass('Watchlist, Collection, and investment rules remain isolated across two selected portfolios; same Symbol can hold different targets')
  pass('Deleting a Collection preserves its Watchlist rows; incomplete rule inputs remain unavailable')
 
+  // Authenticated v1.40 composition uses only the selected synthetic portfolio and performs no implicit provider refresh.
+  qaStage='investment-command-center-live-disposable'
+  const guardCountBefore=await readNetworkGuardAttempts()
+  const transactionsSnapshot=await page.request.get(new URL('/api/transactions',base).href)
+  assert.equal(transactionsSnapshot.status(),200)
+  assert.match(transactionsSnapshot.headers()['cache-control']??'','no-store')
+  const transactionsBody=await transactionsSnapshot.json()
+  assert.equal(transactionsBody.portfolio.id,portfolioA.id)
+  assert.deepEqual(transactionsBody.items,[],'Fresh synthetic ledger must remain empty')
+  const performanceSnapshot=await page.request.get(new URL('/api/performance',base).href)
+  assert.equal(performanceSnapshot.status(),200)
+  assert.match(performanceSnapshot.headers()['cache-control']??'','no-store')
+  const performanceBody=await performanceSnapshot.json()
+  assert.equal(performanceBody.portfolio.id,portfolioA.id)
+  const commandSnapshot=await page.request.get(new URL('/api/investment-command-center',base).href)
+  assert.equal(commandSnapshot.status(),200)
+  assert.match(commandSnapshot.headers()['cache-control']??'','no-store')
+  const commandBody=await commandSnapshot.json()
+  assert.equal(commandBody.portfolio.id,portfolioA.id)
+  assert.equal(commandBody.sections.market.status,'NOT_REQUESTED','Opening a portfolio snapshot must not request market providers')
+  const smartDipSnapshot=await page.request.get(new URL('/api/smart-dip',base).href)
+  assert.equal(smartDipSnapshot.status(),200)
+  assert.equal((await smartDipSnapshot.json()).providerRequests,0,'Smart Dip candidate loading must not refresh providers')
+  await page.goto(new URL('/command-center',base).href)
+  await page.getByRole('heading',{name:/ศูนย์รวมการลงทุน/}).waitFor()
+  assert(await page.getByText(/ไม่ใช่ข้อมูล Real-time/).count()>0)
+  assert.equal(await page.getByRole('button',{name:/ส่งคำสั่งซื้อ|ส่งคำสั่งขาย|ซื้อจริง|ขายจริง/}).count(),0,'Command Center must not add transaction execution controls')
+  for(const theme of ['light','dark']){
+   const themeButton=page.locator('button[title^="โหมดปัจจุบัน:"]')
+   if(await page.locator('html').getAttribute('data-theme')!==theme){await themeButton.click();await page.waitForFunction(value=>document.documentElement.getAttribute('data-theme')===value,theme)}
+   for(const width of [375,768,1440]){
+    await page.setViewportSize({width,height:1000})
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,`Command Center horizontal overflow at ${width}px ${theme}`)
+    const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()
+    const relevant=axe.violations.filter(v=>v.impact==='critical'||v.impact==='serious'||v.id==='color-contrast')
+    assert.equal(relevant.length,0,`Command Center axe findings at ${width}px ${theme}: `+JSON.stringify(relevant.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)}))))
+    pass(`v1.40 Command Center axe and responsive ${width}px ${theme}`)
+   }
+  }
+  assert.equal(await readNetworkGuardAttempts(),guardCountBefore,'Opening the command center must not attempt outbound provider requests')
+  await page.setViewportSize({width:1440,height:1000})
+  pass('v1.40 snapshot is selected-portfolio scoped, no-store, no-refresh on open, and has no trading execution')
+
  // Exercise v1.37 risk and SEC UI with synthetic-only API fixtures.
  qaStage='risk-dashboard'
  riskMode='loading'
  await page.goto(new URL('/risk',base).href)
  await page.getByText('กำลังคำนวณ Portfolio Risk...').waitFor()
  await page.getByRole('heading',{name:'🛡️ ความเสี่ยงพอร์ต'}).waitFor()
+  await page.getByRole('heading',{name:/Smart Dip Buying/}).waitFor()
  const scenarioSelect=page.locator('label').filter({hasText:'ประเภทสถานการณ์'}).locator('select')
  const scenarioPanel=page.locator('section').filter({hasText:'จำลองสถานการณ์'}).last()
  await scenarioPanel.getByText('-$200.00',{exact:true}).waitFor()
@@ -469,6 +592,7 @@ try {
   authAttemptB.previousAccountPinReadyControlSequence=authAttemptA.pinReadyControlSequence
   authAttemptB.logoutTransitionStartedSequence=nextLifecycleSequence()
   authAttemptB.phase='logout-transition'
+ activeAccount='B'
  await page.getByRole('button',{name:'⚙️ บัญชี'}).click()
  await page.getByRole('menuitem',{name:'ออกจากระบบ'}).click()
  await page.waitForURL(/\/login(?:\?|$)/)
@@ -505,12 +629,36 @@ try {
   recordPinReadyControl(authAttemptB,accountBPinReady)
   authAttemptB.phase='pin-ready'
  pinReady=true
+  qaStage='account-switch-b-empty-portfolio-initialization'
+  const accountBInitialization=startPortfolioInitialization('B')
+  const accountBEmptyCount=await syntheticPortfolioCount(otherUser.id)
+  assert.equal(accountBEmptyCount.length,0,'Fresh Account B must start with no portfolios')
+  accountBInitialization.emptyDatabaseCount=accountBEmptyCount.length
+  for(const path of ['/api/portfolios','/api/performance','/api/transactions']){
+   const requestSequence=nextLifecycleSequence()
+   const response=await page.request.get(new URL(path,base).href)
+   const payload=await response.json()
+   recordPortfolioRequiredControl(accountBInitialization,path,response,payload,requestSequence)
+   assert.equal((await syntheticPortfolioCount(otherUser.id)).length,0,`${path} GET must not create a portfolio for Account B`)
+  }
+  for(const path of ['/dashboard','/transactions','/performance']){
+   await page.goto(new URL(path,base).href)
+   if(path==='/dashboard'||path==='/transactions') await page.getByRole('heading',{name:'ยังไม่มีพอร์ตสำหรับบัญชีนี้'}).waitFor()
+   assert.equal((await syntheticPortfolioCount(otherUser.id)).length,0,`Opening read-only ${path} must not create an Account B portfolio`)
+  }
+  pass('Fresh Account B remains empty through read-only APIs and pages after its own Auth/PIN setup')
+  qaStage='account-switch-b-first-portfolio-create'
+  const accountBFirstPortfolioResponse=await page.request.post(new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio B1'}})
+  assert.equal(accountBFirstPortfolioResponse.status(),200)
+  const accountBFirstPortfolio=(await accountBFirstPortfolioResponse.json()).portfolio
+  const accountBAfterCreate=await syntheticPortfolioCount(otherUser.id)
+  recordFirstPortfolioCreated(accountBInitialization,accountBFirstPortfolioResponse,accountBAfterCreate)
  qaStage='account-switch-b-unlocked'
  const bPortfoliosResponse=await page.request.get(new URL('/api/portfolios',base).href)
  assert.equal(bPortfoliosResponse.status(),200,'Account B must establish its own authenticated portfolio context')
  const bPortfolioList=await bPortfoliosResponse.json()
  const bPortfolio=bPortfolioList.portfolios.find(portfolio=>portfolio.id===bPortfolioList.active_portfolio_id)
- assert(bPortfolio,'Account B must receive a default portfolio after first login')
+  assert(bPortfolio&&bPortfolio.id===accountBFirstPortfolio.id,'Account B must use its explicitly created first portfolio')
  assert(![portfolioA.id,portfolioB.id].includes(bPortfolio.id),'Account B default portfolio must not reuse either Account A portfolio')
  const bLegacy=await page.request.get(new URL('/api/watchlist/legacy',base).href)
  assert.equal(bLegacy.status(),200)
@@ -523,6 +671,17 @@ try {
  const bMineAfterForeign=await page.request.get(new URL('/api/scanner?universe=mine',base).href)
  assert.equal(bMineAfterForeign.status(),200)
  assert.deepEqual((await bMineAfterForeign.json()).items,[],'Denied cross-account portfolio selection must not expose old or foreign Scanner data')
+  const accountARlsPortfolios=await fetch(new URL(`/rest/v1/portfolios?select=id&user_id=eq.${encodeURIComponent(otherUser.id)}`,sb),{
+   headers:{apikey:process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,authorization:'Bearer '+accountAAccessToken},
+  })
+  assert.equal(accountARlsPortfolios.status,200,'Authenticated Account A direct RLS query must complete')
+  assert.deepEqual(await accountARlsPortfolios.json(),[],'Actual PostgREST RLS must hide Account B portfolio rows from Account A')
+  const authenticatedDecrypt=await fetch(new URL('/rest/v1/rpc/get_decrypted_holdings',sb),{
+   method:'POST',headers:{apikey:process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,authorization:'Bearer '+accountAAccessToken,'content-type':'application/json'},
+   body:JSON.stringify({p_user_id:qaUser.id,p_portfolio_id:portfolioA.id,p_enc_key:'synthetic-not-a-secret'}),
+  })
+  assert([401,403].includes(authenticatedDecrypt.status),`Authenticated role must be denied service-only decryption RPC; received ${authenticatedDecrypt.status}`)
+  pass('Live Disposable PostgREST RLS hides Account B portfolio from Account A; authenticated role is denied key-bearing decryption RPC')
  pass('Same browser context Account A logout → Account B login/PIN preserves portfolio and Scanner isolation')
 
  await page.goto(new URL('/scanner',base).href)

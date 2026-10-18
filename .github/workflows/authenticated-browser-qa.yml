@@ -15,21 +15,47 @@ concurrency:
 jobs:
   authenticated-browser-qa:
     if: >-
-      ${{ (github.event.pull_request.head.ref == 'feat/v1.37.0-risk-intelligence-local' ||
-          github.event.pull_request.head.ref == 'fix/v1.34.1-theme-consistency' ||
-          github.event.pull_request.head.ref == 'codex/v1.35.0-watchlist-smart-alerts') &&
+      ${{ github.repository == 'nine41745-sketch/stock-portfolio' &&
+          github.event.pull_request.number == 73 &&
+          github.event.pull_request.head.ref == 'fix/v1.40.0-consolidated-remediation' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           github.event.label.name == 'authenticated-browser-qa' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       CI: 'true'
-      QA_ARTIFACT_DIR: .local-artifacts/authenticated-browser-qa/${{ github.run_id }}
+      QA_EXPECTED_PR_NUMBER: '73'
+      QA_EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      QA_ARTIFACT_DIR: .local-artifacts/authenticated-browser-qa-v1.40.0/${{ github.run_id }}
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify exact authorized PR and checked-out head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "nine41745-sketch/stock-portfolio"
+          test "$QA_EXPECTED_PR_NUMBER" = "73"
+          test "$QA_EXPECTED_HEAD_SHA" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "$QA_EXPECTED_HEAD_SHA"
+          python3 - "$GITHUB_EVENT_PATH" "$GITHUB_REPOSITORY" "$QA_EXPECTED_PR_NUMBER" "$QA_EXPECTED_HEAD_SHA" <<'PY'
+          import json, sys
+          event = json.load(open(sys.argv[1]))
+          repository, number, sha = sys.argv[2:]
+          pr = event.get("pull_request", {})
+          if str(event.get("number")) != number or str(pr.get("number")) != number:
+              raise SystemExit("Authenticated QA is restricted to PR #73")
+          head = pr.get("head", {})
+          if head.get("ref") != "fix/v1.40.0-consolidated-remediation":
+              raise SystemExit("Unexpected authenticated QA head branch")
+          if (head.get("repo", {}) or {}).get("full_name") != repository or head.get("sha") != sha:
+              raise SystemExit("Authenticated QA repository or exact head SHA mismatch")
+          if event.get("label", {}).get("name") != "authenticated-browser-qa":
+              raise SystemExit("Authenticated QA requires the explicit repository label")
+          PY
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v7
@@ -57,7 +83,7 @@ jobs:
           test "${GITHUB_REPOSITORY}" = "nine41745-sketch/stock-portfolio"
           test ! -e supabase/.temp/project-ref
           test "$(supabase --version)" = "2.84.2"
-          project_id="stock-v1370-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          project_id="stock-v1400-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           network_name="supabase_network_${project_id}"
           db_container="supabase_db_${project_id}"
           db_volume="supabase_db_${project_id}"
@@ -231,7 +257,7 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          project_id="stock-v1370-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          project_id="stock-v1400-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           network_name="supabase_network_${project_id}"
           if [ -n "${QA_SUPABASE_PROJECT_ID:-}" ] && [ "$QA_SUPABASE_PROJECT_ID" != "$project_id" ]; then
             echo "QA project ID does not match this workflow run; refusing cleanup." >&2
@@ -382,7 +408,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: authenticated-browser-qa-v1.37.0
+          name: authenticated-browser-qa-v1.40.0
           path: ${{ env.QA_ARTIFACT_DIR }}/
           retention-days: 3
           if-no-files-found: ignore

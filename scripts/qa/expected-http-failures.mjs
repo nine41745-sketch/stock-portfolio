@@ -93,6 +93,28 @@ function expectedDailyAnalysisAuthFailure(failure, lifecycle) {
   ) === true
 }
 
+function expectedEmptyPortfolioFailure(failure, lifecycle) {
+  const allowedPaths = new Set(['/api/portfolios', '/api/performance', '/api/transactions'])
+  if (failure.status !== 409 || failure.method !== 'GET' || !allowedPaths.has(failure.path) ||
+      failure.failureCode !== 'PORTFOLIO_REQUIRED' || failure.portfolioState !== 'empty' ||
+      failure.authReady !== true || failure.pinReady !== true || !Number.isInteger(failure.sequence)) return false
+
+  const initialization = lifecycle?.portfolioInitializations?.find(item => item.account === failure.account)
+  if (!initialization || initialization.emptyDatabaseCount !== 0 || initialization.state !== 'created' ||
+      !Number.isInteger(initialization.createdControlSequence) || initialization.createdControlSequence <= failure.sequence) return false
+
+  return initialization.emptyControls?.some(control => control.path === failure.path &&
+    Number.isInteger(control.requestSequence) && control.requestSequence < failure.sequence &&
+    Number.isInteger(control.controlSequence) && control.controlSequence < failure.sequence &&
+    matchingControl(lifecycle, control.controlSequence, {
+      kind: 'empty-portfolio-negative-control', account: failure.account, path: failure.path,
+      status: 409, code: 'PORTFOLIO_REQUIRED', requestSequence: control.requestSequence,
+    })) === true && matchingControl(lifecycle, initialization.createdControlSequence, {
+      kind: 'first-portfolio-created-control', account: failure.account, status: 200,
+      portfolioCount: 1, defaultCount: 1,
+    })
+}
+
 /**
  * Accept only HTTP failures tied to a documented QA stage and its active synthetic fixture.
  * Request-state fields are snapshotted when Playwright emits the request.
@@ -103,6 +125,8 @@ export function isExpectedHttpFailure(failure, lifecycle = null) {
   if (path === '/api/daily-analyses/today' && status === 401) {
     return expectedDailyAnalysisAuthFailure(failure, lifecycle)
   }
+
+  if (status === 409) return expectedEmptyPortfolioFailure(failure, lifecycle)
 
   if (path === '/api/fundamentals' && status === 401) {
     return (
