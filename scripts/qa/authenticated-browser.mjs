@@ -55,6 +55,7 @@ process.once('SIGTERM',()=>{
 const deadlineTimer=setTimeout(()=>process.kill(process.pid,'SIGTERM'),browserDeadlineMs)
 const requestGet=(request,url,options={})=>request.get(url,{timeout:15_000,...options})
 const requestPost=(request,url,options={})=>request.post(url,{timeout:15_000,...options})
+const requestPatch=(request,url,options={})=>request.patch(url,{timeout:15_000,...options})
 const requestDelete=(request,url,options={})=>request.delete(url,{timeout:15_000,...options})
 const localFetchOptions=options=>({...options,signal:AbortSignal.timeout(10_000)})
 const nextLifecycleSequence=()=>++lifecycleSequence

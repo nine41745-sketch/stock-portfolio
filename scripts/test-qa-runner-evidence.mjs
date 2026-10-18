@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
+import { Linter } from 'eslint'
 import { recordInterruptedRunSync, writeQaCheckpointSync } from './qa/qa-runner-evidence.mjs'
 import { getVerifiedLocalUserAccessToken, LocalUserAuthError } from './qa/local-user-auth-token.mjs'
 
@@ -17,6 +18,48 @@ async function withTemporaryDirectory(run) {
     await rm(directory, { recursive: true, force: true })
   }
 }
+
+function lintQaModule(source, filename) {
+  const globals = Object.fromEntries(Object.getOwnPropertyNames(globalThis).map(name => [name, 'readonly']))
+  for (const name of ['window', 'document', 'localStorage', 'getComputedStyle', 'navigator', 'HTMLElement', 'location', 'innerWidth', 'innerHeight']) {
+    globals[name] = 'readonly'
+  }
+  const linter = new Linter({ configType: 'flat' })
+  return linter.verify(source, {
+    languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals },
+    rules: { 'no-undef': 'error' },
+  }, { filename })
+}
+
+async function qaModulePaths(directory) {
+  const entries = await readdir(directory, { withFileTypes: true })
+  const nested = await Promise.all(entries.map(entry => {
+    const path = join(directory, entry.name)
+    return entry.isDirectory() ? qaModulePaths(path) : entry.isFile() && entry.name.endsWith('.mjs') ? [path] : []
+  }))
+  return nested.flat()
+}
+
+test('QA harness modules have no undefined references under ESLint scope analysis', async () => {
+  const qaDirectory = fileURLToPath(new URL('./qa/', import.meta.url))
+  const findings = []
+  for (const path of await qaModulePaths(qaDirectory)) {
+    const source = await readFile(path, 'utf8')
+    findings.push(...lintQaModule(source, path).map(message => ({
+      file: path.slice(qaDirectory.length),
+      line: message.line,
+      column: message.column,
+      ruleId: message.ruleId,
+      message: message.message,
+    })))
+  }
+  assert.deepEqual(findings, [], `QA harness has undefined references: ${JSON.stringify(findings)}`)
+})
+
+test('QA undefined-reference guard catches an undeclared request helper', () => {
+  const findings = lintQaModule('function syntheticControl() { requestPatch("/synthetic"); }', 'synthetic-qa-fixture.mjs')
+  assert.ok(findings.some(message => message.ruleId === 'no-undef' && message.message.includes('requestPatch')))
+})
 
 test('checkpoint keeps the current stage, elapsed duration, and checks without arbitrary payload fields', async () => {
   await withTemporaryDirectory(async directory => {
