@@ -191,7 +191,7 @@ test('HTTP evidence finishes before navigation or context closure and drains new
   await tracker.beforeNavigation(async () => events.push('navigate'))
   await tracker.close({ close: async () => events.push('close') })
   assert.deepEqual(events, ['body-read', 'navigate', 'close'])
-  assert.deepEqual(tracker.summary(), { pendingRequests: 0, pendingResponses: 0, failedRequests: 0, collectionErrors: 0 })
+  assert.deepEqual(tracker.summary(), { pendingRequests: 0, pendingResponses: 0, failedRequests: 0, collectionErrors: 0, rawFailedRequests: 0, acceptedCancellations: 0 })
 })
 
 test('HTTP evidence has a bounded deadline, closes on failure and never hides incomplete requests', async () => {
@@ -258,6 +258,89 @@ test('failed requests, rejected evidence tasks and work arriving during close re
   await assert.rejects(rejected.drain(), error => /HTTP evidence collection failed/.test(error.message) && !error.message.includes('private'))
   const late = createHttpEvidenceLifecycle()
   await assert.rejects(late.close({ close: async () => late.requestStarted({}) }), /HTTP evidence changed during context closure/)
+})
+
+async function cancellationFixture(change = {}) {
+  const { createHttpEvidenceLifecycle } = await import('./qa/http-response-evidence.mjs')
+  const { createRequestCancellationEvidence } = await import('./qa/request-cancellation-evidence.mjs')
+  const evidence = createRequestCancellationEvidence()
+  const tracker = createHttpEvidenceLifecycle({ isExpectedCancellation: (request, reason) => evidence.isExpected(request, reason) })
+  const document = '11111111-1111-1111-1111-111111111111'
+  const frame = {}, epoch = {}
+  const pathname = change.pathname ?? '/api/portfolios'
+  const scope = { stage: pathname === '/api/smart-dca' ? 'risk-dashboard' : 'lock-transition', epoch, portfolioId: 'synthetic-owned',
+    documentPath: pathname === '/api/smart-dca' ? '/risk' : '/scanner', expectedFrame: frame, ...change.initialScope }
+  const request = (id, requestFrame = frame) => ({ headers: () => ({ 'x-stock-qa-request-id': id }), frame: () => requestFrame,
+    method: () => 'GET', url: () => 'http://127.0.0.1' + pathname })
+  const id = document + ':1', nextId = (change.document ?? document) + ':2'
+  const first = request(id), second = request(nextId, change.frame ?? frame)
+  evidence.clientEvent(frame, { id, kind: 'fetch-start', pathname })
+  evidence.requestStarted(first, scope)
+  tracker.requestStarted(first)
+  if (!change.noAbort) evidence.clientEvent(frame, { id, kind: 'signal-abort', pathname })
+  if (change.hadResponse) await evidence.responseReceived(first, { status: () => 401 })
+  tracker.requestFailed(first, change.reason ?? 'ABORTED')
+  if (change.navigation) evidence.navigationObserved('/pin', 'lock-transition')
+  evidence.clientEvent(change.frame ?? frame, { id: nextId, kind: 'fetch-start', pathname })
+  evidence.requestStarted(second, { ...scope, ...change.scope })
+  const prove = () => evidence.responseReceived(second, { status: () => 200, headers: () => ({ 'cache-control': change.cacheControl ?? 'no-store' }), finished: async () => null,
+    body: async () => Buffer.from(JSON.stringify(change.payload ?? { active_portfolio_id: 'synthetic-owned', portfolios: [{ id: 'synthetic-owned' }] })) })
+  return { evidence, tracker, prove }
+}
+
+test('explicit signal cancellation needs exact identity and a later owned successful replacement', async () => {
+  const { tracker, prove } = await cancellationFixture()
+  await assert.rejects(tracker.drain(), /failed requests/, 'An aborted signal without replacement proof is still a failure')
+  await prove()
+  await tracker.drain()
+  assert.equal(tracker.summary().rawFailedRequests, 1)
+  assert.equal(tracker.summary().acceptedCancellations, 1)
+  assert.equal(tracker.summary().failedRequests, 0)
+})
+
+test('Smart DCA replay requires its own risk-page/stage and portfolio response contract', async () => {
+  const { tracker, prove } = await cancellationFixture({ pathname: '/api/smart-dca', payload: { portfolio: { id: 'synthetic-owned' } } })
+  await prove(); await tracker.drain()
+  assert.equal(tracker.summary().acceptedCancellations, 1)
+  for (const change of [
+    { payload: { portfolio: { id: 'foreign' } } }, { payload: { active_portfolio_id: 'synthetic-owned', portfolios: [{ id: 'synthetic-owned' }] } },
+    { initialScope: { stage: 'lock-transition' } }, { initialScope: { documentPath: '/scanner' } },
+  ]) {
+    const negative = await cancellationFixture({ pathname: '/api/smart-dca', payload: { portfolio: { id: 'synthetic-owned' } }, ...change })
+    await negative.prove(); await assert.rejects(negative.tracker.drain(), /failed requests/)
+  }
+})
+
+test('genuine/unknown failures, navigation, cross-account/stage/document and invalid ownership stay fatal', async () => {
+  for (const change of [
+    { reason: 'UNKNOWN' }, { reason: 'CONNECTION_RESET' }, { reason: 'NETWORK_FAILURE' }, { reason: 'DNS_FAILURE' },
+    { cacheControl: 'public, max-age=60' },
+    { noAbort: true }, { hadResponse: true }, { navigation: true }, { frame: {} },
+    { document: '22222222-2222-2222-2222-222222222222' }, { scope: { epoch: {} } },
+    { scope: { portfolioId: 'foreign' } }, { scope: { stage: 'pin-unlock' } },
+    { scope: { documentPath: '/pin' } },
+    { scope: { expectedFrame: {} } },
+    { payload: { active_portfolio_id: 'foreign', portfolios: [{ id: 'foreign' }] } },
+    { payload: { active_portfolio_id: 'synthetic-owned', portfolios: [] } },
+  ]) {
+    const { tracker, prove } = await cancellationFixture(change)
+    await prove()
+    await assert.rejects(tracker.drain(), /failed requests/, JSON.stringify(change))
+    assert.equal(tracker.summary().acceptedCancellations, 0)
+  }
+})
+
+test('transport diagnostics contain enums only and malformed client evidence is rejected', async () => {
+  const { requestFailureReason, createRequestCancellationEvidence } = await import('./qa/request-cancellation-evidence.mjs')
+  assert.equal(requestFailureReason('net::ERR_ABORTED'), 'ABORTED')
+  assert.equal(requestFailureReason('net::ERR_CONNECTION_RESET'), 'CONNECTION_RESET')
+  assert.equal(requestFailureReason('Bearer private detail?token=hidden'), 'UNKNOWN')
+  assert.equal(requestFailureReason('constructor'), 'UNKNOWN')
+  assert.equal(requestFailureReason('toString'), 'UNKNOWN')
+  const evidence = createRequestCancellationEvidence()
+  evidence.clientEvent({}, { id: 'private?secret=value', kind: 'unexpected' })
+  assert.throws(() => evidence.assertHealthy(), /Invalid/)
+  assert(!JSON.stringify(evidence.diagnostics()).includes('secret'))
 })
 
 test('browser runner validates Cache-Control with a RegExp accepted by assert.match', async () => {

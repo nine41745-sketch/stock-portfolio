@@ -7,6 +7,7 @@ import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, readHttpFailureE
 import { markQaStageSync, recordQaCheckSync, recordInterruptedRunSync } from './qa-runner-evidence.mjs'
 import { getVerifiedLocalUserAccessToken } from './local-user-auth-token.mjs'
 import { createHttpEvidenceLifecycle, installDailyAnalysisBodyObserver } from './http-response-evidence.mjs'
+import { createRequestCancellationEvidence, installRequestCancellationObserver, flushRequestCancellationEvidence, requestFailureReason } from './request-cancellation-evidence.mjs'
 const base = new URL(process.env.QA_BASE_URL ?? '')
 const local = h => ['localhost', '127.0.0.1', '::1'].includes(h)
 const sb = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
@@ -21,9 +22,12 @@ const themeMatrix=[]
 const browserConsoleErrors=[]
 const browserHttpFailures=[]
 const browserRuntimeErrors=[]
-const httpEvidence=createHttpEvidenceLifecycle()
+const cancellationEvidence=createRequestCancellationEvidence()
+const httpEvidence=createHttpEvidenceLifecycle({isExpectedCancellation:(request,reason)=>cancellationEvidence.isExpected(request,reason)})
+const verifiedPortfolioScopes=new Map()
 let browser=null
 let context=null
+let flushCancellation=async()=>{}
 let qaStage='RUNNER_STARTING'
 markQaStageSync(dir,qaStage)
 const setStage=stage=>{qaStage=stage;markQaStageSync(dir,stage)}
@@ -161,9 +165,14 @@ try {
  context.setDefaultTimeout(15_000)
  context.setDefaultNavigationTimeout(30_000)
  await installDailyAnalysisBodyObserver(context,httpEvidence)
+ await installRequestCancellationObserver(context,cancellationEvidence)
  setStage('BROWSER_READY')
  const page=await context.newPage()
- const navigate=url=>httpEvidence.beforeNavigation(()=>page.goto(url))
+ flushCancellation=()=>flushRequestCancellationEvidence(page,cancellationEvidence)
+ const drainEvidence=async()=>{await flushCancellation();await httpEvidence.drain()}
+ const navigate=async url=>{await flushCancellation();return httpEvidence.beforeNavigation(()=>page.goto(url))}
+ const reload=async()=>{await flushCancellation();return httpEvidence.beforeNavigation(()=>page.reload())}
+ page.on('framenavigated',frame=>{if(frame===page.mainFrame())cancellationEvidence.navigationObserved(new URL(frame.url()).pathname,qaStage)})
  page.on('console',message=>{
   if(message.type()==='error'){
    const status=message.text().match(/status of (\d{3})/)
@@ -189,14 +198,16 @@ try {
     request.url().includes('/api/fundamentals')?mode:
     request.url().includes('/api/watchlist')?watchlistMode:undefined,
   })
-  if(new URL(request.url()).pathname.startsWith('/api/'))httpEvidence.requestStarted(request,{
-   method:request.method(),pathname:new URL(request.url()).pathname,stage:qaStage,
-  })
+  if(new URL(request.url()).pathname.startsWith('/api/')){
+   httpEvidence.requestStarted(request,{method:request.method(),pathname:new URL(request.url()).pathname,stage:qaStage,correlationId:request.headers()['x-stock-qa-request-id']})
+   cancellationEvidence.requestStarted(request,{stage:qaStage,epoch:activeAuthAttempt,portfolioId:verifiedPortfolioScopes.get(activeAccount),documentPath:new URL(page.url()).pathname,expectedFrame:page.mainFrame()})
+  }
  })
  page.on('requestfinished',request=>httpEvidence.requestFinished(request))
- page.on('requestfailed',request=>httpEvidence.requestFailed(request))
+ page.on('requestfailed',request=>httpEvidence.requestFailed(request,requestFailureReason(request.failure()?.errorText)))
  page.on('response',response=>{
   httpEvidence.responseReceived(response.request())
+  httpEvidence.trackResponse(cancellationEvidence.responseReceived(response.request(),response))
   if(response.status()>=400){
    const task=(async()=>{
     const requestContext=requestContexts.get(response.request())??{stage:'unknown',authReady:false,pinReady:false}
@@ -279,7 +290,7 @@ try {
  pass('Authenticated session is denied until PIN setup')
  const fields=page.locator('input[type=password]')
  await fields.nth(0).fill(pin);await fields.nth(1).fill(pin)
-  await httpEvidence.drain()
+  await drainEvidence()
   authAttemptA.pinSubmissionSequence=nextLifecycleSequence()
   authAttemptA.phase='pin-submitting'
  await page.getByRole('button',{name:'ตั้ง PIN'}).click()
@@ -310,11 +321,12 @@ try {
   }
   pass('Fresh Account A remains empty through portfolio, performance, transaction GETs and read-only page loads')
   setStage('account-a-first-portfolio-create')
-  await httpEvidence.drain()
+  await drainEvidence()
   accountAInitialization.creationStartedSequence=recordLifecycleControl({kind:'first-portfolio-creation-start',account:'A'}).sequence
   const accountAFirstPortfolioResponse=await requestPost(page.request,new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio A1'}})
   assert.equal(accountAFirstPortfolioResponse.status(),200)
   const accountAFirstPortfolio=(await accountAFirstPortfolioResponse.json()).portfolio
+  verifiedPortfolioScopes.set('A',accountAFirstPortfolio.id)
   const accountAAfterCreate=await syntheticPortfolioCount(qaUser.id)
   recordFirstPortfolioCreated(accountAInitialization,accountAFirstPortfolioResponse,accountAAfterCreate)
   const accountAList=await requestGet(page.request,new URL('/api/portfolios',base).href)
@@ -382,7 +394,7 @@ try {
  setStage('scanner-after-setup')
  await navigate(new URL('/scanner',base).href)
  setStage('lock-transition')
- await httpEvidence.drain()
+ await drainEvidence()
  pinReady=false
   const lockTransition={startedSequence:nextLifecycleSequence(),unlockedControlSequence:null}
   authAttemptA.pinLockTransitions.push(lockTransition)
@@ -592,7 +604,7 @@ try {
  assert.deepEqual(allocationNames,['Target allocation percentage for AAPL','Target allocation percentage for DIME','Target allocation percentage for MSFT'])
  pass('All synthetic Target Allocation fields expose accessible names that identify their symbols')
  riskMode='error'
- await page.reload()
+ await reload()
  await page.getByText('โหลด Risk ไม่สำเร็จ').waitFor()
  await page.emulateMedia({colorScheme:'light'})
  if(await page.locator('html').getAttribute('data-theme')!=='light') await page.locator('button[title^="โหมดปัจจุบัน:"]').click()
@@ -600,13 +612,13 @@ try {
  assert.equal(riskErrorAxe.violations.filter(v=>v.impact==='critical'||v.impact==='serious'||v.id==='color-contrast').length,0,'Risk error state must pass critical/serious axe checks in light theme')
  pass('Risk unavailable/error state passes critical/serious Light Theme axe checks')
  riskMode='empty'
- await page.reload()
+ await reload()
  await page.getByText('ยังไม่มี Holdings ที่มีราคาปัจจุบันสำหรับคำนวณ').waitFor()
  const riskEmptyAxe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()
  assert.equal(riskEmptyAxe.violations.filter(v=>v.impact==='critical'||v.impact==='serious'||v.id==='color-contrast').length,0,'Risk empty state must pass critical/serious axe checks in light theme')
  pass('Risk empty state passes critical/serious Light Theme axe checks')
  riskMode='synthetic'
- await page.reload()
+ await reload()
  await page.getByRole('heading',{name:'🛡️ ความเสี่ยงพอร์ต'}).waitFor()
  pass('Risk Dashboard loading and market/industry/symbol stress simulations render from synthetic fixtures')
  secRiskMode='error'
@@ -644,7 +656,7 @@ try {
  await page.setViewportSize({width:1440,height:1000})
 
  // Real same-context Account A -> logout -> Account B, including B's own PIN setup.
-  await httpEvidence.drain()
+  await drainEvidence()
   const accountAPreLogoutPinControl=await requestGet(page.request,new URL('/api/fundamentals?symbols=AAPL',base).href)
   recordPinReadyControl(authAttemptA,accountAPreLogoutPinControl)
  setStage('account-switch-a-logout')
@@ -682,7 +694,7 @@ try {
  await page.getByText('ตั้ง PIN 6 หลัก').waitFor()
  const otherPinFields=page.locator('input[type=password]')
  await otherPinFields.nth(0).fill(pin);await otherPinFields.nth(1).fill(pin)
-  await httpEvidence.drain()
+  await drainEvidence()
   authAttemptB.pinSubmissionSequence=nextLifecycleSequence()
   authAttemptB.phase='pin-submitting'
  await page.getByRole('button',{name:'ตั้ง PIN'}).click()
@@ -713,11 +725,12 @@ try {
   }
   pass('Fresh Account B remains empty through read-only APIs and pages after its own Auth/PIN setup')
   setStage('account-switch-b-first-portfolio-create')
-  await httpEvidence.drain()
+  await drainEvidence()
   accountBInitialization.creationStartedSequence=recordLifecycleControl({kind:'first-portfolio-creation-start',account:'B'}).sequence
   const accountBFirstPortfolioResponse=await requestPost(page.request,new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio B1'}})
   assert.equal(accountBFirstPortfolioResponse.status(),200)
   const accountBFirstPortfolio=(await accountBFirstPortfolioResponse.json()).portfolio
+  verifiedPortfolioScopes.set('B',accountBFirstPortfolio.id)
   const accountBAfterCreate=await syntheticPortfolioCount(otherUser.id)
   recordFirstPortfolioCreated(accountBInitialization,accountBFirstPortfolioResponse,accountBAfterCreate)
  setStage('account-switch-b-unlocked')
@@ -781,7 +794,7 @@ try {
     const themeButton=page.locator('button[title^="โหมดปัจจุบัน:"]')
     if(await page.locator('html').getAttribute('data-theme')!==appTheme) await themeButton.click()
     await page.waitForFunction(theme=>document.documentElement.getAttribute('data-theme')===theme,appTheme)
-    await page.reload()
+    await reload()
     await page.addStyleTag({content:'nextjs-portal{display:none!important}'})
     assert.equal(await page.locator('html').getAttribute('data-theme'),appTheme,'App theme preference must persist after reload')
     await page.getByRole('button',{name:/พื้นฐาน \/ มูลค่า/}).click()
@@ -843,6 +856,7 @@ try {
  assert.equal(outside,0,'Browser tried to contact non-local host')
  pass('Browser made no non-local requests')
   setStage('http-evidence-finalization')
+  await flushCancellation()
   await httpEvidence.close(context)
   assert.equal(outside,0,'Browser tried to contact non-local host during evidence finalization')
   setStage('http-failure-classification')
@@ -854,7 +868,7 @@ try {
   pass('No browser runtime or unhandled console errors; expected PIN/provider HTTP failures are tracked separately')
  } catch(error) {
   let responseEvidenceFinalizationFailed=false
-  if(context)try{await httpEvidence.close(context)}catch{responseEvidenceFinalizationFailed=true}
+  if(context)try{try{await flushCancellation()}finally{await httpEvidence.close(context)}}catch{responseEvidenceFinalizationFailed=true}
   let blocked=0
   try{blocked=(await readFile(process.env.QA_NETWORK_GUARD_LOG,'utf8')).split('\n').filter(Boolean).length}catch{}
   const message=String(error?.message??'QA assertion failed')
@@ -874,6 +888,7 @@ try {
    authLifecycle:lifecycleEvidence,
    responseEvidence:{...httpEvidence.summary(),finalizationFailed:responseEvidenceFinalizationFailed},
    httpRequestLifecycle:httpEvidence.diagnostics(),
+   requestCancellationEvidence:cancellationEvidence.diagnostics(),
    browserHttpFailures,
    consoleErrors:browserConsoleErrors.filter(item=>item.kind!=='http-status').length,
    runtimeErrors:browserRuntimeErrors.length,
@@ -886,7 +901,7 @@ let blocked=0
 try{blocked=(await readFile(process.env.QA_NETWORK_GUARD_LOG,'utf8')).split('\n').filter(Boolean).length}catch{}
  setStage('complete')
 pass('Server outbound attempts blocked by guard: '+blocked)
- await writeFile(dir+'/results.json',JSON.stringify({status:'PASS',environment:'Disposable local Supabase loopback only',providers:'live credentials absent; synthetic UI fixture',checks,passedChecks:checks.length,themeMatrix,finalStage:qaStage,authLifecycle:lifecycleEvidence,responseEvidence:httpEvidence.summary(),httpRequestLifecycle:httpEvidence.diagnostics(),consoleErrors:browserConsoleErrors.filter(error=>error.kind!=='http-status').length,expectedHttpConsoleErrors:browserConsoleErrors.filter(error=>error.kind==='http-status'),browserHttpFailures,runtimeErrors:browserRuntimeErrors.length,blockedExternalAttempts:blocked,blockedBrowserRequests:outside,data:'synthetic only'},null,2))
+ await writeFile(dir+'/results.json',JSON.stringify({status:'PASS',environment:'Disposable local Supabase loopback only',providers:'live credentials absent; synthetic UI fixture',checks,passedChecks:checks.length,themeMatrix,finalStage:qaStage,authLifecycle:lifecycleEvidence,responseEvidence:httpEvidence.summary(),httpRequestLifecycle:httpEvidence.diagnostics(),requestCancellationEvidence:cancellationEvidence.diagnostics(),consoleErrors:browserConsoleErrors.filter(error=>error.kind!=='http-status').length,expectedHttpConsoleErrors:browserConsoleErrors.filter(error=>error.kind==='http-status'),browserHttpFailures,runtimeErrors:browserRuntimeErrors.length,blockedExternalAttempts:blocked,blockedBrowserRequests:outside,data:'synthetic only'},null,2))
 await writeFile(dir+'/theme-matrix-evidence.json',JSON.stringify({status:'PASS',themeMatrix},null,2))
 console.log('Authenticated Browser QA passed: '+checks.length+' checks; external network is blocked by policy.')
 clearTimeout(deadlineTimer)

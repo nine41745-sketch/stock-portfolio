@@ -1,5 +1,5 @@
 /** Keep the browser alive while its API responses are being verified. QA only. */
-export function createHttpEvidenceLifecycle({ timeoutMs = 15_000 } = {}) {
+export function createHttpEvidenceLifecycle({ timeoutMs = 15_000, isExpectedCancellation = () => false } = {}) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 15_000) {
     throw new Error('HTTP evidence deadline must be bounded to 1..15000 ms')
   }
@@ -11,7 +11,7 @@ export function createHttpEvidenceLifecycle({ timeoutMs = 15_000 } = {}) {
   let diagnosticsOverflow = false
   const responses = new Set()
   const waiters = new Set()
-  let failedRequests = 0
+  const failedRequests = new Map(), acceptedLogged = new WeakSet()
   let collectionErrors = 0
   const lifecycleMarker = {}
   const observerMarker = {}
@@ -20,10 +20,10 @@ export function createHttpEvidenceLifecycle({ timeoutMs = 15_000 } = {}) {
   const safePath = value => {
     try {
       const path = new URL(value, 'http://127.0.0.1').pathname
-      return ['/api/daily-analyses/today', '/api/portfolios', '/api/performance', '/api/transactions'].includes(path) ? path : '/api/[redacted]'
+      return ['/api/daily-analyses/today', '/api/portfolios', '/api/performance', '/api/transactions', '/api/smart-dca'].includes(path) ? path : '/api/[redacted]'
     } catch { return '/api/[redacted]' }
   }
-  const recordEvent = (request, eventType, completionStatus) => {
+  const recordEvent = (request, eventType, completionStatus, failureReason) => {
     const record = records.get(request)
     if (!record) return
     record.completionStatus = completionStatus
@@ -31,19 +31,28 @@ export function createHttpEvidenceLifecycle({ timeoutMs = 15_000 } = {}) {
       if (!diagnosticsOverflow) { diagnosticsOverflow = true; collectionErrors++ }
       return
     }
-    events.push({ ...record, eventType, elapsedMs: Math.round(performance.now() - started) })
+    events.push({ ...record, eventType, elapsedMs: Math.round(performance.now() - started), ...(failureReason ? { failureReason } : {}) })
   }
   const notify = () => {
     for (const resolve of waiters) resolve()
     waiters.clear()
   }
-  const summary = () => ({ pendingRequests: requests.size, pendingResponses: responses.size, failedRequests, collectionErrors })
+  const expected = (request, reason) => isExpectedCancellation(request, reason) === true
+  const summary = () => {
+    const acceptedCancellations = [...failedRequests].filter(([request, reason]) => expected(request, reason)).length
+    return { pendingRequests: requests.size, pendingResponses: responses.size, failedRequests: failedRequests.size - acceptedCancellations,
+      collectionErrors, rawFailedRequests: failedRequests.size, acceptedCancellations }
+  }
   const drain = async () => {
     const deadline = performance.now() + timeoutMs
     for (;;) {
       if (!requests.size && !responses.size) {
-        if (failedRequests) throw new Error('HTTP evidence contains failed requests')
+        if (summary().failedRequests) throw new Error('HTTP evidence contains failed requests')
         if (collectionErrors) throw new Error('HTTP evidence collection failed')
+        for (const [request, reason] of failedRequests) if (!acceptedLogged.has(request)) {
+          recordEvent(request, 'verified-signal-replacement', 'accepted-cancellation', reason)
+          acceptedLogged.add(request)
+        }
         return
       }
       const remaining = deadline - performance.now()
@@ -60,10 +69,11 @@ export function createHttpEvidenceLifecycle({ timeoutMs = 15_000 } = {}) {
     }
   }
   return {
-    requestStarted(request, { method = 'UNKNOWN', pathname = '', stage = 'unknown' } = {}) {
+    requestStarted(request, { method = 'UNKNOWN', pathname = '', stage = 'unknown', correlationId } = {}) {
       records.set(request, { requestId: `api-${++nextRequestId}`,
         method: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'HEAD', 'OPTIONS'].includes(method) ? method : 'UNKNOWN',
-        pathname: safePath(pathname), stage: /^[a-zA-Z0-9-]{1,80}$/.test(stage) ? stage : 'unknown', completionStatus: 'pending' })
+        pathname: safePath(pathname), stage: /^[a-zA-Z0-9-]{1,80}$/.test(stage) ? stage : 'unknown', completionStatus: 'pending',
+        ...(typeof correlationId === 'string' && /^[a-f0-9-]{36}:\d{1,5}$/.test(correlationId) ? { correlationId } : {}) })
       requests.add(request); recordEvent(request, 'request', 'pending'); notify()
     },
     responseReceived(request) { recordEvent(request, 'response', 'headers-received') },
@@ -75,9 +85,10 @@ export function createHttpEvidenceLifecycle({ timeoutMs = 15_000 } = {}) {
     },
     bodyObserverFailed() { recordEvent(observerMarker, 'body-observer-failure', 'failed'); collectionErrors++; notify() },
     requestFinished(request) { recordEvent(request, 'requestfinished', 'finished'); requests.delete(request); notify() },
-    requestFailed(request) {
-      recordEvent(request, 'requestfailed', 'failed')
-      if (requests.delete(request)) failedRequests++
+    requestFailed(request, failureReason = 'UNKNOWN') {
+      const reason = ['ABORTED', 'CONNECTION_RESET', 'CONNECTION_CLOSED', 'CONNECTION_REFUSED', 'EMPTY_RESPONSE', 'DNS_FAILURE', 'TIMEOUT', 'NETWORK_FAILURE'].includes(failureReason) ? failureReason : 'UNKNOWN'
+      recordEvent(request, 'requestfailed', 'failed', reason)
+      if (requests.delete(request)) failedRequests.set(request, reason)
       notify()
     },
     trackResponse(work) {
@@ -100,7 +111,7 @@ export function createHttpEvidenceLifecycle({ timeoutMs = 15_000 } = {}) {
       // Close even on a deadline/failure, but never turn that failure into PASS.
       recordEvent(lifecycleMarker, 'context-close-attempt', 'pending')
       try { await drain() } finally { await context.close(); recordEvent(lifecycleMarker, 'context-close', 'complete') }
-      if (requests.size || responses.size || failedRequests || collectionErrors) {
+      if (requests.size || responses.size || summary().failedRequests || collectionErrors) {
         throw new Error('HTTP evidence changed during context closure')
       }
     },
