@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdir, writeFile, readFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
-import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, unexpectedConsoleHttpErrors } from './expected-http-failures.mjs'
+import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, readHttpFailureEvidence, unexpectedConsoleHttpErrors } from './expected-http-failures.mjs'
 import { markQaStageSync, recordQaCheckSync, recordInterruptedRunSync } from './qa-runner-evidence.mjs'
 import { getVerifiedLocalUserAccessToken } from './local-user-auth-token.mjs'
 const base = new URL(process.env.QA_BASE_URL ?? '')
@@ -112,7 +112,7 @@ async function readNetworkGuardAttempts(){
  catch{return 0}
 }
 function startPortfolioInitialization(account){
- const initialization={account,state:'empty',emptyDatabaseCount:0,emptyControls:[],createdControlSequence:null}
+ const initialization={account,state:'empty',emptyDatabaseCount:0,emptyDatabaseControlSequence:null,emptyControls:[],createdControlSequence:null}
  portfolioLifecycle.accounts.push(initialization)
  return initialization
 }
@@ -186,17 +186,18 @@ try {
  page.on('response',response=>{
   if(response.status()>=400){
    const task=(async()=>{
-   let authGate='unclassified'
-   if(response.status()===401){
-    const body=await response.text().catch(()=> '')
-    if(body.includes('PIN required'))authGate='pin-required'
-    else if(body.includes('PIN ไม่ถูกต้อง'))authGate='pin-invalid'
-    else if(body.includes('Unauthorized'))authGate='unauthorized'
-   }
-    const failure={path:new URL(response.url()).pathname,status:response.status(),...(requestContexts.get(response.request())??{stage:'unknown',authReady:false,pinReady:false}),authGate}
-    if(response.status()===409){
-     const body=await response.text().catch(()=> '')
-     if(body.includes('PORTFOLIO_REQUIRED'))failure.failureCode='PORTFOLIO_REQUIRED'
+    const requestContext=requestContexts.get(response.request())??{stage:'unknown',authReady:false,pinReady:false}
+    const responseSequence=nextLifecycleSequence()
+    const evidence=await readHttpFailureEvidence(response)
+    const failure={
+     path:new URL(response.url()).pathname,
+     status:response.status(),
+     ...requestContext,
+     requestSequence:requestContext.sequence??null,
+     responseSequence,
+     authGate:evidence.authGate??'unclassified',
+     responseBodyStatus:evidence.responseBodyStatus,
+     ...(evidence.failureCode?{failureCode:evidence.failureCode}:{}),
     }
     browserHttpFailures.push(failure)
    })().finally(()=>responseTasks.delete(task))
@@ -276,7 +277,10 @@ try {
   const accountAEmptyCount=await syntheticPortfolioCount(qaUser.id)
   assert.equal(accountAEmptyCount.length,0,'Fresh Account A must start with no portfolios')
   accountAInitialization.emptyDatabaseCount=accountAEmptyCount.length
-  for(const path of ['/api/portfolios','/api/performance','/api/transactions']){
+  accountAInitialization.emptyDatabaseControlSequence=recordLifecycleControl({
+   kind:'empty-portfolio-database-control',account:'A',portfolioCount:accountAEmptyCount.length,
+  }).sequence
+  for(const path of ['/api/portfolios','/api/performance','/api/transactions','/api/daily-analyses/today']){
    const requestSequence=nextLifecycleSequence()
    const response=await requestGet(page.request,new URL(path,base).href)
    const payload=await response.json()
@@ -671,7 +675,10 @@ try {
   const accountBEmptyCount=await syntheticPortfolioCount(otherUser.id)
   assert.equal(accountBEmptyCount.length,0,'Fresh Account B must start with no portfolios')
   accountBInitialization.emptyDatabaseCount=accountBEmptyCount.length
-  for(const path of ['/api/portfolios','/api/performance','/api/transactions']){
+  accountBInitialization.emptyDatabaseControlSequence=recordLifecycleControl({
+   kind:'empty-portfolio-database-control',account:'B',portfolioCount:accountBEmptyCount.length,
+  }).sequence
+  for(const path of ['/api/portfolios','/api/performance','/api/transactions','/api/daily-analyses/today']){
    const requestSequence=nextLifecycleSequence()
    const response=await requestGet(page.request,new URL(path,base).href)
    const payload=await response.json()

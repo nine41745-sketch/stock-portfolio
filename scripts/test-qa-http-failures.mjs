@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, unexpectedConsoleHttpErrors } from './qa/expected-http-failures.mjs'
+import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, readHttpFailureEvidence, unexpectedConsoleHttpErrors } from './qa/expected-http-failures.mjs'
 
 const failure = overrides => ({
   path: '/api/daily-analyses/today',
@@ -172,18 +172,21 @@ test('unexpected 401, 403, 500, and 503 failures remain QA failures', () => {
 
 test('portfolio-required 409 is allowed only for a proved empty-account GET before explicit first creation', () => {
   const lifecycle = {
+    authAttempts: [{ id: 'A-1', account: 'A', pinReadyControlSequence: 15 }],
     controls: [
+      { sequence: 5, kind: 'empty-portfolio-database-control', account: 'A', portfolioCount: 0 },
       { sequence: 12, kind: 'empty-portfolio-negative-control', account: 'A', path: '/api/portfolios', status: 409, code: 'PORTFOLIO_REQUIRED', requestSequence: 10 },
+      { sequence: 15, kind: 'protected-api-positive-control', account: 'A', status: 200 },
       { sequence: 30, kind: 'first-portfolio-created-control', account: 'A', status: 200, portfolioCount: 1, defaultCount: 1 },
     ],
     portfolioInitializations: [{
-      account: 'A', state: 'created', emptyDatabaseCount: 0, createdControlSequence: 30,
+      account: 'A', state: 'created', emptyDatabaseCount: 0, emptyDatabaseControlSequence: 5, createdControlSequence: 30,
       emptyControls: [{ path: '/api/portfolios', requestSequence: 10, controlSequence: 12 }],
     }],
   }
   const expected = failure({
-    path: '/api/portfolios', status: 409, method: 'GET', failureCode: 'PORTFOLIO_REQUIRED',
-    portfolioState: 'empty', authReady: true, pinReady: true, account: 'A', sequence: 20,
+    path: '/api/portfolios', status: 409, method: 'GET', failureCode: 'PORTFOLIO_REQUIRED', responseBodyStatus: 'json',
+    portfolioState: 'empty', authReady: true, pinReady: true, account: 'A', authAttemptId: 'A-1', sequence: 20, responseSequence: 21,
   })
   assert.equal(isExpectedHttpFailure(expected, lifecycle), true)
   assert.equal(isExpectedHttpFailure({ ...expected, method: 'POST' }, lifecycle), false)
@@ -193,6 +196,141 @@ test('portfolio-required 409 is allowed only for a proved empty-account GET befo
   assert.equal(isExpectedHttpFailure({ ...expected, sequence: 31 }, lifecycle), false, 'A response after explicit first creation must fail')
   assert.equal(isExpectedHttpFailure({ ...expected, account: 'B' }, lifecycle), false)
   assert.equal(isExpectedHttpFailure({ ...expected, status: 500 }, lifecycle), false)
+})
+
+test('the 23 observed QA #23 responses classify only when the exact empty-portfolio code was read', () => {
+  const observedLifecycle = {
+    authAttempts: [
+      { id: 'A-1', account: 'A', authenticatedControlSequence: 10, authenticatedHasPin: false, pinSubmissionSequence: 40, pinReadyControlSequence: 50 },
+      { id: 'B-2', account: 'B', authenticatedControlSequence: 450, authenticatedHasPin: false, pinSubmissionSequence: 470, pinReadyControlSequence: 500 },
+    ],
+    controls: [
+      { sequence: 10, kind: 'auth-positive-control', account: 'A', status: 200, hasPin: false },
+      { sequence: 50, kind: 'protected-api-positive-control', account: 'A', status: 200 },
+      { sequence: 450, kind: 'auth-positive-control', account: 'B', status: 200, hasPin: false },
+      { sequence: 500, kind: 'protected-api-positive-control', account: 'B', status: 200 },
+    ],
+    portfolioInitializations: ['A', 'B'].map((account, index) => {
+      const base = index === 0
+        ? { database: 60, portfoliosRequest: 70, dailyRequest: 72, created: 140 }
+        : { database: 515, portfoliosRequest: 520, dailyRequest: 522, created: 560 }
+      return {
+        account, state: 'created', emptyDatabaseCount: 0, emptyDatabaseControlSequence: base.database,
+        emptyControls: [
+          { path: '/api/portfolios', requestSequence: base.portfoliosRequest, controlSequence: base.portfoliosRequest + 1 },
+          { path: '/api/daily-analyses/today', requestSequence: base.dailyRequest, controlSequence: base.dailyRequest + 1 },
+        ],
+        createdControlSequence: base.created,
+      }
+    }),
+  }
+  observedLifecycle.controls.push(
+    ...['A', 'B'].flatMap((account, index) => {
+      const base = index === 0
+        ? { database: 60, portfoliosRequest: 70, dailyRequest: 72, created: 140 }
+        : { database: 515, portfoliosRequest: 520, dailyRequest: 522, created: 560 }
+      return [
+        { sequence: base.database, kind: 'empty-portfolio-database-control', account, portfolioCount: 0 },
+        { sequence: base.portfoliosRequest + 1, kind: 'empty-portfolio-negative-control', account, path: '/api/portfolios', status: 409, code: 'PORTFOLIO_REQUIRED', requestSequence: base.portfoliosRequest },
+        { sequence: base.dailyRequest + 1, kind: 'empty-portfolio-negative-control', account, path: '/api/daily-analyses/today', status: 409, code: 'PORTFOLIO_REQUIRED', requestSequence: base.dailyRequest },
+        { sequence: base.created, kind: 'first-portfolio-created-control', account, status: 200, portfolioCount: 1, defaultCount: 1 },
+      ]
+    }),
+  )
+
+  const observations = [
+    ...[47, 48].map(sequence => ({ path: '/api/portfolios', sequence, account: 'A', code: 'PORTFOLIO_REQUIRED', stage: 'pin-setup', authPhase: 'pin-submitting', authReady: true, pinReady: false, portfolioState: 'unknown', authAttemptId: 'A-1' })),
+    ...[78, 80, 104, 106].map(sequence => ({ path: '/api/portfolios', sequence, account: 'A', authAttemptId: 'A-1', stage: 'account-a-empty-portfolio-initialization', authReady: true, pinReady: true, portfolioState: 'empty' })),
+    ...[479, 480].map(sequence => ({ path: '/api/portfolios', sequence, account: 'B', code: 'PORTFOLIO_REQUIRED', stage: 'account-switch-b-pin-setup', authPhase: 'pin-submitting', authReady: true, pinReady: false, portfolioState: 'unknown', authAttemptId: 'B-2' })),
+    ...[511, 513, 536, 538].map(sequence => ({ path: '/api/portfolios', sequence, account: 'B', authAttemptId: 'B-2', stage: 'account-switch-b-empty-portfolio-initialization', authReady: true, pinReady: true, portfolioState: 'empty' })),
+    { path: '/api/daily-analyses/today', sequence: 46, account: 'A', stage: 'pin-setup', authPhase: 'pin-submitting', authReady: true, pinReady: false, portfolioState: 'unknown', authAttemptId: 'A-1' },
+    ...[77, 79, 103, 105].map(sequence => ({ path: '/api/daily-analyses/today', sequence, account: 'A', authAttemptId: 'A-1', stage: 'account-a-empty-portfolio-initialization', authReady: true, pinReady: true, portfolioState: 'empty' })),
+    { path: '/api/daily-analyses/today', sequence: 129, account: 'A', authAttemptId: 'A-1', stage: 'account-a-first-portfolio-create', authReady: true, pinReady: true, portfolioState: 'empty' },
+    { path: '/api/daily-analyses/today', sequence: 479, account: 'B', stage: 'account-switch-b-pin-setup', authPhase: 'pin-submitting', authReady: true, pinReady: false, portfolioState: 'unknown', authAttemptId: 'B-2' },
+    ...[510, 512, 535, 537].map(sequence => ({ path: '/api/daily-analyses/today', sequence, account: 'B', authAttemptId: 'B-2', stage: 'account-switch-b-empty-portfolio-initialization', authReady: true, pinReady: true, portfolioState: 'empty' })),
+  ].map(item => ({ status: 409, method: 'GET', responseSequence: item.sequence + 1, ...item }))
+
+  assert.equal(observations.length, 23)
+  const classified = observations.map(item => isExpectedHttpFailure({ ...item, ...(item.code ? { failureCode: item.code, responseBodyStatus: 'json' } : {}) }, observedLifecycle))
+  assert.equal(classified.filter(Boolean).length, 4, 'Only the four response bodies with observed PORTFOLIO_REQUIRED evidence are eligible')
+  const failedWithVerifiedBody = observations.filter(item => !isExpectedHttpFailure({ ...item, failureCode: 'PORTFOLIO_REQUIRED', responseBodyStatus: 'json' }, observedLifecycle))
+  assert.deepEqual(failedWithVerifiedBody.map(item => `${item.account}:${item.path}:${item.sequence}`), [],
+    'All 23 observed endpoint/stage groups are eligible only if their response body is read and verified against the contract')
+  for (const item of observations.filter(item => !item.code)) {
+    assert.equal(isExpectedHttpFailure(item, observedLifecycle), false, `${item.path} ${item.sequence} must fail closed without response-code evidence`)
+  }
+  assert.throws(() => assertNoUnexpectedHttpFailures(observations, observedLifecycle), /Unexpected failed browser responses.*409/)
+  assert.equal(isExpectedHttpFailure({
+    path: '/api/daily-analyses/today', status: 409, method: 'GET', failureCode: 'PORTFOLIO_REQUIRED', responseBodyStatus: 'json',
+    stage: 'account-a-empty-portfolio-initialization', authReady: true, pinReady: true, portfolioState: 'empty',
+    account: 'A', authAttemptId: 'A-1', sequence: 82, responseSequence: 83,
+  }, observedLifecycle), true, 'An exact daily-analysis contract is expected after its explicit empty control')
+})
+
+test('empty-portfolio 409s during PIN setup require the real submission transition and later protected positive control', () => {
+  const observedLifecycle = {
+    authAttempts: [{ id: 'A-1', account: 'A', authenticatedControlSequence: 10, authenticatedHasPin: false, pinSubmissionSequence: 40, pinReadyControlSequence: 50 }],
+    controls: [
+      { sequence: 10, kind: 'auth-positive-control', account: 'A', status: 200, hasPin: false },
+      { sequence: 50, kind: 'protected-api-positive-control', account: 'A', status: 200 },
+      { sequence: 60, kind: 'empty-portfolio-database-control', account: 'A', portfolioCount: 0 },
+      { sequence: 71, kind: 'empty-portfolio-negative-control', account: 'A', path: '/api/portfolios', status: 409, code: 'PORTFOLIO_REQUIRED', requestSequence: 70 },
+      { sequence: 81, kind: 'first-portfolio-created-control', account: 'A', status: 200, portfolioCount: 1, defaultCount: 1 },
+    ],
+    portfolioInitializations: [{
+      account: 'A', state: 'created', emptyDatabaseCount: 0, emptyDatabaseControlSequence: 60,
+      emptyControls: [{ path: '/api/portfolios', requestSequence: 70, controlSequence: 71 }], createdControlSequence: 81,
+    }],
+  }
+  const transitionFailure = {
+    path: '/api/portfolios', status: 409, method: 'GET', failureCode: 'PORTFOLIO_REQUIRED', responseBodyStatus: 'json',
+    stage: 'pin-setup', authPhase: 'pin-submitting', authReady: true, pinReady: false, portfolioState: 'unknown',
+    account: 'A', authAttemptId: 'A-1', sequence: 42, responseSequence: 43,
+  }
+  assert.equal(isExpectedHttpFailure(transitionFailure, observedLifecycle), true)
+  for (const change of [
+    { failureCode: undefined }, { responseBodyStatus: 'unreadable' }, { responseSequence: 51 },
+    { authPhase: 'pin-setup' }, { stage: 'account-a-empty-portfolio-initialization' },
+    { sequence: 39 }, { account: 'B' }, { path: '/api/daily-analyses/today' }, { pinReady: undefined },
+  ]) {
+    assert.equal(isExpectedHttpFailure({ ...transitionFailure, ...change }, observedLifecycle), false)
+  }
+  assert.equal(isExpectedHttpFailure({ ...transitionFailure, authGate: 'pin-required', status: 401 }, observedLifecycle), false)
+})
+
+test('failed or incomplete response-body reads never synthesize an expected failure code', async () => {
+  let bodyWasRead = false
+  const incomplete = await readHttpFailureEvidence({
+    finished: async () => new Error('transport detail must not be retained'),
+    body: async () => { bodyWasRead = true; return Buffer.from('{"code":"PORTFOLIO_REQUIRED"}') },
+  })
+  assert.deepEqual(incomplete, { responseBodyStatus: 'incomplete' })
+  assert.equal(bodyWasRead, false, 'Do not inspect a response body when Playwright reports an incomplete response')
+
+  const evidence = await readHttpFailureEvidence({
+    finished: async () => null,
+    body: async () => { throw new Error('private body transport details') },
+  })
+  assert.deepEqual(evidence, { responseBodyStatus: 'unreadable' })
+  assert.equal(JSON.stringify(evidence).includes('private body transport details'), false)
+
+  const malformed = await readHttpFailureEvidence({
+    finished: async () => null,
+    body: async () => Buffer.from('not-json'),
+  })
+  assert.deepEqual(malformed, { responseBodyStatus: 'invalid-json' })
+
+  const missingCode = await readHttpFailureEvidence({
+    finished: async () => null,
+    body: async () => Buffer.from('{"error":"some other conflict"}'),
+  })
+  assert.deepEqual(missingCode, { responseBodyStatus: 'missing-code' })
+
+  const verified = await readHttpFailureEvidence({
+    finished: async () => null,
+    body: async () => Buffer.from('{"code":"PORTFOLIO_REQUIRED","error":"synthetic"}'),
+  })
+  assert.deepEqual(verified, { responseBodyStatus: 'json', failureCode: 'PORTFOLIO_REQUIRED' })
 })
 
 test('invalid PIN is expected only for the explicit wrong-PIN attempt', () => {

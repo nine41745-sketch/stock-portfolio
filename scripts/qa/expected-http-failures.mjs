@@ -1,6 +1,60 @@
 const matches = (failure, expected) =>
   Object.entries(expected).every(([key, value]) => failure[key] === value)
 
+const RESPONSE_EVIDENCE_TIMEOUT_MS = 5_000
+const RESPONSE_EVIDENCE_TIMEOUT = Symbol('response-evidence-timeout')
+
+async function waitForResponseEvidence(promise) {
+  let timer
+  try {
+    return await Promise.race([
+      Promise.resolve(promise),
+      new Promise(resolve => { timer = setTimeout(() => resolve(RESPONSE_EVIDENCE_TIMEOUT), RESPONSE_EVIDENCE_TIMEOUT_MS) }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Read only recognized response fields; never retain arbitrary error bodies in QA evidence. */
+export async function readHttpFailureEvidence(response) {
+  try {
+    const finished = await waitForResponseEvidence(response.finished())
+    if (finished === RESPONSE_EVIDENCE_TIMEOUT || finished !== null) {
+      return { responseBodyStatus: 'incomplete' }
+    }
+
+    const body = await waitForResponseEvidence(response.body())
+    if (body === RESPONSE_EVIDENCE_TIMEOUT || !body) return { responseBodyStatus: 'unreadable' }
+
+    let payload
+    try {
+      payload = JSON.parse(body.toString('utf8'))
+    } catch {
+      return { responseBodyStatus: 'invalid-json' }
+    }
+
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return { responseBodyStatus: 'invalid-json' }
+    }
+
+    const evidence = {
+      responseBodyStatus: payload.code === 'PORTFOLIO_REQUIRED'
+        ? 'json'
+        : typeof payload.code === 'string' ? 'unrecognized-code' : 'missing-code',
+    }
+    if (payload.code === 'PORTFOLIO_REQUIRED') evidence.failureCode = payload.code
+
+    if (payload.error === 'Unauthorized') evidence.authGate = 'unauthorized'
+    else if (payload.error === 'PIN required') evidence.authGate = 'pin-required'
+    else if (payload.error === 'PIN ไม่ถูกต้อง') evidence.authGate = 'pin-invalid'
+
+    return evidence
+  } catch {
+    return { responseBodyStatus: 'unreadable' }
+  }
+}
+
 function matchingAuthAttempt(failure, lifecycle) {
   return lifecycle?.authAttempts?.find(attempt => attempt.id === failure.authAttemptId) ?? null
 }
@@ -94,25 +148,63 @@ function expectedDailyAnalysisAuthFailure(failure, lifecycle) {
 }
 
 function expectedEmptyPortfolioFailure(failure, lifecycle) {
-  const allowedPaths = new Set(['/api/portfolios', '/api/performance', '/api/transactions'])
+  const allowedPaths = new Set(['/api/portfolios', '/api/performance', '/api/transactions', '/api/daily-analyses/today'])
   if (failure.status !== 409 || failure.method !== 'GET' || !allowedPaths.has(failure.path) ||
-      failure.failureCode !== 'PORTFOLIO_REQUIRED' || failure.portfolioState !== 'empty' ||
-      failure.authReady !== true || failure.pinReady !== true || !Number.isInteger(failure.sequence)) return false
+      failure.failureCode !== 'PORTFOLIO_REQUIRED' || failure.responseBodyStatus !== 'json' ||
+      failure.authReady !== true || !Number.isInteger(failure.sequence) ||
+      !Number.isInteger(failure.responseSequence) || failure.responseSequence < failure.sequence) return false
 
   const initialization = lifecycle?.portfolioInitializations?.find(item => item.account === failure.account)
   if (!initialization || initialization.emptyDatabaseCount !== 0 || initialization.state !== 'created' ||
-      !Number.isInteger(initialization.createdControlSequence) || initialization.createdControlSequence <= failure.sequence) return false
+      !Number.isInteger(initialization.emptyDatabaseControlSequence) ||
+      !Number.isInteger(initialization.createdControlSequence) ||
+      initialization.emptyDatabaseControlSequence >= initialization.createdControlSequence ||
+      initialization.createdControlSequence <= failure.responseSequence) return false
 
-  return initialization.emptyControls?.some(control => control.path === failure.path &&
-    Number.isInteger(control.requestSequence) && control.requestSequence < failure.sequence &&
-    Number.isInteger(control.controlSequence) && control.controlSequence < failure.sequence &&
-    matchingControl(lifecycle, control.controlSequence, {
+  const matchingEmptyControl = initialization.emptyControls?.some(control => {
+    if (control.path !== failure.path || !Number.isInteger(control.requestSequence) ||
+        !Number.isInteger(control.controlSequence) || control.controlSequence >= initialization.createdControlSequence ||
+        !matchingControl(lifecycle, control.controlSequence, {
       kind: 'empty-portfolio-negative-control', account: failure.account, path: failure.path,
       status: 409, code: 'PORTFOLIO_REQUIRED', requestSequence: control.requestSequence,
-    })) === true && matchingControl(lifecycle, initialization.createdControlSequence, {
+    })) return false
+
+    const controlProvesPriorEmptyState = initialization.emptyDatabaseControlSequence < failure.sequence &&
+      control.requestSequence < failure.sequence && control.controlSequence < failure.sequence
+    const controlProvesOngoingEmptyState = failure.responseSequence < initialization.emptyDatabaseControlSequence &&
+      failure.responseSequence < control.requestSequence && control.controlSequence < initialization.createdControlSequence
+    return controlProvesPriorEmptyState || controlProvesOngoingEmptyState
+  }) === true
+
+  if (!matchingEmptyControl || !matchingControl(lifecycle, initialization.createdControlSequence, {
       kind: 'first-portfolio-created-control', account: failure.account, status: 200,
       portfolioCount: 1, defaultCount: 1,
-    })
+    })) return false
+
+  if (failure.pinReady === true) {
+    const attempt = matchingAuthAttempt(failure, lifecycle)
+    return Number.isInteger(attempt?.pinReadyControlSequence) && attempt.pinReadyControlSequence < failure.sequence &&
+      matchingControl(lifecycle, attempt.pinReadyControlSequence, {
+        kind: 'protected-api-positive-control', account: failure.account, status: 200,
+      })
+  }
+
+  if (failure.pinReady !== false) return false
+  const attempt = matchingAuthAttempt(failure, lifecycle)
+  const setupStage = failure.account === 'A'
+    ? failure.stage === 'pin-setup'
+    : failure.stage === 'account-switch-b-pin-setup'
+  return setupStage && failure.authPhase === 'pin-submitting' && attempt?.account === failure.account &&
+    attempt.authenticatedHasPin === false && Number.isInteger(attempt.authenticatedControlSequence) &&
+    Number.isInteger(attempt.pinSubmissionSequence) && Number.isInteger(attempt.pinReadyControlSequence) &&
+    attempt.authenticatedControlSequence < attempt.pinSubmissionSequence &&
+    attempt.pinSubmissionSequence < failure.sequence && failure.responseSequence < attempt.pinReadyControlSequence &&
+    matchingControl(lifecycle, attempt.authenticatedControlSequence, {
+      kind: 'auth-positive-control', account: failure.account, status: 200, hasPin: false,
+    }) && matchingControl(lifecycle, attempt.pinReadyControlSequence, {
+      kind: 'protected-api-positive-control', account: failure.account, status: 200,
+    }) && failure.responseSequence < initialization.emptyDatabaseControlSequence &&
+    failure.responseSequence < initialization.createdControlSequence
 }
 
 /**
