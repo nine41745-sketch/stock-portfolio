@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, readHttpFailureEvidence, unexpectedConsoleHttpErrors } from './expected-http-failures.mjs'
 import { markQaStageSync, recordQaCheckSync, recordInterruptedRunSync } from './qa-runner-evidence.mjs'
 import { getVerifiedLocalUserAccessToken } from './local-user-auth-token.mjs'
-import { createHttpEvidenceLifecycle } from './http-response-evidence.mjs'
+import { createHttpEvidenceLifecycle, installDailyAnalysisBodyObserver } from './http-response-evidence.mjs'
 const base = new URL(process.env.QA_BASE_URL ?? '')
 const local = h => ['localhost', '127.0.0.1', '::1'].includes(h)
 const sb = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
@@ -160,6 +160,7 @@ try {
  context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'})
  context.setDefaultTimeout(15_000)
  context.setDefaultNavigationTimeout(30_000)
+ await installDailyAnalysisBodyObserver(context,httpEvidence)
  setStage('BROWSER_READY')
  const page=await context.newPage()
  const navigate=url=>httpEvidence.beforeNavigation(()=>page.goto(url))
@@ -188,16 +189,20 @@ try {
     request.url().includes('/api/fundamentals')?mode:
     request.url().includes('/api/watchlist')?watchlistMode:undefined,
   })
-  if(new URL(request.url()).pathname.startsWith('/api/'))httpEvidence.requestStarted(request)
+  if(new URL(request.url()).pathname.startsWith('/api/'))httpEvidence.requestStarted(request,{
+   method:request.method(),pathname:new URL(request.url()).pathname,stage:qaStage,
+  })
  })
  page.on('requestfinished',request=>httpEvidence.requestFinished(request))
  page.on('requestfailed',request=>httpEvidence.requestFailed(request))
  page.on('response',response=>{
+  httpEvidence.responseReceived(response.request())
   if(response.status()>=400){
    const task=(async()=>{
     const requestContext=requestContexts.get(response.request())??{stage:'unknown',authReady:false,pinReady:false}
     const responseSequence=nextLifecycleSequence()
     const evidence=await readHttpFailureEvidence(response)
+    httpEvidence.bodyCompleted(response.request(),evidence.responseBodyStatus)
     const failure={
      path:new URL(response.url()).pathname,
      status:response.status(),
@@ -868,6 +873,7 @@ try {
    passedChecks:checks.length,
    authLifecycle:lifecycleEvidence,
    responseEvidence:{...httpEvidence.summary(),finalizationFailed:responseEvidenceFinalizationFailed},
+   httpRequestLifecycle:httpEvidence.diagnostics(),
    browserHttpFailures,
    consoleErrors:browserConsoleErrors.filter(item=>item.kind!=='http-status').length,
    runtimeErrors:browserRuntimeErrors.length,
@@ -880,7 +886,7 @@ let blocked=0
 try{blocked=(await readFile(process.env.QA_NETWORK_GUARD_LOG,'utf8')).split('\n').filter(Boolean).length}catch{}
  setStage('complete')
 pass('Server outbound attempts blocked by guard: '+blocked)
- await writeFile(dir+'/results.json',JSON.stringify({status:'PASS',environment:'Disposable local Supabase loopback only',providers:'live credentials absent; synthetic UI fixture',checks,passedChecks:checks.length,themeMatrix,finalStage:qaStage,authLifecycle:lifecycleEvidence,responseEvidence:httpEvidence.summary(),consoleErrors:browserConsoleErrors.filter(error=>error.kind!=='http-status').length,expectedHttpConsoleErrors:browserConsoleErrors.filter(error=>error.kind==='http-status'),browserHttpFailures,runtimeErrors:browserRuntimeErrors.length,blockedExternalAttempts:blocked,blockedBrowserRequests:outside,data:'synthetic only'},null,2))
+ await writeFile(dir+'/results.json',JSON.stringify({status:'PASS',environment:'Disposable local Supabase loopback only',providers:'live credentials absent; synthetic UI fixture',checks,passedChecks:checks.length,themeMatrix,finalStage:qaStage,authLifecycle:lifecycleEvidence,responseEvidence:httpEvidence.summary(),httpRequestLifecycle:httpEvidence.diagnostics(),consoleErrors:browserConsoleErrors.filter(error=>error.kind!=='http-status').length,expectedHttpConsoleErrors:browserConsoleErrors.filter(error=>error.kind==='http-status'),browserHttpFailures,runtimeErrors:browserRuntimeErrors.length,blockedExternalAttempts:blocked,blockedBrowserRequests:outside,data:'synthetic only'},null,2))
 await writeFile(dir+'/theme-matrix-evidence.json',JSON.stringify({status:'PASS',themeMatrix},null,2))
 console.log('Authenticated Browser QA passed: '+checks.length+' checks; external network is blocked by policy.')
 clearTimeout(deadlineTimer)

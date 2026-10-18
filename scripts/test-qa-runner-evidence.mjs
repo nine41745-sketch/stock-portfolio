@@ -206,6 +206,46 @@ test('HTTP evidence has a bounded deadline, closes on failure and never hides in
   assert.equal(tracker.summary().pendingRequests, 1)
 })
 
+test('pending HTTP diagnostics correlate the unfinished endpoint without retaining secrets', async () => {
+  const { createHttpEvidenceLifecycle } = await import('./qa/http-response-evidence.mjs')
+  const tracker = createHttpEvidenceLifecycle({ timeoutMs: 20 })
+  const request = {}
+  tracker.requestStarted(request, { method: 'GET', pathname: '/api/daily-analyses/today?token=private', stage: 'pin-setup' })
+  tracker.responseReceived(request)
+  tracker.bodyCompleted(request, 'incomplete')
+  await assert.rejects(tracker.drain(), /HTTP evidence deadline/)
+  const diagnostics = tracker.diagnostics()
+  assert.equal(diagnostics.pending[0].pathname, '/api/daily-analyses/today')
+  assert.equal(diagnostics.pending[0].completionStatus, 'incomplete')
+  assert.deepEqual(diagnostics.events.slice(0, 3).map(row => row.eventType), ['request', 'response', 'body-completion'])
+  assert.equal(new Set(diagnostics.events.slice(0, 3).map(row => row.requestId)).size, 1)
+  assert(!JSON.stringify(diagnostics).includes('private'))
+  tracker.requestFinished(request)
+  await assert.rejects(tracker.drain(), /HTTP evidence collection failed/, 'An incomplete body remains fatal even if transport later finishes')
+})
+
+test('body observer failures and diagnostic overflow fail closed; arbitrary metadata is never retained', async () => {
+  const { createHttpEvidenceLifecycle, installDailyAnalysisBodyObserver } = await import('./qa/http-response-evidence.mjs')
+  const observer = createHttpEvidenceLifecycle()
+  observer.bodyObserverFailed()
+  await assert.rejects(observer.drain(), /HTTP evidence collection failed/)
+  for (const timeoutMs of [0, 5_001, Infinity]) {
+    await assert.rejects(installDailyAnalysisBodyObserver({}, observer, { timeoutMs }), /bounded/)
+  }
+  const tracker = createHttpEvidenceLifecycle()
+  for (let index = 0; index < 2050; index++) {
+    const request = {}
+    tracker.requestStarted(request, { method: 'GET', pathname: '/api/private-id?password=hidden', stage: 'unlocked', headers: { cookie: 'private' } })
+    tracker.requestFinished(request)
+  }
+  assert.equal(tracker.diagnostics().events.length, 4096)
+  assert.equal(tracker.diagnostics().overflow, true)
+  assert(!JSON.stringify(tracker.diagnostics()).includes('hidden'))
+  assert(!JSON.stringify(tracker.diagnostics()).includes('cookie'))
+  assert(!JSON.stringify(tracker.diagnostics()).includes('private-id'))
+  await assert.rejects(tracker.drain(), /HTTP evidence collection failed/)
+})
+
 test('failed requests, rejected evidence tasks and work arriving during close remain failures', async () => {
   const { createHttpEvidenceLifecycle } = await import('./qa/http-response-evidence.mjs')
   const failed = createHttpEvidenceLifecycle()
