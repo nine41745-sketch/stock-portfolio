@@ -157,7 +157,7 @@ test('authenticated QA workflow remains PR-scoped and defines bounded readiness,
   assert.match(workflow, /if:\s*always\(\)[\s\S]*?name: Upload synthetic QA evidence/)
 })
 
-test('browser runner uses bounded action/API waits and closes context before draining response tasks', async () => {
+test('browser runner wires bounded HTTP evidence draining before navigation and context closure', async () => {
   const scriptPath = fileURLToPath(new URL('./qa/authenticated-browser.mjs', import.meta.url))
   const script = await readFile(scriptPath, 'utf8')
   assert.match(script, /context\.setDefaultTimeout\(15_000\)/)
@@ -167,9 +167,57 @@ test('browser runner uses bounded action/API waits and closes context before dra
   assert.match(script, /AbortSignal\.timeout\(10_000\)/)
   assert.match(script, /process\.once\('SIGTERM'/)
   assert.match(script, /process\.kill\(process\.pid,'SIGTERM'\)/)
-  const contextClose = script.indexOf('await context.close()')
-  const responseDrain = script.indexOf('await Promise.allSettled([...responseTasks])', contextClose)
-  assert(contextClose >= 0 && responseDrain > contextClose, 'response tasks must be drained only after closing their browser context')
+  assert.match(script, /httpEvidence\.beforeNavigation/)
+  assert.match(script, /await httpEvidence\.close\(context\)/)
+  assert.doesNotMatch(script, /await context\??\.close\(/, 'Direct context closure would invalidate pending response bodies')
+})
+
+test('HTTP evidence finishes before navigation or context closure and drains newly arriving work', async () => {
+  const { createHttpEvidenceLifecycle } = await import('./qa/http-response-evidence.mjs')
+  const tracker = createHttpEvidenceLifecycle({ timeoutMs: 500 })
+  const first = {}, second = {}, events = []
+  tracker.requestStarted(first)
+  const completion = new Promise(resolve => setTimeout(() => {
+    tracker.requestStarted(second)
+    tracker.requestFinished(first)
+    tracker.trackResponse(new Promise(bodyReady => setTimeout(() => {
+      events.push('body-read')
+      tracker.requestFinished(second)
+      bodyReady()
+    }, 10)))
+    resolve()
+  }, 10))
+  tracker.trackResponse(completion)
+  await tracker.beforeNavigation(async () => events.push('navigate'))
+  await tracker.close({ close: async () => events.push('close') })
+  assert.deepEqual(events, ['body-read', 'navigate', 'close'])
+  assert.deepEqual(tracker.summary(), { pendingRequests: 0, pendingResponses: 0, failedRequests: 0, collectionErrors: 0 })
+})
+
+test('HTTP evidence has a bounded deadline, closes on failure and never hides incomplete requests', async () => {
+  const { createHttpEvidenceLifecycle } = await import('./qa/http-response-evidence.mjs')
+  const tracker = createHttpEvidenceLifecycle({ timeoutMs: 25 })
+  let closed = false, navigated = false
+  tracker.requestStarted({})
+  await assert.rejects(tracker.beforeNavigation(async () => { navigated = true }), /HTTP evidence deadline/)
+  assert.equal(navigated, false)
+  await assert.rejects(tracker.close({ close: async () => { closed = true } }), /HTTP evidence deadline/)
+  assert.equal(closed, true)
+  assert.equal(tracker.summary().pendingRequests, 1)
+})
+
+test('failed requests, rejected evidence tasks and work arriving during close remain failures', async () => {
+  const { createHttpEvidenceLifecycle } = await import('./qa/http-response-evidence.mjs')
+  const failed = createHttpEvidenceLifecycle()
+  const request = {}
+  failed.requestStarted(request)
+  failed.requestFailed(request)
+  await assert.rejects(failed.drain(), /HTTP evidence contains failed requests/)
+  const rejected = createHttpEvidenceLifecycle()
+  rejected.trackResponse(Promise.reject(new Error('private transport detail')))
+  await assert.rejects(rejected.drain(), error => /HTTP evidence collection failed/.test(error.message) && !error.message.includes('private'))
+  const late = createHttpEvidenceLifecycle()
+  await assert.rejects(late.close({ close: async () => late.requestStarted({}) }), /HTTP evidence changed during context closure/)
 })
 
 test('browser runner validates Cache-Control with a RegExp accepted by assert.match', async () => {

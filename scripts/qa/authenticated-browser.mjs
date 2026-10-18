@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, readHttpFailureEvidence, unexpectedConsoleHttpErrors } from './expected-http-failures.mjs'
 import { markQaStageSync, recordQaCheckSync, recordInterruptedRunSync } from './qa-runner-evidence.mjs'
 import { getVerifiedLocalUserAccessToken } from './local-user-auth-token.mjs'
+import { createHttpEvidenceLifecycle } from './http-response-evidence.mjs'
 const base = new URL(process.env.QA_BASE_URL ?? '')
 const local = h => ['localhost', '127.0.0.1', '::1'].includes(h)
 const sb = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
@@ -20,7 +21,7 @@ const themeMatrix=[]
 const browserConsoleErrors=[]
 const browserHttpFailures=[]
 const browserRuntimeErrors=[]
-const responseTasks=new Set()
+const httpEvidence=createHttpEvidenceLifecycle()
 let browser=null
 let context=null
 let qaStage='RUNNER_STARTING'
@@ -76,6 +77,7 @@ function beginAuthAttempt(account,unauthenticatedControlSequence){
   pinSetupControlSequence:null,
   pinSetupHasPin:null,
   pinSubmissionSequence:null,
+  initialPinReadyControlSequence:null,
   pinReadyControlSequence:null,
   pinLockTransitions:[],
  }
@@ -96,6 +98,7 @@ function recordAuthStatusControl(attempt,response,payload){
 function recordPinReadyControl(attempt,response,transition=null){
  assert.equal(response.status(),200,'Protected API must confirm Auth and PIN readiness')
  const control=recordLifecycleControl({kind:'protected-api-positive-control',account:attempt.account,status:response.status()})
+ attempt.initialPinReadyControlSequence??=control.sequence
  attempt.pinReadyControlSequence=control.sequence
  if(transition)transition.unlockedControlSequence=control.sequence
  return control
@@ -112,7 +115,7 @@ async function readNetworkGuardAttempts(){
  catch{return 0}
 }
 function startPortfolioInitialization(account){
- const initialization={account,state:'empty',emptyDatabaseCount:0,emptyDatabaseControlSequence:null,emptyControls:[],createdControlSequence:null}
+ const initialization={account,state:'empty',emptyDatabaseCount:0,emptyDatabaseControlSequence:null,emptyControls:[],creationStartedSequence:null,createdControlSequence:null}
  portfolioLifecycle.accounts.push(initialization)
  return initialization
 }
@@ -159,6 +162,7 @@ try {
  context.setDefaultNavigationTimeout(30_000)
  setStage('BROWSER_READY')
  const page=await context.newPage()
+ const navigate=url=>httpEvidence.beforeNavigation(()=>page.goto(url))
  page.on('console',message=>{
   if(message.type()==='error'){
    const status=message.text().match(/status of (\d{3})/)
@@ -168,7 +172,8 @@ try {
   }
  })
  page.on('pageerror',()=>browserRuntimeErrors.push('page-error'))
- page.on('request',request=>requestContexts.set(request,{
+ page.on('request',request=>{
+  requestContexts.set(request,{
    sequence:nextLifecycleSequence(),
   stage:qaStage,
   authReady,
@@ -182,7 +187,11 @@ try {
     request.url().includes('/api/sec-risk')?secRiskMode:
     request.url().includes('/api/fundamentals')?mode:
     request.url().includes('/api/watchlist')?watchlistMode:undefined,
- }))
+  })
+  if(new URL(request.url()).pathname.startsWith('/api/'))httpEvidence.requestStarted(request)
+ })
+ page.on('requestfinished',request=>httpEvidence.requestFinished(request))
+ page.on('requestfailed',request=>httpEvidence.requestFailed(request))
  page.on('response',response=>{
   if(response.status()>=400){
    const task=(async()=>{
@@ -197,11 +206,12 @@ try {
      responseSequence,
      authGate:evidence.authGate??'unclassified',
      responseBodyStatus:evidence.responseBodyStatus,
+     ...(evidence.responseReadFailure?{responseReadFailure:evidence.responseReadFailure}:{}),
      ...(evidence.failureCode?{failureCode:evidence.failureCode}:{}),
     }
     browserHttpFailures.push(failure)
-   })().finally(()=>responseTasks.delete(task))
-   responseTasks.add(task)
+   })()
+   httpEvidence.trackResponse(task)
   }
  })
  await context.route('**/*',async route=>{
@@ -238,7 +248,7 @@ try {
  pass('Anonymous page and API are rejected')
   const authAttemptA=beginAuthAttempt('A',anonymousAuthControl.sequence)
  setStage('login')
- await page.goto(new URL('/login',base).href)
+ await navigate(new URL('/login',base).href)
  await page.addStyleTag({content:'nextjs-portal{display:none!important}'})
  await page.locator('input[type="email"]').fill(email)
  await page.locator('input[type="password"]').fill(password)
@@ -247,7 +257,7 @@ try {
  await page.getByRole('button',{name:'เข้าสู่ระบบ'}).click()
  await page.waitForURL(/\/(?:pin|dashboard)(?:\?|$)/)
   setStage('pin-setup')
- if(new URL(page.url()).pathname!=='/pin') await page.goto(new URL('/pin',base).href)
+ if(new URL(page.url()).pathname!=='/pin') await navigate(new URL('/pin',base).href)
  const pinStatus=await requestGet(page.request,new URL('/api/pin/status',base).href)
  assert.equal(pinStatus.status(),200,'Supabase Auth must be ready before initial PIN setup')
   const initialPinStatus=await pinStatus.json()
@@ -264,6 +274,7 @@ try {
  pass('Authenticated session is denied until PIN setup')
  const fields=page.locator('input[type=password]')
  await fields.nth(0).fill(pin);await fields.nth(1).fill(pin)
+  await httpEvidence.drain()
   authAttemptA.pinSubmissionSequence=nextLifecycleSequence()
   authAttemptA.phase='pin-submitting'
  await page.getByRole('button',{name:'ตั้ง PIN'}).click()
@@ -288,12 +299,14 @@ try {
    assert.equal((await syntheticPortfolioCount(qaUser.id)).length,0,`${path} GET must not create a portfolio`)
   }
   for(const path of ['/dashboard','/transactions','/performance']){
-   await page.goto(new URL(path,base).href)
+   await navigate(new URL(path,base).href)
    if(path==='/dashboard'||path==='/transactions') await page.getByRole('heading',{name:'ยังไม่มีพอร์ตสำหรับบัญชีนี้'}).waitFor()
    assert.equal((await syntheticPortfolioCount(qaUser.id)).length,0,`Opening read-only ${path} must not create a portfolio`)
   }
   pass('Fresh Account A remains empty through portfolio, performance, transaction GETs and read-only page loads')
   setStage('account-a-first-portfolio-create')
+  await httpEvidence.drain()
+  accountAInitialization.creationStartedSequence=recordLifecycleControl({kind:'first-portfolio-creation-start',account:'A'}).sequence
   const accountAFirstPortfolioResponse=await requestPost(page.request,new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio A1'}})
   assert.equal(accountAFirstPortfolioResponse.status(),200)
   const accountAFirstPortfolio=(await accountAFirstPortfolioResponse.json()).portfolio
@@ -362,8 +375,9 @@ try {
  assert.equal(daily.status(),200,'Authenticated synthetic session must read empty daily analyses')
  pass('Empty synthetic portfolio mine API succeeds')
  setStage('scanner-after-setup')
- await page.goto(new URL('/scanner',base).href)
+ await navigate(new URL('/scanner',base).href)
  setStage('lock-transition')
+ await httpEvidence.drain()
  pinReady=false
   const lockTransition={startedSequence:nextLifecycleSequence(),unlockedControlSequence:null}
   authAttemptA.pinLockTransitions.push(lockTransition)
@@ -388,14 +402,14 @@ try {
 
  setStage('watchlist-missing-migration-ui')
  watchlistMode='missing-schema'
- await page.goto(new URL('/scanner',base).href)
+ await navigate(new URL('/scanner',base).href)
  await page.getByRole('button',{name:/^⭐ หุ้นที่เล็งไว้/}).click()
  await page.getByRole('alert').filter({hasText:'Synthetic missing portfolio Watchlist migration'}).waitFor()
  assert.equal(await page.getByText(/ยังไม่มีรายการ Watchlist ที่ผูกกับพอร์ตนี้/).count(),0,'Migration failure must not be presented as an empty portfolio Watchlist')
  assert(await page.getByText(/Legacy แสดงแยกแบบอ่านอย่างเดียว/).count()===1,'Legacy Watchlist must be disclosed separately as read-only and unmapped')
  pass('Missing portfolio Watchlist migration is reported without implying old data is absent')
  watchlistMode='normal'
- await page.goto(new URL('/scanner',base).href)
+ await navigate(new URL('/scanner',base).href)
 
  // Exercise portfolio-scoped Watchlist and rule APIs with a synthetic Auth/PIN user.
  setStage('watchlist-portfolio-isolation')
@@ -436,7 +450,7 @@ try {
  assert.equal(visibleAData.items[0].target_price,99)
  assert.equal(visibleAData.items[0].note,'Synthetic A')
  assert.equal(visibleAData.items[0].collection_id,collectionA.id)
- await page.goto(new URL('/scanner',base).href)
+ await navigate(new URL('/scanner',base).href)
  await page.getByRole('button',{name:/^⭐ หุ้นที่เล็งไว้/}).click()
  const legacySection=page.getByRole('region',{name:'Legacy Watchlist · ระดับบัญชี · อ่านอย่างเดียว'})
  await legacySection.getByText('IBM',{exact:true}).waitFor()
@@ -535,7 +549,7 @@ try {
   const smartDipSnapshot=await requestGet(page.request,new URL('/api/smart-dip',base).href)
   assert.equal(smartDipSnapshot.status(),200)
   assert.equal((await smartDipSnapshot.json()).providerRequests,0,'Smart Dip candidate loading must not refresh providers')
-  await page.goto(new URL('/command-center',base).href)
+  await navigate(new URL('/command-center',base).href)
   await page.getByRole('heading',{name:/ศูนย์รวมการลงทุน/}).waitFor()
   assert(await page.getByText(/ไม่ใช่ข้อมูล Real-time/).count()>0)
   assert.equal(await page.getByRole('button',{name:/ส่งคำสั่งซื้อ|ส่งคำสั่งขาย|ซื้อจริง|ขายจริง/}).count(),0,'Command Center must not add transaction execution controls')
@@ -558,7 +572,7 @@ try {
  // Exercise v1.37 risk and SEC UI with synthetic-only API fixtures.
  setStage('risk-dashboard')
  riskMode='loading'
- await page.goto(new URL('/risk',base).href)
+ await navigate(new URL('/risk',base).href)
  await page.getByText('กำลังคำนวณ Portfolio Risk...').waitFor()
  await page.getByRole('heading',{name:'🛡️ ความเสี่ยงพอร์ต'}).waitFor()
   await page.getByRole('heading',{name:/Smart Dip Buying/}).waitFor()
@@ -625,6 +639,7 @@ try {
  await page.setViewportSize({width:1440,height:1000})
 
  // Real same-context Account A -> logout -> Account B, including B's own PIN setup.
+  await httpEvidence.drain()
   const accountAPreLogoutPinControl=await requestGet(page.request,new URL('/api/fundamentals?symbols=AAPL',base).href)
   recordPinReadyControl(authAttemptA,accountAPreLogoutPinControl)
  setStage('account-switch-a-logout')
@@ -650,7 +665,7 @@ try {
   authAttemptB.authRequestSequence=nextLifecycleSequence()
  await page.getByRole('button',{name:'เข้าสู่ระบบ'}).click()
  await page.waitForURL(/\/(?:pin|dashboard)(?:\?|$)/)
- if(new URL(page.url()).pathname!=='/pin') await page.goto(new URL('/pin',base).href)
+ if(new URL(page.url()).pathname!=='/pin') await navigate(new URL('/pin',base).href)
  const bPinStatus=await requestGet(page.request,new URL('/api/pin/status',base).href)
  assert.equal(bPinStatus.status(),200,'Account B Auth must be established before PIN setup')
   const bPinStatusBody=await bPinStatus.json()
@@ -662,6 +677,7 @@ try {
  await page.getByText('ตั้ง PIN 6 หลัก').waitFor()
  const otherPinFields=page.locator('input[type=password]')
  await otherPinFields.nth(0).fill(pin);await otherPinFields.nth(1).fill(pin)
+  await httpEvidence.drain()
   authAttemptB.pinSubmissionSequence=nextLifecycleSequence()
   authAttemptB.phase='pin-submitting'
  await page.getByRole('button',{name:'ตั้ง PIN'}).click()
@@ -686,12 +702,14 @@ try {
    assert.equal((await syntheticPortfolioCount(otherUser.id)).length,0,`${path} GET must not create a portfolio for Account B`)
   }
   for(const path of ['/dashboard','/transactions','/performance']){
-   await page.goto(new URL(path,base).href)
+   await navigate(new URL(path,base).href)
    if(path==='/dashboard'||path==='/transactions') await page.getByRole('heading',{name:'ยังไม่มีพอร์ตสำหรับบัญชีนี้'}).waitFor()
    assert.equal((await syntheticPortfolioCount(otherUser.id)).length,0,`Opening read-only ${path} must not create an Account B portfolio`)
   }
   pass('Fresh Account B remains empty through read-only APIs and pages after its own Auth/PIN setup')
   setStage('account-switch-b-first-portfolio-create')
+  await httpEvidence.drain()
+  accountBInitialization.creationStartedSequence=recordLifecycleControl({kind:'first-portfolio-creation-start',account:'B'}).sequence
   const accountBFirstPortfolioResponse=await requestPost(page.request,new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio B1'}})
   assert.equal(accountBFirstPortfolioResponse.status(),200)
   const accountBFirstPortfolio=(await accountBFirstPortfolioResponse.json()).portfolio
@@ -728,7 +746,7 @@ try {
   pass('Live Disposable PostgREST RLS hides Account B portfolio from Account A; authenticated role is denied key-bearing decryption RPC')
  pass('Same browser context Account A logout → Account B login/PIN preserves portfolio and Scanner isolation')
 
- await page.goto(new URL('/scanner',base).href)
+ await navigate(new URL('/scanner',base).href)
  await page.getByRole('button',{name:/พื้นฐาน \/ มูลค่า/}).click()
  await page.getByRole('heading',{name:'วิเคราะห์พื้นฐานและมูลค่า'}).waitFor()
  assert.equal(await page.getByRole('heading',{name:'SEC EDGAR · Annual GAAP EPS จาก 10-K'}).count(),0)
@@ -819,8 +837,10 @@ try {
  pass('Synthetic provider error state')
  assert.equal(outside,0,'Browser tried to contact non-local host')
  pass('Browser made no non-local requests')
-  await context.close()
-  await Promise.allSettled([...responseTasks])
+  setStage('http-evidence-finalization')
+  await httpEvidence.close(context)
+  assert.equal(outside,0,'Browser tried to contact non-local host during evidence finalization')
+  setStage('http-failure-classification')
    const expectedFailures=browserHttpFailures.filter(failure=>isExpectedHttpFailure(failure,lifecycleEvidence))
   const unexpectedConsoleErrors=unexpectedConsoleHttpErrors(browserConsoleErrors,expectedFailures)
    assertNoUnexpectedHttpFailures(browserHttpFailures,lifecycleEvidence)
@@ -828,8 +848,8 @@ try {
   assert.deepEqual(unexpectedConsoleErrors,[],'Unexpected browser console errors: '+JSON.stringify(unexpectedConsoleErrors))
   pass('No browser runtime or unhandled console errors; expected PIN/provider HTTP failures are tracked separately')
  } catch(error) {
-  await context?.close().catch(()=>{})
-  await Promise.allSettled([...responseTasks])
+  let responseEvidenceFinalizationFailed=false
+  if(context)try{await httpEvidence.close(context)}catch{responseEvidenceFinalizationFailed=true}
   let blocked=0
   try{blocked=(await readFile(process.env.QA_NETWORK_GUARD_LOG,'utf8')).split('\n').filter(Boolean).length}catch{}
   const message=String(error?.message??'QA assertion failed')
@@ -847,6 +867,7 @@ try {
    checks,
    passedChecks:checks.length,
    authLifecycle:lifecycleEvidence,
+   responseEvidence:{...httpEvidence.summary(),finalizationFailed:responseEvidenceFinalizationFailed},
    browserHttpFailures,
    consoleErrors:browserConsoleErrors.filter(item=>item.kind!=='http-status').length,
    runtimeErrors:browserRuntimeErrors.length,
@@ -859,7 +880,7 @@ let blocked=0
 try{blocked=(await readFile(process.env.QA_NETWORK_GUARD_LOG,'utf8')).split('\n').filter(Boolean).length}catch{}
  setStage('complete')
 pass('Server outbound attempts blocked by guard: '+blocked)
- await writeFile(dir+'/results.json',JSON.stringify({status:'PASS',environment:'Disposable local Supabase loopback only',providers:'live credentials absent; synthetic UI fixture',checks,passedChecks:checks.length,themeMatrix,finalStage:qaStage,authLifecycle:lifecycleEvidence,consoleErrors:browserConsoleErrors.filter(error=>error.kind!=='http-status').length,expectedHttpConsoleErrors:browserConsoleErrors.filter(error=>error.kind==='http-status'),browserHttpFailures,runtimeErrors:browserRuntimeErrors.length,blockedExternalAttempts:blocked,blockedBrowserRequests:outside,data:'synthetic only'},null,2))
+ await writeFile(dir+'/results.json',JSON.stringify({status:'PASS',environment:'Disposable local Supabase loopback only',providers:'live credentials absent; synthetic UI fixture',checks,passedChecks:checks.length,themeMatrix,finalStage:qaStage,authLifecycle:lifecycleEvidence,responseEvidence:httpEvidence.summary(),consoleErrors:browserConsoleErrors.filter(error=>error.kind!=='http-status').length,expectedHttpConsoleErrors:browserConsoleErrors.filter(error=>error.kind==='http-status'),browserHttpFailures,runtimeErrors:browserRuntimeErrors.length,blockedExternalAttempts:blocked,blockedBrowserRequests:outside,data:'synthetic only'},null,2))
 await writeFile(dir+'/theme-matrix-evidence.json',JSON.stringify({status:'PASS',themeMatrix},null,2))
 console.log('Authenticated Browser QA passed: '+checks.length+' checks; external network is blocked by policy.')
 clearTimeout(deadlineTimer)
