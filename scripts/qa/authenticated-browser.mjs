@@ -4,6 +4,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdir, writeFile, readFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, unexpectedConsoleHttpErrors } from './expected-http-failures.mjs'
+import { markQaStageSync, recordQaCheckSync, recordInterruptedRunSync } from './qa-runner-evidence.mjs'
 const base = new URL(process.env.QA_BASE_URL ?? '')
 const local = h => ['localhost', '127.0.0.1', '::1'].includes(h)
 const sb = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
@@ -19,7 +20,11 @@ const browserConsoleErrors=[]
 const browserHttpFailures=[]
 const browserRuntimeErrors=[]
 const responseTasks=new Set()
-let qaStage='startup'
+let browser=null
+let context=null
+let qaStage='RUNNER_STARTING'
+markQaStageSync(dir,qaStage)
+const setStage=stage=>{qaStage=stage;markQaStageSync(dir,stage)}
 let authReady=false, pinReady=false
 let lifecycleSequence=0
 let activeAuthAttempt=null
@@ -27,7 +32,30 @@ const portfolioLifecycle={accounts:[]}
 const lifecycleEvidence={authAttempts:[],controls:[],portfolioInitializations:portfolioLifecycle.accounts}
 let activeAccount='A'
 const requestContexts=new WeakMap()
-const pass=name=>checks.push({name,status:'PASS'})
+const pass=name=>{
+ checks.push({name,status:'PASS'})
+ recordQaCheckSync(dir,qaStage,name)
+ console.log(`QA_CHECK ${JSON.stringify({stage:qaStage,status:'PASS',name})}`)
+}
+const browserDeadlineMs=Number(process.env.QA_BROWSER_DEADLINE_MS??0)
+assert(Number.isInteger(browserDeadlineMs)&&browserDeadlineMs>=60_000,'A bounded browser runner deadline is required')
+let runnerTerminated=false
+const forceExitTimer={current:null}
+process.once('SIGTERM',()=>{
+ if(runnerTerminated)return
+ runnerTerminated=true
+ recordInterruptedRunSync(dir,'timeout')
+ forceExitTimer.current=setTimeout(()=>process.exit(124),5_000)
+ Promise.allSettled([context?.close(),browser?.close()]).finally(()=>{
+  if(forceExitTimer.current)clearTimeout(forceExitTimer.current)
+  process.exit(124)
+ })
+})
+const deadlineTimer=setTimeout(()=>process.kill(process.pid,'SIGTERM'),browserDeadlineMs)
+const requestGet=(request,url,options={})=>request.get(url,{timeout:15_000,...options})
+const requestPost=(request,url,options={})=>request.post(url,{timeout:15_000,...options})
+const requestDelete=(request,url,options={})=>request.delete(url,{timeout:15_000,...options})
+const localFetchOptions=options=>({...options,signal:AbortSignal.timeout(10_000)})
 const nextLifecycleSequence=()=>++lifecycleSequence
 function recordLifecycleControl(control){
  const entry={...control,sequence:nextLifecycleSequence()}
@@ -71,9 +99,9 @@ function recordPinReadyControl(attempt,response,transition=null){
  return control
 }
 async function syntheticPortfolioCount(userId){
- const response=await fetch(new URL(`/rest/v1/portfolios?select=id,is_default&user_id=eq.${encodeURIComponent(userId)}`,sb),{
+ const response=await fetch(new URL(`/rest/v1/portfolios?select=id,is_default&user_id=eq.${encodeURIComponent(userId)}`,sb),localFetchOptions({
   headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY},
- })
+ }))
  assert.equal(response.status,200,'Disposable Supabase Admin must verify the synthetic portfolio count')
  return response.json()
 }
@@ -111,8 +139,9 @@ async function recordUnauthenticatedControl(response,account){
 const email='qa-'+randomUUID()+'@example.test'
 const password=randomBytes(24).toString('base64url')
 const pin='583104'
+setStage('AUTH_SETUP')
 const created=await fetch(new URL('/auth/v1/admin/users',sb),{
-  method:'POST',
+  ...localFetchOptions({method:'POST'}),
   headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY,'content-type':'application/json'},
   body:JSON.stringify({email,password,email_confirm:true}),
 })
@@ -120,9 +149,13 @@ assert.equal(created.status,200)
 const qaUser=await created.json()
 pass('Synthetic user created by local Auth Admin')
 let outside=0, mode='synthetic', watchlistMode='normal', scannerMode='mock', riskMode='synthetic', secRiskMode='synthetic'
-const browser=await chromium.launch({headless:true})
+setStage('BROWSER_STARTING')
+browser=await chromium.launch({headless:true})
 try {
- const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'})
+ context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'})
+ context.setDefaultTimeout(15_000)
+ context.setDefaultNavigationTimeout(30_000)
+ setStage('BROWSER_READY')
  const page=await context.newPage()
  page.on('console',message=>{
   if(message.type()==='error'){
@@ -192,16 +225,16 @@ try {
   if(u.pathname==='/api/watchlist'&&watchlistMode==='missing-schema') return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic missing portfolio Watchlist migration',migration_required:true})})
   return route.continue()
  })
- qaStage='anonymous'
+ setStage('anonymous')
  const anonymous=await context.newPage()
  await anonymous.goto(new URL('/scanner',base).href)
  await anonymous.waitForURL(/\/login(?:\?|$)/)
   const anonymousAuthControl=await recordUnauthenticatedControl(
-   await anonymous.request.get(new URL('/api/pin/status',base).href),'A'
+   await requestGet(anonymous.request,new URL('/api/pin/status',base).href),'A'
   )
  pass('Anonymous page and API are rejected')
   const authAttemptA=beginAuthAttempt('A',anonymousAuthControl.sequence)
- qaStage='login'
+ setStage('login')
  await page.goto(new URL('/login',base).href)
  await page.addStyleTag({content:'nextjs-portal{display:none!important}'})
  await page.locator('input[type="email"]').fill(email)
@@ -210,9 +243,9 @@ try {
   authAttemptA.authRequestSequence=nextLifecycleSequence()
  await page.getByRole('button',{name:'เข้าสู่ระบบ'}).click()
  await page.waitForURL(/\/(?:pin|dashboard)(?:\?|$)/)
-  qaStage='pin-setup'
+  setStage('pin-setup')
  if(new URL(page.url()).pathname!=='/pin') await page.goto(new URL('/pin',base).href)
- const pinStatus=await page.request.get(new URL('/api/pin/status',base).href)
+ const pinStatus=await requestGet(page.request,new URL('/api/pin/status',base).href)
  assert.equal(pinStatus.status(),200,'Supabase Auth must be ready before initial PIN setup')
   const initialPinStatus=await pinStatus.json()
   assert.equal(initialPinStatus.hasPin,false,'New synthetic account must not already have a PIN')
@@ -220,10 +253,10 @@ try {
   authAttemptA.phase='pin-setup'
  authReady=true
  await page.getByText('ตั้ง PIN 6 หลัก').waitFor()
- const locked=await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)
+ const locked=await requestGet(page.request,new URL('/api/fundamentals?symbols=AAPL',base).href)
  assert.equal(locked.status(),401)
  assert.match((await locked.json()).error,/PIN/i)
- const legacyLocked=await page.request.get(new URL('/api/watchlist/legacy',base).href)
+ const legacyLocked=await requestGet(page.request,new URL('/api/watchlist/legacy',base).href)
  assert.equal(legacyLocked.status(),401,'Legacy Watchlist must enforce PIN before reading')
  pass('Authenticated session is denied until PIN setup')
  const fields=page.locator('input[type=password]')
@@ -232,18 +265,18 @@ try {
   authAttemptA.phase='pin-submitting'
  await page.getByRole('button',{name:'ตั้ง PIN'}).click()
  await page.waitForURL(/\/(?:dashboard|scanner)(?:\?|$)/)
-  const initialPinReady=await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)
+  const initialPinReady=await requestGet(page.request,new URL('/api/fundamentals?symbols=AAPL',base).href)
   recordPinReadyControl(authAttemptA,initialPinReady)
   authAttemptA.phase='pin-ready'
  pinReady=true
-  qaStage='account-a-empty-portfolio-initialization'
+  setStage('account-a-empty-portfolio-initialization')
   const accountAInitialization=startPortfolioInitialization('A')
   const accountAEmptyCount=await syntheticPortfolioCount(qaUser.id)
   assert.equal(accountAEmptyCount.length,0,'Fresh Account A must start with no portfolios')
   accountAInitialization.emptyDatabaseCount=accountAEmptyCount.length
   for(const path of ['/api/portfolios','/api/performance','/api/transactions']){
    const requestSequence=nextLifecycleSequence()
-   const response=await page.request.get(new URL(path,base).href)
+   const response=await requestGet(page.request,new URL(path,base).href)
    const payload=await response.json()
    recordPortfolioRequiredControl(accountAInitialization,path,response,payload,requestSequence)
    assert.equal((await syntheticPortfolioCount(qaUser.id)).length,0,`${path} GET must not create a portfolio`)
@@ -254,13 +287,13 @@ try {
    assert.equal((await syntheticPortfolioCount(qaUser.id)).length,0,`Opening read-only ${path} must not create a portfolio`)
   }
   pass('Fresh Account A remains empty through portfolio, performance, transaction GETs and read-only page loads')
-  qaStage='account-a-first-portfolio-create'
-  const accountAFirstPortfolioResponse=await page.request.post(new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio A1'}})
+  setStage('account-a-first-portfolio-create')
+  const accountAFirstPortfolioResponse=await requestPost(page.request,new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio A1'}})
   assert.equal(accountAFirstPortfolioResponse.status(),200)
   const accountAFirstPortfolio=(await accountAFirstPortfolioResponse.json()).portfolio
   const accountAAfterCreate=await syntheticPortfolioCount(qaUser.id)
   recordFirstPortfolioCreated(accountAInitialization,accountAFirstPortfolioResponse,accountAAfterCreate)
-  const accountAList=await page.request.get(new URL('/api/portfolios',base).href)
+  const accountAList=await requestGet(page.request,new URL('/api/portfolios',base).href)
   assert.equal(accountAList.status(),200)
   assert.equal((await accountAList.json()).active_portfolio_id,accountAFirstPortfolio.id)
   pass('Account A first portfolio is created explicitly once and selected')
@@ -273,26 +306,26 @@ try {
    return null
   })
   assert.equal(typeof accountAAccessToken,'string','Account A local Auth session must expose an in-memory access token for RLS negative controls')
- qaStage='unlocked'
- const legacyInsert=await fetch(new URL('/rest/v1/watchlist?on_conflict=user_id,symbol',sb),{
+ setStage('unlocked')
+ const legacyInsert=await fetch(new URL('/rest/v1/watchlist?on_conflict=user_id,symbol',sb),localFetchOptions({
   method:'POST',headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY,'content-type':'application/json',Prefer:'resolution=merge-duplicates'},
   body:JSON.stringify({user_id:qaUser.id,symbol:'IBM',target_price:123.45,note:'Synthetic legacy; read-only QA'})
- })
+ }))
  assert([200,201,204].includes(legacyInsert.status),`Synthetic legacy fixture insert failed with ${legacyInsert.status}`)
  const otherEmail='qa-other-'+randomUUID()+'@example.test'
  const otherPassword=randomBytes(24).toString('base64url')
- const otherUserResponse=await fetch(new URL('/auth/v1/admin/users',sb),{
+ const otherUserResponse=await fetch(new URL('/auth/v1/admin/users',sb),localFetchOptions({
   method:'POST',headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY,'content-type':'application/json'},
   body:JSON.stringify({email:otherEmail,password:otherPassword,email_confirm:true})
- })
+ }))
  assert.equal(otherUserResponse.status,200)
  const otherUser=await otherUserResponse.json()
- const otherLegacyInsert=await fetch(new URL('/rest/v1/watchlist?on_conflict=user_id,symbol',sb),{
+ const otherLegacyInsert=await fetch(new URL('/rest/v1/watchlist?on_conflict=user_id,symbol',sb),localFetchOptions({
   method:'POST',headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY,'content-type':'application/json',Prefer:'resolution=merge-duplicates'},
   body:JSON.stringify({user_id:otherUser.id,symbol:'NVDA',target_price:456,note:'synthetic foreign owner row'})
- })
+ }))
  assert([200,201,204].includes(otherLegacyInsert.status),`Synthetic other-owner row insert failed with ${otherLegacyInsert.status}`)
- const legacyRead=await page.request.get(new URL('/api/watchlist/legacy',base).href)
+ const legacyRead=await requestGet(page.request,new URL('/api/watchlist/legacy',base).href)
  assert.equal(legacyRead.status(),200)
  const legacyData=await legacyRead.json()
  assert.equal(legacyData.scope,'account-unmapped-read-only')
@@ -303,49 +336,49 @@ try {
  assert.equal(legacyData.items[0].note,'Synthetic legacy; read-only QA')
  assert(!legacyData.items.some(item=>item.symbol==='NVDA'),'Legacy endpoint must not return another user\'s row')
  assert(!('smart_alert' in legacyData.items[0])&&!('current_price' in legacyData.items[0]),'Legacy rows must not enter quote or alert processing')
- assert.equal((await page.request.post(new URL('/api/watchlist/legacy',base).href,{data:{symbol:'MSFT'}})).status(),405,'Legacy endpoint must reject write methods')
+ assert.equal((await requestPost(page.request,new URL('/api/watchlist/legacy',base).href,{data:{symbol:'MSFT'}})).status(),405,'Legacy endpoint must reject write methods')
  scannerMode='real-mine'
- const mineWithLegacy=await page.request.get(new URL('/api/scanner?universe=mine',base).href)
+ const mineWithLegacy=await requestGet(page.request,new URL('/api/scanner?universe=mine',base).href)
  scannerMode='mock'
  assert.equal(mineWithLegacy.status(),200)
  assert.deepEqual((await mineWithLegacy.json()).items,[],'Account-level legacy rows must not be included in Scanner mine')
  pass('Legacy rows are PIN-protected, account-filtered, unmapped, and excluded from quotes/alerts and real Scanner mine')
- const live=await page.request.get(new URL('/api/fundamentals?symbols=AAPL,MSFT',base).href)
+ const live=await requestGet(page.request,new URL('/api/fundamentals?symbols=AAPL,MSFT',base).href)
  assert.equal(live.status(),200)
  const liveBody=await live.json()
  assert(liveBody.results.length===2&&liveBody.results.every(x=>x.providerStatus==='unavailable'&&x.sec.status==='unavailable'))
  pass('Unlocked real API returns provider-unavailable without credentials')
- const mine=await page.request.get(new URL('/api/scanner?universe=mine',base).href)
+ const mine=await requestGet(page.request,new URL('/api/scanner?universe=mine',base).href)
  assert.equal(mine.status(),200);assert.deepEqual((await mine.json()).items,[])
- const daily=await page.request.get(new URL('/api/daily-analyses/today',base).href)
+ const daily=await requestGet(page.request,new URL('/api/daily-analyses/today',base).href)
  assert.equal(daily.status(),200,'Authenticated synthetic session must read empty daily analyses')
  pass('Empty synthetic portfolio mine API succeeds')
- qaStage='scanner-after-setup'
+ setStage('scanner-after-setup')
  await page.goto(new URL('/scanner',base).href)
- qaStage='lock-transition'
+ setStage('lock-transition')
  pinReady=false
   const lockTransition={startedSequence:nextLifecycleSequence(),unlockedControlSequence:null}
   authAttemptA.pinLockTransitions.push(lockTransition)
  await page.getByRole('button',{name:/ล็อก/}).click()
  await page.waitForURL(/\/pin(?:\?|$)/)
- qaStage='pin-unlock'
+ setStage('pin-unlock')
  await page.getByText('ใส่ PIN 6 หลัก').waitFor()
  const pinField=page.locator('input[type=password]').first()
  await pinField.fill('999999')
  await page.getByRole('button',{name:'เข้าสู่พอร์ต'}).click()
  await page.getByText('PIN ไม่ถูกต้อง').waitFor()
- assert.equal((await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)).status(),401)
+ assert.equal((await requestGet(page.request,new URL('/api/fundamentals?symbols=AAPL',base).href)).status(),401)
  await pinField.fill(pin)
  await page.getByRole('button',{name:'เข้าสู่พอร์ต'}).click()
  await page.waitForURL(/\/(?:dashboard|scanner)(?:\?|$)/)
-  const pinUnlockControl=await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)
+  const pinUnlockControl=await requestGet(page.request,new URL('/api/fundamentals?symbols=AAPL',base).href)
   recordPinReadyControl(authAttemptA,pinUnlockControl,lockTransition)
   authAttemptA.phase='pin-ready'
- qaStage='unlocked'
+ setStage('unlocked')
  pinReady=true
  pass('Real PIN rejects incorrect and accepts correct synthetic PIN')
 
- qaStage='watchlist-missing-migration-ui'
+ setStage('watchlist-missing-migration-ui')
  watchlistMode='missing-schema'
  await page.goto(new URL('/scanner',base).href)
  await page.getByRole('button',{name:/^⭐ หุ้นที่เล็งไว้/}).click()
@@ -357,38 +390,38 @@ try {
  await page.goto(new URL('/scanner',base).href)
 
  // Exercise portfolio-scoped Watchlist and rule APIs with a synthetic Auth/PIN user.
- qaStage='watchlist-portfolio-isolation'
- const portfoliosResponse=await page.request.get(new URL('/api/portfolios',base).href)
+ setStage('watchlist-portfolio-isolation')
+ const portfoliosResponse=await requestGet(page.request,new URL('/api/portfolios',base).href)
  assert.equal(portfoliosResponse.status(),200)
  const portfolioList=await portfoliosResponse.json()
  const portfolioA=portfolioList.portfolios.find(portfolio=>portfolio.id===portfolioList.active_portfolio_id)
  assert(portfolioA,'Synthetic user must have an active default portfolio')
- const collectionResponse=await page.request.post(new URL('/api/watchlist/collections',base).href,{data:{name:'QA Collection A'}})
+ const collectionResponse=await requestPost(page.request,new URL('/api/watchlist/collections',base).href,{data:{name:'QA Collection A'}})
  assert.equal(collectionResponse.status(),201)
  const collectionA=(await collectionResponse.json()).collection
- const duplicateCollection=await page.request.post(new URL('/api/watchlist/collections',base).href,{data:{name:'QA Collection A'}})
+ const duplicateCollection=await requestPost(page.request,new URL('/api/watchlist/collections',base).href,{data:{name:'QA Collection A'}})
  assert.equal(duplicateCollection.status(),409,'Duplicate collection names in one portfolio must be rejected')
- const renameCollection=await page.request.patch(new URL('/api/watchlist/collections',base).href,{data:{id:collectionA.id,name:'QA Collection A renamed'}})
+ const renameCollection=await requestPatch(page.request,new URL('/api/watchlist/collections',base).href,{data:{id:collectionA.id,name:'QA Collection A renamed'}})
  assert.equal(renameCollection.status(),200)
  assert.equal((await renameCollection.json()).collection.name,'QA Collection A renamed','Collection rename must persist within the selected portfolio')
- const itemAResponse=await page.request.post(new URL('/api/watchlist',base).href,{data:{symbol:'AAPL',target_price:99,note:'Synthetic A',collection_id:collectionA.id,alert_enabled:true}})
+ const itemAResponse=await requestPost(page.request,new URL('/api/watchlist',base).href,{data:{symbol:'AAPL',target_price:99,note:'Synthetic A',collection_id:collectionA.id,alert_enabled:true}})
  assert.equal(itemAResponse.status(),200)
- const secondPortfolioResponse=await page.request.post(new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio B'}})
+ const secondPortfolioResponse=await requestPost(page.request,new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio B'}})
  assert.equal(secondPortfolioResponse.status(),200)
  const portfolioB=(await secondPortfolioResponse.json()).portfolio
- const emptyB=await page.request.get(new URL('/api/watchlist',base).href)
+ const emptyB=await requestGet(page.request,new URL('/api/watchlist',base).href)
  assert.equal(emptyB.status(),200)
  assert.equal((await emptyB.json()).items.length,0,'Portfolio B must not see Portfolio A Watchlist rows')
- const collectionBResponse=await page.request.post(new URL('/api/watchlist/collections',base).href,{data:{name:'QA Collection B'}})
+ const collectionBResponse=await requestPost(page.request,new URL('/api/watchlist/collections',base).href,{data:{name:'QA Collection B'}})
  assert.equal(collectionBResponse.status(),201)
  const collectionB=(await collectionBResponse.json()).collection
- const itemBResponse=await page.request.post(new URL('/api/watchlist',base).href,{data:{symbol:'AAPL',target_price:101,note:'Synthetic B',collection_id:collectionB.id,alert_enabled:true}})
+ const itemBResponse=await requestPost(page.request,new URL('/api/watchlist',base).href,{data:{symbol:'AAPL',target_price:101,note:'Synthetic B',collection_id:collectionB.id,alert_enabled:true}})
  assert.equal(itemBResponse.status(),200)
- const foreignCollectionResponse=await page.request.post(new URL('/api/watchlist',base).href,{data:{symbol:'MSFT',target_price:400,collection_id:collectionA.id}})
+ const foreignCollectionResponse=await requestPost(page.request,new URL('/api/watchlist',base).href,{data:{symbol:'MSFT',target_price:400,collection_id:collectionA.id}})
  assert.equal(foreignCollectionResponse.status(),404,'A collection from another portfolio must be rejected')
- const selectA=await page.request.post(new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioA.id}})
+ const selectA=await requestPost(page.request,new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioA.id}})
  assert.equal(selectA.status(),200)
- const visibleA=await page.request.get(new URL('/api/watchlist',base).href)
+ const visibleA=await requestGet(page.request,new URL('/api/watchlist',base).href)
  const visibleAData=await visibleA.json()
  assert.equal(visibleA.status(),200)
  assert.equal(visibleAData.items.length,1)
@@ -443,55 +476,55 @@ try {
   pass(`Watchlist UI responsive width ${width}px`)
  }
  await page.setViewportSize({width:1440,height:1000})
- const ruleResponse=await page.request.post(new URL('/api/watchlist/rules',base).href,{data:{name:'Synthetic cash rule',rule_type:'CASH_AT_OR_BELOW',threshold:100}})
+ const ruleResponse=await requestPost(page.request,new URL('/api/watchlist/rules',base).href,{data:{name:'Synthetic cash rule',rule_type:'CASH_AT_OR_BELOW',threshold:100}})
  assert.equal(ruleResponse.status(),201)
  const rule=(await ruleResponse.json()).rule
- const rulesBSelect=await page.request.post(new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioB.id}})
+ const rulesBSelect=await requestPost(page.request,new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioB.id}})
  assert.equal(rulesBSelect.status(),200)
- const rulesB=await page.request.get(new URL('/api/watchlist/rules',base).href)
+ const rulesB=await requestGet(page.request,new URL('/api/watchlist/rules',base).href)
  assert.equal(rulesB.status(),200)
  assert.equal((await rulesB.json()).rules.length,0,'Portfolio B must not see Portfolio A rules')
- await page.request.post(new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioA.id}})
- const evalResponse=await page.request.post(new URL('/api/watchlist/rules/evaluate',base).href)
+ await requestPost(page.request,new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioA.id}})
+ const evalResponse=await requestPost(page.request,new URL('/api/watchlist/rules/evaluate',base).href)
  assert.equal(evalResponse.status(),200)
  const evaluation=(await evalResponse.json()).results.find(result=>result.id===rule.id)
  assert.equal(evaluation.status,'unavailable','Missing cash settings must not be coerced to zero')
- const deleteCollection=await page.request.delete(new URL('/api/watchlist/collections?id='+encodeURIComponent(collectionA.id),base).href)
+ const deleteCollection=await requestDelete(page.request,new URL('/api/watchlist/collections?id='+encodeURIComponent(collectionA.id),base).href)
  assert.equal(deleteCollection.status(),200)
- const preserved=await page.request.get(new URL('/api/watchlist',base).href)
+ const preserved=await requestGet(page.request,new URL('/api/watchlist',base).href)
  const preservedItem=(await preserved.json()).items[0]
  assert.equal(preservedItem.symbol,'AAPL')
  assert.equal(preservedItem.collection_id,null,'Deleting a collection must preserve items and clear only the collection reference')
- await page.request.delete(new URL('/api/watchlist?symbol=AAPL',base).href)
- await page.request.post(new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioB.id}})
- await page.request.delete(new URL('/api/watchlist?symbol=AAPL',base).href)
- await page.request.delete(new URL('/api/watchlist/collections?id='+encodeURIComponent(collectionB.id),base).href)
- await page.request.post(new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioA.id}})
- await page.request.delete(new URL('/api/watchlist/rules?id='+encodeURIComponent(rule.id),base).href)
+ await requestDelete(page.request,new URL('/api/watchlist?symbol=AAPL',base).href)
+ await requestPost(page.request,new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioB.id}})
+ await requestDelete(page.request,new URL('/api/watchlist?symbol=AAPL',base).href)
+ await requestDelete(page.request,new URL('/api/watchlist/collections?id='+encodeURIComponent(collectionB.id),base).href)
+ await requestPost(page.request,new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioA.id}})
+ await requestDelete(page.request,new URL('/api/watchlist/rules?id='+encodeURIComponent(rule.id),base).href)
  pass('Watchlist, Collection, and investment rules remain isolated across two selected portfolios; same Symbol can hold different targets')
  pass('Deleting a Collection preserves its Watchlist rows; incomplete rule inputs remain unavailable')
 
   // Authenticated v1.40 composition uses only the selected synthetic portfolio and performs no implicit provider refresh.
-  qaStage='investment-command-center-live-disposable'
+  setStage('investment-command-center-live-disposable')
   const guardCountBefore=await readNetworkGuardAttempts()
-  const transactionsSnapshot=await page.request.get(new URL('/api/transactions',base).href)
+  const transactionsSnapshot=await requestGet(page.request,new URL('/api/transactions',base).href)
   assert.equal(transactionsSnapshot.status(),200)
   assert.match(transactionsSnapshot.headers()['cache-control']??'','no-store')
   const transactionsBody=await transactionsSnapshot.json()
   assert.equal(transactionsBody.portfolio.id,portfolioA.id)
   assert.deepEqual(transactionsBody.items,[],'Fresh synthetic ledger must remain empty')
-  const performanceSnapshot=await page.request.get(new URL('/api/performance',base).href)
+  const performanceSnapshot=await requestGet(page.request,new URL('/api/performance',base).href)
   assert.equal(performanceSnapshot.status(),200)
   assert.match(performanceSnapshot.headers()['cache-control']??'','no-store')
   const performanceBody=await performanceSnapshot.json()
   assert.equal(performanceBody.portfolio.id,portfolioA.id)
-  const commandSnapshot=await page.request.get(new URL('/api/investment-command-center',base).href)
+  const commandSnapshot=await requestGet(page.request,new URL('/api/investment-command-center',base).href)
   assert.equal(commandSnapshot.status(),200)
   assert.match(commandSnapshot.headers()['cache-control']??'','no-store')
   const commandBody=await commandSnapshot.json()
   assert.equal(commandBody.portfolio.id,portfolioA.id)
   assert.equal(commandBody.sections.market.status,'NOT_REQUESTED','Opening a portfolio snapshot must not request market providers')
-  const smartDipSnapshot=await page.request.get(new URL('/api/smart-dip',base).href)
+  const smartDipSnapshot=await requestGet(page.request,new URL('/api/smart-dip',base).href)
   assert.equal(smartDipSnapshot.status(),200)
   assert.equal((await smartDipSnapshot.json()).providerRequests,0,'Smart Dip candidate loading must not refresh providers')
   await page.goto(new URL('/command-center',base).href)
@@ -515,7 +548,7 @@ try {
   pass('v1.40 snapshot is selected-portfolio scoped, no-store, no-refresh on open, and has no trading execution')
 
  // Exercise v1.37 risk and SEC UI with synthetic-only API fixtures.
- qaStage='risk-dashboard'
+ setStage('risk-dashboard')
  riskMode='loading'
  await page.goto(new URL('/risk',base).href)
  await page.getByText('กำลังคำนวณ Portfolio Risk...').waitFor()
@@ -550,11 +583,11 @@ try {
  await page.getByRole('heading',{name:'🛡️ ความเสี่ยงพอร์ต'}).waitFor()
  pass('Risk Dashboard loading and market/industry/symbol stress simulations render from synthetic fixtures')
  secRiskMode='error'
- qaStage='risk-sec-error'
+ setStage('risk-sec-error')
  await page.getByRole('button',{name:'โหลดข้อมูล SEC'}).click()
  await page.getByRole('alert').filter({hasText:'Synthetic SEC risk unavailable'}).waitFor()
  secRiskMode='synthetic'
- qaStage='risk-dashboard'
+ setStage('risk-dashboard')
  await page.getByRole('button',{name:'โหลดข้อมูล SEC'}).click()
  await page.getByText('AAPL · Synthetic Issuer').waitFor()
  await page.locator('summary').filter({hasText:'วิธีคำนวณและเอกสาร SEC'}).click()
@@ -584,9 +617,9 @@ try {
  await page.setViewportSize({width:1440,height:1000})
 
  // Real same-context Account A -> logout -> Account B, including B's own PIN setup.
-  const accountAPreLogoutPinControl=await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)
+  const accountAPreLogoutPinControl=await requestGet(page.request,new URL('/api/fundamentals?symbols=AAPL',base).href)
   recordPinReadyControl(authAttemptA,accountAPreLogoutPinControl)
- qaStage='account-switch-a-logout'
+ setStage('account-switch-a-logout')
   const authAttemptB=beginAuthAttempt('B',null)
   authAttemptB.previousAccount='A'
   authAttemptB.previousAccountPinReadyControlSequence=authAttemptA.pinReadyControlSequence
@@ -598,26 +631,26 @@ try {
  await page.waitForURL(/\/login(?:\?|$)/)
  authReady=false;pinReady=false
   const accountBLoggedOutControl=await recordUnauthenticatedControl(
-   await page.request.get(new URL('/api/pin/status',base).href),'B'
+   await requestGet(page.request,new URL('/api/pin/status',base).href),'B'
   )
   authAttemptB.unauthenticatedControlSequence=accountBLoggedOutControl.sequence
- qaStage='account-switch-b-login'
+ setStage('account-switch-b-login')
  await page.locator('input[type="email"]').fill(otherEmail)
  await page.locator('input[type="password"]').fill(otherPassword)
- qaStage='account-switch-b-authenticating'
+ setStage('account-switch-b-authenticating')
   authAttemptB.phase='authenticating'
   authAttemptB.authRequestSequence=nextLifecycleSequence()
  await page.getByRole('button',{name:'เข้าสู่ระบบ'}).click()
  await page.waitForURL(/\/(?:pin|dashboard)(?:\?|$)/)
  if(new URL(page.url()).pathname!=='/pin') await page.goto(new URL('/pin',base).href)
- const bPinStatus=await page.request.get(new URL('/api/pin/status',base).href)
+ const bPinStatus=await requestGet(page.request,new URL('/api/pin/status',base).href)
  assert.equal(bPinStatus.status(),200,'Account B Auth must be established before PIN setup')
   const bPinStatusBody=await bPinStatus.json()
   assert.equal(bPinStatusBody.hasPin,false,'New Account B must not already have a PIN')
   recordAuthStatusControl(authAttemptB,bPinStatus,bPinStatusBody)
   authAttemptB.phase='pin-setup'
  authReady=true
- qaStage='account-switch-b-pin-setup'
+ setStage('account-switch-b-pin-setup')
  await page.getByText('ตั้ง PIN 6 หลัก').waitFor()
  const otherPinFields=page.locator('input[type=password]')
  await otherPinFields.nth(0).fill(pin);await otherPinFields.nth(1).fill(pin)
@@ -625,18 +658,18 @@ try {
   authAttemptB.phase='pin-submitting'
  await page.getByRole('button',{name:'ตั้ง PIN'}).click()
  await page.waitForURL(/\/(?:dashboard|scanner)(?:\?|$)/)
-  const accountBPinReady=await page.request.get(new URL('/api/fundamentals?symbols=AAPL',base).href)
+  const accountBPinReady=await requestGet(page.request,new URL('/api/fundamentals?symbols=AAPL',base).href)
   recordPinReadyControl(authAttemptB,accountBPinReady)
   authAttemptB.phase='pin-ready'
  pinReady=true
-  qaStage='account-switch-b-empty-portfolio-initialization'
+  setStage('account-switch-b-empty-portfolio-initialization')
   const accountBInitialization=startPortfolioInitialization('B')
   const accountBEmptyCount=await syntheticPortfolioCount(otherUser.id)
   assert.equal(accountBEmptyCount.length,0,'Fresh Account B must start with no portfolios')
   accountBInitialization.emptyDatabaseCount=accountBEmptyCount.length
   for(const path of ['/api/portfolios','/api/performance','/api/transactions']){
    const requestSequence=nextLifecycleSequence()
-   const response=await page.request.get(new URL(path,base).href)
+   const response=await requestGet(page.request,new URL(path,base).href)
    const payload=await response.json()
    recordPortfolioRequiredControl(accountBInitialization,path,response,payload,requestSequence)
    assert.equal((await syntheticPortfolioCount(otherUser.id)).length,0,`${path} GET must not create a portfolio for Account B`)
@@ -647,39 +680,39 @@ try {
    assert.equal((await syntheticPortfolioCount(otherUser.id)).length,0,`Opening read-only ${path} must not create an Account B portfolio`)
   }
   pass('Fresh Account B remains empty through read-only APIs and pages after its own Auth/PIN setup')
-  qaStage='account-switch-b-first-portfolio-create'
-  const accountBFirstPortfolioResponse=await page.request.post(new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio B1'}})
+  setStage('account-switch-b-first-portfolio-create')
+  const accountBFirstPortfolioResponse=await requestPost(page.request,new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio B1'}})
   assert.equal(accountBFirstPortfolioResponse.status(),200)
   const accountBFirstPortfolio=(await accountBFirstPortfolioResponse.json()).portfolio
   const accountBAfterCreate=await syntheticPortfolioCount(otherUser.id)
   recordFirstPortfolioCreated(accountBInitialization,accountBFirstPortfolioResponse,accountBAfterCreate)
- qaStage='account-switch-b-unlocked'
- const bPortfoliosResponse=await page.request.get(new URL('/api/portfolios',base).href)
+ setStage('account-switch-b-unlocked')
+ const bPortfoliosResponse=await requestGet(page.request,new URL('/api/portfolios',base).href)
  assert.equal(bPortfoliosResponse.status(),200,'Account B must establish its own authenticated portfolio context')
  const bPortfolioList=await bPortfoliosResponse.json()
  const bPortfolio=bPortfolioList.portfolios.find(portfolio=>portfolio.id===bPortfolioList.active_portfolio_id)
   assert(bPortfolio&&bPortfolio.id===accountBFirstPortfolio.id,'Account B must use its explicitly created first portfolio')
  assert(![portfolioA.id,portfolioB.id].includes(bPortfolio.id),'Account B default portfolio must not reuse either Account A portfolio')
- const bLegacy=await page.request.get(new URL('/api/watchlist/legacy',base).href)
+ const bLegacy=await requestGet(page.request,new URL('/api/watchlist/legacy',base).href)
  assert.equal(bLegacy.status(),200)
  assert.deepEqual((await bLegacy.json()).items.map(item=>item.symbol),['NVDA'],'Account B may only see its own synthetic legacy row')
- const bMine=await page.request.get(new URL('/api/scanner?universe=mine',base).href)
+ const bMine=await requestGet(page.request,new URL('/api/scanner?universe=mine',base).href)
  assert.equal(bMine.status(),200)
  assert.deepEqual((await bMine.json()).items,[],'Account B Scanner mine must exclude Account B legacy-only data and Account A holdings/watchlists')
- const foreignPortfolioAttempt=await page.request.post(new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioA.id}})
+ const foreignPortfolioAttempt=await requestPost(page.request,new URL('/api/portfolios/select',base).href,{data:{portfolio_id:portfolioA.id}})
  assert([403,404,409].includes(foreignPortfolioAttempt.status()),`Account B must be denied Account A portfolio; received ${foreignPortfolioAttempt.status()}`)
- const bMineAfterForeign=await page.request.get(new URL('/api/scanner?universe=mine',base).href)
+ const bMineAfterForeign=await requestGet(page.request,new URL('/api/scanner?universe=mine',base).href)
  assert.equal(bMineAfterForeign.status(),200)
  assert.deepEqual((await bMineAfterForeign.json()).items,[],'Denied cross-account portfolio selection must not expose old or foreign Scanner data')
-  const accountARlsPortfolios=await fetch(new URL(`/rest/v1/portfolios?select=id&user_id=eq.${encodeURIComponent(otherUser.id)}`,sb),{
+  const accountARlsPortfolios=await fetch(new URL(`/rest/v1/portfolios?select=id&user_id=eq.${encodeURIComponent(otherUser.id)}`,sb),localFetchOptions({
    headers:{apikey:process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,authorization:'Bearer '+accountAAccessToken},
-  })
+  }))
   assert.equal(accountARlsPortfolios.status,200,'Authenticated Account A direct RLS query must complete')
   assert.deepEqual(await accountARlsPortfolios.json(),[],'Actual PostgREST RLS must hide Account B portfolio rows from Account A')
-  const authenticatedDecrypt=await fetch(new URL('/rest/v1/rpc/get_decrypted_holdings',sb),{
+  const authenticatedDecrypt=await fetch(new URL('/rest/v1/rpc/get_decrypted_holdings',sb),localFetchOptions({
    method:'POST',headers:{apikey:process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,authorization:'Bearer '+accountAAccessToken,'content-type':'application/json'},
    body:JSON.stringify({p_user_id:qaUser.id,p_portfolio_id:portfolioA.id,p_enc_key:'synthetic-not-a-secret'}),
-  })
+  }))
   assert([401,403].includes(authenticatedDecrypt.status),`Authenticated role must be denied service-only decryption RPC; received ${authenticatedDecrypt.status}`)
   pass('Live Disposable PostgREST RLS hides Account B portfolio from Account A; authenticated role is denied key-bearing decryption RPC')
  pass('Same browser context Account A logout → Account B login/PIN preserves portfolio and Scanner isolation')
@@ -768,22 +801,23 @@ try {
   assert.equal(focusStyle.tag,'BUTTON')
   assert(focusStyle.shadow!=='none'||focusStyle.outline!=='none','Keyboard focus must remain visible')
   pass('Keyboard navigation reaches the primary action with visible focus')
- qaStage='fundamentals-provider-error'
+ setStage('fundamentals-provider-error')
  mode='error';await symbols.fill('AAPL')
  await page.getByRole('button',{name:'โหลดข้อมูล'}).click()
  await page.getByRole('alert').filter({hasText:'Synthetic provider error'}).waitFor()
  pass('Synthetic provider error state')
  assert.equal(outside,0,'Browser tried to contact non-local host')
  pass('Browser made no non-local requests')
-  await Promise.all([...responseTasks])
+  await context.close()
+  await Promise.allSettled([...responseTasks])
    const expectedFailures=browserHttpFailures.filter(failure=>isExpectedHttpFailure(failure,lifecycleEvidence))
   const unexpectedConsoleErrors=unexpectedConsoleHttpErrors(browserConsoleErrors,expectedFailures)
    assertNoUnexpectedHttpFailures(browserHttpFailures,lifecycleEvidence)
   assert.equal(browserRuntimeErrors.length,0,'Browser runtime errors occurred')
   assert.deepEqual(unexpectedConsoleErrors,[],'Unexpected browser console errors: '+JSON.stringify(unexpectedConsoleErrors))
   pass('No browser runtime or unhandled console errors; expected PIN/provider HTTP failures are tracked separately')
- await context.close()
  } catch(error) {
+  await context?.close().catch(()=>{})
   await Promise.allSettled([...responseTasks])
   let blocked=0
   try{blocked=(await readFile(process.env.QA_NETWORK_GUARD_LOG,'utf8')).split('\n').filter(Boolean).length}catch{}
@@ -792,7 +826,7 @@ try {
    .replace(/Bearer\s+\S+/gi,'Bearer [redacted]')
    .replace(/(authorization|cookie|password|secret|token)\s*[:=]\s*[^\s,}]+/gi,'$1=[redacted]')
    .slice(0,500)
-  await writeFile(dir+'/results.json',JSON.stringify({
+  if(!runnerTerminated)await writeFile(dir+'/results.json',JSON.stringify({
    status:'FAIL',
    environment:'Disposable local Supabase loopback only',
    providers:'live credentials absent; synthetic UI fixture',
@@ -809,14 +843,15 @@ try {
    blockedBrowserRequests:outside,
   },null,2))
   throw error
- } finally {await browser.close()}
+ } finally {clearTimeout(deadlineTimer);await browser?.close()}
 let blocked=0
 try{blocked=(await readFile(process.env.QA_NETWORK_GUARD_LOG,'utf8')).split('\n').filter(Boolean).length}catch{}
- qaStage='complete'
+ setStage('complete')
 pass('Server outbound attempts blocked by guard: '+blocked)
  await writeFile(dir+'/results.json',JSON.stringify({status:'PASS',environment:'Disposable local Supabase loopback only',providers:'live credentials absent; synthetic UI fixture',checks,passedChecks:checks.length,themeMatrix,finalStage:qaStage,authLifecycle:lifecycleEvidence,consoleErrors:browserConsoleErrors.filter(error=>error.kind!=='http-status').length,expectedHttpConsoleErrors:browserConsoleErrors.filter(error=>error.kind==='http-status'),browserHttpFailures,runtimeErrors:browserRuntimeErrors.length,blockedExternalAttempts:blocked,blockedBrowserRequests:outside,data:'synthetic only'},null,2))
 await writeFile(dir+'/theme-matrix-evidence.json',JSON.stringify({status:'PASS',themeMatrix},null,2))
 console.log('Authenticated Browser QA passed: '+checks.length+' checks; external network is blocked by policy.')
+clearTimeout(deadlineTimer)
 
 async function assertRiskAxe(page,label,evidenceDir){
  const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()

@@ -27,6 +27,7 @@ jobs:
       QA_EXPECTED_PR_NUMBER: '73'
       QA_EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       QA_ARTIFACT_DIR: .local-artifacts/authenticated-browser-qa-v1.40.0/${{ github.run_id }}
+      QA_BROWSER_RUNNER_TIMEOUT_SECONDS: '2280'
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v7
@@ -208,25 +209,50 @@ jobs:
         run: bash scripts/qa/bootstrap-local-supabase.sh
 
       - name: Run Authenticated Browser QA with external network blocked
+        id: browser_qa_runner
         shell: bash
         run: |
           set -euo pipefail
           export QA_NETWORK_GUARD_LOG="$RUNNER_TEMP/qa-network-guard.log"
           : > "$QA_NETWORK_GUARD_LOG"
           export NODE_OPTIONS="--require=$GITHUB_WORKSPACE/scripts/qa/deny-external-network.cjs"
+          mkdir -p "$QA_ARTIFACT_DIR"
+          node scripts/qa/qa-runner-evidence.mjs stage "$QA_ARTIFACT_DIR" SERVER_STARTING
           (./node_modules/.bin/next dev --hostname 127.0.0.1 --port "$QA_APP_PORT" > "$RUNNER_TEMP/next-dev.log" 2>&1 & echo $! > "$RUNNER_TEMP/next-dev.pid")
-          for attempt in $(seq 1 90); do
-            curl --silent --fail "http://127.0.0.1:${QA_APP_PORT}/login" >/dev/null && break
-            sleep 2
+          app_pid="$(cat "$RUNNER_TEMP/next-dev.pid")"
+          server_ready=0
+          for attempt in $(seq 1 36); do
+            if ! kill -0 "$app_pid" 2>/dev/null; then
+              echo "Next.js dev server exited before HTTP readiness; see the sanitized server-stage evidence." >&2
+              exit 1
+            fi
+            if timeout --signal=TERM --kill-after=1s 5s curl --silent --fail --connect-timeout 2 --max-time 4 "http://127.0.0.1:${QA_APP_PORT}/login" >/dev/null; then
+              server_ready=1
+              break
+            fi
+            sleep 1
           done
-          curl --silent --fail "http://127.0.0.1:${QA_APP_PORT}/login" >/dev/null
-          node scripts/qa/authenticated-browser.mjs
+          if [ "$server_ready" -ne 1 ]; then
+            echo "Next.js HTTP readiness exceeded its bounded 3-minute window." >&2
+            exit 1
+          fi
+          node scripts/qa/qa-runner-evidence.mjs stage "$QA_ARTIFACT_DIR" SERVER_READY
+          export QA_BROWSER_DEADLINE_MS="$((QA_BROWSER_RUNNER_TIMEOUT_SECONDS * 1000))"
+          set +e
+          timeout --signal=TERM --kill-after=10s "${QA_BROWSER_RUNNER_TIMEOUT_SECONDS}s" node scripts/qa/authenticated-browser.mjs
+          browser_status=$?
+          set -e
+          if [ "$browser_status" -ne 0 ]; then
+            node scripts/qa/qa-runner-evidence.mjs interrupted "$QA_ARTIFACT_DIR" "$browser_status"
+            exit "$browser_status"
+          fi
 
       - name: Stop only this QA application process
         if: always()
         shell: bash
         run: |
           set -euo pipefail
+          echo 'QA_STAGE {"stage":"CLEANUP"}'
           if [ -s "$RUNNER_TEMP/next-dev.pid" ]; then
             pid="$(cat "$RUNNER_TEMP/next-dev.pid")"
             case "$pid" in
@@ -377,18 +403,38 @@ jobs:
           fi
 
       - name: Record blocked QA result
-        if: failure()
+        if: always()
         shell: bash
         run: |
           mkdir -p "$QA_ARTIFACT_DIR"
-          python3 - "$QA_ARTIFACT_DIR/results.json" <<'PY'
+          python3 - "$QA_ARTIFACT_DIR/results.json" "$QA_ARTIFACT_DIR/runner-status.json" "${{ steps.browser_qa_runner.outcome }}" "${{ job.status }}" <<'PY'
           import json, pathlib, sys
           path = pathlib.Path(sys.argv[1])
+          checkpoint_path = pathlib.Path(sys.argv[2])
+          runner_outcome, job_status = sys.argv[3:]
+          try:
+              checkpoint = json.loads(checkpoint_path.read_text())
+          except (OSError, json.JSONDecodeError):
+              checkpoint = {}
+          stage = checkpoint.get("stage", "UNKNOWN")
+          check_names = checkpoint.get("checks", [])
+          if not isinstance(check_names, list):
+              check_names = []
+          checks = [{"name": name[:180], "status": "PASS"} for name in check_names[:500] if isinstance(name, str)]
           if not path.exists():
+              cancelled = runner_outcome == "cancelled" or job_status == "cancelled"
+              reason = "The workflow was cancelled before complete browser results were recorded." if cancelled else "The browser workflow stopped before complete results were recorded."
               result = {
                   "status": "BLOCKED",
-                  "reason": "An isolated QA precondition failed before the browser runner recorded evidence.",
+                  "reason": reason,
                   "data": "synthetic only",
+                  "finalStage": stage,
+                  "passedChecks": len(checks),
+                  "checks": checks,
+                  "elapsedMs": checkpoint.get("elapsedMs"),
+                  "stageDurationMs": checkpoint.get("stageElapsedMs"),
+                  "stageHistory": checkpoint.get("stageHistory", []),
+                  "failure": {"stage": stage, "name": "WorkflowCancelled" if cancelled else "RunnerStopped", "message": reason},
               }
           else:
               try:
@@ -398,10 +444,19 @@ jobs:
                       "status": "BLOCKED",
                       "reason": "The browser runner evidence file was incomplete or invalid JSON.",
                       "data": "synthetic only",
+                      "finalStage": stage,
+                      "passedChecks": len(checks),
+                      "checks": checks,
+                      "elapsedMs": checkpoint.get("elapsedMs"),
+                      "stageDurationMs": checkpoint.get("stageElapsedMs"),
+                      "stageHistory": checkpoint.get("stageHistory", []),
+                      "failure": {"stage": stage, "name": "InvalidEvidence", "message": "The browser result was not valid JSON."},
                   }
               if result.get("status") == "PASS":
-                  result["status"] = "BLOCKED"
-                  result["workflowFailure"] = "A later workflow step failed; inspect its sanitized step output."
+                  if job_status != "success":
+                      result["status"] = "BLOCKED"
+                      result["workflowFailure"] = "A later workflow step failed or was cancelled; inspect sanitized step summaries."
+                      result["lastKnownStage"] = stage
           path.write_text(json.dumps(result, separators=(",", ":")) + "\n")
           PY
       - name: Upload synthetic QA evidence
@@ -411,4 +466,5 @@ jobs:
           name: authenticated-browser-qa-v1.40.0
           path: ${{ env.QA_ARTIFACT_DIR }}/
           retention-days: 3
-          if-no-files-found: ignore
+          if-no-files-found: error
+          include-hidden-files: true
