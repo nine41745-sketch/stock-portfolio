@@ -6,7 +6,10 @@ import { resolve, join } from 'node:path'
 import { randomBytes, randomInt, randomUUID } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { assertOwned, assertInventory, sha256 } from './recovery-safety.mjs'
-import { openSyntheticBackup, writeEncryptedSet, verifyEncryptedSet } from './encrypted-backup.mjs'
+import { createEncryptedBackupSet, restoreEncryptedBackupSet, verifyEncryptedBackupSet } from '../backup/encrypted-set.mjs'
+import { buildPublicSchemaAclScript } from '../backup/postgres-streams.mjs'
+import { generateIdentity, identityToRecipient } from 'age-encryption'
+import { Readable, Writable } from 'node:stream'
 import { hashPin, verifyPin } from '../../lib/pin.ts'
 
 assert.equal(process.versions.node.split('.')[0], '22', 'Use Node.js 22.x')
@@ -17,15 +20,42 @@ const dir = resolve('.local-artifacts/recovery', run)
 mkdirSync(resolve('.local-artifacts/recovery'), { recursive: true })
 mkdirSync(dir) // exclusive new run directory; never reuse an earlier evidence set
 const events = [], checks = [], resources = [], plaintextBuffers = []
-const backupKey = randomBytes(32) // run-only; never serialized or passed to Docker
+const primaryIdentity = await generateIdentity()
+const recoveryIdentity = await generateIdentity()
+const wrongIdentity = await generateIdentity()
+const recipients = [await identityToRecipient(primaryIdentity), await identityToRecipient(recoveryIdentity)]
 let stage = 'preflight', failure, cleanupFailure
 const report = { run, createdResources: resources, syntheticOnly: true, scope: 'PostgreSQL recovery, mocked platform Auth/Storage; not live Supabase integration', checks, events }
 const record = name => { checks.push({ name, result: 'PASS' }); console.log('PASS ' + name) }
 function docker(args, input, tolerate = false) {
   const result = spawnSync('docker', args, { input, timeout: 60000, maxBuffer: 64 * 1024 * 1024, windowsHide: true })
   if (!tolerate && (result.status !== 0 || result.error)) {
-    const state = result.stderr?.toString().match(/ERROR:\s+([0-9A-Z]{5})/)?.[1]
-    throw new Error(`Docker operation failed at ${stage}; exit=${result.status}; SQLSTATE=${state ?? 'unavailable'}`)
+    const state = result.stderr?.toString().match(/ERROR:\s+(?:[0-9A-Z]{5}:\s*)?([0-9A-Z]{5})(?:\b|:)/)?.[1]
+    const diagnostic = result.stderr?.toString().toLowerCase() ?? ''
+    const diagnosticClass = /text format|plain text dump/.test(diagnostic) ? 'archive-format-mismatch'
+      : /unsupported version|archive version/.test(diagnostic) ? 'archive-version-mismatch'
+        : /new row violates row-level security|row-level security policy/.test(diagnostic) ? 'synthetic-rls-policy-denial'
+        : /permission denied for table/.test(diagnostic) ? 'target-table-privilege'
+        : /permission denied for schema public\b/.test(diagnostic) ? 'target-public-schema-privilege'
+          : /permission denied for schema auth\b/.test(diagnostic) ? 'target-auth-schema-privilege'
+            : /permission denied for schema/.test(diagnostic) ? 'target-schema-privilege'
+            : /permission denied for function/.test(diagnostic) ? 'target-function-privilege'
+              : /permission denied for sequence/.test(diagnostic) ? 'target-sequence-privilege'
+                : /permission denied/.test(diagnostic) ? 'target-permission-denied'
+        : /schema .* already exists/.test(diagnostic) ? 'target-schema-already-exists'
+          : /role .* already exists/.test(diagnostic) ? 'target-role-already-exists'
+            : /relation .* already exists/.test(diagnostic) ? 'target-relation-already-exists'
+              : /already exists/.test(diagnostic) ? 'target-object-already-exists'
+                : /schema .* does not exist/.test(diagnostic) ? 'missing-schema'
+                  : /role .* does not exist/.test(diagnostic) ? 'missing-role'
+                : /relation ["']?(auth|storage|supabase_migrations)\./.test(diagnostic) ? 'missing-excluded-schema-relation'
+                  : /relation .* does not exist/.test(diagnostic) ? 'missing-public-relation-or-dependent-object'
+                      : /does not exist|undefined/.test(diagnostic) ? 'missing-target-object'
+            : /permission denied|must be owner|not authorized/.test(diagnostic) ? 'target-authorization'
+        : /could not execute query|error while processing/.test(diagnostic) ? 'restore-sql-error'
+            : /connection|socket|network/.test(diagnostic) ? 'target-connection'
+              : /pg_restore: error|pg_dump: error|pg_dumpall: error/.test(diagnostic) ? 'postgres-tool-error' : 'unclassified'
+    throw new Error(`Docker operation failed at ${stage}; exit=${result.status}; SQLSTATE=${state ?? 'unavailable'}; diagnostic=${diagnosticClass}`)
   }
   return result
 }
@@ -33,14 +63,16 @@ const json = args => JSON.parse(docker(args).stdout.toString())
 function own(r) { const inspected = json(['container', 'inspect', r.id])[0]; assertOwned(inspected, { ...r, run }); return inspected }
 function sql(r, text, db = 'postgres', tolerate = false) {
   own(r)
-  return docker(['exec', '-i', r.id, 'psql', '-XqAt', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', db], '\\set VERBOSITY sqlstate\n' + text, tolerate)
+  // Keep SQLSTATE and a safe diagnostic class available to the harness. Raw
+  // psql output is never included in reports or console output.
+  return docker(['exec', '-i', r.id, 'psql', '-XqAt', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', db], '\\set VERBOSITY verbose\n' + text, tolerate)
 }
 const query = (r, text, db) => sql(r, text, db).stdout.toString().trim()
 const parse = (r, text, db) => JSON.parse(query(r, text, db))
 function denied(r, text, state, db) {
   const result = sql(r, text, db, true)
   assert.notEqual(result.status, 0, 'Negative control unexpectedly succeeded')
-  const actual = result.stderr.toString().match(/ERROR:\s+([0-9A-Z]{5})/)?.[1]
+  const actual = result.stderr.toString().match(/ERROR:\s+(?:[0-9A-Z]{5}:\s*)?([0-9A-Z]{5})(?:\b|:)/)?.[1]
   assert.equal(actual, state, 'Unexpected SQLSTATE (no query or sensitive values logged)')
 }
 function ids(kind) { return docker(kind === 'container' ? ['ps', '-aq'] : [kind, 'ls', '-q']).stdout.toString().trim().split(/\s+/).filter(Boolean) }
@@ -52,26 +84,35 @@ const key = randomBytes(32).toString('hex'), pepper = randomBytes(32).toString('
 // In-memory synthetic process value only; no dotenv/system/Cloud environment is read or written.
 process.env.PIN_PEPPER = pepper
 function scoped(user, statement, role = 'authenticated') { return `BEGIN; SET LOCAL ROLE ${role}; SET LOCAL "request.jwt.claim.sub" = '${user}'; ${statement}; ROLLBACK;` }
-function inventory(r, db) {
-  const tables = parse(r, `SELECT coalesce(jsonb_agg(jsonb_build_object('schema',schemaname,'table',tablename) ORDER BY schemaname,tablename),'[]') FROM pg_tables WHERE schemaname IN ('public','auth','storage','supabase_migrations');`, db)
+function inventory(r, db, schemas = ['public','auth','storage','supabase_migrations']) {
+  assert.ok(schemas.every(schema => ['public','auth','storage','supabase_migrations'].includes(schema)))
+  const schemaFilter = schemas.map(schema => `'${schema}'`).join(',') || "'__none__'"
+  const tables = parse(r, `SELECT coalesce(jsonb_agg(jsonb_build_object('schema',schemaname,'table',tablename) ORDER BY schemaname,tablename),'[]') FROM pg_tables WHERE schemaname IN (${schemaFilter});`, db)
   const data = tables.map(t => {
     const ident = s => '"' + s.replaceAll('"', '""') + '"'
     return { ...t, ...parse(r, `SELECT jsonb_build_object('count',count(*),'hash',md5(coalesce(string_agg(to_jsonb(t)::text,E'\\n' ORDER BY to_jsonb(t)::text),''))) FROM ${ident(t.schema)}.${ident(t.table)} t;`, db) }
   })
   const catalog = parse(r, `SELECT jsonb_build_object(
-    'tables',(SELECT jsonb_agg(jsonb_build_array(n.nspname,c.relname,c.relrowsecurity,c.relforcerowsecurity,c.relacl::text) ORDER BY n.nspname,c.relname) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='r' AND n.nspname IN ('public','auth','storage','supabase_migrations')),
-    'columns',(SELECT jsonb_agg(jsonb_build_array(table_schema,table_name,column_name,data_type,is_nullable,column_default) ORDER BY table_schema,table_name,ordinal_position) FROM information_schema.columns WHERE table_schema IN ('public','auth','storage','supabase_migrations')),
-    'constraints',(SELECT jsonb_agg(jsonb_build_array(n.nspname,c.relname,k.conname,k.contype,k.convalidated,pg_get_constraintdef(k.oid,true)) ORDER BY n.nspname,c.relname,k.conname) FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','auth','storage','supabase_migrations')),
-    'policies',(SELECT jsonb_agg(to_jsonb(p) ORDER BY p.schemaname,p.tablename,p.policyname) FROM pg_policies p WHERE schemaname IN ('public','auth','storage')),
-    'functions',(SELECT jsonb_agg(jsonb_build_array(n.nspname,p.proname,pg_get_function_identity_arguments(p.oid),pg_get_functiondef(p.oid),p.proacl::text) ORDER BY n.nspname,p.proname,pg_get_function_identity_arguments(p.oid)) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','auth') AND p.prokind IN ('f','p')),
-    'indexes',(SELECT jsonb_agg(to_jsonb(i) ORDER BY schemaname,tablename,indexname) FROM pg_indexes i WHERE schemaname IN ('public','auth','storage','supabase_migrations')),
-    'triggers',(SELECT jsonb_agg(pg_get_triggerdef(t.oid) ORDER BY n.nspname,c.relname,t.tgname) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE NOT t.tgisinternal AND n.nspname='public'),
+    'tables',(SELECT jsonb_agg(jsonb_build_array(n.nspname,c.relname,c.relrowsecurity,c.relforcerowsecurity,c.relacl::text) ORDER BY n.nspname,c.relname) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='r' AND n.nspname IN (${schemaFilter})),
+    'columns',(SELECT jsonb_agg(jsonb_build_array(table_schema,table_name,column_name,data_type,is_nullable,column_default) ORDER BY table_schema,table_name,ordinal_position) FROM information_schema.columns WHERE table_schema IN (${schemaFilter})),
+    'constraints',(SELECT jsonb_agg(jsonb_build_array(n.nspname,c.relname,k.conname,k.contype,k.convalidated,pg_get_constraintdef(k.oid,true)) ORDER BY n.nspname,c.relname,k.conname) FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN (${schemaFilter})),
+    'policies',(SELECT jsonb_agg(to_jsonb(p) ORDER BY p.schemaname,p.tablename,p.policyname) FROM pg_policies p WHERE schemaname IN (${schemaFilter})),
+    'functions',(SELECT jsonb_agg(jsonb_build_array(n.nspname,p.proname,pg_get_function_identity_arguments(p.oid),pg_get_functiondef(p.oid),p.proacl::text) ORDER BY n.nspname,p.proname,pg_get_function_identity_arguments(p.oid)) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN (${schemaFilter}) AND p.prokind IN ('f','p')),
+    'indexes',(SELECT jsonb_agg(to_jsonb(i) ORDER BY schemaname,tablename,indexname) FROM pg_indexes i WHERE schemaname IN (${schemaFilter})),
+    'triggers',(SELECT jsonb_agg(pg_get_triggerdef(t.oid) ORDER BY n.nspname,c.relname,t.tgname) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE NOT t.tgisinternal AND n.nspname IN (${schemaFilter})),
     'roles',(SELECT jsonb_agg(jsonb_build_array(rolname,rolsuper,rolinherit,rolcreaterole,rolcreatedb,rolcanlogin,rolreplication,rolbypassrls) ORDER BY rolname) FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role')),
-    'sequences',(SELECT jsonb_agg(to_jsonb(q) ORDER BY schemaname,sequencename) FROM pg_sequences q WHERE schemaname='public'),
+    'sequences',(SELECT jsonb_agg(to_jsonb(q) ORDER BY schemaname,sequencename) FROM pg_sequences q WHERE schemaname IN (${schemaFilter})),
     'extensions',(SELECT jsonb_agg(jsonb_build_array(e.extname,e.extversion,n.nspname) ORDER BY e.extname) FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace),
     'defaultAcl',(SELECT jsonb_agg(jsonb_build_array(d.defaclrole::regrole::text,n.nspname,d.defaclobjtype,d.defaclacl::text) ORDER BY d.defaclrole::regrole::text,n.nspname,d.defaclobjtype) FROM pg_default_acl d JOIN pg_namespace n ON n.oid=d.defaclnamespace)
   );`, db)
   return { tables: data, catalogHash: sha256(JSON.stringify(catalog)), catalog }
+}
+function publicSchemaAccess(r) {
+  const value=query(r, `SELECT jsonb_build_object('owner',nspowner::regrole::text,'acl',coalesce(nspacl::text,'(default)'),'anonUsage',has_schema_privilege('anon',oid,'USAGE'),'authenticatedUsage',has_schema_privilege('authenticated',oid,'USAGE'),'anonCreate',has_schema_privilege('anon',oid,'CREATE'),'authenticatedCreate',has_schema_privilege('authenticated',oid,'CREATE')) FROM pg_namespace WHERE nspname='public';`)
+  return value ? JSON.parse(value) : null
+}
+function publicSchemaAclEntries(r) {
+  return parse(r, `SELECT coalesce(json_agg(jsonb_build_object('grantee',CASE a.grantee WHEN 0 THEN NULL ELSE pg_get_userbyid(a.grantee) END,'grantor',pg_get_userbyid(a.grantor),'privilege',a.privilege_type,'grantable',a.is_grantable) ORDER BY a.grantee,a.privilege_type,a.is_grantable),'[]'::json) FROM pg_namespace n CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a WHERE n.nspname='public';`)
 }
 try {
   assert.ok(!process.env.DOCKER_HOST && !process.env.DOCKER_CONTEXT, 'Docker environment overrides are forbidden')
@@ -82,7 +123,7 @@ try {
   for (const kind of ['container','volume','network']) before[kind] = ids(kind)
   const image = json(['image','inspect','postgres:17'])[0]
   report.image = { id: image.Id, digests: image.RepoDigests }
-  report.qaFiles=['scripts/qa/backup-recovery.mjs','scripts/qa/recovery-safety.mjs','scripts/qa/recovery-platform-fixture.sql','scripts/test-recovery.mjs','scripts/qa/encrypted-backup.mjs','scripts/test-encrypted-backup.mjs'].map(file=>({file,sha256:sha256(readFileSync(file))}))
+  report.qaFiles=['scripts/qa/backup-recovery.mjs','scripts/qa/recovery-safety.mjs','scripts/qa/recovery-platform-fixture.sql','scripts/qa/recovery-target-platform-stub.sql','scripts/test-recovery.mjs','scripts/qa/encrypted-backup.mjs','scripts/test-encrypted-backup.mjs','scripts/backup/encrypted-set.mjs','scripts/backup/postgres-streams.mjs','scripts/backup/export.mjs','scripts/test-backup-export-p1400.mjs'].map(file=>({file,sha256:sha256(readFileSync(file))}))
   report.sourceCommit = execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()
   report.sqlFiles = bootstrap.map(file => ({file:'supabase/'+file,sha256:sha256(readFileSync('supabase/'+file))}))
   for (const side of ['source','target']) {
@@ -119,47 +160,86 @@ try {
     INSERT INTO storage.objects VALUES ('00000000-0000-4000-8000-000000000001','fixture','metadata-only-no-object-bytes');
     INSERT INTO supabase_migrations.schema_migrations VALUES ('synthetic_recovery_fixture',ARRAY['fixture only, not production migration history'],'synthetic-only');`)
   const expected=inventory(source)
-  report.expected={tableCount:expected.tables.length,publicTableCount:expected.tables.filter(t=>t.schema==='public').length,rows:expected.tables.reduce((s,t)=>s+t.count,0),catalogSha256:expected.catalogHash}
+  const expectedPublic=inventory(source,'postgres',['public'])
+  report.expected={tableCount:expected.tables.length,publicTableCount:expected.tables.filter(t=>t.schema==='public').length,rows:expected.tables.reduce((s,t)=>s+t.count,0),catalogSha256:expected.catalogHash,publicCatalogSha256:expectedPublic.catalogHash}
   stage='backup'
   const started=performance.now()
   own(source)
-  const rawDump=docker(['exec',source.id,'pg_dump','-U','postgres','-d','postgres','--format=custom']).stdout
+  stage='backup-public-dump'
+  const rawDump=docker(['exec',source.id,'pg_dump','-U','postgres','-d','postgres','--format=custom','--schema=public']).stdout
   plaintextBuffers.push(rawDump)
-  const rolesRaw=docker(['exec',source.id,'pg_dumpall','-U','postgres','--roles-only','--no-role-passwords']).stdout
+  stage='backup-global-roles'
+  const rolesRaw=docker(['exec',source.id,'pg_dumpall','-U','postgres','-l','postgres','--roles-only','--no-role-passwords']).stdout
+  const publicAclScript=buildPublicSchemaAclScript(publicSchemaAclEntries(source))
   plaintextBuffers.push(rolesRaw)
   const rawRoles=Buffer.from(rolesRaw.toString().replace(/^CREATE ROLE postgres;\r?\n/gm,'').replace(/^ALTER ROLE postgres .*;\r?\n/gm,''))
   plaintextBuffers.push(rawRoles)
-  const backupContext={run,sourceCommit:report.sourceCommit,sourceFiles:[...report.qaFiles,...report.sqlFiles]}
-  const manifest=writeEncryptedSet(dir,{'database.dump':rawDump,'roles.sql':rawRoles},backupContext,backupKey)
-  const envelope=readFileSync(join(dir,'backup.spenc'))
-  writeFileSync(join(dir,'backup-manifest.json'),JSON.stringify(manifest,null,2))
+  const sourceMetadata={projectRef:'synthetic-local',schema:'public',capturedAt:new Date().toISOString(),pgDumpVersion:report.dumpVersion,psqlVersion:docker(['exec',source.id,'psql','--version']).stdout.toString().trim(),serverVersion:report.postgresVersion,rolesDumpVersion:docker(['exec',source.id,'pg_dumpall','--version']).stdout.toString().trim(),snapshot:'single pg_dump public-schema snapshot; synthetic global roles exported separately'}
+  const backupSet=join(dir,'encrypted-set')
+  stage='backup-encryption'
+  const encryptedResult=await createEncryptedBackupSet({destination:dir,setName:'encrypted-set',recipients,source:sourceMetadata,components:[
+    {name:'database-public',stream:Readable.from([rawDump])},
+    {name:'roles-global',stream:Readable.from([rawRoles])},
+    {name:'public-schema-acl',stream:Readable.from([Buffer.from(publicAclScript)])},
+  ]})
+  assert.equal(encryptedResult.componentCount,3)
   rawDump.fill(0);rawRoles.fill(0);rolesRaw.fill(0)
-  // Only authenticated, hash-verified plaintext from the persisted envelope reaches Restore.
-  const recovered=verifyEncryptedSet(dir,JSON.parse(readFileSync(join(dir,'backup-manifest.json'),'utf8')),backupKey,backupContext)
-  const dump=recovered['database.dump'],roles=recovered['roles.sql']
-  plaintextBuffers.push(dump,roles)
-  report.encryption={format:manifest.format,version:1,algorithm:'AES-256-GCM',nonceBytes:12,tagBytes:16,authentication:'PASS before restore'}
+  const verified=await verifyEncryptedBackupSet({setPath:backupSet,identities:[recoveryIdentity],expectedProjectRef:'synthetic-local'})
+  assert.equal((await verifyEncryptedBackupSet({setPath:backupSet,identities:[primaryIdentity],expectedProjectRef:'synthetic-local'})).result,'VERIFIED')
+  const restoredBuffers=new Map()
+  const restoreResult=await restoreEncryptedBackupSet({setPath:backupSet,identities:[recoveryIdentity],expectedProjectRef:'synthetic-local',beginRestore:async()=>({
+    createSink(name){const chunks=[];restoredBuffers.set(name,chunks);return new Writable({write(chunk,_encoding,callback){chunks.push(Buffer.from(chunk));callback()}})},
+    async commit(){},async rollback(){for(const chunks of restoredBuffers.values())for(const chunk of chunks)chunk.fill(0);restoredBuffers.clear()},
+  })})
+  const dump=Buffer.concat(restoredBuffers.get('database-public')??[]),roles=Buffer.concat(restoredBuffers.get('roles-global')??[]),aclRestoreScript=Buffer.concat(restoredBuffers.get('public-schema-acl')??[])
+  plaintextBuffers.push(dump,roles,aclRestoreScript,...[...restoredBuffers.values()].flat())
+  assert.equal(aclRestoreScript.toString('utf8'),publicAclScript,'Encrypted schema ACL component does not match the source catalog ACL')
+  assert.equal(verified.result,'VERIFIED');assert.equal(restoreResult.result,'RESTORED_FROM_VERIFIED_SET')
+  writeFileSync(join(dir,'backup-manifest.json'),JSON.stringify({result:verified.result,source:verified.source,components:verified.components.map(({name,file,bytes,sha256})=>({name,file,bytes,sha256})),coverage:verified.coverage},null,2))
+  report.encryption={format:'stock-portfolio-backup-set',version:2,componentCipher:'AES-256-GCM',keyAndManifest:'age-v1-X25519',nonceBytes:12,tagBytes:16,authentication:'PASS before restore'}
   report.archiveSnapshot='one pg_dump invocation; roles separate; controlled no-writer change window, not PITR'
   report.roleTransform='omit only CREATE/ALTER pre-existing postgres; --no-role-passwords'
-  report.coverage={auth:'fixture rows only; no GoTrue login/session recovery claim',storage:'fixture metadata only; object bytes not in database dump',history:'synthetic history entry only'}
-  record('AES-256-GCM persisted encrypted set authenticated; source and component hashes verified before restore')
+  report.coverage={publicSchema:'included and restored from the encrypted set',publicSchemaAcl:'included as a separate encrypted, bounded restore script',roles:'included with role passwords omitted; no tablespaces',extensions:'pgcrypto is not included in the set; synthetic restore installs matching extension separately',auth:'excluded; disposable target received only auth.uid() plus two synthetic FK placeholder IDs; no auth credentials/session rows restored',storage:'excluded; no metadata or object bytes restored',migrationHistory:'excluded because fixture history is outside public'}
+  record('AES-256-GCM component streams and age-wrapped data key/manifest authenticated; hashes verified before restore')
   assertInventory(expected,inventory(source))
   record('backup SHA-256 and unchanged source data/catalog after dump')
   stage='restore'
   const restoreStart=performance.now()
+  stage='restore-roles'
   sql(target,roles)
   own(target)
+  sql(target,readFileSync('scripts/qa/recovery-target-platform-stub.sql'))
+  stage='restore-archive-preflight'
+  docker(['exec','-i',target.id,'pg_restore','--list'],dump)
+  assert.equal(inventory(target,'postgres',['public']).tables.length,0,'Disposable public restore schema must be empty before archive application')
+  const sourcePublicAccess=publicSchemaAccess(source)
+  assert.equal(sourcePublicAccess?.authenticatedUsage,true,'Source public schema must provide the verified application role baseline')
+  sql(target,'DROP SCHEMA public CASCADE;')
+  stage='restore-public-schema'
   const pgRestoreStart=performance.now()
   docker(['exec','-i',target.id,'pg_restore','-U','postgres','-d','postgres','--exit-on-error','--single-transaction'],dump)
+  stage='restore-public-schema-acl'
+  sql(target,aclRestoreScript.toString('utf8'))
+  sql(target,'CREATE EXTENSION pgcrypto;')
+  assert.equal(query(target,"SELECT extversion FROM pg_extension WHERE extname='pgcrypto';"),query(source,"SELECT extversion FROM pg_extension WHERE extname='pgcrypto';"),'Synthetic target extension version differs from the source')
   report.pgRestoreMs=Math.round(performance.now()-pgRestoreStart)
   report.restoreRolesAndPgRestoreMs=Math.round(performance.now()-restoreStart);report.backupAndRestoreMs=Math.round(performance.now()-started)
-  const restored=inventory(target)
-  writeFileSync(join(dir,'inventory-source.json'),JSON.stringify({tables:expected.tables,catalogHash:expected.catalogHash},null,2))
+  const restored=inventory(target,'postgres',['public'])
+  const targetPublicAccessAfter=publicSchemaAccess(target)
+  report.publicSchemaAccessComparison={source:sourcePublicAccess,targetAfter:targetPublicAccessAfter}
+  assert.deepEqual(targetPublicAccessAfter,sourcePublicAccess,'Public schema owner/ACL/usage was not preserved by restore')
+  const catalogPartsEqual=Object.fromEntries(Object.keys(expectedPublic.catalog).map(key=>[key,JSON.stringify(restored.catalog[key])===JSON.stringify(expectedPublic.catalog[key])]))
+  report.restoreComparison={publicTablesEqual:JSON.stringify(restored.tables)===JSON.stringify(expectedPublic.tables),publicCatalogEqual:restored.catalogHash===expectedPublic.catalogHash,catalogPartsEqual,sourcePublicTableCount:expectedPublic.tables.length,restoredPublicTableCount:restored.tables.length}
+  report.catalogDifferenceSummary={sourceFunctions:(expectedPublic.catalog.functions??[]).map(row=>`${row[0]}.${row[1]}(${row[2]})`),restoredFunctions:(restored.catalog.functions??[]).map(row=>`${row[0]}.${row[1]}(${row[2]})`),sourceExtensions:expectedPublic.catalog.extensions,restoredExtensions:restored.catalog.extensions}
+  writeFileSync(join(dir,'inventory-source.json'),JSON.stringify({tables:expectedPublic.tables,catalogHash:expectedPublic.catalogHash},null,2))
   writeFileSync(join(dir,'inventory-restored.json'),JSON.stringify({tables:restored.tables,catalogHash:restored.catalogHash},null,2))
-  assertInventory(expected,restored)
-  record('all table row counts/digests, RLS/policies, ACL, constraints, functions, indexes/triggers, extensions and fixture migration history match')
+  assert.equal(report.restoreComparison.publicTablesEqual,true,'Public table rows differ after restore')
+  assert.equal(report.restoreComparison.publicCatalogEqual,true,'Public catalog differs after restore')
+  assert.equal(query(target,"SELECT count(*) FROM auth.users WHERE id NOT IN ('a1350000-0000-4000-8000-000000000001','a1350000-0000-4000-8000-000000000002');"),'0','Only synthetic FK placeholder identities may exist in the disposable Auth shim')
+  assert.equal(query(target,"SELECT count(*) FROM information_schema.tables WHERE table_schema IN ('storage','supabase_migrations');"),'0','Excluded Storage/history tables must remain absent')
+  record('public table row counts/digests, RLS/policies, ACL, constraints, functions, indexes and triggers match; Auth has only two synthetic FK placeholders and Storage/history remain absent')
   stage='post-restore-security'
-  for(const file of ['verify_bootstrap_security.sql','verify_portfolio_watchlist_v1.35.0.sql'])sql(target,readFileSync('supabase/'+file))
+  for(const file of ['verify_bootstrap_security.sql','verify_portfolio_watchlist_v1.35.0.sql']){stage='post-restore-'+file;sql(target,readFileSync('supabase/'+file))}
   record('repository security and portfolio-watchlist verifiers pass after restore')
   assert.equal(query(target,scoped(A,`SELECT count(*) FROM public.holdings WHERE user_id='${B}'`)),'0')
   assert.equal(query(target,scoped(B,`SELECT count(*) FROM public.holdings WHERE user_id='${A}'`)),'0')
@@ -189,19 +269,18 @@ try {
   assert.equal(query(target,scoped(A,'SELECT count(*) FROM public.user_pin_security')),'0','PIN RLS must expose zero rows, including to the owner')
   record('real PIN scrypt hash/salt/lockout round-trip; wrong PIN/pepper, missing pepper and client access rejected')
   stage='negative-backups'
-  const damaged=Buffer.from(envelope);damaged[damaged.length-1]^=255
-  assert.throws(()=>openSyntheticBackup(damaged,backupKey,backupContext))
-  const wrongBackupKey=randomBytes(32)
-  try { assert.throws(()=>openSyntheticBackup(envelope,wrongBackupKey,backupContext)) } finally { wrongBackupKey.fill(0) }
-  const changedManifest=structuredClone(manifest);changedManifest.artifacts[0].sha256='0'.repeat(64)
-  assert.throws(()=>verifyEncryptedSet(dir,changedManifest,backupKey,backupContext))
-  record('wrong outer encryption key, ciphertext tampering and changed manifest rejected')
+  await assert.rejects(verifyEncryptedBackupSet({setPath:backupSet,identities:[recoveryIdentity],expectedProjectRef:'wrong-synthetic-project'}))
+  await assert.rejects(verifyEncryptedBackupSet({setPath:backupSet,identities:[wrongIdentity],expectedProjectRef:'synthetic-local'}))
+  record('wrong source identity and non-recipient key rejected')
   const truncated=docker(['exec','-i',target.id,'pg_restore','--list'],Buffer.from('corrupt synthetic archive'),true);assert.notEqual(truncated.status,0)
-  query(target,'CREATE DATABASE incomplete;')
-  own(target);docker(['exec','-i',target.id,'pg_restore','-U','postgres','-d','incomplete','--schema-only','--exit-on-error','--single-transaction'],dump)
+  stage='negative-create-incomplete-db';query(target,'CREATE DATABASE incomplete;')
+  sql(target,readFileSync('scripts/qa/recovery-target-platform-stub.sql'),'incomplete')
+  stage='negative-restore-schema-only';own(target);docker(['exec','-i',target.id,'pg_restore','-U','postgres','-d','incomplete','--clean','--if-exists','--schema-only','--exit-on-error','--single-transaction'],dump)
+  stage='negative-install-extension';sql(target,'CREATE EXTENSION pgcrypto;','incomplete')
   const incomplete=inventory(target,'incomplete')
   assert.throws(()=>assertInventory(expected,incomplete))
-  assert.equal(incomplete.catalogHash,expected.catalogHash,'Schema-only restore must retain catalog before negative mutation')
+  const incompletePublic=inventory(target,'incomplete',['public'])
+  assert.equal(incompletePublic.catalogHash,expectedPublic.catalogHash,'Schema-only restore must retain the public catalog before negative mutation')
   query(target,'ALTER TABLE public.holdings DISABLE ROW LEVEL SECURITY;','incomplete')
   const altered=inventory(target,'incomplete')
   assert.notEqual(altered.catalogHash,expected.catalogHash,'RLS mutation must be detected')
@@ -209,9 +288,10 @@ try {
   query(target,'REVOKE SELECT ON public.holdings FROM anon;','incomplete')
   assert.notEqual(inventory(target,'incomplete').catalogHash,beforeAcl,'ACL-only change must be detected')
   record('invalid archive, schema-only incomplete restore, disabled RLS and changed ACL detected')
-  for (const file of backupContext.sourceFiles) assert.equal(sha256(readFileSync(file.file)),file.sha256,'Source changed during run')
+  for (const file of [...report.qaFiles,...report.sqlFiles]) assert.equal(sha256(readFileSync(file.file)),file.sha256,'Source changed during run')
   record('source fingerprints unchanged through completed restore/security verification')
-  assert.deepEqual(readdirSync(dir).sort(),['backup.spenc','backup-manifest.json','inventory-source.json','inventory-restored.json'].sort(),'Unexpected persistent output')
+  assert.deepEqual(readdirSync(dir).sort(),['backup-manifest.json','encrypted-set','inventory-source.json','inventory-restored.json'].sort(),'Unexpected persistent output')
+  assert.deepEqual(readdirSync(backupSet).sort(),['data-key.age','database-public.dump.aes256gcm','manifest.json.age','public-schema-acl.sql.aes256gcm','roles-global.sql.aes256gcm'].sort(),'Unexpected encrypted set contents')
   for (const name of ['inventory-source.json','inventory-restored.json']) assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(dir,name),'utf8'))).sort(),['catalogHash','tables'])
   report.encryption.plaintextOnDisk=false
   record('persistent output allowlist: ciphertext and sanitized metadata only; no SQL dump/roles export')
@@ -219,9 +299,8 @@ try {
 } catch(error) {
   failure=error;report.result='FAIL';report.failure={stage,message:error.message.split('\n')[0].slice(0,240)}
 } finally {
-  backupKey.fill(0)
   plaintextBuffers.forEach(b=>b.fill(0))
-  report.keyDisposition='run-only key discarded; retained synthetic archive cannot be recovered later'
+  report.keyDisposition='run-only synthetic age identities discarded; retained synthetic archive is not a Production recovery set'
   delete process.env.PIN_PEPPER
   stage='cleanup'
   for (const r of [...resources].reverse()) {
@@ -237,7 +316,7 @@ try {
   } catch(error) { cleanupFailure=error;report.cleanup='FAIL';events.push({stage:'post-cleanup',result:'FAIL',reason:error.message}) }
   if(cleanupFailure)report.result='FAIL'
   writeFileSync(join(dir,'results.json'),JSON.stringify(report,null,2))
-  const names=['backup.spenc','backup-manifest.json','results.json'].filter(name=>existsSync(join(dir,name)))
+  const names=['backup-manifest.json','results.json'].filter(name=>existsSync(join(dir,name)))
   writeFileSync(join(dir,'evidence-manifest.json'),JSON.stringify({run,files:names.map(name=>({name,sha256:sha256(readFileSync(join(dir,name)))}))},null,2))
 }
 console.log(JSON.stringify({result:report.result,checks:checks.length,pgRestoreMs:report.pgRestoreMs,restoreRolesAndPgRestoreMs:report.restoreRolesAndPgRestoreMs,cleanup:report.cleanup,evidence:dir,failure:report.failure}))

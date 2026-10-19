@@ -7,14 +7,15 @@
   },
   "scripts": {
     "dev": "next dev",
-    "test:critical": "node scripts/test-critical.mjs && node scripts/test-investment-command-center.mjs && node scripts/test-fundamentals.mjs && node scripts/test-sec-xbrl.mjs && node scripts/test-sec-risk.mjs && node scripts/test-sec-risk-provider.mjs && node scripts/test-sec-filing-index.mjs && node scripts/test-stock-check.mjs && node scripts/test-multi-portfolio.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-watchlist-v1350.mjs && node scripts/test-command-center.mjs && node scripts/test-transactions.mjs && node scripts/test-auto-trades.mjs && node scripts/test-performance.mjs && node scripts/test-journal-performance.mjs && node scripts/test-smart-dip-buying.mjs && node scripts/test-smart-dip-cancellation.mjs && node scripts/test-trade-plan.mjs && node scripts/test-risk.mjs && node scripts/test-allocation.mjs && node scripts/test-alerts-calendar.mjs && node --experimental-strip-types --test scripts/test-market-intelligence.mjs && node scripts/test-phase-a.mjs && node scripts/test-import-preview.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-scanner-isolation.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-discovery.mjs && node --test scripts/test-portfolio-initialization.mjs scripts/test-discovery-deadline.mjs scripts/test-qa-http-failures.mjs scripts/test-qa-runner-evidence.mjs scripts/test-qa-portfolio-creation-boundary.mjs && npm run test:recovery",
+    "test:critical": "node scripts/test-critical.mjs && node scripts/test-investment-command-center.mjs && node scripts/test-fundamentals.mjs && node scripts/test-sec-xbrl.mjs && node scripts/test-sec-risk.mjs && node scripts/test-sec-risk-provider.mjs && node scripts/test-sec-filing-index.mjs && node scripts/test-stock-check.mjs && node scripts/test-multi-portfolio.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-watchlist-v1350.mjs && node scripts/test-command-center.mjs && node scripts/test-transactions.mjs && node scripts/test-auto-trades.mjs && node scripts/test-performance.mjs && node scripts/test-journal-performance.mjs && node scripts/test-smart-dip-buying.mjs && node scripts/test-smart-dip-cancellation.mjs && node scripts/test-trade-plan.mjs && node scripts/test-risk.mjs && node scripts/test-allocation.mjs && node scripts/test-alerts-calendar.mjs && node --experimental-strip-types --test scripts/test-market-intelligence.mjs && node scripts/test-phase-a.mjs && node scripts/test-import-preview.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-scanner-isolation.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-discovery.mjs && node --test scripts/test-portfolio-initialization.mjs scripts/test-discovery-deadline.mjs scripts/test-qa-http-failures.mjs scripts/test-qa-runner-evidence.mjs scripts/test-qa-portfolio-creation-boundary.mjs && npm run test:recovery && npm run test:backup-export:p1400",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "build": "npm run test:critical && next build",
     "ci": "npm run lint && npm run typecheck && npm run build",
     "start": "next start",
     "test:authenticated-browser-qa": "node scripts/qa/authenticated-browser.mjs",
-    "test:recovery": "node --test scripts/test-recovery.mjs scripts/test-encrypted-backup.mjs"
+    "test:recovery": "node --test scripts/test-recovery.mjs scripts/test-encrypted-backup.mjs",
+    "test:backup-export:p1400": "node --test scripts/test-backup-export-p1400.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -31,6 +32,7 @@
     "@types/node": "^22",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "age-encryption": "0.3.1",
     "autoprefixer": "^10.6.1",
     "eslint": "^9",
     "eslint-config-next": "16.4.1",
