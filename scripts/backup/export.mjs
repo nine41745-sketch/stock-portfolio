@@ -12,6 +12,17 @@ import { createPostgresBackupStreams } from './postgres-streams.mjs'
 export async function exportPostgresBackupSet({ destination, setName, recipients, connection }) {
   assert.ok(typeof destination === 'string' && destination.length > 0)
   assert.ok(typeof setName === 'string' && setName.length > 0)
-  const { source, components } = await createPostgresBackupStreams(connection)
-  return createEncryptedBackupSet({ destination, setName, recipients, source, components })
+  const streams = await createPostgresBackupStreams(connection)
+  let exportError
+  try {
+    return await createEncryptedBackupSet({ destination, setName, recipients, source: streams.source, components: streams.components })
+  } catch (error) {
+    exportError = error
+    throw error
+  } finally {
+    try { await streams.close() }
+    catch {
+      if (!exportError) throw new Error('PostgreSQL snapshot coordinator shutdown failed')
+    }
+  }
 }

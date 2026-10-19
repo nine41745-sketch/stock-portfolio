@@ -245,7 +245,7 @@ test('rolls back a disposable target if restore streaming fails after another co
 
 test('PostgreSQL stream arguments select only public data and never pass a password', () => {
   const connection = { projectRef: 'abcdefghijklmnopqrst', host: 'db.abcdefghijklmnopqrst.supabase.co', port: 5432, database: 'postgres', username: 'backup_reader' }
-  const dump = buildPostgresDumpArguments(connection)
+  const dump = buildPostgresDumpArguments(connection, '00000001-00000002-1')
   assert.throws(() => buildPostgresRolesArguments(connection), /Global role export is disabled/)
   assert.ok(dump.includes('--schema=public'))
   assert.ok(dump.includes('--format=custom'))
@@ -256,9 +256,10 @@ test('PostgreSQL stream arguments select only public data and never pass a passw
 
 test('PostgreSQL dump programs write to stdout and never receive a persistent output-file option', () => {
   const connection = { projectRef: 'abcdefghijklmnopqrst', host: 'db.abcdefghijklmnopqrst.supabase.co', port: 5432, database: 'postgres', username: 'backup_reader' }
-  for (const args of [buildPostgresDumpArguments(connection)]) {
+  for (const args of [buildPostgresDumpArguments(connection, '00000001-00000002-1')]) {
     assert.equal(args.some(arg => /^--file(?:=|$)|^-f(?:$|.)/.test(arg)), false, 'dump output must remain on stdout')
   }
+  assert.throws(() => buildPostgresDumpArguments(connection), /snapshot/i)
 })
 
 test('mock PostgreSQL child processes feed only the encrypted pipeline and leave no plaintext outputs', async t => {
@@ -278,6 +279,21 @@ const outputOption = args.findIndex(arg => arg === '--file' || arg === '-f')
 const outputEquals = args.find(arg => arg.startsWith('--file='))
 const outputPath = outputEquals ? outputEquals.slice('--file='.length) : outputOption >= 0 ? args[outputOption + 1] : null
 if (outputPath !== null) writeFileSync(resolve(outputPath), tool === 'pg_dumpall' ? 'SYNTHETIC_ROLE_PLAINTEXT' : 'SYNTHETIC_DUMP_PLAINTEXT')
+else if (tool === 'psql' && !args.includes('--command')) {
+  let input = ''
+  let emitted = false
+  process.stdin.setEncoding('utf8')
+  process.stdin.on('data', chunk => {
+    input += chunk
+    const marker = input.match(/\\\\echo (SP_SNAPSHOT_READY_[A-Fa-f0-9]+__)/)?.[1]
+    if (marker && !emitted) {
+      emitted = true
+      process.stdout.write('00000001-00000002-1\\n' + marker + '\\n')
+    }
+    if (input.includes('\\\\q')) process.exit(0)
+  })
+  process.stdin.on('end', () => process.exit(0))
+}
 else if (tool === 'psql' && executable.includes('.fail')) { process.stdout.write('SYNTHETIC_FAILED_PARTIAL'); process.exit(7) }
 else if (tool === 'psql' && executable.includes('.interrupt')) { process.stdout.write('SYNTHETIC_INTERRUPTED_PARTIAL'); process.exit(9) }
 else if (tool === 'psql' && executable.includes('.timeout')) { process.stdout.write('SYNTHETIC_TIMEOUT_PARTIAL'); setInterval(() => {}, 1000) }
@@ -302,7 +318,7 @@ else process.stdout.write(JSON.stringify([{grantee:null,grantor:'pg_database_own
     }
     return {
       projectRef: 'abcdefghijklmnopqrst', host: 'db.abcdefghijklmnopqrst.supabase.co', port: 5432,
-      database: 'postgres', username: 'backup_reader', timeoutMs: suffix.includes('timeout') ? 400 : 3000,
+      database: 'postgres', username: 'backup_reader', timeoutMs: suffix.includes('timeout') ? 1500 : 3000,
       ...paths,
     }
   }
@@ -318,7 +334,9 @@ else process.stdout.write(JSON.stringify([{grantee:null,grantor:'pg_database_own
   const successConfig = await makeConfig('.success')
   const successful = await createPostgresBackupStreams(successConfig, { spawnProcess: invoke(successConfig, successCalls) })
   const setPath = join(root, 'encrypted-success')
-  await createEncryptedBackupSet({ destination: root, setName: 'encrypted-success', recipients, source: { ...source, ...successful.source }, components: successful.components })
+  try {
+    await createEncryptedBackupSet({ destination: root, setName: 'encrypted-success', recipients, source: { ...source, ...successful.source }, components: successful.components })
+  } finally { await successful.close() }
   assert.equal((await verifyEncryptedBackupSet({ setPath, identities: [identity], expectedProjectRef: source.projectRef })).result, 'VERIFIED')
   assert.equal(await stat(join(root, '-')).then(() => true, () => false), false)
   for (const name of await readdir(setPath)) {
@@ -335,11 +353,13 @@ else process.stdout.write(JSON.stringify([{grantee:null,grantor:'pg_database_own
   for (const mode of ['fail', 'interrupt', 'timeout']) {
     const calls = []
     const config = await makeConfig(`.${mode}`)
-    const { source: mockSource, components } = await createPostgresBackupStreams(config, { spawnProcess: invoke(config, calls) })
-    await assert.rejects(createEncryptedBackupSet({
-      destination: root, setName: `encrypted-${mode}`, recipients,
-      source: { ...source, ...mockSource }, components,
-    }), undefined, `${mode} child process must fail closed`)
+    const streams = await createPostgresBackupStreams(config, { spawnProcess: invoke(config, calls) })
+    try {
+      await assert.rejects(createEncryptedBackupSet({
+        destination: root, setName: `encrypted-${mode}`, recipients,
+        source: { ...source, ...streams.source }, components: streams.components,
+      }), undefined, `${mode} child process must fail closed`)
+    } finally { await streams.close().catch(() => {}) }
     assert.equal(await stat(join(root, '-')).then(() => true, () => false), false, `${mode} must not create a dash-named plaintext file`)
     assert.equal(await stat(join(root, `encrypted-${mode}`)).then(() => true, () => false), false, `${mode} must not publish an incomplete backup set`)
     assert.deepEqual((await readdir(root)).sort(), [...expectedRootEntries].sort(), `${mode} must not persist output outside owned fixtures and staging`)
@@ -416,4 +436,133 @@ test('failed dependency guard rolls back without opening a database restore sink
   }))
   assert.deepEqual(opened,['public-role-dependencies'])
   assert.equal(rolledBack,true)
+})
+
+test('all PostgreSQL consumers import one exported snapshot and coordinator closes only after encrypted consumption', async t => {
+  const root = await mkdtemp(join(process.cwd(), '.test-pg-snapshot-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const bin = join(root, 'bin')
+  await mkdir(bin)
+  const mockProgram = join(root, 'mock-snapshot-postgres.mjs')
+  const lifecyclePath = join(root, 'coordinator-closed')
+  await writeFile(mockProgram, `
+import { basename } from 'node:path'
+import { writeFileSync } from 'node:fs'
+const executable = basename(process.argv[2])
+const args = process.argv.slice(3)
+const tool = executable.startsWith('pg_dump') ? 'pg_dump' : 'psql'
+if (args[0] === '--version') { process.stdout.write(tool + ' (PostgreSQL) 17.11\\n'); process.exit(0) }
+if (tool === 'psql' && !args.includes('--command')) {
+  let input = ''
+  let emitted = false
+  process.stdin.setEncoding('utf8')
+  process.stdin.on('data', chunk => {
+    input += chunk
+    const marker = input.match(/\\\\echo (SP_SNAPSHOT_READY_[A-Fa-f0-9]+__)/)?.[1]
+    if (marker && !emitted) {
+      emitted = true
+      process.stdout.write('00000001-00000002-1\\n' + marker + '\\n')
+    }
+    if (input.includes('\\\\q')) {
+      writeFileSync(${JSON.stringify(lifecyclePath)}, 'closed')
+      process.exit(0)
+    }
+  })
+  process.stdin.on('end', () => process.exit(0))
+} else if (tool === 'pg_dump') {
+  process.stdout.write('SYNTHETIC-SNAPSHOT-DUMP')
+} else {
+  const command = args.at(-1)
+  if (command.includes('owners_and_acls')) process.stdout.write(JSON.stringify({version:1,schema:'public',roles:['pg_database_owner'],globalDefaults:false,unsupportedDependencies:false}))
+  else process.stdout.write(JSON.stringify([{grantee:null,grantor:'pg_database_owner',privilege:'USAGE',grantable:false}]))
+}
+`)
+  const paths = {
+    pgDumpPath: join(bin, 'pg_dump.mock'), psqlPath: join(bin, 'psql.mock'),
+    pgPassfile: join(root, 'pgpass.synthetic'), sslRootCert: join(root, 'ca.synthetic'),
+  }
+  for (const path of Object.values(paths)) await writeFile(path, 'synthetic test fixture')
+  const config = {
+    projectRef: 'abcdefghijklmnopqrst', host: 'db.abcdefghijklmnopqrst.supabase.co', port: 5432,
+    database: 'postgres', username: 'backup_reader', timeoutMs: 3000, ...paths,
+  }
+  const calls = []
+  const coordinatorChildren = []
+  const spawnProcess = (executable, args, options) => {
+    calls.push({ executable, args })
+    const child = spawn(process.execPath, [mockProgram, executable, ...args], { ...options, cwd: root })
+    if (executable === paths.psqlPath && !args.includes('--command')) coordinatorChildren.push(child)
+    return child
+  }
+  const identity = await generateIdentity()
+  const recipients = [await identityToRecipient(identity)]
+  const streams = await createPostgresBackupStreams(config, { spawnProcess })
+  assert.equal(await stat(lifecyclePath).then(() => true, () => false), false, 'coordinator must still be open after exporting the token')
+  assert.match(streams.source.snapshot, /coordinated/i)
+  assert.doesNotMatch(JSON.stringify(streams.source), /00000001-00000002-1/)
+  const setPath = join(root, 'coordinated-set')
+  try {
+    await createEncryptedBackupSet({ destination: root, setName: 'coordinated-set', recipients, source: streams.source, components: streams.components })
+    assert.equal(await stat(lifecyclePath).then(() => true, () => false), false, 'coordinator must remain open until every encrypted consumer completes')
+    const dumpCall = calls.find(call => call.executable === paths.pgDumpPath && call.args[0] !== '--version')
+    assert.ok(dumpCall.args.includes('--snapshot=00000001-00000002-1'))
+    const queryCalls = calls.filter(call => call.executable === paths.psqlPath && call.args.includes('--command'))
+    assert.equal(queryCalls.length, 2)
+    for (const call of queryCalls) {
+      const sql = call.args.at(-1)
+      assert.match(sql, /BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY/i)
+      assert.match(sql, /SET TRANSACTION SNAPSHOT '00000001-00000002-1'/i)
+      assert.ok(sql.indexOf('SET TRANSACTION SNAPSHOT') < sql.indexOf('SELECT'), 'snapshot import must precede catalog queries')
+    }
+  } finally {
+    await streams.close()
+  }
+  assert.equal(await readFile(lifecyclePath, 'utf8'), 'closed')
+  const verified = await verifyEncryptedBackupSet({ setPath, identities: [identity], expectedProjectRef: config.projectRef })
+  assert.equal(verified.result, 'VERIFIED')
+})
+
+test('snapshot coordinator rejects invalid exports and reaps failed coordinators without exposing tokens', async t => {
+  const root = await mkdtemp(join(process.cwd(), '.test-pg-snapshot-invalid-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const bin = join(root, 'bin')
+  await mkdir(bin)
+  const mockProgram = join(root, 'mock-invalid-snapshot.mjs')
+  await writeFile(mockProgram, `
+import { basename } from 'node:path'
+const executable = basename(process.argv[2])
+const args = process.argv.slice(3)
+const tool = executable.startsWith('pg_dump') ? 'pg_dump' : 'psql'
+if (args[0] === '--version') { process.stdout.write(tool + ' (PostgreSQL) 17.11\\n'); process.exit(0) }
+if (tool === 'psql' && !args.includes('--command')) {
+  const mode = process.env.SYNTHETIC_COORDINATOR_MODE
+  if (mode === 'early-exit') process.exit(9)
+  if (mode === 'invalid') process.stdout.write('NOT_A_SNAPSHOT\\n')
+  if (mode === 'secret-invalid') process.stdout.write('SYNTHETIC-SENSITIVE-TOKEN\\n')
+  if (mode !== 'timeout') process.stdin.resume()
+} else process.exit(0)
+`)
+  const paths = {
+    pgDumpPath: join(bin, 'pg_dump.mock'), psqlPath: join(bin, 'psql.mock'),
+    pgPassfile: join(root, 'pgpass.synthetic'), sslRootCert: join(root, 'ca.synthetic'),
+  }
+  for (const path of Object.values(paths)) await writeFile(path, 'synthetic test fixture')
+  const calls = []
+  for (const mode of ['early-exit', 'invalid', 'timeout']) {
+    const config = {
+      projectRef: 'abcdefghijklmnopqrst', host: 'db.abcdefghijklmnopqrst.supabase.co', port: 5432,
+      database: 'postgres', username: 'backup_reader', timeoutMs: mode === 'timeout' ? 150 : 1000, ...paths,
+    }
+    const spawnProcess = (executable, args, options) => {
+      calls.push({ executable, args, mode })
+      return spawn(process.execPath, [mockProgram, executable, ...args], {
+        ...options, cwd: root, env: { ...options.env, SYNTHETIC_COORDINATOR_MODE: mode },
+      })
+    }
+    await assert.rejects(createPostgresBackupStreams(config, { spawnProcess }), error => {
+      assert.doesNotMatch(error.message, /SYNTHETIC-SENSITIVE-TOKEN|00000001-00000002-1|NOT_A_SNAPSHOT/)
+      return true
+    }, `${mode} must fail closed`)
+  }
+  assert.equal(calls.filter(call => call.args[0] === '--version').length, 6)
 })

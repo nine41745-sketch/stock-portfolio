@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { lstat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { Readable } from 'node:stream'
@@ -11,6 +12,9 @@ const SERVICE_HOST = ref => `db.${ref}.supabase.co`
 const DEFAULT_TIMEOUT_MS = 4 * 60 * 60 * 1000
 const MAX_TIMEOUT_MS = 8 * 60 * 60 * 1000
 const MAX_SCHEMA_ACL_BYTES = 256 * 1024
+const MAX_SNAPSHOT_PROTOCOL_BYTES = 4096
+const CHILD_CLOSE_GRACE_MS = 5000
+const SNAPSHOT_TOKEN = /^[0-9A-Fa-f]+-[0-9A-Fa-f]+-[0-9]+$/
 
 function validateConfig(config) {
   assert.ok(config && typeof config === 'object' && !Array.isArray(config))
@@ -28,15 +32,22 @@ function validateConfig(config) {
   assert.ok(Number.isSafeInteger(config.timeoutMs) && config.timeoutMs > 0 && config.timeoutMs <= MAX_TIMEOUT_MS)
 }
 
-export function buildPostgresDumpArguments({ projectRef, host, port, database, username }) {
+function assertSnapshotToken(snapshot) {
+  assert.equal(typeof snapshot, 'string', 'PostgreSQL snapshot evidence is required')
+  assert.ok(snapshot.length <= 128 && SNAPSHOT_TOKEN.test(snapshot), 'Invalid PostgreSQL snapshot evidence')
+  return snapshot
+}
+
+export function buildPostgresDumpArguments({ projectRef, host, port, database, username }, snapshot) {
   assert.match(projectRef, PROJECT_REF)
   assert.equal(host, SERVICE_HOST(projectRef), 'Database host does not match the expected project')
   assert.ok(Number.isInteger(port) && port >= 1 && port <= 65535)
   assert.match(database, /^[A-Za-z0-9_-]{1,63}$/)
   assert.match(username, /^[A-Za-z0-9_.-]{1,128}$/)
+  assertSnapshotToken(snapshot)
   return [
     '--no-password', '--host', host, '--port', String(port), '--username', username,
-    '--dbname', database, '--format=custom', '--schema=public',
+    '--dbname', database, '--format=custom', '--schema=public', `--snapshot=${snapshot}`,
   ]
 }
 
@@ -125,31 +136,168 @@ function safeChildEnvironment(config = {}) {
   return env
 }
 
-function processOutputStream(path, args, config, label, spawnProcess = spawn) {
+async function waitForChildClose(closed, timeoutMs = CHILD_CLOSE_GRACE_MS) {
+  let timer
+  try {
+    return await Promise.race([
+      closed,
+      new Promise(resolve => { timer = setTimeout(() => resolve(null), timeoutMs); timer.unref?.() }),
+    ])
+  } finally { clearTimeout(timer) }
+}
+
+async function terminateAndAwait(child, closed) {
+  if (child.exitCode === null && child.signalCode === null) child.kill()
+  let result = await waitForChildClose(closed)
+  if (result === null) {
+    child.kill('SIGKILL')
+    result = await waitForChildClose(closed)
+  }
+  if (result === null) throw new Error('PostgreSQL child process did not terminate')
+}
+
+function processOutputStream(path, args, config, label, spawnProcess = spawn, coordinator = null) {
   const output = Readable.from((async function* () {
-    const child = spawnProcess(path, args, {
-      shell: false,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: safeChildEnvironment(config),
-    })
+    let child
+    try {
+      coordinator?.assertOpen()
+      child = spawnProcess(path, args, {
+        shell: false,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: safeChildEnvironment(config),
+      })
+    } catch { throw new Error(`${label} could not start`) }
     child.stderr.resume()
     const closed = once(child, 'close')
     const timeout = setTimeout(() => child.kill(), config.timeoutMs)
     timeout.unref?.()
+    let completed = false
     try {
       for await (const chunk of child.stdout) yield chunk
       const [code, signal] = await closed
       if (code !== 0) throw new Error(`${label} failed (${code ?? signal ?? 'unknown'})`)
+      coordinator?.assertOpen()
+      completed = true
     } catch {
-      child.kill()
+      await terminateAndAwait(child, closed).catch(() => {})
       throw new Error(`${label} stream failed`)
     } finally {
       clearTimeout(timeout)
-      if (!child.killed) child.kill()
+      if (!completed) await terminateAndAwait(child, closed).catch(() => {})
     }
   })(), { objectMode: false, highWaterMark: 64 * 1024 })
   return output
+}
+
+function createSnapshotCoordinator(psqlPath, connection, config, spawnProcess) {
+  const marker = `SP_SNAPSHOT_READY_${randomBytes(16).toString('hex')}__`
+  const args = [
+    '--no-password', '--host', connection.host, '--port', String(connection.port), '--username', connection.username,
+    '--dbname', connection.database, '--set=ON_ERROR_STOP=1', '--no-psqlrc', '--tuples-only', '--no-align', '--quiet',
+  ]
+  let child
+  try {
+    child = spawnProcess(psqlPath, args, {
+      shell: false,
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'ignore'],
+      env: safeChildEnvironment(config),
+    })
+  } catch { throw new Error('PostgreSQL snapshot coordinator could not start') }
+  assert.ok(child.stdin && child.stdout, 'PostgreSQL snapshot coordinator pipes are unavailable')
+
+  let closedResult = null
+  let protocolBuffer = ''
+  let protocolBytes = 0
+  const protocolLines = []
+  let settled = false
+  let resolveReady
+  let rejectReady
+  const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject })
+  const closed = new Promise(resolve => {
+    child.once('close', (code, signal) => {
+      closedResult = { code, signal }
+      resolve(closedResult)
+      if (!settled) failReady()
+    })
+    child.once('error', () => {
+      closedResult = { code: null, signal: null, error: true }
+      resolve(closedResult)
+      if (!settled) failReady()
+    })
+  })
+  const failReady = () => {
+    if (settled) return
+    settled = true
+    rejectReady(new Error('PostgreSQL snapshot export failed'))
+  }
+  const acceptLine = line => {
+    if (line !== marker) return false
+    if (protocolLines.length !== 1 || !SNAPSHOT_TOKEN.test(protocolLines[0]) || protocolLines[0].length > 128) {
+      failReady()
+      return true
+    }
+    const snapshotToken = protocolLines[0]
+    protocolBuffer = ''
+    protocolLines.length = 0
+    if (!settled) { settled = true; resolveReady(snapshotToken) }
+    return true
+  }
+  child.stdout.setEncoding('utf8')
+  child.stdout.on('data', chunk => {
+    protocolBytes += Buffer.byteLength(chunk)
+    if (protocolBytes > MAX_SNAPSHOT_PROTOCOL_BYTES) { failReady(); child.kill(); return }
+    protocolBuffer += chunk
+    const lines = protocolBuffer.split('\n')
+    protocolBuffer = lines.pop()
+    for (const rawLine of lines) {
+      const line = rawLine.replace(/\r$/, '')
+      if (acceptLine(line)) break
+      protocolLines.push(line)
+      if (protocolLines.length > 2) { failReady(); child.kill(); break }
+    }
+  })
+  child.stdout.on('error', failReady)
+  const timeout = setTimeout(() => { failReady(); child.kill() }, config.timeoutMs)
+  timeout.unref?.()
+  const command = `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSELECT pg_export_snapshot();\n\\echo ${marker}\n`
+  try {
+    child.stdin.write(command, error => { if (error) { failReady(); child.kill() } })
+  } catch { failReady(); child.kill() }
+
+  let closeOperation = null
+  const coordinator = {
+    async waitUntilReady() {
+      try { return await ready }
+      catch (error) { clearTimeout(timeout); await terminateAndAwait(child, closed).catch(() => {}); throw error }
+    },
+    assertOpen() {
+      if (closedResult || child.exitCode !== null || child.signalCode !== null) throw new Error('PostgreSQL snapshot coordinator is no longer active')
+    },
+    close() {
+      if (closeOperation) return closeOperation
+      closeOperation = (async () => {
+        clearTimeout(timeout)
+        if (!closedResult && child.exitCode === null && child.signalCode === null) {
+          try { child.stdin.end('\\q\n') } catch { child.kill() }
+        }
+        let result = await waitForChildClose(closed)
+        if (result === null) {
+          child.kill()
+          result = await waitForChildClose(closed)
+        }
+        if (result === null) {
+          child.kill('SIGKILL')
+          result = await waitForChildClose(closed)
+        }
+        if (result === null) throw new Error('PostgreSQL snapshot coordinator did not terminate')
+        if (result.error || result.code !== 0) throw new Error('PostgreSQL snapshot coordinator shutdown failed')
+      })()
+      return closeOperation
+    },
+  }
+  return { coordinator, waitUntilReady: coordinator.waitUntilReady() }
 }
 
 /**
@@ -175,22 +323,31 @@ export async function createPostgresBackupStreams(config, options = {}) {
   assert.ok(pgDumpRelease === psqlRelease, 'PostgreSQL client versions must match')
   const common = { ...config, pgPassfile, sslRootCert }
   const connection = { projectRef: config.projectRef, host: config.host, port: config.port, database: config.database, username: config.username }
-  return {
-    source: {
-      projectRef: config.projectRef,
-      schema: 'public',
-      capturedAt: new Date().toISOString(),
-      pgDumpVersion,
-      psqlVersion,
-      serverVersion: 'NOT_QUERIED',
-      rolesDumpVersion: 'public-role-dependencies-v1 (psql catalog query)',
-      snapshot: 'pg_dump public snapshot; scoped role dependencies and schema ACL captured separately',
-    },
-    components: [
-      { name: 'database-public', stream: processOutputStream(pgDumpPath, buildPostgresDumpArguments(connection), common, 'pg_dump', spawnProcess) },
-      { name: 'public-role-dependencies', stream: publicRoleDependenciesStream(psqlPath, connection, common, spawnProcess) },
-      { name: 'public-schema-acl', stream: publicSchemaAclStream(psqlPath, connection, common, spawnProcess) },
-    ],
+  const { coordinator, waitUntilReady } = createSnapshotCoordinator(psqlPath, connection, common, spawnProcess)
+  try {
+    const snapshot = await waitUntilReady
+    coordinator.assertOpen()
+    return {
+      source: {
+        projectRef: config.projectRef,
+        schema: 'public',
+        capturedAt: new Date().toISOString(),
+        pgDumpVersion,
+        psqlVersion,
+        serverVersion: 'NOT_QUERIED',
+        rolesDumpVersion: 'public-role-dependencies-v1 (snapshot-imported catalog query)',
+        snapshot: 'Coordinated pg_export_snapshot imported by all public dump and catalog consumers',
+      },
+      components: [
+        { name: 'database-public', stream: processOutputStream(pgDumpPath, buildPostgresDumpArguments(connection, snapshot), common, 'pg_dump', spawnProcess, coordinator) },
+        { name: 'public-role-dependencies', stream: publicRoleDependenciesStream(psqlPath, connection, common, snapshot, spawnProcess, coordinator) },
+        { name: 'public-schema-acl', stream: publicSchemaAclStream(psqlPath, connection, common, snapshot, spawnProcess, coordinator) },
+      ],
+      close: () => coordinator.close(),
+    }
+  } catch (error) {
+    await coordinator.close().catch(() => {})
+    throw error
   }
 }
 
@@ -203,12 +360,17 @@ const PUBLIC_SCHEMA_ACL_QUERY = `SELECT coalesce(json_agg(jsonb_build_object(
 FROM pg_namespace n CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a
 WHERE n.nspname = 'public';`
 
-function publicSchemaAclStream(psqlPath, connection, config, spawnProcess = spawn) {
+function snapshotImportQuery(query, snapshot) {
+  assertSnapshotToken(snapshot)
+  return `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET TRANSACTION SNAPSHOT '${snapshot}';\n${query}\nCOMMIT;\n`
+}
+
+function publicSchemaAclStream(psqlPath, connection, config, snapshot, spawnProcess = spawn, coordinator) {
   const args = [
     '--no-password', '--host', connection.host, '--port', String(connection.port), '--username', connection.username,
-    '--dbname', connection.database, '--set=ON_ERROR_STOP=1', '--no-psqlrc', '--tuples-only', '--no-align', '--quiet', '--command', PUBLIC_SCHEMA_ACL_QUERY,
+    '--dbname', connection.database, '--set=ON_ERROR_STOP=1', '--no-psqlrc', '--tuples-only', '--no-align', '--quiet', '--command', snapshotImportQuery(PUBLIC_SCHEMA_ACL_QUERY, snapshot),
   ]
-  const source = processOutputStream(psqlPath, args, config, 'psql public-schema ACL query', spawnProcess)
+  const source = processOutputStream(psqlPath, args, config, 'psql public-schema ACL query', spawnProcess, coordinator)
   const chunks = []
   let bytes = 0
   return Readable.from((async function* () {
@@ -225,13 +387,13 @@ function publicSchemaAclStream(psqlPath, connection, config, spawnProcess = spaw
   })(), { objectMode: false, highWaterMark: 64 * 1024 })
 }
 
-function publicRoleDependenciesStream(psqlPath, connection, config, spawnProcess) {
+function publicRoleDependenciesStream(psqlPath, connection, config, snapshot, spawnProcess, coordinator) {
   const args = [
     '--no-password', '--host', connection.host, '--port', String(connection.port), '--username', connection.username,
     '--dbname', connection.database, '--no-psqlrc', '--set=ON_ERROR_STOP=1', '--tuples-only', '--no-align', '--quiet',
-    '--command', PUBLIC_ROLE_DEPENDENCIES_QUERY,
+    '--command', snapshotImportQuery(PUBLIC_ROLE_DEPENDENCIES_QUERY, snapshot),
   ]
-  const source = processOutputStream(psqlPath, args, config, 'psql public role dependencies', spawnProcess)
+  const source = processOutputStream(psqlPath, args, config, 'psql public role dependencies', spawnProcess, coordinator)
   const chunks = []
   let bytes = 0
   return Readable.from((async function* () {

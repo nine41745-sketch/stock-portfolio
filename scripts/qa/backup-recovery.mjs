@@ -1,6 +1,6 @@
 // Synthetic-only recovery exercise. No DB URL, cloud target or existing container is accepted.
 import assert from 'node:assert/strict'
-import { spawnSync, execFileSync } from 'node:child_process'
+import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { randomBytes, randomInt, randomUUID } from 'node:crypto'
@@ -112,8 +112,72 @@ function publicSchemaAccess(r) {
   const value=query(r, `SELECT jsonb_build_object('owner',nspowner::regrole::text,'acl',coalesce(nspacl::text,'(default)'),'anonUsage',has_schema_privilege('anon',oid,'USAGE'),'authenticatedUsage',has_schema_privilege('authenticated',oid,'USAGE'),'anonCreate',has_schema_privilege('anon',oid,'CREATE'),'authenticatedCreate',has_schema_privilege('authenticated',oid,'CREATE')) FROM pg_namespace WHERE nspname='public';`)
   return value ? JSON.parse(value) : null
 }
-function publicSchemaAclEntries(r) {
-  return parse(r, `SELECT coalesce(json_agg(jsonb_build_object('grantee',CASE a.grantee WHEN 0 THEN NULL ELSE pg_get_userbyid(a.grantee) END,'grantor',pg_get_userbyid(a.grantor),'privilege',a.privilege_type,'grantable',a.is_grantable) ORDER BY a.grantee,a.privilege_type,a.is_grantable),'[]'::json) FROM pg_namespace n CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a WHERE n.nspname='public';`)
+function publicSchemaAclEntries(r, snapshot) {
+  const queryText = `SELECT coalesce(json_agg(jsonb_build_object('grantee',CASE a.grantee WHEN 0 THEN NULL ELSE pg_get_userbyid(a.grantee) END,'grantor',pg_get_userbyid(a.grantor),'privilege',a.privilege_type,'grantable',a.is_grantable) ORDER BY a.grantee,a.privilege_type,a.is_grantable),'[]'::json) FROM pg_namespace n CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a WHERE n.nspname='public';`
+  return snapshot ? parseSnapshotQuery(r, snapshot, queryText) : parse(r, queryText)
+}
+function snapshotQuery(r, snapshot, queryText, tolerate = false) {
+  assert.match(snapshot, /^[0-9A-Fa-f]+-[0-9A-Fa-f]+-[0-9]+$/)
+  const text = `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET TRANSACTION SNAPSHOT '${snapshot}';\n${queryText}\nCOMMIT;\n`
+  const result = sql(r, text, 'postgres', tolerate)
+  if (tolerate) return result
+  return result.stdout.toString().trim()
+}
+function parseSnapshotQuery(r, snapshot, queryText, tolerate = false) {
+  const value=snapshotQuery(r,snapshot,queryText,tolerate)
+  return tolerate ? value : JSON.parse(value)
+}
+async function startSnapshotCoordinator(r) {
+  const marker = `SP_REAL_SNAPSHOT_${randomBytes(16).toString('hex')}__`
+  own(r)
+  const child = spawn('docker', ['exec', '-i', r.id, 'psql', '-XqAt', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres'], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true })
+  let closedResult = null
+  const closed = new Promise(resolve => child.once('close', (code, signal) => { closedResult = { code, signal }; resolve(closedResult) }))
+  let buffer = ''
+  const lines = []
+  let resolveReady, rejectReady, settled = false
+  const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject })
+  const fail = () => { if (!settled) { settled = true; rejectReady(new Error('Synthetic PostgreSQL snapshot coordinator failed')) } }
+  child.stdout.setEncoding('utf8')
+  child.stdout.on('data', chunk => {
+    if (Buffer.byteLength(buffer) + Buffer.byteLength(chunk) > 4096) { fail(); child.kill(); return }
+    buffer += chunk
+    const parts = buffer.split('\n'); buffer = parts.pop()
+    for (const part of parts) {
+      const line = part.replace(/\r$/, '')
+      if (line === marker) {
+        if (lines.length !== 1 || !/^[0-9A-Fa-f]+-[0-9A-Fa-f]+-[0-9]+$/.test(lines[0])) fail()
+        else if (!settled) { settled = true; resolveReady(lines[0]) }
+        break
+      }
+      lines.push(line)
+      if (lines.length > 2) { fail(); child.kill(); break }
+    }
+  })
+  child.once('error', fail)
+  const timer = setTimeout(() => { fail(); child.kill() }, 15000)
+  timer.unref?.()
+  try {
+    child.stdin.write(`BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSELECT pg_export_snapshot();\n\\echo ${marker}\n`, error => { if (error) { fail(); child.kill() } })
+    const snapshot = await ready
+    assert.equal(closedResult, null, 'Snapshot coordinator exited before consumers started')
+    return {
+      snapshot,
+      async close() {
+        clearTimeout(timer)
+        if (!closedResult) child.stdin.end('\\q\n')
+        let result = await Promise.race([closed, new Promise(resolve => setTimeout(() => resolve(null), 5000))])
+        if (result === null) { child.kill(); result = await Promise.race([closed, new Promise(resolve => setTimeout(() => resolve(null), 5000))]) }
+        if (result === null) { child.kill('SIGKILL'); throw new Error('Synthetic snapshot coordinator cleanup timed out') }
+        assert.equal(result.code, 0, 'Synthetic snapshot coordinator did not close cleanly')
+      },
+    }
+  } catch (error) {
+    clearTimeout(timer)
+    child.kill()
+    await Promise.race([closed, new Promise(resolve => setTimeout(resolve, 5000))])
+    throw error
+  }
 }
 try {
   assert.ok(!process.env.DOCKER_HOST && !process.env.DOCKER_CONTEXT, 'Docker environment overrides are forbidden')
@@ -194,20 +258,36 @@ try {
   assert.equal(buildPublicRoleDependenciesScript(parse(source,PUBLIC_ROLE_DEPENDENCIES_QUERY)),roleScript)
   record('real-catalog unsupported identifiers and global default privileges fail closed without truncating permissions')
 
+  sql(source, `CREATE TABLE public.backup_snapshot_probe(id integer PRIMARY KEY, marker text NOT NULL); INSERT INTO public.backup_snapshot_probe VALUES (1,'captured');`)
   const expected=inventory(source)
   const expectedPublic=inventory(source,'postgres',['public'])
+  const sourcePublicAccessSnapshot=publicSchemaAccess(source)
   report.expected={tableCount:expected.tables.length,publicTableCount:expected.tables.filter(t=>t.schema==='public').length,rows:expected.tables.reduce((s,t)=>s+t.count,0),catalogSha256:expected.catalogHash,publicCatalogSha256:expectedPublic.catalogHash}
   stage='backup'
   const started=performance.now()
   own(source)
-  stage='backup-public-dump'
-  const rawDump=docker(['exec',source.id,'pg_dump','-U','postgres','-d','postgres','--format=custom','--schema=public']).stdout
-  plaintextBuffers.push(rawDump)
-  stage='backup-public-role-dependencies'
-  const publicAclScript=buildPublicSchemaAclScript(publicSchemaAclEntries(source))
-  const rawRoles=Buffer.from(buildPublicRoleDependenciesScript(parse(source,PUBLIC_ROLE_DEPENDENCIES_QUERY)))
-  plaintextBuffers.push(rawRoles)
-  const sourceMetadata={projectRef:'synthetic-local',schema:'public',capturedAt:new Date().toISOString(),pgDumpVersion:report.dumpVersion,psqlVersion:docker(['exec',source.id,'psql','--version']).stdout.toString().trim(),serverVersion:report.postgresVersion,rolesDumpVersion:'public-role-dependencies-v1 (psql catalog query)',snapshot:'single pg_dump public-schema snapshot; scoped dependencies and ACL separate; controlled no-writer fixture'}
+  stage='backup-snapshot-coordinator'
+  const coordinator=await startSnapshotCoordinator(source)
+  const snapshot=coordinator.snapshot
+  let rawDump, rawRoles, publicAclScript
+  let expectedAfterDml
+  try {
+    stage='backup-concurrent-dml'
+    sql(source, `UPDATE public.backup_snapshot_probe SET marker='committed-after-export' WHERE id=1; INSERT INTO public.backup_snapshot_probe VALUES (2,'inserted-after-export');`)
+    expectedAfterDml=inventory(source)
+    stage='backup-public-dump'
+    rawDump=docker(['exec',source.id,'pg_dump','-U','postgres','-d','postgres','--format=custom','--schema=public',`--snapshot=${snapshot}`]).stdout
+    plaintextBuffers.push(rawDump)
+    stage='backup-public-role-dependencies'
+    const roleEvidence=parseSnapshotQuery(source,snapshot,PUBLIC_ROLE_DEPENDENCIES_QUERY)
+    rawRoles=Buffer.from(buildPublicRoleDependenciesScript(roleEvidence))
+    publicAclScript=buildPublicSchemaAclScript(publicSchemaAclEntries(source,snapshot))
+    plaintextBuffers.push(rawRoles)
+    const probe=parseSnapshotQuery(source,snapshot,`SELECT jsonb_agg(jsonb_build_array(id,marker) ORDER BY id) FROM public.backup_snapshot_probe;`)
+    assert.deepEqual(probe,[[1,'captured']],'Snapshot consumers must not see concurrent committed DML')
+  } finally { await coordinator.close() }
+  record('pg_dump, public-role dependency collector, and schema ACL collector imported one active exported snapshot; concurrent DML remained invisible to every consumer')
+  const sourceMetadata={projectRef:'synthetic-local',schema:'public',capturedAt:new Date().toISOString(),pgDumpVersion:report.dumpVersion,psqlVersion:docker(['exec',source.id,'psql','--version']).stdout.toString().trim(),serverVersion:report.postgresVersion,rolesDumpVersion:'public-role-dependencies-v1 (snapshot-imported psql catalog query)',snapshot:'Coordinated pg_export_snapshot imported by public dump and both catalog consumers'}
   const backupSet=join(dir,'encrypted-set')
   stage='backup-encryption'
   const encryptedResult=await createEncryptedBackupSet({destination:dir,setName:'encrypted-set',recipients,source:sourceMetadata,components:[
@@ -230,12 +310,42 @@ try {
   assert.equal(verified.result,'VERIFIED');assert.equal(restoreResult.result,'RESTORED_FROM_VERIFIED_SET')
   writeFileSync(join(dir,'backup-manifest.json'),JSON.stringify({result:verified.result,source:verified.source,components:verified.components.map(({name,file,bytes,sha256})=>({name,file,bytes,sha256})),coverage:verified.coverage},null,2))
   report.encryption={format:'stock-portfolio-backup-set',version:3,componentCipher:'AES-256-GCM',keyAndManifest:'age-v1-X25519',nonceBytes:12,tagBytes:16,authentication:'PASS before restore'}
-  report.archiveSnapshot='one pg_dump invocation; roles separate; controlled no-writer change window, not PITR'
+  report.archiveSnapshot='pg_export_snapshot coordinated across pg_dump and both catalog consumers; concurrent DML verified consistent; concurrent DDL/role/ACL changes remain prohibited; not PITR'
   report.roleTransform='no role DDL, attributes, memberships or credentials; named platform dependencies must already exist'
   report.coverage={publicSchema:'included and restored from the encrypted set',publicSchemaAcl:'included as a separate encrypted, bounded restore script',roles:'public dependency names only; existing target roles independently provisioned as synthetic prerequisites; global role definitions excluded',extensions:'pgcrypto is not included in the set; synthetic restore installs matching extension separately',auth:'excluded; disposable target received only auth.uid() plus two synthetic FK placeholder IDs; no auth credentials/session rows restored',storage:'excluded; no metadata or object bytes restored',migrationHistory:'excluded because fixture history is outside public'}
   record('AES-256-GCM component streams and age-wrapped data key/manifest authenticated; hashes verified before restore')
-  assertInventory(expected,inventory(source))
+  assertInventory(expectedAfterDml,inventory(source))
   record('backup SHA-256 and unchanged source data/catalog after dump')
+  stage='snapshot-ddl-and-role-acl-race'
+  const ddlCoordinator=await startSnapshotCoordinator(source)
+  try {
+    sql(source, `CREATE TABLE public.backup_snapshot_late_ddl(id integer); CREATE ROLE backup_snapshot_late NOLOGIN; GRANT SELECT ON public.backup_snapshot_probe TO backup_snapshot_late; GRANT USAGE ON SCHEMA public TO backup_snapshot_late;`)
+    const relation=snapshotQuery(source,ddlCoordinator.snapshot,`SELECT coalesce(to_regclass('public.backup_snapshot_late_ddl')::text,'__absent__');`)
+    const rolesAtSnapshot=parseSnapshotQuery(source,ddlCoordinator.snapshot,PUBLIC_ROLE_DEPENDENCIES_QUERY)
+    const aclAtSnapshot=publicSchemaAclEntries(source,ddlCoordinator.snapshot)
+    const ddlDumpResult=docker(['exec',source.id,'pg_dump','-U','postgres','-d','postgres','--format=custom','--schema=public',`--snapshot=${ddlCoordinator.snapshot}`],undefined,true)
+    let lateDdlInArchive=null
+    if(ddlDumpResult.status===0){
+      const archiveList=docker(['exec','-i',source.id,'pg_restore','--list'],ddlDumpResult.stdout).stdout.toString('utf8')
+      lateDdlInArchive=/backup_snapshot_late_ddl/.test(archiveList)
+      plaintextBuffers.push(ddlDumpResult.stdout)
+    }
+    report.ddlRace={
+      importedSnapshotRelationVisible:relation!=='__absent__',
+      importedRoleDependencyVisible:rolesAtSnapshot.roles.includes('backup_snapshot_late'),
+      importedSchemaGrantVisible:aclAtSnapshot.some(entry=>entry.grantee==='backup_snapshot_late'),
+      pgDumpExitStatus:ddlDumpResult.status,
+      lateDdlPresentInArchive:lateDdlInArchive,
+      operationalGate:'HOLD_CONCURRENT_DDL_AND_ROLE_ACL_CHANGES',
+    }
+    const timeoutSql=`BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '${ddlCoordinator.snapshot}'; SET LOCAL statement_timeout='100ms'; SELECT pg_sleep(1); COMMIT;`
+    const timeoutResult=sql(source,timeoutSql,'postgres',true)
+    assert.notEqual(timeoutResult.status,0,'Synthetic consumer timeout control must fail closed')
+  } finally { await ddlCoordinator.close() }
+  const invalidSnapshot=sql(source,"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '00000001-00000001-1'; SELECT 1; COMMIT;",'postgres',true)
+  assert.notEqual(invalidSnapshot.status,0,'Invalid snapshot import must fail closed')
+  report.snapshotFailure='PASS: invalid import and consumer timeout were rejected; coordinator was closed'
+  record('post-export DDL/role/ACL visibility and failure controls captured on PostgreSQL 17; concurrent catalog changes remain prohibited')
   stage='restore'
   const restoreStart=performance.now()
   stage='restore-role-preconditions'
@@ -250,7 +360,7 @@ try {
   stage='restore-archive-preflight'
   docker(['exec','-i',target.id,'pg_restore','--list'],dump)
   assert.equal(inventory(target,'postgres',['public']).tables.length,0,'Disposable public restore schema must be empty before archive application')
-  const sourcePublicAccess=publicSchemaAccess(source)
+  const sourcePublicAccess=sourcePublicAccessSnapshot
   assert.equal(sourcePublicAccess?.authenticatedUsage,true,'Source public schema must provide the verified application role baseline')
   sql(target,'DROP SCHEMA public CASCADE;')
   stage='restore-public-schema'
@@ -260,6 +370,9 @@ try {
   sql(target,aclRestoreScript.toString('utf8'))
   sql(target,'CREATE EXTENSION pgcrypto;')
   assert.equal(query(target,"SELECT extversion FROM pg_extension WHERE extname='pgcrypto';"),query(source,"SELECT extversion FROM pg_extension WHERE extname='pgcrypto';"),'Synthetic target extension version differs from the source')
+  assert.equal(query(target,"SELECT string_agg(marker,',' ORDER BY id) FROM public.backup_snapshot_probe;"),'captured','Restored dump must retain the pre-DML snapshot value')
+  assert.equal(query(target,'SELECT count(*) FROM public.backup_snapshot_probe WHERE id=2;'),'0','Restored dump must exclude rows committed after snapshot export')
+  record('synthetic restore proves the encrypted pg_dump archive has the same MVCC view as its role/ACL metadata')
   report.pgRestoreMs=Math.round(performance.now()-pgRestoreStart)
   report.restoreRolesAndPgRestoreMs=Math.round(performance.now()-restoreStart);report.backupAndRestoreMs=Math.round(performance.now()-started)
 
