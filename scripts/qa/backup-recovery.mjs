@@ -1,11 +1,12 @@
 // Synthetic-only recovery exercise. No DB URL, cloud target or existing container is accepted.
 import assert from 'node:assert/strict'
 import { spawnSync, execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { randomBytes, randomInt, randomUUID } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
-import { assertOwned, verifyManifest, assertInventory, sha256 } from './recovery-safety.mjs'
+import { assertOwned, assertInventory, sha256 } from './recovery-safety.mjs'
+import { sealSyntheticBackup, openSyntheticBackup, writeEncryptedSet, verifyEncryptedSet } from './encrypted-backup.mjs'
 import { hashPin, verifyPin } from '../../lib/pin.ts'
 
 assert.equal(process.versions.node.split('.')[0], '22', 'Use Node.js 22.x')
@@ -13,8 +14,10 @@ assert.deepEqual(process.argv.slice(2), ['--run-local-synthetic'], 'Explicit syn
 assert.ok(!existsSync('supabase/.temp/project-ref'), 'Cloud link metadata detected; stop')
 const run = randomUUID(), short = run.slice(0, 8)
 const dir = resolve('.local-artifacts/recovery', run)
-mkdirSync(dir, { recursive: true })
-const events = [], checks = [], resources = []
+mkdirSync(resolve('.local-artifacts/recovery'), { recursive: true })
+mkdirSync(dir) // exclusive new run directory; never reuse an earlier evidence set
+const events = [], checks = [], resources = [], plaintextBuffers = []
+const backupKey = randomBytes(32) // run-only; never serialized or passed to Docker
 let stage = 'preflight', failure, cleanupFailure
 const report = { run, createdResources: resources, syntheticOnly: true, scope: 'PostgreSQL recovery, mocked platform Auth/Storage; not live Supabase integration', checks, events }
 const record = name => { checks.push({ name, result: 'PASS' }); console.log('PASS ' + name) }
@@ -79,7 +82,7 @@ try {
   for (const kind of ['container','volume','network']) before[kind] = ids(kind)
   const image = json(['image','inspect','postgres:17'])[0]
   report.image = { id: image.Id, digests: image.RepoDigests }
-  report.qaFiles=['scripts/qa/backup-recovery.mjs','scripts/qa/recovery-safety.mjs','scripts/qa/recovery-platform-fixture.sql','scripts/test-recovery.mjs'].map(file=>({file,sha256:sha256(readFileSync(file))}))
+  report.qaFiles=['scripts/qa/backup-recovery.mjs','scripts/qa/recovery-safety.mjs','scripts/qa/recovery-platform-fixture.sql','scripts/test-recovery.mjs','scripts/qa/encrypted-backup.mjs','scripts/test-encrypted-backup.mjs'].map(file=>({file,sha256:sha256(readFileSync(file))}))
   report.sourceCommit = execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()
   report.sqlFiles = bootstrap.map(file => ({file:'supabase/'+file,sha256:sha256(readFileSync('supabase/'+file))}))
   for (const side of ['source','target']) {
@@ -95,7 +98,7 @@ try {
     assert.equal(docker(['exec',id,'stat','-f','-c','%T','/var/lib/postgresql/data']).stdout.toString().trim(),'tmpfs','Data must be in actual tmpfs')
   }
   const [source,target] = resources
-  report.isolation = resources.map(r => { const d=own(r);return { ...r, network:d.HostConfig.NetworkMode,ports:d.HostConfig.PortBindings,mounts:d.Mounts.map(m=>({type:m.Type,destination:m.Destination})),ownershipVerified:true } })
+  report.isolation = resources.map(r => { const d=own(r);return { ...r, network:d.HostConfig.NetworkMode,readOnlyRootfs:d.HostConfig.ReadonlyRootfs,ports:d.HostConfig.PortBindings,mounts:d.Mounts.map(m=>({type:m.Type,destination:m.Destination})),ownershipVerified:true } })
   report.postgresVersion=query(resources[0],'SHOW server_version;')
   report.dumpVersion=docker(['exec',resources[0].id,'pg_dump','--version']).stdout.toString().trim()
   record('new distinct source/target containers, no network/ports/persistent volumes')
@@ -120,13 +123,26 @@ try {
   stage='backup'
   const started=performance.now()
   own(source)
-  const dump=docker(['exec',source.id,'pg_dump','-U','postgres','-d','postgres','--format=custom']).stdout
-  const rolesRaw=docker(['exec',source.id,'pg_dumpall','-U','postgres','--roles-only','--no-role-passwords']).stdout.toString()
-  const roles=rolesRaw.replace(/^CREATE ROLE postgres;\r?\n/gm,'').replace(/^ALTER ROLE postgres .*;\r?\n/gm,'')
-  writeFileSync(join(dir,'database.dump'),dump);writeFileSync(join(dir,'roles.sql'),roles)
-  const manifest={run,syntheticOnly:true,sourceCommit:report.sourceCommit,archiveSnapshot:'one pg_dump invocation; roles separate; controlled no-writer change window, not PITR',roleTransform:'omit only CREATE/ALTER pre-existing postgres; --no-role-passwords',artifacts:['database.dump','roles.sql'].map(name=>{const b=readFileSync(join(dir,name));return{name,bytes:b.length,sha256:sha256(b)}}),expected:report.expected,coverage:{auth:'fixture rows only; no GoTrue login/session recovery claim',storage:'fixture metadata only; object bytes not in database dump',history:'synthetic history entry only'},sqlFiles:report.sqlFiles}
+  const rawDump=docker(['exec',source.id,'pg_dump','-U','postgres','-d','postgres','--format=custom']).stdout
+  plaintextBuffers.push(rawDump)
+  const rolesRaw=docker(['exec',source.id,'pg_dumpall','-U','postgres','--roles-only','--no-role-passwords']).stdout
+  plaintextBuffers.push(rolesRaw)
+  const rawRoles=Buffer.from(rolesRaw.toString().replace(/^CREATE ROLE postgres;\r?\n/gm,'').replace(/^ALTER ROLE postgres .*;\r?\n/gm,''))
+  plaintextBuffers.push(rawRoles)
+  const backupContext={run,sourceCommit:report.sourceCommit,sourceFiles:[...report.qaFiles,...report.sqlFiles]}
+  const envelope=sealSyntheticBackup({'database.dump':rawDump,'roles.sql':rawRoles},backupContext,backupKey)
+  const manifest=writeEncryptedSet(dir,envelope,backupContext)
   writeFileSync(join(dir,'backup-manifest.json'),JSON.stringify(manifest,null,2))
-  verifyManifest(dir,manifest)
+  rawDump.fill(0);rawRoles.fill(0);rolesRaw.fill(0)
+  // Only authenticated, hash-verified plaintext from the persisted envelope reaches Restore.
+  const recovered=verifyEncryptedSet(dir,JSON.parse(readFileSync(join(dir,'backup-manifest.json'),'utf8')),backupKey,backupContext)
+  const dump=recovered['database.dump'],roles=recovered['roles.sql']
+  plaintextBuffers.push(dump,roles)
+  report.encryption={format:manifest.format,version:1,algorithm:'AES-256-GCM',nonceBytes:12,tagBytes:16,authentication:'PASS before restore'}
+  report.archiveSnapshot='one pg_dump invocation; roles separate; controlled no-writer change window, not PITR'
+  report.roleTransform='omit only CREATE/ALTER pre-existing postgres; --no-role-passwords'
+  report.coverage={auth:'fixture rows only; no GoTrue login/session recovery claim',storage:'fixture metadata only; object bytes not in database dump',history:'synthetic history entry only'}
+  record('AES-256-GCM persisted encrypted set authenticated; source and component hashes verified before restore')
   assertInventory(expected,inventory(source))
   record('backup SHA-256 and unchanged source data/catalog after dump')
   stage='restore'
@@ -138,8 +154,8 @@ try {
   report.pgRestoreMs=Math.round(performance.now()-pgRestoreStart)
   report.restoreRolesAndPgRestoreMs=Math.round(performance.now()-restoreStart);report.backupAndRestoreMs=Math.round(performance.now()-started)
   const restored=inventory(target)
-  writeFileSync(join(dir,'inventory-source.json'),JSON.stringify(expected,null,2))
-  writeFileSync(join(dir,'inventory-restored.json'),JSON.stringify(restored,null,2))
+  writeFileSync(join(dir,'inventory-source.json'),JSON.stringify({tables:expected.tables,catalogHash:expected.catalogHash},null,2))
+  writeFileSync(join(dir,'inventory-restored.json'),JSON.stringify({tables:restored.tables,catalogHash:restored.catalogHash},null,2))
   assertInventory(expected,restored)
   record('all table row counts/digests, RLS/policies, ACL, constraints, functions, indexes/triggers, extensions and fixture migration history match')
   stage='post-restore-security'
@@ -173,9 +189,13 @@ try {
   assert.equal(query(target,scoped(A,'SELECT count(*) FROM public.user_pin_security')),'0','PIN RLS must expose zero rows, including to the owner')
   record('real PIN scrypt hash/salt/lockout round-trip; wrong PIN/pepper, missing pepper and client access rejected')
   stage='negative-backups'
-  const original=dump[30]; const damaged=Buffer.from(dump);damaged[30]=original^255
-  writeFileSync(join(dir,'database.dump'),damaged);assert.throws(()=>verifyManifest(dir,manifest));writeFileSync(join(dir,'database.dump'),dump)
-  verifyManifest(dir,manifest)
+  const damaged=Buffer.from(envelope);damaged[damaged.length-1]^=255
+  assert.throws(()=>openSyntheticBackup(damaged,backupKey,backupContext))
+  const wrongBackupKey=randomBytes(32)
+  try { assert.throws(()=>openSyntheticBackup(envelope,wrongBackupKey,backupContext)) } finally { wrongBackupKey.fill(0) }
+  const changedManifest=structuredClone(manifest);changedManifest.artifacts[0].sha256='0'.repeat(64)
+  assert.throws(()=>verifyEncryptedSet(dir,changedManifest,backupKey,backupContext))
+  record('wrong outer encryption key, ciphertext tampering and changed manifest rejected')
   const truncated=docker(['exec','-i',target.id,'pg_restore','--list'],Buffer.from('corrupt synthetic archive'),true);assert.notEqual(truncated.status,0)
   query(target,'CREATE DATABASE incomplete;')
   own(target);docker(['exec','-i',target.id,'pg_restore','-U','postgres','-d','incomplete','--schema-only','--exit-on-error','--single-transaction'],dump)
@@ -185,11 +205,23 @@ try {
   query(target,'ALTER TABLE public.holdings DISABLE ROW LEVEL SECURITY;','incomplete')
   const altered=inventory(target,'incomplete')
   assert.notEqual(altered.catalogHash,expected.catalogHash,'RLS mutation must be detected')
-  record('corrupt hash, invalid archive, incomplete restore and disabled-RLS catalog detected')
+  const beforeAcl=altered.catalogHash
+  query(target,'REVOKE SELECT ON public.holdings FROM anon;','incomplete')
+  assert.notEqual(inventory(target,'incomplete').catalogHash,beforeAcl,'ACL-only change must be detected')
+  record('invalid archive, schema-only incomplete restore, disabled RLS and changed ACL detected')
+  for (const file of backupContext.sourceFiles) assert.equal(sha256(readFileSync(file.file)),file.sha256,'Source changed during run')
+  record('source fingerprints unchanged through completed restore/security verification')
+  assert.deepEqual(readdirSync(dir).sort(),['backup.spenc','backup-manifest.json','inventory-source.json','inventory-restored.json'].sort(),'Unexpected persistent output')
+  for (const name of ['inventory-source.json','inventory-restored.json']) assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(dir,name),'utf8'))).sort(),['catalogHash','tables'])
+  report.encryption.plaintextOnDisk=false
+  record('persistent output allowlist: ciphertext and sanitized metadata only; no SQL dump/roles export')
   report.result='PASS'
 } catch(error) {
   failure=error;report.result='FAIL';report.failure={stage,message:error.message.split('\n')[0].slice(0,240)}
 } finally {
+  backupKey.fill(0)
+  plaintextBuffers.forEach(b=>b.fill(0))
+  report.keyDisposition='run-only key discarded; retained synthetic archive cannot be recovered later'
   delete process.env.PIN_PEPPER
   stage='cleanup'
   for (const r of [...resources].reverse()) {
@@ -205,7 +237,7 @@ try {
   } catch(error) { cleanupFailure=error;report.cleanup='FAIL';events.push({stage:'post-cleanup',result:'FAIL',reason:error.message}) }
   if(cleanupFailure)report.result='FAIL'
   writeFileSync(join(dir,'results.json'),JSON.stringify(report,null,2))
-  const names=['database.dump','roles.sql','backup-manifest.json','results.json'].filter(name=>existsSync(join(dir,name)))
+  const names=['backup.spenc','backup-manifest.json','results.json'].filter(name=>existsSync(join(dir,name)))
   writeFileSync(join(dir,'evidence-manifest.json'),JSON.stringify({run,files:names.map(name=>({name,sha256:sha256(readFileSync(join(dir,name)))}))},null,2))
 }
 console.log(JSON.stringify({result:report.result,checks:checks.length,pgRestoreMs:report.pgRestoreMs,restoreRolesAndPgRestoreMs:report.restoreRolesAndPgRestoreMs,cleanup:report.cleanup,evidence:dir,failure:report.failure}))
