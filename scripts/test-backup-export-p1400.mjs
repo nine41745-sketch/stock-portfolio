@@ -6,6 +6,7 @@ import { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import { generateIdentity, identityToRecipient } from 'age-encryption'
 import { createEncryptedBackupSet, restoreEncryptedBackupSet, verifyEncryptedBackupSet } from './backup/encrypted-set.mjs'
+import { exportPostgresBackupSet } from './backup/export.mjs'
 import { buildPublicRoleDependenciesScript } from './backup/public-role-dependencies.mjs'
 import { buildPostgresDumpArguments, buildPostgresRolesArguments, buildPublicSchemaAclScript, createPostgresBackupStreams } from './backup/postgres-streams.mjs'
 
@@ -75,6 +76,111 @@ test('streams an age-encrypted complete set and restores through the recovery re
   assert.equal(outputs.get('database-public').result().subarray(0, 26).toString(), 'SYNTHETIC-DATABASE-HEADER\n')
   assert.equal(outputs.get('public-role-dependencies').result().toString(), 'SYNTHETIC-ROLE;\n')
   assert.match(outputs.get('public-schema-acl').result().toString(), /SCHEMA public/)
+})
+
+test('does not publish a fully encrypted set when snapshot coordinator shutdown fails', async t => {
+  const f = await fixture()
+  t.after(() => rm(f.root, { recursive: true, force: true }))
+  const previousSet = join(f.root, 'previous-backup-set')
+  await mkdir(previousSet)
+  await writeFile(join(previousSet, 'preserve.marker'), 'existing synthetic artifact')
+  let closeCalls = 0
+  const streams = {
+    source: f.source,
+    components: f.components,
+    close: async () => {
+      closeCalls += 1
+      const entries = await readdir(f.root)
+      const stage = entries.find(name => name.startsWith('.coordinator-shutdown-failed.') && name.endsWith('.partial'))
+      assert.ok(stage, 'encrypted set must still be staged when coordinator shutdown starts')
+      const stagedFiles = await readdir(join(f.root, stage))
+      assert.deepEqual(stagedFiles.sort(), ['data-key.age', 'database-public.dump.aes256gcm', 'manifest.json.age', 'public-role-dependencies.sql.aes256gcm', 'public-schema-acl.sql.aes256gcm'])
+      for (const name of stagedFiles) {
+        const bytes = await readFile(join(f.root, stage, name))
+        assert.equal(bytes.includes(Buffer.from('SYNTHETIC-DATABASE-HEADER')), false)
+        assert.equal(bytes.includes(Buffer.from('SYNTHETIC-ROLE')), false)
+      }
+      assert.equal(await stat(target).then(() => true, () => false), false, 'final path must stay absent until shutdown succeeds')
+      throw new Error('synthetic coordinator shutdown failure')
+    },
+  }
+  const createStreams = async () => streams
+  const target = join(f.root, 'coordinator-shutdown-failed')
+
+  await assert.rejects(
+    exportPostgresBackupSet({ destination: f.root, setName: 'coordinator-shutdown-failed', recipients: f.recipients, connection: {} }, { createStreams }),
+    error => {
+      assert.match(error.message, /snapshot coordinator shutdown failed/i)
+      return true
+    },
+  )
+
+  assert.equal(closeCalls, 1, 'coordinator shutdown must be attempted once before publication')
+  assert.equal(await stat(target).then(() => true, () => false), false, 'completed encryption must not publish when coordinator shutdown fails')
+  assert.deepEqual((await readdir(f.root)).sort(), ['previous-backup-set'], 'only owned encrypted staging is removed after shutdown failure')
+  assert.equal(await readFile(join(previousSet, 'preserve.marker'), 'utf8'), 'existing synthetic artifact', 'pre-existing backup artifacts must remain untouched')
+})
+
+test('publishes only after synthetic coordinator shutdown succeeds', async t => {
+  const f = await fixture()
+  t.after(() => rm(f.root, { recursive: true, force: true }))
+  const target = join(f.root, 'coordinator-shutdown-success')
+  let closed = false
+  const streams = {
+    source: f.source,
+    components: f.components,
+    close: async () => {
+      const entries = await readdir(f.root)
+      const stage = entries.find(name => name.startsWith('.coordinator-shutdown-success.') && name.endsWith('.partial'))
+      assert.ok(stage, 'encrypted artifacts must remain in staging until shutdown')
+      const stagedFiles = await readdir(join(f.root, stage))
+      assert.equal(stagedFiles.length, 5, 'all encrypted components and manifest must be complete before shutdown')
+      for (const name of stagedFiles) {
+        const bytes = await readFile(join(f.root, stage, name))
+        assert.equal(bytes.includes(Buffer.from('SYNTHETIC-DATABASE-HEADER')), false)
+        assert.equal(bytes.includes(Buffer.from('SYNTHETIC-ROLE')), false)
+      }
+      assert.equal(await stat(target).then(() => true, () => false), false, 'target must remain unpublished during shutdown')
+      closed = true
+    },
+  }
+
+  const result = await exportPostgresBackupSet(
+    { destination: f.root, setName: 'coordinator-shutdown-success', recipients: f.recipients, connection: {} },
+    { createStreams: async () => streams },
+  )
+
+  assert.equal(closed, true)
+  assert.equal(result.setPath, target)
+  assert.equal(await stat(target).then(() => true, () => false), true, 'complete encrypted set should publish after shutdown')
+})
+
+test('aggregates encryption and coordinator shutdown failures without publishing', async t => {
+  const f = await fixture()
+  t.after(() => rm(f.root, { recursive: true, force: true }))
+  const brokenComponents = f.components.map((component, index) => index === 0
+    ? { ...component, stream: Readable.from((async function* () { throw new Error('synthetic encryption source failure') })()) }
+    : component)
+  const streams = {
+    source: f.source,
+    components: brokenComponents,
+    close: async () => { throw new Error('synthetic coordinator shutdown failure') },
+  }
+  const target = join(f.root, 'dual-failure')
+
+  await assert.rejects(
+    exportPostgresBackupSet({ destination: f.root, setName: 'dual-failure', recipients: f.recipients, connection: {} }, { createStreams: async () => streams }),
+    error => {
+      assert.ok(error instanceof AggregateError)
+      assert.equal(error.errors.length, 2)
+      assert.match(error.errors[0].message, /AES-256-GCM component encryption failed/i)
+      assert.match(error.errors[1].message, /snapshot coordinator shutdown failed/i)
+      return true
+    },
+  )
+
+  assert.equal(await stat(target).then(() => true, () => false), false)
+  assert.deepEqual((await readdir(f.root)).sort(), [], 'staging is removed while both primary and shutdown failures remain observable')
 })
 
 test('rejects an identity that is not one of the declared recovery recipients', async t => {
@@ -502,8 +608,20 @@ if (tool === 'psql' && !args.includes('--command')) {
   assert.doesNotMatch(JSON.stringify(streams.source), /00000001-00000002-1/)
   const setPath = join(root, 'coordinated-set')
   try {
-    await createEncryptedBackupSet({ destination: root, setName: 'coordinated-set', recipients, source: streams.source, components: streams.components })
-    assert.equal(await stat(lifecyclePath).then(() => true, () => false), false, 'coordinator must remain open until every encrypted consumer completes')
+    await createEncryptedBackupSet({
+      destination: root,
+      setName: 'coordinated-set',
+      recipients,
+      source: streams.source,
+      components: streams.components,
+      beforePublish: async () => {
+        assert.equal(await stat(lifecyclePath).then(() => true, () => false), false, 'coordinator must remain open until every encrypted consumer completes')
+        await streams.close()
+        assert.equal(await readFile(lifecyclePath, 'utf8'), 'closed', 'coordinator shutdown must be confirmed before publication')
+        assert.equal(await stat(setPath).then(() => true, () => false), false, 'final set must not exist before shutdown confirmation')
+      },
+    })
+    assert.equal(await readFile(lifecyclePath, 'utf8'), 'closed')
     const dumpCall = calls.find(call => call.executable === paths.pgDumpPath && call.args[0] !== '--version')
     assert.ok(dumpCall.args.includes('--snapshot=00000001-00000002-1'))
     const queryCalls = calls.filter(call => call.executable === paths.psqlPath && call.args.includes('--command'))

@@ -9,21 +9,44 @@ import { createPostgresBackupStreams } from './postgres-streams.mjs'
  * provided by its caller. Production execution requires a separately approved
  * operational wrapper and verified local custody for those inputs.
  */
-export async function exportPostgresBackupSet({ destination, setName, recipients, connection }) {
+export async function exportPostgresBackupSet({ destination, setName, recipients, connection }, { createStreams = createPostgresBackupStreams } = {}) {
   assert.ok(typeof destination === 'string' && destination.length > 0)
   assert.ok(typeof setName === 'string' && setName.length > 0)
-  const streams = await createPostgresBackupStreams(connection)
+  assert.ok(typeof createStreams === 'function', 'PostgreSQL backup stream factory must be callable')
+  const streams = await createStreams(connection)
   let result
   let exportError
+  let shutdownError
+  let shutdownAttempted = false
+  const closeCoordinator = async () => {
+    if (shutdownAttempted) {
+      if (shutdownError) throw shutdownError
+      return
+    }
+    shutdownAttempted = true
+    try { await streams.close() }
+    catch (error) {
+      shutdownError = new Error('PostgreSQL snapshot coordinator shutdown failed', { cause: error })
+      throw shutdownError
+    }
+  }
   try {
-    result = await createEncryptedBackupSet({ destination, setName, recipients, source: streams.source, components: streams.components })
+    result = await createEncryptedBackupSet({
+      destination,
+      setName,
+      recipients,
+      source: streams.source,
+      components: streams.components,
+      beforePublish: closeCoordinator,
+    })
   } catch (error) {
     exportError = error
   }
-  let shutdownError
-  try { await streams.close() }
-  catch { shutdownError = new Error('PostgreSQL snapshot coordinator shutdown failed') }
-  if (exportError && shutdownError) {
+  if (!shutdownAttempted) {
+    try { await closeCoordinator() }
+    catch { /* Reported below with the export failure, if any. */ }
+  }
+  if (exportError && shutdownError && exportError !== shutdownError) {
     throw new AggregateError([exportError, shutdownError], 'Encrypted PostgreSQL export failed and snapshot coordinator shutdown also failed')
   }
   if (exportError) throw exportError

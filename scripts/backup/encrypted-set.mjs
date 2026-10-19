@@ -339,11 +339,12 @@ async function safeCleanupStage(stage, createdFiles) {
   await rmdir(stage)
 }
 
-export async function createEncryptedBackupSet({ destination, setName, recipients, source, components, createdAt = new Date().toISOString(), timeoutMs = 4 * 60 * 60 * 1000 }) {
+export async function createEncryptedBackupSet({ destination, setName, recipients, source, components, createdAt = new Date().toISOString(), timeoutMs = 4 * 60 * 60 * 1000, beforePublish = async () => {} }) {
   validateSetName(setName)
   validateRecipients(recipients)
   validateSource(source)
   const names = validateComponents(components)
+  assert.ok(typeof beforePublish === 'function', 'Backup publication guard must be callable')
   assert.ok(Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= MAX_STREAM_DURATION_MS, 'Backup stream deadline is outside the supported bound')
   source = Object.freeze({ ...source })
   assert.ok(Number.isFinite(Date.parse(createdAt)) && createdAt.length <= 40, 'Invalid manifest timestamp')
@@ -385,10 +386,14 @@ export async function createEncryptedBackupSet({ destination, setName, recipient
     assert.ok(manifestBytes.length <= MAX_MANIFEST_BYTES, 'Manifest exceeds the configured bound')
     try { await writeAgeStream(Readable.from([manifestBytes]), recipients, manifestPath, timeoutMs) }
     finally { manifestBytes.fill(0) }
+    await beforePublish()
     await rename(stage, target)
     return { setPath: target, componentCount: componentRecords.length, coverage: manifest.coverage }
   } catch (error) {
-    await safeCleanupStage(stage, createdFiles)
+    try { await safeCleanupStage(stage, createdFiles) }
+    catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], 'Encrypted backup creation failed and owned staging cleanup also failed')
+    }
     throw error
   } finally { dataKey.fill(0) }
 }
