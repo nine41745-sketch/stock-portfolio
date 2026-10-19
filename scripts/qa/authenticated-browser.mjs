@@ -7,6 +7,7 @@ import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, readHttpFailureE
 import { markQaStageSync, recordQaCheckSync, recordInterruptedRunSync } from './qa-runner-evidence.mjs'
 import { getVerifiedLocalUserAccessToken } from './local-user-auth-token.mjs'
 import { createHttpEvidenceLifecycle, installDailyAnalysisBodyObserver } from './http-response-evidence.mjs'
+import { completeEmptyPortfolioCreationBarrier, EMPTY_PORTFOLIO_PAGE_PATHS, submitFirstPortfolioRequest, waitForEmptyPortfolioPageEffect } from './portfolio-creation-lifecycle.mjs'
 import { createRequestCancellationEvidence, installRequestCancellationObserver, flushRequestCancellationEvidence, requestFailureReason, waitForOwnedRequestLifecycle } from './request-cancellation-evidence.mjs'
 const base = new URL(process.env.QA_BASE_URL ?? '')
 const local = h => ['localhost', '127.0.0.1', '::1'].includes(h)
@@ -119,7 +120,9 @@ async function readNetworkGuardAttempts(){
  catch{return 0}
 }
 function startPortfolioInitialization(account){
- const initialization={account,state:'empty',emptyDatabaseCount:0,emptyDatabaseControlSequence:null,emptyControls:[],creationStartedSequence:null,createdControlSequence:null}
+ const initialization={account,state:'empty',emptyDatabaseCount:0,emptyDatabaseControlSequence:null,emptyControls:[],pageEffectControls:[],
+  creationBarrierVerified:false,creationBarrierSequence:null,creationStageTransitionSequence:null,creationStartedSequence:null,
+  creationPost:null,createdControlSequence:null}
  portfolioLifecycle.accounts.push(initialization)
  return initialization
 }
@@ -132,10 +135,17 @@ function recordPortfolioRequiredControl(initialization,path,response,payload,req
  initialization.emptyControls.push({path,requestSequence,controlSequence:control.sequence})
 }
 function recordFirstPortfolioCreated(initialization,response,rows){
+ assert(initialization.creationPost?.correlationId,'First portfolio must have a directly recorded APIRequestContext POST')
+ assert.equal(initialization.creationPost.status,200,'First portfolio POST response must be recorded as successful')
+ assert.equal(initialization.creationPost.responseBodyStatus,'json','First portfolio POST response body must be complete JSON')
+ assert.equal(initialization.creationPost.startSequence,initialization.creationStartedSequence,'POST start evidence must match the creation boundary')
+ assert(initialization.creationPost.invocationSequence>initialization.creationPost.startSequence,'Direct APIRequestContext invocation must follow the start boundary')
+ assert(initialization.creationPost.completionSequence>initialization.creationStartedSequence,'POST response must complete after its start boundary')
  assert.equal(response.status(),200,'Authenticated POST must explicitly create the first portfolio')
  assert.equal(rows.length,1,'Explicit first creation must produce exactly one portfolio')
  assert.equal(rows.filter(row=>row.is_default).length,1,'Exactly one synthetic default portfolio must exist after creation')
- const control=recordLifecycleControl({kind:'first-portfolio-created-control',account:initialization.account,status:200,portfolioCount:rows.length,defaultCount:rows.filter(row=>row.is_default).length})
+ const control=recordLifecycleControl({kind:'first-portfolio-created-control',account:initialization.account,status:200,portfolioCount:rows.length,
+  defaultCount:rows.filter(row=>row.is_default).length,correlationId:initialization.creationPost.correlationId})
  initialization.createdControlSequence=control.sequence
  initialization.state='created'
 }
@@ -175,7 +185,11 @@ try {
   scope:{pathname:'/api/smart-dca',stage:'risk-dashboard',epoch:activeAuthAttempt,portfolioId:verifiedPortfolioScopes.get(activeAccount),documentPath:'/risk',expectedFrame:page.mainFrame()}})
  const navigate=async url=>{await flushCancellation();return httpEvidence.beforeNavigation(()=>page.goto(url))}
  const reload=async()=>{await flushCancellation();return httpEvidence.beforeNavigation(()=>page.reload())}
- page.on('framenavigated',frame=>{if(frame===page.mainFrame())cancellationEvidence.navigationObserved(new URL(frame.url()).pathname,qaStage)})
+ let documentNavigationId=0
+ page.on('framenavigated',frame=>{if(frame===page.mainFrame()){
+  documentNavigationId++
+  cancellationEvidence.navigationObserved(new URL(frame.url()).pathname,qaStage)
+ }})
  page.on('console',message=>{
   if(message.type()==='error'){
    const status=message.text().match(/status of (\d{3})/)
@@ -186,8 +200,12 @@ try {
  })
  page.on('pageerror',()=>browserRuntimeErrors.push('page-error'))
  page.on('request',request=>{
+  const requestUrl=new URL(request.url())
   requestContexts.set(request,{
    sequence:nextLifecycleSequence(),
+   pathname:requestUrl.pathname,
+   documentPath:new URL(page.url()).pathname,
+   documentNavigationId,
   stage:qaStage,
   authReady,
   pinReady,
@@ -201,8 +219,8 @@ try {
     request.url().includes('/api/fundamentals')?mode:
     request.url().includes('/api/watchlist')?watchlistMode:undefined,
   })
-  if(new URL(request.url()).pathname.startsWith('/api/')){
-   httpEvidence.requestStarted(request,{method:request.method(),pathname:new URL(request.url()).pathname,stage:qaStage,correlationId:request.headers()['x-stock-qa-request-id']})
+  if(requestUrl.pathname.startsWith('/api/')){
+   httpEvidence.requestStarted(request,{method:request.method(),pathname:requestUrl.pathname,stage:qaStage,correlationId:request.headers()['x-stock-qa-request-id']})
    cancellationEvidence.requestStarted(request,{stage:qaStage,epoch:activeAuthAttempt,portfolioId:verifiedPortfolioScopes.get(activeAccount),documentPath:new URL(page.url()).pathname,expectedFrame:page.mainFrame()})
   }
  })
@@ -233,6 +251,23 @@ try {
    httpEvidence.trackResponse(task)
   }
  })
+ const waitForPortfolioPageEffect=async(initialization,documentPath,minimumDocumentNavigationId)=>{
+  const trace=await waitForEmptyPortfolioPageEffect({page,requestContextFor:request=>requestContexts.get(request),
+   completedFailureFor:request=>{
+    const sequence=requestContexts.get(request)?.sequence
+    return browserHttpFailures.find(failure=>failure.requestSequence===sequence)
+   },
+   drain:timeoutMs=>drainEvidence(timeoutMs),account:initialization.account,documentPath,minimumDocumentNavigationId,
+   stage:qaStage,timeoutMs:5_000})
+  const control=recordLifecycleControl({kind:'empty-portfolio-negative-control',account:trace.account,path:trace.path,
+   status:trace.status,code:trace.failureCode,requestSequence:trace.requestSequence,responseSequence:trace.responseSequence,
+   correlationId:trace.correlationId,source:'browser-page-effect',documentPath:trace.documentPath,
+   documentNavigationId:trace.documentNavigationId})
+  const recorded={...trace,controlSequence:control.sequence}
+  initialization.emptyControls.push({path:trace.path,requestSequence:trace.requestSequence,controlSequence:control.sequence})
+  initialization.pageEffectControls.push(recorded)
+  return recorded
+ }
  await context.route('**/*',async route=>{
   const u=new URL(route.request().url())
   if(!local(u.hostname)||(u.port!==process.env.QA_APP_PORT&&u.origin!==process.env.NEXT_PUBLIC_SUPABASE_URL)){outside++;await route.abort('blockedbyclient');return}
@@ -317,21 +352,35 @@ try {
    recordPortfolioRequiredControl(accountAInitialization,path,response,payload,requestSequence)
    assert.equal((await syntheticPortfolioCount(qaUser.id)).length,0,`${path} GET must not create a portfolio`)
   }
-  for(const path of ['/dashboard','/transactions','/performance']){
+  for(const path of EMPTY_PORTFOLIO_PAGE_PATHS){
+   const pageEffect=waitForPortfolioPageEffect(accountAInitialization,path,documentNavigationId+1)
    await navigate(new URL(path,base).href)
+   await pageEffect
    if(path==='/dashboard'||path==='/transactions') await page.getByRole('heading',{name:'ยังไม่มีพอร์ตสำหรับบัญชีนี้'}).waitFor()
    assert.equal((await syntheticPortfolioCount(qaUser.id)).length,0,`Opening read-only ${path} must not create a portfolio`)
   }
   pass('Fresh Account A remains empty through portfolio, performance, transaction GETs and read-only page loads')
+  const accountAQuietEvidence=httpEvidence.summary()
+  assert.equal(accountAQuietEvidence.pendingRequests,0,'Account A page-effect requests must complete before first portfolio creation')
+  assert.equal(accountAQuietEvidence.pendingResponses,0,'Account A response bodies must complete before first portfolio creation')
+  assert.equal(accountAQuietEvidence.collectionErrors,0,'Account A HTTP evidence must be complete before first portfolio creation')
+  completeEmptyPortfolioCreationBarrier({initialization:accountAInitialization,account:'A',
+   pageEffectControls:accountAInitialization.pageEffectControls,recordControl:recordLifecycleControl})
+  pass('Account A document-scoped freshness responses completed before the first-portfolio boundary')
+  accountAInitialization.creationStageTransitionSequence=recordLifecycleControl({kind:'portfolio-creation-stage-transition',account:'A',
+   fromStage:'account-a-empty-portfolio-initialization',toStage:'account-a-first-portfolio-create',
+   barrierSequence:accountAInitialization.creationBarrierSequence}).sequence
   setStage('account-a-first-portfolio-create')
-  await drainEvidence()
-  accountAInitialization.creationStartedSequence=recordLifecycleControl({kind:'first-portfolio-creation-start',account:'A'}).sequence
-  const accountAFirstPortfolioResponse=await requestPost(page.request,new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio A1'}})
+  const accountAFirstPortfolioCreate=await submitFirstPortfolioRequest({requestContext:page.request,
+   url:new URL('/api/portfolios',base).href,data:{name:'Synthetic QA Portfolio A1'},account:'A',
+   initialization:accountAInitialization,recordControl:recordLifecycleControl})
+  const accountAFirstPortfolioResponse=accountAFirstPortfolioCreate.response
   assert.equal(accountAFirstPortfolioResponse.status(),200)
-  const accountAFirstPortfolio=(await accountAFirstPortfolioResponse.json()).portfolio
+  const accountAFirstPortfolio=accountAFirstPortfolioCreate.payload.portfolio
   verifiedPortfolioScopes.set('A',accountAFirstPortfolio.id)
   const accountAAfterCreate=await syntheticPortfolioCount(qaUser.id)
   recordFirstPortfolioCreated(accountAInitialization,accountAFirstPortfolioResponse,accountAAfterCreate)
+  pass('Account A APIRequestContext portfolio POST has correlated start and complete response evidence')
   const accountAList=await requestGet(page.request,new URL('/api/portfolios',base).href)
   assert.equal(accountAList.status(),200)
   assert.equal((await accountAList.json()).active_portfolio_id,accountAFirstPortfolio.id)
@@ -727,21 +776,35 @@ try {
    recordPortfolioRequiredControl(accountBInitialization,path,response,payload,requestSequence)
    assert.equal((await syntheticPortfolioCount(otherUser.id)).length,0,`${path} GET must not create a portfolio for Account B`)
   }
-  for(const path of ['/dashboard','/transactions','/performance']){
+  for(const path of EMPTY_PORTFOLIO_PAGE_PATHS){
+   const pageEffect=waitForPortfolioPageEffect(accountBInitialization,path,documentNavigationId+1)
    await navigate(new URL(path,base).href)
+   await pageEffect
    if(path==='/dashboard'||path==='/transactions') await page.getByRole('heading',{name:'ยังไม่มีพอร์ตสำหรับบัญชีนี้'}).waitFor()
    assert.equal((await syntheticPortfolioCount(otherUser.id)).length,0,`Opening read-only ${path} must not create an Account B portfolio`)
   }
   pass('Fresh Account B remains empty through read-only APIs and pages after its own Auth/PIN setup')
+  const accountBQuietEvidence=httpEvidence.summary()
+  assert.equal(accountBQuietEvidence.pendingRequests,0,'Account B page-effect requests must complete before first portfolio creation')
+  assert.equal(accountBQuietEvidence.pendingResponses,0,'Account B response bodies must complete before first portfolio creation')
+  assert.equal(accountBQuietEvidence.collectionErrors,0,'Account B HTTP evidence must be complete before first portfolio creation')
+  completeEmptyPortfolioCreationBarrier({initialization:accountBInitialization,account:'B',
+   pageEffectControls:accountBInitialization.pageEffectControls,recordControl:recordLifecycleControl})
+  pass('Account B document-scoped freshness responses completed before the first-portfolio boundary')
+  accountBInitialization.creationStageTransitionSequence=recordLifecycleControl({kind:'portfolio-creation-stage-transition',account:'B',
+   fromStage:'account-switch-b-empty-portfolio-initialization',toStage:'account-switch-b-first-portfolio-create',
+   barrierSequence:accountBInitialization.creationBarrierSequence}).sequence
   setStage('account-switch-b-first-portfolio-create')
-  await drainEvidence()
-  accountBInitialization.creationStartedSequence=recordLifecycleControl({kind:'first-portfolio-creation-start',account:'B'}).sequence
-  const accountBFirstPortfolioResponse=await requestPost(page.request,new URL('/api/portfolios',base).href,{data:{name:'Synthetic QA Portfolio B1'}})
+  const accountBFirstPortfolioCreate=await submitFirstPortfolioRequest({requestContext:page.request,
+   url:new URL('/api/portfolios',base).href,data:{name:'Synthetic QA Portfolio B1'},account:'B',
+   initialization:accountBInitialization,recordControl:recordLifecycleControl})
+  const accountBFirstPortfolioResponse=accountBFirstPortfolioCreate.response
   assert.equal(accountBFirstPortfolioResponse.status(),200)
-  const accountBFirstPortfolio=(await accountBFirstPortfolioResponse.json()).portfolio
+  const accountBFirstPortfolio=accountBFirstPortfolioCreate.payload.portfolio
   verifiedPortfolioScopes.set('B',accountBFirstPortfolio.id)
   const accountBAfterCreate=await syntheticPortfolioCount(otherUser.id)
   recordFirstPortfolioCreated(accountBInitialization,accountBFirstPortfolioResponse,accountBAfterCreate)
+  pass('Account B APIRequestContext portfolio POST has correlated start and complete response evidence')
  setStage('account-switch-b-unlocked')
  const bPortfoliosResponse=await requestGet(page.request,new URL('/api/portfolios',base).href)
  assert.equal(bPortfoliosResponse.status(),200,'Account B must establish its own authenticated portfolio context')

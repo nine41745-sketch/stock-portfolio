@@ -5,17 +5,36 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { chromium } from 'playwright'
 import * as evidence from './qa/http-response-evidence.mjs'
 import { readHttpFailureEvidence } from './qa/expected-http-failures.mjs'
+import { completeEmptyPortfolioCreationBarrier, EMPTY_PORTFOLIO_PAGE_PATHS, submitFirstPortfolioRequest, waitForEmptyPortfolioPageEffect } from './qa/portfolio-creation-lifecycle.mjs'
 
 const output = new URL('../.local-artifacts/http409-pending-local/', import.meta.url)
 const results = []
 const connections = new Set()
+const serverRequests = []
 const server = createServer((request, response) => {
-  if (request.url === '/') return response.end('<html><title>Synthetic QA</title></html>')
-  const mode = new URL(request.url, 'http://127.0.0.1').searchParams.get('mode')
+  const parsed = new URL(request.url, 'http://127.0.0.1')
+  serverRequests.push({ method: request.method, pathname: parsed.pathname })
+  if (parsed.pathname === '/' || EMPTY_PORTFOLIO_PAGE_PATHS.includes(parsed.pathname)) {
+    if (parsed.pathname === '/') return response.end('<html><title>Synthetic QA</title></html>')
+    response.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-store' })
+    return response.end(`<html><title>Synthetic ${parsed.pathname}</title><script>
+      const mode = new URL(location.href).searchParams.get('mode') || 'delayed-effect';
+      const delay = Number(new URL(location.href).searchParams.get('delay') || 653);
+      setTimeout(() => { void fetch('/api/daily-analyses/today?mode=' + encodeURIComponent(mode)).catch(() => {}); }, delay);
+    </script></html>`)
+  }
+  if (parsed.pathname === '/api/portfolios' && request.method === 'POST') {
+    response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+    return response.end('{"portfolio":{"id":"synthetic-only"}}')
+  }
+  const mode = parsed.searchParams.get('mode')
   if (mode === 'failure') return request.socket.destroy()
   response.writeHead(409, { 'content-type': 'application/json', 'cache-control': 'no-store' })
   response.flushHeaders()
-  if (mode === 'incomplete') return response.write('{"code":')
+  if (mode === 'incomplete') {
+    response.write('{"code":')
+    return setTimeout(() => response.destroy(), 150)
+  }
   const finish = () => {
     if (!response.destroyed) response.end(mode === 'oversized' ? JSON.stringify({ code: 'PORTFOLIO_REQUIRED', padding: 'x'.repeat(70_000) })
       : mode === 'unknown-code' ? '{"code":"OTHER_CONFLICT"}' : '{"code":"PORTFOLIO_REQUIRED"}')
@@ -109,6 +128,106 @@ try {
       results.push(structuredClone({ mode, status: 'PASS', snapshotPhase: 'assertions-complete', summary: tracker.summary(), diagnostics: tracker.diagnostics(), evidence: bodyEvidence }))
     } finally { await context.close() }
   }
+
+  // Reproduce the QA #40 race: a route's React-like effect starts 653 ms after navigation returns.
+  // The exact Account A/B identities here are synthetic labels; this is not Auth/DB QA.
+  for (const account of ['A', 'B']) {
+    const context = await browser.newContext()
+    let outside = 0
+    await context.route('**/*', route => {
+      if (new URL(route.request().url()).origin === origin) return route.continue()
+      outside++
+      return route.abort('blockedbyclient')
+    })
+    const tracker = evidence.createHttpEvidenceLifecycle({ timeoutMs: 2_000 })
+    await evidence.installDailyAnalysisBodyObserver(context, tracker, { timeoutMs: 150 })
+    const page = await context.newPage()
+    const requestContexts = new WeakMap()
+    const failures = new WeakMap()
+    const pageApiRequests = []
+    const controls = []
+    let sequence = 144
+    let documentNavigationId = 0
+    let contextClosed = false
+    const stage = account === 'A' ? 'account-a-empty-portfolio-initialization' : 'account-switch-b-empty-portfolio-initialization'
+    page.on('framenavigated', frame => { if (frame === page.mainFrame()) documentNavigationId++ })
+    page.on('request', request => {
+      const url = new URL(request.url())
+      if (!url.pathname.startsWith('/api/')) return
+      const requestContext = { sequence: ++sequence, pathname: url.pathname, method: request.method(),
+        documentPath: new URL(page.url()).pathname, documentNavigationId, stage, account,
+        authReady: true, pinReady: true, portfolioState: 'empty' }
+      requestContexts.set(request, requestContext)
+      pageApiRequests.push({ method: request.method(), pathname: url.pathname })
+      tracker.requestStarted(request, { method: request.method(), pathname: url.pathname, stage })
+    })
+    page.on('requestfinished', request => tracker.requestFinished(request))
+    page.on('requestfailed', request => tracker.requestFailed(request))
+    page.on('response', response => {
+      const request = response.request()
+      tracker.responseReceived(request)
+      if (response.status() < 400) return
+      const task = (async () => {
+        const responseSequence = ++sequence
+        const body = await readHttpFailureEvidence(response)
+        tracker.bodyCompleted(request, body.responseBodyStatus)
+        failures.set(request, { ...requestContexts.get(request), path: new URL(response.url()).pathname,
+          status: response.status(), responseBodyStatus: body.responseBodyStatus,
+          ...(body.failureCode ? { failureCode: body.failureCode } : {}),
+          requestSequence: requestContexts.get(request)?.sequence, responseSequence })
+      })()
+      tracker.trackResponse(task)
+    })
+
+    try {
+      for (const documentPath of EMPTY_PORTFOLIO_PAGE_PATHS) {
+        const pageEffect = waitForEmptyPortfolioPageEffect({ page,
+          requestContextFor: request => requestContexts.get(request),
+          completedFailureFor: request => failures.get(request),
+          drain: timeoutMs => tracker.drain({ timeoutMs }), account, documentPath,
+          minimumDocumentNavigationId: documentNavigationId + 1, stage, timeoutMs: 2_000 })
+        await page.goto(`${origin}${documentPath}?mode=delayed-effect&delay=653`)
+        const trace = await pageEffect
+        const control = { kind: 'empty-portfolio-negative-control', account, path: trace.path,
+          status: trace.status, code: trace.failureCode, requestSequence: trace.requestSequence,
+          responseSequence: trace.responseSequence, correlationId: trace.correlationId, controlSequence: ++sequence,
+          documentPath: trace.documentPath, documentNavigationId: trace.documentNavigationId }
+        controls.push({ ...trace, controlSequence: control.controlSequence })
+        assert.equal(control.account, account)
+        assert.equal(trace.stage, stage)
+        assert.equal(control.documentPath, documentPath)
+      }
+
+      const initialization = { account, state: 'empty', creationStartedSequence: null, creationStageTransitionSequence: null }
+      const barrier = completeEmptyPortfolioCreationBarrier({ initialization, account,
+        pageEffectControls: controls,
+        recordControl: control => ({ ...control, sequence: ++sequence }) })
+      assert(controls.every(control => control.controlSequence < barrier.sequence))
+      const stageTransition = { kind: 'portfolio-creation-stage-transition', account,
+        barrierSequence: barrier.sequence, sequence: ++sequence }
+      initialization.creationStageTransitionSequence = stageTransition.sequence
+      const creation = await submitFirstPortfolioRequest({ requestContext: page.request,
+        url: `${origin}/api/portfolios`, data: { name: `Synthetic QA Portfolio ${account}1` }, account, initialization,
+        recordControl: control => ({ ...control, sequence: ++sequence }) })
+      assert.equal(creation.response.status(), 200)
+      assert.equal(initialization.creationPost.responseBodyStatus, 'json')
+      assert.equal(initialization.creationPost.startSequence, initialization.creationStartedSequence)
+      assert(initialization.creationPost.invocationSequence > initialization.creationStageTransitionSequence)
+      assert(initialization.creationPost.completionSequence > initialization.creationStartedSequence)
+      assert.equal(pageApiRequests.some(request => request.method === 'POST' && request.pathname === '/api/portfolios'), false,
+        'APIRequestContext POST must be represented by direct start/response controls, not Page request events')
+      assert.equal(serverRequests.filter(request => request.method === 'POST' && request.pathname === '/api/portfolios').length,
+        ['A', 'B'].indexOf(account) + 1, 'The synthetic server must receive exactly one direct Portfolio POST per account')
+      assert.equal(outside, 0)
+      await tracker.close(context)
+      contextClosed = true
+      results.push({ mode: 'delayed-page-effect-creation-barrier', account, status: 'PASS', delayMs: 653,
+        pageEffectCount: controls.length, barrierSequence: barrier.sequence,
+        creationPost: initialization.creationPost, pagePortfolioPostEvents: pageApiRequests.filter(request => request.pathname === '/api/portfolios').length,
+        externalRequests: outside })
+    } finally { if (!contextClosed) await context.close() }
+  }
+
   await mkdir(output, { recursive: true })
   await writeFile(new URL('synthetic-pending-lifecycle.json', output), JSON.stringify({ status: 'PASS', node: process.version, browser: browser.version(), scope: 'synthetic loopback only; not Auth/DB QA', results }, null, 2))
   console.log(`Synthetic browser lifecycle: ${results.length}/${results.length} PASS`)

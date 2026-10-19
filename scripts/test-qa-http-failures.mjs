@@ -201,6 +201,50 @@ test('portfolio-required 409 is allowed only for a proved empty-account GET befo
   assert.equal(isExpectedHttpFailure({ ...expected, status: 500 }, lifecycle), false)
 })
 
+test('QA #40 sequence 145-154 rejects a browser 409 that races the unobserved APIRequestContext creation POST', () => {
+  for (const account of ['A', 'B']) {
+    const attemptId = `${account}-exact-qa40`
+    const stage = account === 'A' ? 'account-a-first-portfolio-create' : 'account-switch-b-first-portfolio-create'
+    const lifecycle = {
+      authAttempts: [{ id: attemptId, account, authenticatedControlSequence: 110, authenticatedHasPin: false,
+        pinSubmissionSequence: 115, initialPinReadyControlSequence: 120, pinReadyControlSequence: 120 }],
+      controls: [
+        { sequence: 110, kind: 'auth-positive-control', account, status: 200, hasPin: false },
+        { sequence: 120, kind: 'protected-api-positive-control', account, status: 200 },
+        { sequence: 130, kind: 'empty-portfolio-database-control', account, portfolioCount: 0 },
+        { sequence: 140, kind: 'empty-portfolio-negative-control', account, path: '/api/daily-analyses/today',
+          status: 409, code: 'PORTFOLIO_REQUIRED', requestSequence: 139 },
+        { sequence: 145, kind: 'first-portfolio-creation-start', account, method: 'POST', path: '/api/portfolios',
+          correlationId: `portfolio-create-${account}-1` },
+        { sequence: 154, kind: 'first-portfolio-created-control', account, status: 200, portfolioCount: 1, defaultCount: 1,
+          correlationId: `portfolio-create-${account}-1` },
+      ],
+      portfolioInitializations: [{ account, state: 'created', emptyDatabaseCount: 0, emptyDatabaseControlSequence: 130,
+        creationStartedSequence: 145, createdControlSequence: 154,
+        emptyControls: [{ path: '/api/daily-analyses/today', requestSequence: 139, controlSequence: 140 }] }],
+    }
+    const racedFailure = failure({ path: '/api/daily-analyses/today', status: 409, method: 'GET',
+      failureCode: 'PORTFOLIO_REQUIRED', responseBodyStatus: 'json', stage, authReady: true, pinReady: true,
+      authPhase: 'pin-ready', portfolioState: 'empty', account, authAttemptId: attemptId,
+      sequence: 146, requestSequence: 146, responseSequence: 153 })
+
+    assert.equal(isExpectedHttpFailure(racedFailure, lifecycle), false,
+      `Account ${account}: response 153 must not be reclassified as pre-creation after boundary 145`)
+    assert.throws(() => assertNoUnexpectedHttpFailures([racedFailure], lifecycle), /Unexpected failed browser responses.*409/)
+    assert.equal(isExpectedHttpFailure({ ...racedFailure, stage: account === 'A' ? 'unlocked' : 'account-switch-b-unlocked',
+      portfolioState: 'created', sequence: 155, requestSequence: 155, responseSequence: 156 }, lifecycle), false,
+    `Account ${account}: a post-creation 409 must remain unexpected`)
+    for (const invalid of [
+      { account: account === 'A' ? 'B' : 'A' },
+      { authReady: false },
+      { pinReady: false },
+      { responseBodyStatus: 'incomplete' },
+      { failureCode: 'OTHER_CONFLICT' },
+      { responseSequence: 145 },
+    ]) assert.equal(isExpectedHttpFailure({ ...racedFailure, ...invalid }, lifecycle), false, JSON.stringify(invalid))
+  }
+})
+
 test('the older 23-response fixture cannot establish expected failures without complete lifecycle proof', () => {
   const observedLifecycle = {
     authAttempts: [
