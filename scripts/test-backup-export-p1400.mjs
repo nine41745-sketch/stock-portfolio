@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { copyFile, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { spawn } from 'node:child_process'
 import { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import { generateIdentity, identityToRecipient } from 'age-encryption'
 import { createEncryptedBackupSet, restoreEncryptedBackupSet, verifyEncryptedBackupSet } from './backup/encrypted-set.mjs'
-import { buildPostgresDumpArguments, buildPostgresRolesArguments, buildPublicSchemaAclScript } from './backup/postgres-streams.mjs'
+import { buildPostgresDumpArguments, buildPostgresRolesArguments, buildPublicSchemaAclScript, createPostgresBackupStreams } from './backup/postgres-streams.mjs'
 
 const fixture = async () => {
   const root = await mkdtemp(join(process.cwd(), '.test-backup-export-p1400-'))
@@ -251,6 +252,98 @@ test('PostgreSQL stream arguments select only public data and never pass a passw
   assert.ok(roles.includes('--no-role-passwords'))
   for (const args of [dump, roles]) assert.equal(args.some(arg => /^--password$|password=|secret|token/i.test(arg)), false)
   assert.throws(() => buildPostgresDumpArguments({ ...connection, host: 'attacker.example' }))
+})
+
+test('PostgreSQL dump programs write to stdout and never receive a persistent output-file option', () => {
+  const connection = { projectRef: 'abcdefghijklmnopqrst', host: 'db.abcdefghijklmnopqrst.supabase.co', port: 5432, database: 'postgres', username: 'backup_reader' }
+  for (const args of [buildPostgresDumpArguments(connection), buildPostgresRolesArguments(connection)]) {
+    assert.equal(args.some(arg => /^--file(?:=|$)|^-f(?:$|.)/.test(arg)), false, 'dump output must remain on stdout')
+  }
+})
+
+test('mock PostgreSQL child processes feed only the encrypted pipeline and leave no plaintext outputs', async t => {
+  const root = await mkdtemp(join(process.cwd(), '.test-pg-stdout-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const bin = join(root, 'bin')
+  await mkdir(bin)
+  const mockProgram = join(root, 'mock-postgres.mjs')
+  await writeFile(mockProgram, `
+import { basename, resolve } from 'node:path'
+import { writeFileSync } from 'node:fs'
+const executable = basename(process.argv[2])
+const args = process.argv.slice(3)
+const tool = executable.startsWith('pg_dumpall') ? 'pg_dumpall' : executable.startsWith('pg_dump') ? 'pg_dump' : 'psql'
+if (args[0] === '--version') { process.stdout.write(tool + ' (PostgreSQL) 17.11\\n'); process.exit(0) }
+const outputOption = args.findIndex(arg => arg === '--file' || arg === '-f')
+const outputEquals = args.find(arg => arg.startsWith('--file='))
+const outputPath = outputEquals ? outputEquals.slice('--file='.length) : outputOption >= 0 ? args[outputOption + 1] : null
+if (outputPath !== null) writeFileSync(resolve(outputPath), tool === 'pg_dumpall' ? 'SYNTHETIC_ROLE_PLAINTEXT' : 'SYNTHETIC_DUMP_PLAINTEXT')
+else if (tool === 'pg_dumpall' && executable.includes('.fail')) { process.stdout.write('SYNTHETIC_FAILED_PARTIAL'); process.exit(7) }
+else if (tool === 'pg_dumpall' && executable.includes('.interrupt')) { process.stdout.write('SYNTHETIC_INTERRUPTED_PARTIAL'); process.exit(9) }
+else if (tool === 'pg_dumpall' && executable.includes('.timeout')) { process.stdout.write('SYNTHETIC_TIMEOUT_PARTIAL'); setInterval(() => {}, 1000) }
+else if (tool === 'pg_dump') process.stdout.write('SYNTHETIC_DUMP_PLAINTEXT')
+else if (tool === 'pg_dumpall') process.stdout.write('SYNTHETIC_ROLE_PLAINTEXT')
+else process.stdout.write(JSON.stringify([{grantee:null,grantor:'pg_database_owner',privilege:'USAGE',grantable:false}]))
+`)
+  const expectedRootEntries = new Set(['mock-postgres.mjs', 'bin', 'encrypted-success'])
+  const expectedBinEntries = new Set()
+  const makeConfig = async suffix => {
+    const paths = {
+      pgDumpPath: join(bin, `pg_dump${suffix}.mock`),
+      pgDumpallPath: join(bin, `pg_dumpall${suffix}.mock`),
+      psqlPath: join(bin, `psql${suffix}.mock`),
+      pgPassfile: join(root, 'pgpass.synthetic'),
+      sslRootCert: join(root, 'ca.synthetic'),
+    }
+    for (const path of Object.values(paths)) {
+      await writeFile(path, 'synthetic test fixture')
+      if (dirname(path) === bin) expectedBinEntries.add(path.slice(bin.length + 1))
+      else expectedRootEntries.add(path.slice(root.length + 1))
+    }
+    return {
+      projectRef: 'abcdefghijklmnopqrst', host: 'db.abcdefghijklmnopqrst.supabase.co', port: 5432,
+      database: 'postgres', username: 'backup_reader', timeoutMs: suffix.includes('timeout') ? 400 : 3000,
+      ...paths,
+    }
+  }
+  const invoke = (config, calls) => (executable, args, options) => {
+    calls.push({ executable, args })
+    return spawn(process.execPath, [mockProgram, executable, ...args], { ...options, cwd: root })
+  }
+  const identity = await generateIdentity()
+  const recipients = [await identityToRecipient(identity)]
+  const source = { projectRef: 'abcdefghijklmnopqrst', schema: 'public', capturedAt: '2026-10-19T00:00:00.000Z', pgDumpVersion: 'unused', psqlVersion: 'unused', serverVersion: 'NOT_QUERIED', rolesDumpVersion: 'unused', snapshot: 'synthetic' }
+
+  const successCalls = []
+  const successConfig = await makeConfig('.success')
+  const successful = await createPostgresBackupStreams(successConfig, { spawnProcess: invoke(successConfig, successCalls) })
+  const setPath = join(root, 'encrypted-success')
+  await createEncryptedBackupSet({ destination: root, setName: 'encrypted-success', recipients, source: { ...source, ...successful.source }, components: successful.components })
+  assert.equal((await verifyEncryptedBackupSet({ setPath, identities: [identity], expectedProjectRef: source.projectRef })).result, 'VERIFIED')
+  assert.equal(await stat(join(root, '-')).then(() => true, () => false), false)
+  for (const name of await readdir(setPath)) {
+    const bytes = await readFile(join(setPath, name))
+    assert.equal(bytes.includes(Buffer.from('SYNTHETIC_DUMP_PLAINTEXT')), false)
+    assert.equal(bytes.includes(Buffer.from('SYNTHETIC_ROLE_PLAINTEXT')), false)
+  }
+  assert.ok(successCalls.some(call => call.executable.includes('pg_dump.success') && !call.args.some(arg => /^--file(?:=|$)|^-f(?:$|.)/.test(arg))))
+  assert.ok(successCalls.some(call => call.executable.includes('pg_dumpall.success') && !call.args.some(arg => /^--file(?:=|$)|^-f(?:$|.)/.test(arg))))
+  assert.deepEqual((await readdir(root)).sort(), [...expectedRootEntries].sort())
+  assert.deepEqual((await readdir(bin)).sort(), [...expectedBinEntries].sort())
+
+  for (const mode of ['fail', 'interrupt', 'timeout']) {
+    const calls = []
+    const config = await makeConfig(`.${mode}`)
+    const { source: mockSource, components } = await createPostgresBackupStreams(config, { spawnProcess: invoke(config, calls) })
+    await assert.rejects(createEncryptedBackupSet({
+      destination: root, setName: `encrypted-${mode}`, recipients,
+      source: { ...source, ...mockSource }, components,
+    }), undefined, `${mode} child process must fail closed`)
+    assert.equal(await stat(join(root, '-')).then(() => true, () => false), false, `${mode} must not create a dash-named plaintext file`)
+    assert.equal(await stat(join(root, `encrypted-${mode}`)).then(() => true, () => false), false, `${mode} must not publish an incomplete backup set`)
+    assert.deepEqual((await readdir(root)).sort(), [...expectedRootEntries].sort(), `${mode} must not persist output outside owned fixtures and staging`)
+    assert.deepEqual((await readdir(bin)).sort(), [...expectedBinEntries].sort(), `${mode} must not write under the mock executable directory`)
+  }
 })
 
 test('public schema ACL serializer preserves granted roles safely and rejects untrusted ACL fields', () => {

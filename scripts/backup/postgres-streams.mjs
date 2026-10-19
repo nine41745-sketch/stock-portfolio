@@ -35,7 +35,7 @@ export function buildPostgresDumpArguments({ projectRef, host, port, database, u
   assert.match(username, /^[A-Za-z0-9_.-]{1,128}$/)
   return [
     '--no-password', '--host', host, '--port', String(port), '--username', username,
-    '--dbname', database, '--format=custom', '--schema=public', '--file=-',
+    '--dbname', database, '--format=custom', '--schema=public',
   ]
 }
 
@@ -47,7 +47,7 @@ export function buildPostgresRolesArguments({ projectRef, host, port, database, 
   assert.match(username, /^[A-Za-z0-9_.-]{1,128}$/)
   return [
     '--no-password', '--host', host, '--port', String(port), '--username', username,
-    '--database', database, '--roles-only', '--no-role-passwords', '--file=-',
+    '--database', database, '--roles-only', '--no-role-passwords',
   ]
 }
 
@@ -96,8 +96,8 @@ async function assertSafeFile(path, label) {
   return absolute
 }
 
-async function executableVersion(path, label) {
-  const child = spawn(path, ['--version'], {
+async function executableVersion(path, label, spawnProcess = spawn) {
+  const child = spawnProcess(path, ['--version'], {
     shell: false,
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'ignore'],
@@ -113,6 +113,12 @@ async function executableVersion(path, label) {
   return version
 }
 
+function postgresClientRelease(version, label) {
+  const match = version.match(new RegExp(`^${label} \\(PostgreSQL\\) (\\d+(?:\\.\\d+){1,2})(?:\\s|$)`, 'i'))
+  assert.ok(match, `${label} did not report a recognized PostgreSQL version`)
+  return match[1]
+}
+
 function safeChildEnvironment(config = {}) {
   const env = {}
   for (const key of ['PATH', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP']) {
@@ -124,9 +130,9 @@ function safeChildEnvironment(config = {}) {
   return env
 }
 
-function processOutputStream(path, args, config, label) {
+function processOutputStream(path, args, config, label, spawnProcess = spawn) {
   const output = Readable.from((async function* () {
-    const child = spawn(path, args, {
+    const child = spawnProcess(path, args, {
       shell: false,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -157,18 +163,24 @@ function processOutputStream(path, args, config, label) {
  * argument or inherited from the parent process; libpq reads the external
  * PGPASSFILE path and enforces TLS hostname verification.
  */
-export async function createPostgresBackupStreams(config) {
+export async function createPostgresBackupStreams(config, options = {}) {
+  assert.ok(options && typeof options === 'object' && !Array.isArray(options))
+  assert.deepEqual(Object.keys(options), options.spawnProcess ? ['spawnProcess'] : [], 'Unexpected PostgreSQL process adapter')
+  const spawnProcess = options.spawnProcess ?? spawn
+  assert.equal(typeof spawnProcess, 'function')
   validateConfig(config)
   const pgPassfile = await assertSafeFile(config.pgPassfile, 'PGPASSFILE')
   const sslRootCert = await assertSafeFile(config.sslRootCert, 'PostgreSQL CA certificate')
   const pgDumpPath = await assertSafeFile(config.pgDumpPath, 'pg_dump')
   const pgDumpallPath = await assertSafeFile(config.pgDumpallPath, 'pg_dumpall')
   const psqlPath = await assertSafeFile(config.psqlPath, 'psql')
-  const pgDumpVersion = await executableVersion(pgDumpPath, 'pg_dump')
-  const pgDumpallVersion = await executableVersion(pgDumpallPath, 'pg_dumpall')
-  const psqlVersion = await executableVersion(psqlPath, 'psql')
-  assert.ok(pgDumpVersion.includes('PostgreSQL') && pgDumpallVersion.includes('PostgreSQL') && psqlVersion.includes('PostgreSQL'), 'Unexpected PostgreSQL client version output')
-  assert.ok(pgDumpVersion === pgDumpallVersion && pgDumpVersion === psqlVersion, 'PostgreSQL client versions must match')
+  const pgDumpVersion = await executableVersion(pgDumpPath, 'pg_dump', spawnProcess)
+  const pgDumpallVersion = await executableVersion(pgDumpallPath, 'pg_dumpall', spawnProcess)
+  const psqlVersion = await executableVersion(psqlPath, 'psql', spawnProcess)
+  const pgDumpRelease = postgresClientRelease(pgDumpVersion, 'pg_dump')
+  const pgDumpallRelease = postgresClientRelease(pgDumpallVersion, 'pg_dumpall')
+  const psqlRelease = postgresClientRelease(psqlVersion, 'psql')
+  assert.ok(pgDumpRelease === pgDumpallRelease && pgDumpRelease === psqlRelease, 'PostgreSQL client versions must match')
   const common = { ...config, pgPassfile, sslRootCert }
   const connection = { projectRef: config.projectRef, host: config.host, port: config.port, database: config.database, username: config.username }
   return {
@@ -183,9 +195,9 @@ export async function createPostgresBackupStreams(config) {
       snapshot: 'pg_dump single-database snapshot; cluster globals are a separate export',
     },
     components: [
-      { name: 'database-public', stream: processOutputStream(pgDumpPath, buildPostgresDumpArguments(connection), common, 'pg_dump') },
-      { name: 'roles-global', stream: processOutputStream(pgDumpallPath, buildPostgresRolesArguments(connection), common, 'pg_dumpall') },
-      { name: 'public-schema-acl', stream: publicSchemaAclStream(psqlPath, connection, common) },
+      { name: 'database-public', stream: processOutputStream(pgDumpPath, buildPostgresDumpArguments(connection), common, 'pg_dump', spawnProcess) },
+      { name: 'roles-global', stream: processOutputStream(pgDumpallPath, buildPostgresRolesArguments(connection), common, 'pg_dumpall', spawnProcess) },
+      { name: 'public-schema-acl', stream: publicSchemaAclStream(psqlPath, connection, common, spawnProcess) },
     ],
   }
 }
@@ -199,12 +211,12 @@ const PUBLIC_SCHEMA_ACL_QUERY = `SELECT coalesce(json_agg(jsonb_build_object(
 FROM pg_namespace n CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a
 WHERE n.nspname = 'public';`
 
-function publicSchemaAclStream(psqlPath, connection, config) {
+function publicSchemaAclStream(psqlPath, connection, config, spawnProcess = spawn) {
   const args = [
     '--no-password', '--host', connection.host, '--port', String(connection.port), '--username', connection.username,
     '--dbname', connection.database, '--no-psqlrc', '--tuples-only', '--no-align', '--quiet', '--command', PUBLIC_SCHEMA_ACL_QUERY,
   ]
-  const source = processOutputStream(psqlPath, args, config, 'psql public-schema ACL query')
+  const source = processOutputStream(psqlPath, args, config, 'psql public-schema ACL query', spawnProcess)
   const chunks = []
   let bytes = 0
   return Readable.from((async function* () {
