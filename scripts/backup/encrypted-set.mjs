@@ -197,6 +197,9 @@ async function writeGcmStream(input, key, source, name, path, timeoutMs) {
     }
   } catch {
     input.destroy()
+    if (input.postgresProcessFailure === 'CLEANUP_FAILED') fail('PostgreSQL backup child cleanup could not be confirmed; export aborted')
+    if (input.postgresProcessFailure === 'TIMEOUT') fail('PostgreSQL backup process timed out; export aborted')
+    if (input.postgresProcessFailure === 'PROCESS_FAILED') fail('PostgreSQL backup process failed; export aborted')
     fail('AES-256-GCM component encryption failed')
   } finally { nonce.fill(0) }
 }

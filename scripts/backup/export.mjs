@@ -13,16 +13,20 @@ export async function exportPostgresBackupSet({ destination, setName, recipients
   assert.ok(typeof destination === 'string' && destination.length > 0)
   assert.ok(typeof setName === 'string' && setName.length > 0)
   const streams = await createPostgresBackupStreams(connection)
+  let result
   let exportError
   try {
-    return await createEncryptedBackupSet({ destination, setName, recipients, source: streams.source, components: streams.components })
+    result = await createEncryptedBackupSet({ destination, setName, recipients, source: streams.source, components: streams.components })
   } catch (error) {
     exportError = error
-    throw error
-  } finally {
-    try { await streams.close() }
-    catch {
-      if (!exportError) throw new Error('PostgreSQL snapshot coordinator shutdown failed')
-    }
   }
+  let shutdownError
+  try { await streams.close() }
+  catch { shutdownError = new Error('PostgreSQL snapshot coordinator shutdown failed') }
+  if (exportError && shutdownError) {
+    throw new AggregateError([exportError, shutdownError], 'Encrypted PostgreSQL export failed and snapshot coordinator shutdown also failed')
+  }
+  if (exportError) throw exportError
+  if (shutdownError) throw shutdownError
+  return result
 }

@@ -157,6 +157,7 @@ async function terminateAndAwait(child, closed) {
 }
 
 function processOutputStream(path, args, config, label, spawnProcess = spawn, coordinator = null) {
+  const state = { failureCode: null }
   const output = Readable.from((async function* () {
     let child
     try {
@@ -170,23 +171,57 @@ function processOutputStream(path, args, config, label, spawnProcess = spawn, co
     } catch { throw new Error(`${label} could not start`) }
     child.stderr.resume()
     const closed = once(child, 'close')
-    const timeout = setTimeout(() => child.kill(), config.timeoutMs)
+    let timedOut = false
+    let termination = null
+    let cleanupFailed = false
+    let failureMessage = null
+    const stopChild = async () => {
+      try { await terminateAndAwait(child, closed) }
+      catch { cleanupFailed = true }
+      finally { child.stdout.destroy() }
+    }
+    const timeout = setTimeout(() => {
+      if (child.exitCode !== null || child.signalCode !== null) return
+      timedOut = true
+      termination = stopChild()
+    }, config.timeoutMs)
     timeout.unref?.()
     let completed = false
     try {
       for await (const chunk of child.stdout) yield chunk
       const [code, signal] = await closed
-      if (code !== 0) throw new Error(`${label} failed (${code ?? signal ?? 'unknown'})`)
-      coordinator?.assertOpen()
-      completed = true
+      if (code !== 0) failureMessage = `${label} failed (${code ?? signal ?? 'unknown'})`
+      else {
+        coordinator?.assertOpen()
+        completed = true
+      }
     } catch {
-      await terminateAndAwait(child, closed).catch(() => {})
-      throw new Error(`${label} stream failed`)
+      if (!timedOut) failureMessage = `${label} stream failed`
     } finally {
       clearTimeout(timeout)
-      if (!completed) await terminateAndAwait(child, closed).catch(() => {})
+      if (termination) await termination
+      else if (!completed) {
+        try { await terminateAndAwait(child, closed) }
+        catch {
+          cleanupFailed = true
+          child.stdout.destroy()
+        }
+      }
+    }
+    if (cleanupFailed) {
+      state.failureCode = 'CLEANUP_FAILED'
+      throw new Error(`${timedOut ? `${label} timed out` : failureMessage ?? `${label} failed`}; child cleanup could not be confirmed`)
+    }
+    if (timedOut) {
+      state.failureCode = 'TIMEOUT'
+      throw new Error(`${label} timed out`)
+    }
+    if (failureMessage) {
+      state.failureCode = 'PROCESS_FAILED'
+      throw new Error(failureMessage)
     }
   })(), { objectMode: false, highWaterMark: 64 * 1024 })
+  Object.defineProperty(output, 'postgresProcessFailure', { get: () => state.failureCode })
   return output
 }
 
@@ -346,7 +381,13 @@ export async function createPostgresBackupStreams(config, options = {}) {
       close: () => coordinator.close(),
     }
   } catch (error) {
-    await coordinator.close().catch(() => {})
+    try { await coordinator.close() }
+    catch {
+      throw new AggregateError(
+        [error, new Error('PostgreSQL snapshot coordinator shutdown failed')],
+        'PostgreSQL snapshot setup failed and coordinator shutdown also failed',
+      )
+    }
     throw error
   }
 }

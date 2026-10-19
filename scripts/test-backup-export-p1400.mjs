@@ -566,3 +566,135 @@ if (tool === 'psql' && !args.includes('--command')) {
   }
   assert.equal(calls.filter(call => call.args[0] === '--version').length, 6)
 })
+
+test('an unresponsive PostgreSQL consumer is bounded, reaped, and reports cleanup failure without masking it', { timeout: 20000 }, async t => {
+  const root = await mkdtemp(join(process.cwd(), '.test-pg-child-hard-timeout-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const bin = join(root, 'bin')
+  await mkdir(bin)
+  const mockProgram = join(root, 'mock-unresponsive-postgres.mjs')
+  await writeFile(mockProgram, `
+import { basename } from 'node:path'
+const executable = basename(process.argv[2])
+const args = process.argv.slice(3)
+const tool = executable.startsWith('pg_dump') ? 'pg_dump' : 'psql'
+if (args[0] === '--version') { process.stdout.write(tool + ' (PostgreSQL) 17.11\\n'); process.exit(0) }
+if (tool === 'psql' && !args.includes('--command')) {
+  let input = ''
+  let emitted = false
+  process.stdin.setEncoding('utf8')
+  process.stdin.on('data', chunk => {
+    input += chunk
+    const marker = input.match(/\\\\echo (SP_SNAPSHOT_READY_[A-Fa-f0-9]+__)/)?.[1]
+    if (marker && !emitted) {
+      emitted = true
+      process.stdout.write('00000001-00000002-1\\n' + marker + '\\n')
+    }
+    if (input.includes('\\\\q')) process.exit(0)
+  })
+  process.stdin.on('end', () => process.exit(0))
+} else if (tool === 'pg_dump') {
+  process.stdout.write('SYNTHETIC_PARTIAL_DUMP')
+  setInterval(() => {}, 1000)
+} else process.stdout.write('[]')
+`)
+  const paths = {
+    pgDumpPath: join(bin, 'pg_dump.hung.mock'), psqlPath: join(bin, 'psql.hung.mock'),
+    pgPassfile: join(root, 'pgpass.synthetic'), sslRootCert: join(root, 'ca.synthetic'),
+  }
+  for (const path of Object.values(paths)) await writeFile(path, 'synthetic test fixture')
+  const children = []
+  let ignoredSigterm = 0
+  let forcedSigkill = 0
+  let ignoreSigkill = false
+  const spawnProcess = (executable, args, options) => {
+    const child = spawn(process.execPath, [mockProgram, executable, ...args], { ...options, cwd: root })
+    const nativeKill = child.kill.bind(child)
+    let closed = false
+    child.once('close', () => { closed = true })
+    const isCoordinator = executable === paths.psqlPath && !args.includes('--command')
+    children.push({ child, get closed() { return closed }, nativeKill, executable, args, isCoordinator })
+    if (args[0] !== '--version' && (executable === paths.pgDumpPath || isCoordinator)) {
+      child.kill = signal => {
+        if (!signal || signal === 'SIGTERM') {
+          if (executable === paths.pgDumpPath) ignoredSigterm += 1
+          return true
+        }
+        if (signal === 'SIGKILL' && executable === paths.pgDumpPath) {
+          forcedSigkill += 1
+          if (ignoreSigkill) return true
+        }
+        return nativeKill(signal)
+      }
+    }
+    return child
+  }
+  const config = {
+    projectRef: 'abcdefghijklmnopqrst', host: 'db.abcdefghijklmnopqrst.supabase.co', port: 5432,
+    database: 'postgres', username: 'backup_reader', timeoutMs: 500, ...paths,
+  }
+  const identity = await generateIdentity()
+  const recipients = [await identityToRecipient(identity)]
+  const streams = await createPostgresBackupStreams(config, { spawnProcess })
+  const timedOutStream = streams.components[0].stream
+  const task = createEncryptedBackupSet({
+    destination: root, setName: 'timed-out-export', recipients,
+    source: streams.source, components: streams.components,
+  }).then(() => ({ kind: 'resolved' }), error => ({ kind: 'rejected', error }))
+  let watchdog
+  try {
+    const outcome = await Promise.race([
+      task,
+      new Promise(resolve => { watchdog = setTimeout(() => resolve({ kind: 'hard-timeout' }), 7000) }),
+    ])
+    assert.equal(outcome.kind, 'rejected', 'hung exporter must settle before the hard test watchdog')
+    assert.match(outcome.error.message, /PostgreSQL backup process timed out/i)
+    assert.ok(ignoredSigterm > 0, 'synthetic child must ignore the initial graceful termination request')
+    assert.ok(forcedSigkill > 0, 'cleanup must escalate to forced termination after the bounded grace period')
+    assert.ok(children.some(item => item.executable === paths.pgDumpPath && item.closed), 'timed-out PostgreSQL child must emit close')
+    assert.ok(children.some(item => item.isCoordinator && item.closed), 'snapshot coordinator must be closed and awaited after the consumer failure')
+    assert.equal(timedOutStream.destroyed, true, 'failed consumer stream must be destroyed')
+  } finally {
+    clearTimeout(watchdog)
+    for (const item of children) {
+      if (item.executable === paths.pgDumpPath && item.child.exitCode === null && item.child.signalCode === null) item.nativeKill('SIGKILL')
+    }
+    await streams.close()
+    await Promise.all(children.map(async item => {
+      if (!item.closed) await new Promise(resolve => item.child.once('close', resolve))
+    }))
+  }
+  assert.ok(children.every(item => item.closed), 'all owned PostgreSQL child processes must be reaped')
+  assert.equal(await stat(join(root, 'timed-out-export')).then(() => true, () => false), false, 'failed export must not publish an encrypted set')
+
+  ignoreSigkill = true
+  const unkillableStreams = await createPostgresBackupStreams(config, { spawnProcess })
+  const unkillableStream = unkillableStreams.components[0].stream
+  const unkillableTask = createEncryptedBackupSet({
+    destination: root, setName: 'cleanup-failed-export', recipients,
+    source: unkillableStreams.source, components: unkillableStreams.components,
+  }).then(() => ({ kind: 'resolved' }), error => ({ kind: 'rejected', error }))
+  let cleanupWatchdog
+  try {
+    const outcome = await Promise.race([
+      unkillableTask,
+      new Promise(resolve => { cleanupWatchdog = setTimeout(() => resolve({ kind: 'hard-timeout' }), 12000) }),
+    ])
+    assert.equal(outcome.kind, 'rejected', 'cleanup failure must settle before the hard test watchdog')
+    assert.match(outcome.error.message, /cleanup could not be confirmed/i)
+    assert.equal(unkillableStream.destroyed, true, 'stream must close even when process termination cannot be confirmed')
+    assert.ok(children.some(item => item.executable === paths.pgDumpPath && !item.closed), 'fixture must remain alive until test-owned emergency cleanup')
+  } finally {
+    clearTimeout(cleanupWatchdog)
+    for (const item of children) {
+      if (item.executable === paths.pgDumpPath && item.child.exitCode === null && item.child.signalCode === null) item.nativeKill('SIGKILL')
+    }
+    await unkillableStreams.close()
+    await Promise.all(children.map(async item => {
+      if (!item.closed) await new Promise(resolve => item.child.once('close', resolve))
+    }))
+  }
+  assert.ok(children.every(item => item.closed), 'test-owned emergency cleanup must reap all fixture processes')
+  assert.equal(await stat(join(root, 'cleanup-failed-export')).then(() => true, () => false), false, 'cleanup failure must not publish an encrypted set')
+  assert.deepEqual((await readdir(root)).sort(), ['bin', 'ca.synthetic', 'mock-unresponsive-postgres.mjs', 'pgpass.synthetic'])
+})
