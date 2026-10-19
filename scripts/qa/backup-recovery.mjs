@@ -7,6 +7,7 @@ import { randomBytes, randomInt, randomUUID } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { assertOwned, assertInventory, sha256 } from './recovery-safety.mjs'
 import { createEncryptedBackupSet, restoreEncryptedBackupSet, verifyEncryptedBackupSet } from '../backup/encrypted-set.mjs'
+import { buildPublicRoleDependenciesScript, PUBLIC_ROLE_DEPENDENCIES_QUERY } from '../backup/public-role-dependencies.mjs'
 import { buildPublicSchemaAclScript } from '../backup/postgres-streams.mjs'
 import { generateIdentity, identityToRecipient } from 'age-encryption'
 import { Readable, Writable } from 'node:stream'
@@ -123,7 +124,7 @@ try {
   for (const kind of ['container','volume','network']) before[kind] = ids(kind)
   const image = json(['image','inspect','postgres:17'])[0]
   report.image = { id: image.Id, digests: image.RepoDigests }
-  report.qaFiles=['scripts/qa/backup-recovery.mjs','scripts/qa/recovery-safety.mjs','scripts/qa/recovery-platform-fixture.sql','scripts/qa/recovery-target-platform-stub.sql','scripts/test-recovery.mjs','scripts/qa/encrypted-backup.mjs','scripts/test-encrypted-backup.mjs','scripts/backup/encrypted-set.mjs','scripts/backup/postgres-streams.mjs','scripts/backup/export.mjs','scripts/test-backup-export-p1400.mjs'].map(file=>({file,sha256:sha256(readFileSync(file))}))
+  report.qaFiles=['scripts/qa/backup-recovery.mjs','scripts/qa/recovery-safety.mjs','scripts/qa/recovery-platform-fixture.sql','scripts/qa/recovery-target-platform-stub.sql','scripts/test-recovery.mjs','scripts/qa/encrypted-backup.mjs','scripts/test-encrypted-backup.mjs','scripts/backup/encrypted-set.mjs','scripts/backup/postgres-streams.mjs','scripts/backup/public-role-dependencies.mjs','scripts/backup/export.mjs','scripts/test-backup-export-p1400.mjs'].map(file=>({file,sha256:sha256(readFileSync(file))}))
   report.sourceCommit = execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()
   report.sqlFiles = bootstrap.map(file => ({file:'supabase/'+file,sha256:sha256(readFileSync('supabase/'+file))}))
   for (const side of ['source','target']) {
@@ -159,6 +160,40 @@ try {
     INSERT INTO storage.buckets VALUES ('fixture','synthetic-only');
     INSERT INTO storage.objects VALUES ('00000000-0000-4000-8000-000000000001','fixture','metadata-only-no-object-bytes');
     INSERT INTO supabase_migrations.schema_migrations VALUES ('synthetic_recovery_fixture',ARRAY['fixture only, not production migration history'],'synthetic-only');`)
+
+  stage='public-role-dependency-fixtures'
+  const scopedFixtureRoles='CREATE ROLE backup_owner NOLOGIN; CREATE ROLE backup_column_reader NOLOGIN; CREATE ROLE backup_policy_reader NOLOGIN; CREATE ROLE backup_default_reader NOLOGIN;'
+  sql(source, scopedFixtureRoles)
+  sql(source, `
+    CREATE ROLE unrelated_private NOLOGIN SUPERUSER PASSWORD 'synthetic-not-a-real-password';
+    CREATE ROLE supabase_unrelated_admin NOLOGIN SUPERUSER;
+    CREATE SCHEMA unrelated_scope;
+    CREATE TABLE unrelated_scope.secret_fixture(id integer);
+    ALTER TABLE unrelated_scope.secret_fixture OWNER TO unrelated_private;
+    CREATE TABLE public.backup_acl_fixture(id integer, secret_note text);
+    ALTER TABLE public.backup_acl_fixture OWNER TO backup_owner;
+    GRANT SELECT(id) ON public.backup_acl_fixture TO backup_column_reader;
+    ALTER TABLE public.backup_acl_fixture ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY fixture_policy ON public.backup_acl_fixture TO backup_policy_reader USING (true);
+    ALTER DEFAULT PRIVILEGES FOR ROLE backup_owner IN SCHEMA public GRANT SELECT ON TABLES TO backup_default_reader;
+  `)
+  const roleEvidence=parse(source,PUBLIC_ROLE_DEPENDENCIES_QUERY)
+  for(const role of ['anon','authenticated','service_role','postgres','pg_database_owner','backup_owner','backup_column_reader','backup_policy_reader','backup_default_reader']) assert.ok(roleEvidence.roles.includes(role),'Required public dependency missing')
+  for(const role of ['unrelated_private','supabase_unrelated_admin']) assert.equal(roleEvidence.roles.includes(role),false,'Unrelated role leaked')
+  const roleScript=buildPublicRoleDependenciesScript(roleEvidence)
+  assert.doesNotMatch(roleScript,/CREATE ROLE|ALTER ROLE|SUPERUSER|BYPASSRLS|PASSWORD|synthetic-not-a-real-password|unrelated_private|supabase_unrelated_admin/i)
+  denied(target,roleScript,'42704')
+  record('scoped public owners, column ACL, policy and default ACL dependencies included; unrelated and privileged role definitions excluded; missing target role fails closed')
+
+  sql(source, 'CREATE ROLE "unsupported-role" NOLOGIN; GRANT USAGE ON SCHEMA public TO "unsupported-role";')
+  assert.throws(()=>buildPublicRoleDependenciesScript(parse(source,PUBLIC_ROLE_DEPENDENCIES_QUERY)))
+  sql(source,'REVOKE USAGE ON SCHEMA public FROM "unsupported-role"; DROP ROLE "unsupported-role";')
+  sql(source,'ALTER DEFAULT PRIVILEGES FOR ROLE backup_owner GRANT SELECT ON TABLES TO backup_default_reader;')
+  assert.throws(()=>buildPublicRoleDependenciesScript(parse(source,PUBLIC_ROLE_DEPENDENCIES_QUERY)),/Global default privileges/)
+  sql(source,'ALTER DEFAULT PRIVILEGES FOR ROLE backup_owner REVOKE SELECT ON TABLES FROM backup_default_reader;')
+  assert.equal(buildPublicRoleDependenciesScript(parse(source,PUBLIC_ROLE_DEPENDENCIES_QUERY)),roleScript)
+  record('real-catalog unsupported identifiers and global default privileges fail closed without truncating permissions')
+
   const expected=inventory(source)
   const expectedPublic=inventory(source,'postgres',['public'])
   report.expected={tableCount:expected.tables.length,publicTableCount:expected.tables.filter(t=>t.schema==='public').length,rows:expected.tables.reduce((s,t)=>s+t.count,0),catalogSha256:expected.catalogHash,publicCatalogSha256:expectedPublic.catalogHash}
@@ -168,22 +203,20 @@ try {
   stage='backup-public-dump'
   const rawDump=docker(['exec',source.id,'pg_dump','-U','postgres','-d','postgres','--format=custom','--schema=public']).stdout
   plaintextBuffers.push(rawDump)
-  stage='backup-global-roles'
-  const rolesRaw=docker(['exec',source.id,'pg_dumpall','-U','postgres','-l','postgres','--roles-only','--no-role-passwords']).stdout
+  stage='backup-public-role-dependencies'
   const publicAclScript=buildPublicSchemaAclScript(publicSchemaAclEntries(source))
-  plaintextBuffers.push(rolesRaw)
-  const rawRoles=Buffer.from(rolesRaw.toString().replace(/^CREATE ROLE postgres;\r?\n/gm,'').replace(/^ALTER ROLE postgres .*;\r?\n/gm,''))
+  const rawRoles=Buffer.from(buildPublicRoleDependenciesScript(parse(source,PUBLIC_ROLE_DEPENDENCIES_QUERY)))
   plaintextBuffers.push(rawRoles)
-  const sourceMetadata={projectRef:'synthetic-local',schema:'public',capturedAt:new Date().toISOString(),pgDumpVersion:report.dumpVersion,psqlVersion:docker(['exec',source.id,'psql','--version']).stdout.toString().trim(),serverVersion:report.postgresVersion,rolesDumpVersion:docker(['exec',source.id,'pg_dumpall','--version']).stdout.toString().trim(),snapshot:'single pg_dump public-schema snapshot; synthetic global roles exported separately'}
+  const sourceMetadata={projectRef:'synthetic-local',schema:'public',capturedAt:new Date().toISOString(),pgDumpVersion:report.dumpVersion,psqlVersion:docker(['exec',source.id,'psql','--version']).stdout.toString().trim(),serverVersion:report.postgresVersion,rolesDumpVersion:'public-role-dependencies-v1 (psql catalog query)',snapshot:'single pg_dump public-schema snapshot; scoped dependencies and ACL separate; controlled no-writer fixture'}
   const backupSet=join(dir,'encrypted-set')
   stage='backup-encryption'
   const encryptedResult=await createEncryptedBackupSet({destination:dir,setName:'encrypted-set',recipients,source:sourceMetadata,components:[
     {name:'database-public',stream:Readable.from([rawDump])},
-    {name:'roles-global',stream:Readable.from([rawRoles])},
+    {name:'public-role-dependencies',stream:Readable.from([rawRoles])},
     {name:'public-schema-acl',stream:Readable.from([Buffer.from(publicAclScript)])},
   ]})
   assert.equal(encryptedResult.componentCount,3)
-  rawDump.fill(0);rawRoles.fill(0);rolesRaw.fill(0)
+  rawDump.fill(0);rawRoles.fill(0)
   const verified=await verifyEncryptedBackupSet({setPath:backupSet,identities:[recoveryIdentity],expectedProjectRef:'synthetic-local'})
   assert.equal((await verifyEncryptedBackupSet({setPath:backupSet,identities:[primaryIdentity],expectedProjectRef:'synthetic-local'})).result,'VERIFIED')
   const restoredBuffers=new Map()
@@ -191,22 +224,27 @@ try {
     createSink(name){const chunks=[];restoredBuffers.set(name,chunks);return new Writable({write(chunk,_encoding,callback){chunks.push(Buffer.from(chunk));callback()}})},
     async commit(){},async rollback(){for(const chunks of restoredBuffers.values())for(const chunk of chunks)chunk.fill(0);restoredBuffers.clear()},
   })})
-  const dump=Buffer.concat(restoredBuffers.get('database-public')??[]),roles=Buffer.concat(restoredBuffers.get('roles-global')??[]),aclRestoreScript=Buffer.concat(restoredBuffers.get('public-schema-acl')??[])
+  const dump=Buffer.concat(restoredBuffers.get('database-public')??[]),roles=Buffer.concat(restoredBuffers.get('public-role-dependencies')??[]),aclRestoreScript=Buffer.concat(restoredBuffers.get('public-schema-acl')??[])
   plaintextBuffers.push(dump,roles,aclRestoreScript,...[...restoredBuffers.values()].flat())
   assert.equal(aclRestoreScript.toString('utf8'),publicAclScript,'Encrypted schema ACL component does not match the source catalog ACL')
   assert.equal(verified.result,'VERIFIED');assert.equal(restoreResult.result,'RESTORED_FROM_VERIFIED_SET')
   writeFileSync(join(dir,'backup-manifest.json'),JSON.stringify({result:verified.result,source:verified.source,components:verified.components.map(({name,file,bytes,sha256})=>({name,file,bytes,sha256})),coverage:verified.coverage},null,2))
-  report.encryption={format:'stock-portfolio-backup-set',version:2,componentCipher:'AES-256-GCM',keyAndManifest:'age-v1-X25519',nonceBytes:12,tagBytes:16,authentication:'PASS before restore'}
+  report.encryption={format:'stock-portfolio-backup-set',version:3,componentCipher:'AES-256-GCM',keyAndManifest:'age-v1-X25519',nonceBytes:12,tagBytes:16,authentication:'PASS before restore'}
   report.archiveSnapshot='one pg_dump invocation; roles separate; controlled no-writer change window, not PITR'
-  report.roleTransform='omit only CREATE/ALTER pre-existing postgres; --no-role-passwords'
-  report.coverage={publicSchema:'included and restored from the encrypted set',publicSchemaAcl:'included as a separate encrypted, bounded restore script',roles:'included with role passwords omitted; no tablespaces',extensions:'pgcrypto is not included in the set; synthetic restore installs matching extension separately',auth:'excluded; disposable target received only auth.uid() plus two synthetic FK placeholder IDs; no auth credentials/session rows restored',storage:'excluded; no metadata or object bytes restored',migrationHistory:'excluded because fixture history is outside public'}
+  report.roleTransform='no role DDL, attributes, memberships or credentials; named platform dependencies must already exist'
+  report.coverage={publicSchema:'included and restored from the encrypted set',publicSchemaAcl:'included as a separate encrypted, bounded restore script',roles:'public dependency names only; existing target roles independently provisioned as synthetic prerequisites; global role definitions excluded',extensions:'pgcrypto is not included in the set; synthetic restore installs matching extension separately',auth:'excluded; disposable target received only auth.uid() plus two synthetic FK placeholder IDs; no auth credentials/session rows restored',storage:'excluded; no metadata or object bytes restored',migrationHistory:'excluded because fixture history is outside public'}
   record('AES-256-GCM component streams and age-wrapped data key/manifest authenticated; hashes verified before restore')
   assertInventory(expected,inventory(source))
   record('backup SHA-256 and unchanged source data/catalog after dump')
   stage='restore'
   const restoreStart=performance.now()
-  stage='restore-roles'
+  stage='restore-role-preconditions'
+  // Target prerequisites are synthetic platform setup, never sourced from the backup.
+  sql(target,'CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN BYPASSRLS;')
+  sql(target,scopedFixtureRoles)
   sql(target,roles)
+  assert.equal(query(target,"SELECT count(*) FROM pg_roles WHERE rolname IN ('unrelated_private','supabase_unrelated_admin');"),'0')
+
   own(target)
   sql(target,readFileSync('scripts/qa/recovery-target-platform-stub.sql'))
   stage='restore-archive-preflight'
@@ -224,6 +262,13 @@ try {
   assert.equal(query(target,"SELECT extversion FROM pg_extension WHERE extname='pgcrypto';"),query(source,"SELECT extversion FROM pg_extension WHERE extname='pgcrypto';"),'Synthetic target extension version differs from the source')
   report.pgRestoreMs=Math.round(performance.now()-pgRestoreStart)
   report.restoreRolesAndPgRestoreMs=Math.round(performance.now()-restoreStart);report.backupAndRestoreMs=Math.round(performance.now()-started)
+
+  assert.equal(query(target,"SELECT has_column_privilege('backup_column_reader','public.backup_acl_fixture','id','SELECT');"),'t')
+  assert.equal(query(target,"SELECT has_column_privilege('backup_column_reader','public.backup_acl_fixture','secret_note','SELECT');"),'f')
+  denied(target,"SET ROLE backup_column_reader; SELECT secret_note FROM public.backup_acl_fixture;",'42501')
+  assert.equal(query(target,"SELECT relowner::regrole::text FROM pg_class WHERE oid='public.backup_acl_fixture'::regclass;"),'backup_owner')
+  assert.equal(buildPublicRoleDependenciesScript(parse(target,PUBLIC_ROLE_DEPENDENCIES_QUERY)),roleScript)
+  record('restored public ownership, column least privilege, RLS/default ACL dependencies preserved; unrelated roles remain absent')
   const restored=inventory(target,'postgres',['public'])
   const targetPublicAccessAfter=publicSchemaAccess(target)
   report.publicSchemaAccessComparison={source:sourcePublicAccess,targetAfter:targetPublicAccessAfter}
@@ -291,7 +336,7 @@ try {
   for (const file of [...report.qaFiles,...report.sqlFiles]) assert.equal(sha256(readFileSync(file.file)),file.sha256,'Source changed during run')
   record('source fingerprints unchanged through completed restore/security verification')
   assert.deepEqual(readdirSync(dir).sort(),['backup-manifest.json','encrypted-set','inventory-source.json','inventory-restored.json'].sort(),'Unexpected persistent output')
-  assert.deepEqual(readdirSync(backupSet).sort(),['data-key.age','database-public.dump.aes256gcm','manifest.json.age','public-schema-acl.sql.aes256gcm','roles-global.sql.aes256gcm'].sort(),'Unexpected encrypted set contents')
+  assert.deepEqual(readdirSync(backupSet).sort(),['data-key.age','database-public.dump.aes256gcm','manifest.json.age','public-schema-acl.sql.aes256gcm','public-role-dependencies.sql.aes256gcm'].sort(),'Unexpected encrypted set contents')
   for (const name of ['inventory-source.json','inventory-restored.json']) assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(dir,name),'utf8'))).sort(),['catalogHash','tables'])
   report.encryption.plaintextOnDisk=false
   record('persistent output allowlist: ciphertext and sanitized metadata only; no SQL dump/roles export')

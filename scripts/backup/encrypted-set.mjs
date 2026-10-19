@@ -8,7 +8,7 @@ import { Readable, Transform, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
 const FORMAT = 'stock-portfolio-backup-set'
-const VERSION = 2
+const VERSION = 3
 const MANIFEST_FILE = 'manifest.json.age'
 const KEY_FILE = 'data-key.age'
 const MAX_MANIFEST_BYTES = 1024 * 1024
@@ -16,7 +16,7 @@ const MAX_COMPONENT_BYTES = 1024 ** 4
 const MAX_STREAM_DURATION_MS = 8 * 60 * 60 * 1000
 const COMPONENTS = Object.freeze({
   'database-public': 'database-public.dump.aes256gcm',
-  'roles-global': 'roles-global.sql.aes256gcm',
+  'public-role-dependencies': 'public-role-dependencies.sql.aes256gcm',
   'public-schema-acl': 'public-schema-acl.sql.aes256gcm',
 })
 const COVERAGE = () => ({
@@ -24,7 +24,8 @@ const COVERAGE = () => ({
   publicSchemaAcl: 'INCLUDED_EXACT_ACL_SCRIPT',
   portfolioData: 'INCLUDED_IF_STORED_IN_PUBLIC_SCHEMA',
   rlsAndRpcDefinitions: 'INCLUDED_IF_STORED_IN_PUBLIC_SCHEMA',
-  rolesAndGrants: 'ROLES_EXPORT_INCLUDED_NO_ROLE_PASSWORDS',
+  rolesAndGrants: 'PUBLIC_DEPENDENCIES_ONLY_EXISTING_TARGET_ROLES_REQUIRED',
+  roleMembershipsAndAttributes: 'NOT_EXPORTED_REQUIRE_INDEPENDENT_PLATFORM_EQUIVALENCE_REVIEW',
   extensions: 'PUBLIC_DUMP_SCOPE_ONLY_MANAGED_EXTENSION_RUNTIME_UNVERIFIED',
   supabaseAuth: 'NOT_EXPORTED',
   storageMetadata: 'NOT_EXPORTED',
@@ -79,9 +80,9 @@ function validateComponents(components) {
     seen.add(component.name)
   }
   assert.ok(seen.has('database-public'), 'Public schema dump is required')
-  assert.ok(seen.has('roles-global'), 'Global roles export is required')
+  assert.ok(seen.has('public-role-dependencies'), 'Public role dependency evidence is required')
   assert.ok(seen.has('public-schema-acl'), 'Public schema ACL is required')
-  return ['database-public', 'public-schema-acl', 'roles-global'].filter(name => seen.has(name))
+  return ['database-public', 'public-role-dependencies', 'public-schema-acl'].filter(name => seen.has(name))
 }
 
 function validateRecipients(recipients) {
@@ -441,14 +442,14 @@ export async function restoreEncryptedBackupSet({ setPath, identities, expectedP
   const dataKey = await readAgeKey(join(resolve(setPath), KEY_FILE), identities)
   try {
     assert.equal(sha256(dataKey), verified.dataKeySha256, 'Wrapped data key changed after verification')
-    const restoreSinks = new Map()
-    for (const component of verified.components) {
-      const sink = transaction.createSink(component.name)
-      assert.ok(sink instanceof Writable, `Restore sink for ${component.name} must be a Writable stream`)
-      restoreSinks.set(component.name, sink)
-    }
-    for (const component of verified.components) {
-      const actual = await decryptGcmToWritable(join(resolve(setPath), component.file), dataKey, verified.source, component, restoreSinks.get(component.name))
+    // A dependency guard failure must occur before any database sink opens.
+    const order = ['public-role-dependencies', 'database-public', 'public-schema-acl']
+    for (const name of order) {
+      const component = verified.components.find(item => item.name === name)
+      assert.ok(component, 'Required restore component missing')
+      const sink = transaction.createSink(name)
+      assert.ok(sink instanceof Writable, 'Restore sink must be a Writable stream')
+      const actual = await decryptGcmToWritable(join(resolve(setPath), component.file), dataKey, verified.source, component, sink)
       assert.equal(actual.ciphertextBytes, component.ciphertextBytes)
       assert.equal(actual.ciphertextSha256, component.ciphertextSha256, 'Encrypted component changed after verification')
       assert.equal(actual.plaintextBytes, component.bytes, 'Restored component size changed')

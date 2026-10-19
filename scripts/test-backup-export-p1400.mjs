@@ -6,6 +6,7 @@ import { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import { generateIdentity, identityToRecipient } from 'age-encryption'
 import { createEncryptedBackupSet, restoreEncryptedBackupSet, verifyEncryptedBackupSet } from './backup/encrypted-set.mjs'
+import { buildPublicRoleDependenciesScript } from './backup/public-role-dependencies.mjs'
 import { buildPostgresDumpArguments, buildPostgresRolesArguments, buildPublicSchemaAclScript, createPostgresBackupStreams } from './backup/postgres-streams.mjs'
 
 const fixture = async () => {
@@ -25,7 +26,7 @@ const fixture = async () => {
   }
   const components = [
     { name: 'database-public', stream: Readable.from([Buffer.from('SYNTHETIC-DATABASE-HEADER\n'), Buffer.alloc(256 * 1024, 0x5a)]) },
-    { name: 'roles-global', stream: Readable.from([Buffer.from('SYNTHETIC-ROLE;\n')]) },
+    { name: 'public-role-dependencies', stream: Readable.from([Buffer.from('SYNTHETIC-ROLE;\n')]) },
     { name: 'public-schema-acl', stream: Readable.from([Buffer.from('BEGIN; GRANT USAGE ON SCHEMA public TO PUBLIC; COMMIT;\n')]) },
   ]
   return { root, primaryIdentity, recoveryIdentity, recipients, source, components }
@@ -44,7 +45,7 @@ test('streams an age-encrypted complete set and restores through the recovery re
   const created = await createEncryptedBackupSet({ destination: f.root, setName: 'set-001', recipients: f.recipients, source: f.source, components: f.components })
   assert.equal(created.setPath, setPath)
   const names = (await readdir(setPath)).sort()
-  assert.deepEqual(names, ['data-key.age', 'database-public.dump.aes256gcm', 'manifest.json.age', 'public-schema-acl.sql.aes256gcm', 'roles-global.sql.aes256gcm'])
+  assert.deepEqual(names, ['data-key.age', 'database-public.dump.aes256gcm', 'manifest.json.age', 'public-role-dependencies.sql.aes256gcm', 'public-schema-acl.sql.aes256gcm'])
   for (const name of names) {
     const bytes = await readFile(join(setPath, name))
     assert.equal(bytes.includes(Buffer.from('SYNTHETIC-DATABASE-HEADER')), false, 'persistent artifact must not contain synthetic plaintext')
@@ -69,9 +70,10 @@ test('streams an age-encrypted complete set and restores through the recovery re
       rollback: async () => { throw new Error('unexpected rollback') },
     }),
   })
+  assert.deepEqual([...outputs.keys()], ['public-role-dependencies','database-public','public-schema-acl'], 'Role prerequisites must complete before the database restore sink opens')
   assert.equal(outputs.get('database-public').result().length, 256 * 1024 + Buffer.byteLength('SYNTHETIC-DATABASE-HEADER\n'))
   assert.equal(outputs.get('database-public').result().subarray(0, 26).toString(), 'SYNTHETIC-DATABASE-HEADER\n')
-  assert.equal(outputs.get('roles-global').result().toString(), 'SYNTHETIC-ROLE;\n')
+  assert.equal(outputs.get('public-role-dependencies').result().toString(), 'SYNTHETIC-ROLE;\n')
   assert.match(outputs.get('public-schema-acl').result().toString(), /SCHEMA public/)
 })
 
@@ -139,7 +141,7 @@ test('cleans only its exclusive staging directory after an interrupted component
     source: f.source,
     components: [
       { name: 'database-public', stream: Readable.from([Buffer.from('complete synthetic dump')]) },
-      { name: 'roles-global', stream: broken },
+      { name: 'public-role-dependencies', stream: broken },
       f.components[2],
     ],
   }))
@@ -166,7 +168,7 @@ test('detects truncated encrypted files and mismatched source identity', async t
   t.after(() => rm(f.root, { recursive: true, force: true }))
   const setPath = join(f.root, 'truncated')
   await createEncryptedBackupSet({ destination: f.root, setName: 'truncated', recipients: f.recipients, source: f.source, components: f.components })
-  const artifact = join(setPath, 'roles-global.sql.aes256gcm')
+  const artifact = join(setPath, 'public-role-dependencies.sql.aes256gcm')
   const bytes = await readFile(artifact)
   await writeFile(artifact, bytes.subarray(0, bytes.length - 7))
   await assert.rejects(verifyEncryptedBackupSet({ setPath, identities: [f.primaryIdentity], expectedProjectRef: 'synthetic-project' }))
@@ -227,7 +229,7 @@ test('rolls back a disposable target if restore streaming fails after another co
     expectedProjectRef: 'synthetic-project',
     beginRestore: async () => ({
       createSink(name) {
-        if (name === 'roles-global') return new Writable({ write(_chunk, _encoding, callback) { callback(new Error('synthetic restore sink failure')) } })
+        if (name === 'public-schema-acl') return new Writable({ write(_chunk, _encoding, callback) { callback(new Error('synthetic restore sink failure')) } })
         const chunks = []
         output.set(name, chunks)
         return new Writable({ write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() } })
@@ -244,19 +246,17 @@ test('rolls back a disposable target if restore streaming fails after another co
 test('PostgreSQL stream arguments select only public data and never pass a password', () => {
   const connection = { projectRef: 'abcdefghijklmnopqrst', host: 'db.abcdefghijklmnopqrst.supabase.co', port: 5432, database: 'postgres', username: 'backup_reader' }
   const dump = buildPostgresDumpArguments(connection)
-  const roles = buildPostgresRolesArguments(connection)
+  assert.throws(() => buildPostgresRolesArguments(connection), /Global role export is disabled/)
   assert.ok(dump.includes('--schema=public'))
   assert.ok(dump.includes('--format=custom'))
   assert.ok(dump.includes('--no-password'))
-  assert.ok(roles.includes('--roles-only'))
-  assert.ok(roles.includes('--no-role-passwords'))
-  for (const args of [dump, roles]) assert.equal(args.some(arg => /^--password$|password=|secret|token/i.test(arg)), false)
+  for (const args of [dump]) assert.equal(args.some(arg => /^--password$|password=|secret|token/i.test(arg)), false)
   assert.throws(() => buildPostgresDumpArguments({ ...connection, host: 'attacker.example' }))
 })
 
 test('PostgreSQL dump programs write to stdout and never receive a persistent output-file option', () => {
   const connection = { projectRef: 'abcdefghijklmnopqrst', host: 'db.abcdefghijklmnopqrst.supabase.co', port: 5432, database: 'postgres', username: 'backup_reader' }
-  for (const args of [buildPostgresDumpArguments(connection), buildPostgresRolesArguments(connection)]) {
+  for (const args of [buildPostgresDumpArguments(connection)]) {
     assert.equal(args.some(arg => /^--file(?:=|$)|^-f(?:$|.)/.test(arg)), false, 'dump output must remain on stdout')
   }
 })
@@ -278,11 +278,12 @@ const outputOption = args.findIndex(arg => arg === '--file' || arg === '-f')
 const outputEquals = args.find(arg => arg.startsWith('--file='))
 const outputPath = outputEquals ? outputEquals.slice('--file='.length) : outputOption >= 0 ? args[outputOption + 1] : null
 if (outputPath !== null) writeFileSync(resolve(outputPath), tool === 'pg_dumpall' ? 'SYNTHETIC_ROLE_PLAINTEXT' : 'SYNTHETIC_DUMP_PLAINTEXT')
-else if (tool === 'pg_dumpall' && executable.includes('.fail')) { process.stdout.write('SYNTHETIC_FAILED_PARTIAL'); process.exit(7) }
-else if (tool === 'pg_dumpall' && executable.includes('.interrupt')) { process.stdout.write('SYNTHETIC_INTERRUPTED_PARTIAL'); process.exit(9) }
-else if (tool === 'pg_dumpall' && executable.includes('.timeout')) { process.stdout.write('SYNTHETIC_TIMEOUT_PARTIAL'); setInterval(() => {}, 1000) }
+else if (tool === 'psql' && executable.includes('.fail')) { process.stdout.write('SYNTHETIC_FAILED_PARTIAL'); process.exit(7) }
+else if (tool === 'psql' && executable.includes('.interrupt')) { process.stdout.write('SYNTHETIC_INTERRUPTED_PARTIAL'); process.exit(9) }
+else if (tool === 'psql' && executable.includes('.timeout')) { process.stdout.write('SYNTHETIC_TIMEOUT_PARTIAL'); setInterval(() => {}, 1000) }
 else if (tool === 'pg_dump') process.stdout.write('SYNTHETIC_DUMP_PLAINTEXT')
-else if (tool === 'pg_dumpall') process.stdout.write('SYNTHETIC_ROLE_PLAINTEXT')
+else if (tool === 'pg_dumpall') process.exit(91)
+else if (args.at(-1).includes('owners_and_acls')) process.stdout.write(JSON.stringify({version:1,schema:'public',roles:['pg_database_owner'],globalDefaults:false,unsupportedDependencies:false}))
 else process.stdout.write(JSON.stringify([{grantee:null,grantor:'pg_database_owner',privilege:'USAGE',grantable:false}]))
 `)
   const expectedRootEntries = new Set(['mock-postgres.mjs', 'bin', 'encrypted-success'])
@@ -290,7 +291,6 @@ else process.stdout.write(JSON.stringify([{grantee:null,grantor:'pg_database_own
   const makeConfig = async suffix => {
     const paths = {
       pgDumpPath: join(bin, `pg_dump${suffix}.mock`),
-      pgDumpallPath: join(bin, `pg_dumpall${suffix}.mock`),
       psqlPath: join(bin, `psql${suffix}.mock`),
       pgPassfile: join(root, 'pgpass.synthetic'),
       sslRootCert: join(root, 'ca.synthetic'),
@@ -327,7 +327,8 @@ else process.stdout.write(JSON.stringify([{grantee:null,grantor:'pg_database_own
     assert.equal(bytes.includes(Buffer.from('SYNTHETIC_ROLE_PLAINTEXT')), false)
   }
   assert.ok(successCalls.some(call => call.executable.includes('pg_dump.success') && !call.args.some(arg => /^--file(?:=|$)|^-f(?:$|.)/.test(arg))))
-  assert.ok(successCalls.some(call => call.executable.includes('pg_dumpall.success') && !call.args.some(arg => /^--file(?:=|$)|^-f(?:$|.)/.test(arg))))
+  assert.equal(successCalls.some(call => call.executable.includes('pg_dumpall')), false)
+  assert.ok(successCalls.some(call => call.executable.includes('psql.success') && call.args.at(-1).includes('owners_and_acls')))
   assert.deepEqual((await readdir(root)).sort(), [...expectedRootEntries].sort())
   assert.deepEqual((await readdir(bin)).sort(), [...expectedBinEntries].sort())
 
@@ -349,12 +350,70 @@ else process.stdout.write(JSON.stringify([{grantee:null,grantor:'pg_database_own
 test('public schema ACL serializer preserves granted roles safely and rejects untrusted ACL fields', () => {
   const script=buildPublicSchemaAclScript([
     {grantee:null,grantor:'pg_database_owner',privilege:'USAGE',grantable:false},
-    {grantee:'odd"role',grantor:'pg_database_owner',privilege:'CREATE',grantable:true},
+    {grantee:'backup_reader',grantor:'pg_database_owner',privilege:'CREATE',grantable:true},
   ])
   assert.match(script,/GRANT USAGE ON SCHEMA public TO PUBLIC;/)
-  assert.match(script,/GRANT CREATE ON SCHEMA public TO "odd""role" WITH GRANT OPTION;/)
+  assert.match(script,/GRANT CREATE ON SCHEMA public TO "backup_reader" WITH GRANT OPTION;/)
   assert.match(script,/SET LOCAL ROLE "pg_database_owner";/)
   assert.throws(()=>buildPublicSchemaAclScript([{grantee:'x',grantor:'owner',privilege:'DROP',grantable:false}]))
-  assert.match(buildPublicSchemaAclScript([{grantee:'x; SELECT 1',grantor:'owner',privilege:'USAGE',grantable:false}]),/TO "x; SELECT 1";/)
+  assert.throws(()=>buildPublicSchemaAclScript([{grantee:'x; SELECT 1',grantor:'owner',privilege:'USAGE',grantable:false}]))
   assert.throws(()=>buildPublicSchemaAclScript([{grantee:'bad\nrole',grantor:'owner',privilege:'USAGE',grantable:false}]))
+})
+
+test('global role export is rejected even when role passwords are omitted', () => {
+  const connection = { projectRef: 'abcdefghijklmnopqrst', host: 'db.abcdefghijklmnopqrst.supabase.co', port: 5432, database: 'postgres', username: 'backup_reader' }
+  assert.throws(() => buildPostgresRolesArguments(connection), /Global role export is disabled/)
+})
+
+const dependencyEvidence = (patch = {}) => ({ version: 1, schema: 'public', roles: ['authenticated','pg_database_owner'], globalDefaults: false, unsupportedDependencies: false, ...patch })
+
+test('scoped dependencies contain only existence guards and never define or elevate roles', () => {
+  const sql = buildPublicRoleDependenciesScript(dependencyEvidence())
+  assert.match(sql, /rolname = 'authenticated'/)
+  assert.match(sql, /rolname = 'pg_database_owner'/)
+  assert.doesNotMatch(sql, /CREATE ROLE|ALTER ROLE|GRANT .* TO|PASSWORD|BYPASSRLS|SUPERUSER|unrelated_private/i)
+  assert.match(sql, /RAISE EXCEPTION/)
+})
+
+test('dependencies reject unknown, secret, privilege and out-of-scope fields without serializing them', () => {
+  for (const patch of [{schema:'auth'}, {password:'synthetic'}, {rolsuper:true}, {memberships:[]}, {globalDefaults:true}, {unsupportedDependencies:true}, {roles:[]}, {roles:['one','one']}, {roles:Array.from({length:513},(_,i)=>'r'+i)}]) {
+    assert.throws(() => buildPublicRoleDependenciesScript(dependencyEvidence(patch)))
+  }
+})
+
+test('unsupported role identifiers fail closed in both dependency and schema ACL serializers', () => {
+  for (const name of ['bad\nrole', 'x;DROP ROLE x', 'odd"role', "quote'role", 'back\\slash', '$sp_public_roles$', '', 'x'.repeat(64), 123, null]) {
+    assert.throws(() => buildPublicRoleDependenciesScript(dependencyEvidence({roles:[name]})))
+    if (name !== null) assert.throws(() => buildPublicSchemaAclScript([{grantee:name,grantor:'owner',privilege:'USAGE',grantable:false}]))
+  }
+})
+
+test('an explicitly empty public schema ACL revokes PUBLIC rather than inventing grants', () => {
+  assert.equal(buildPublicSchemaAclScript([]), 'BEGIN;\nREVOKE ALL ON SCHEMA public FROM PUBLIC;\nCOMMIT;\n')
+})
+
+test('legacy global-role component contracts fail before any artifact is written', async t => {
+  const f = await fixture()
+  t.after(() => rm(f.root, {recursive:true,force:true}))
+  f.components[1].name = 'roles-global'
+  await assert.rejects(createEncryptedBackupSet({destination:f.root,setName:'legacy',recipients:f.recipients,source:f.source,components:f.components}))
+  assert.deepEqual(await readdir(f.root), [])
+})
+
+test('failed dependency guard rolls back without opening a database restore sink', async t => {
+  const f = await fixture()
+  t.after(() => rm(f.root, {recursive:true,force:true}))
+  const setName='missing-target-role'
+  await createEncryptedBackupSet({destination:f.root,setName,recipients:f.recipients,source:f.source,components:f.components})
+  const opened=[]
+  let rolledBack=false
+  await assert.rejects(restoreEncryptedBackupSet({
+    setPath:join(f.root,setName), identities:[f.primaryIdentity], expectedProjectRef:'synthetic-project',
+    beginRestore:async()=>({
+      createSink(name){opened.push(name);return new Writable({write(_chunk,_enc,cb){cb(new Error('required synthetic target role missing'))}})},
+      async commit(){assert.fail('must not commit')}, async rollback(){rolledBack=true},
+    }),
+  }))
+  assert.deepEqual(opened,['public-role-dependencies'])
+  assert.equal(rolledBack,true)
 })

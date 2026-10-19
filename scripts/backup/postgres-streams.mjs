@@ -4,6 +4,7 @@ import { lstat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { Readable } from 'node:stream'
 import { once } from 'node:events'
+import { assertRoleName, buildPublicRoleDependenciesScript, PUBLIC_ROLE_DEPENDENCIES_QUERY } from './public-role-dependencies.mjs'
 
 const PROJECT_REF = /^[a-z0-9]{20}$/
 const SERVICE_HOST = ref => `db.${ref}.supabase.co`
@@ -13,14 +14,14 @@ const MAX_SCHEMA_ACL_BYTES = 256 * 1024
 
 function validateConfig(config) {
   assert.ok(config && typeof config === 'object' && !Array.isArray(config))
-  const allowed = ['projectRef', 'host', 'port', 'database', 'username', 'pgPassfile', 'sslRootCert', 'pgDumpPath', 'pgDumpallPath', 'psqlPath', 'timeoutMs']
+  const allowed = ['projectRef', 'host', 'port', 'database', 'username', 'pgPassfile', 'sslRootCert', 'pgDumpPath', 'psqlPath', 'timeoutMs']
   assert.deepEqual(Object.keys(config).sort(), allowed.sort(), 'Unexpected PostgreSQL export configuration')
   assert.match(config.projectRef, PROJECT_REF, 'Invalid Supabase project reference')
   assert.equal(config.host, SERVICE_HOST(config.projectRef), 'Database host does not match the expected project')
   assert.ok(Number.isInteger(config.port) && config.port >= 1 && config.port <= 65535)
   assert.match(config.database, /^[A-Za-z0-9_-]{1,63}$/)
   assert.match(config.username, /^[A-Za-z0-9_.-]{1,128}$/)
-  for (const field of ['pgPassfile', 'sslRootCert', 'pgDumpPath', 'pgDumpallPath', 'psqlPath']) {
+  for (const field of ['pgPassfile', 'sslRootCert', 'pgDumpPath', 'psqlPath']) {
     assert.ok(typeof config[field] === 'string' && config[field].length > 0)
     assert.ok(resolve(config[field]) === config[field], `${field} must be an absolute path`)
   }
@@ -39,23 +40,16 @@ export function buildPostgresDumpArguments({ projectRef, host, port, database, u
   ]
 }
 
-export function buildPostgresRolesArguments({ projectRef, host, port, database, username }) {
-  assert.match(projectRef, PROJECT_REF)
-  assert.equal(host, SERVICE_HOST(projectRef), 'Database host does not match the expected project')
-  assert.ok(Number.isInteger(port) && port >= 1 && port <= 65535)
-  assert.match(database, /^[A-Za-z0-9_-]{1,63}$/)
-  assert.match(username, /^[A-Za-z0-9_.-]{1,128}$/)
-  return [
-    '--no-password', '--host', host, '--port', String(port), '--username', username,
-    '--database', database, '--roles-only', '--no-role-passwords',
-  ]
+// Retained only as a fail-closed guard for obsolete callers. Never execute pg_dumpall.
+export function buildPostgresRolesArguments() {
+  throw new Error('Global role export is disabled; use scoped public role dependencies')
 }
 
 const quoteIdentifier = value => `"${value.replaceAll('"', '""')}"`
 
 /** Build a deterministic, bounded schema-ACL restore script from catalog data. */
 export function buildPublicSchemaAclScript(entries) {
-  assert.ok(Array.isArray(entries) && entries.length > 0 && entries.length <= 512, 'Public schema ACL entries are invalid or exceed the bound')
+  assert.ok(Array.isArray(entries) && entries.length <= 512, 'Public schema ACL entries are invalid or exceed the bound')
   const grouped = new Map()
   const grantees = new Set()
   for (const entry of entries) {
@@ -63,6 +57,7 @@ export function buildPublicSchemaAclScript(entries) {
     assert.deepEqual(Object.keys(entry).sort(), ['grantable', 'grantee', 'grantor', 'privilege'])
     for (const field of ['grantee', 'grantor']) {
       const value = entry[field]
+      if (value !== null) assertRoleName(value)
       assert.ok(field === 'grantee' && value === null || typeof value === 'string' && Buffer.byteLength(value) > 0 && Buffer.byteLength(value) <= 63 && !/[\u0000-\u001f\u007f]/.test(value))
     }
     assert.ok(['USAGE', 'CREATE'].includes(entry.privilege))
@@ -172,15 +167,12 @@ export async function createPostgresBackupStreams(config, options = {}) {
   const pgPassfile = await assertSafeFile(config.pgPassfile, 'PGPASSFILE')
   const sslRootCert = await assertSafeFile(config.sslRootCert, 'PostgreSQL CA certificate')
   const pgDumpPath = await assertSafeFile(config.pgDumpPath, 'pg_dump')
-  const pgDumpallPath = await assertSafeFile(config.pgDumpallPath, 'pg_dumpall')
   const psqlPath = await assertSafeFile(config.psqlPath, 'psql')
   const pgDumpVersion = await executableVersion(pgDumpPath, 'pg_dump', spawnProcess)
-  const pgDumpallVersion = await executableVersion(pgDumpallPath, 'pg_dumpall', spawnProcess)
   const psqlVersion = await executableVersion(psqlPath, 'psql', spawnProcess)
   const pgDumpRelease = postgresClientRelease(pgDumpVersion, 'pg_dump')
-  const pgDumpallRelease = postgresClientRelease(pgDumpallVersion, 'pg_dumpall')
   const psqlRelease = postgresClientRelease(psqlVersion, 'psql')
-  assert.ok(pgDumpRelease === pgDumpallRelease && pgDumpRelease === psqlRelease, 'PostgreSQL client versions must match')
+  assert.ok(pgDumpRelease === psqlRelease, 'PostgreSQL client versions must match')
   const common = { ...config, pgPassfile, sslRootCert }
   const connection = { projectRef: config.projectRef, host: config.host, port: config.port, database: config.database, username: config.username }
   return {
@@ -191,12 +183,12 @@ export async function createPostgresBackupStreams(config, options = {}) {
       pgDumpVersion,
       psqlVersion,
       serverVersion: 'NOT_QUERIED',
-      rolesDumpVersion: pgDumpallVersion,
-      snapshot: 'pg_dump single-database snapshot; cluster globals are a separate export',
+      rolesDumpVersion: 'public-role-dependencies-v1 (psql catalog query)',
+      snapshot: 'pg_dump public snapshot; scoped role dependencies and schema ACL captured separately',
     },
     components: [
       { name: 'database-public', stream: processOutputStream(pgDumpPath, buildPostgresDumpArguments(connection), common, 'pg_dump', spawnProcess) },
-      { name: 'roles-global', stream: processOutputStream(pgDumpallPath, buildPostgresRolesArguments(connection), common, 'pg_dumpall', spawnProcess) },
+      { name: 'public-role-dependencies', stream: publicRoleDependenciesStream(psqlPath, connection, common, spawnProcess) },
       { name: 'public-schema-acl', stream: publicSchemaAclStream(psqlPath, connection, common, spawnProcess) },
     ],
   }
@@ -214,7 +206,7 @@ WHERE n.nspname = 'public';`
 function publicSchemaAclStream(psqlPath, connection, config, spawnProcess = spawn) {
   const args = [
     '--no-password', '--host', connection.host, '--port', String(connection.port), '--username', connection.username,
-    '--dbname', connection.database, '--no-psqlrc', '--tuples-only', '--no-align', '--quiet', '--command', PUBLIC_SCHEMA_ACL_QUERY,
+    '--dbname', connection.database, '--set=ON_ERROR_STOP=1', '--no-psqlrc', '--tuples-only', '--no-align', '--quiet', '--command', PUBLIC_SCHEMA_ACL_QUERY,
   ]
   const source = processOutputStream(psqlPath, args, config, 'psql public-schema ACL query', spawnProcess)
   const chunks = []
@@ -229,6 +221,28 @@ function publicSchemaAclStream(psqlPath, connection, config, spawnProcess = spaw
       const entries = JSON.parse(Buffer.concat(chunks).toString('utf8'))
       yield Buffer.from(buildPublicSchemaAclScript(entries))
     } catch { throw new Error('Public schema ACL stream failed') }
+    finally { for (const chunk of chunks) chunk.fill(0); chunks.length = 0 }
+  })(), { objectMode: false, highWaterMark: 64 * 1024 })
+}
+
+function publicRoleDependenciesStream(psqlPath, connection, config, spawnProcess) {
+  const args = [
+    '--no-password', '--host', connection.host, '--port', String(connection.port), '--username', connection.username,
+    '--dbname', connection.database, '--no-psqlrc', '--set=ON_ERROR_STOP=1', '--tuples-only', '--no-align', '--quiet',
+    '--command', PUBLIC_ROLE_DEPENDENCIES_QUERY,
+  ]
+  const source = processOutputStream(psqlPath, args, config, 'psql public role dependencies', spawnProcess)
+  const chunks = []
+  let bytes = 0
+  return Readable.from((async function* () {
+    try {
+      for await (const chunk of source) {
+        bytes += chunk.length
+        if (bytes > MAX_SCHEMA_ACL_BYTES) throw new Error('Role dependencies exceed bound')
+        chunks.push(Buffer.from(chunk))
+      }
+      yield Buffer.from(buildPublicRoleDependenciesScript(JSON.parse(Buffer.concat(chunks).toString('utf8'))))
+    } catch { throw new Error('Public role dependency stream failed') }
     finally { for (const chunk of chunks) chunk.fill(0); chunks.length = 0 }
   })(), { objectMode: false, highWaterMark: 64 * 1024 })
 }
