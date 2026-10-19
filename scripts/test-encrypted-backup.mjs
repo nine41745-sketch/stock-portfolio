@@ -60,6 +60,16 @@ test('missing roles and unexpected components rejected at encryption',()=>fixtur
   assert.throws(()=>sealSyntheticBackup({...data,'extra.sql':Buffer.from('extra')},ctx,key))
   assert.throws(()=>sealSyntheticBackup({...data,'roles.sql':Buffer.alloc(0)},ctx,key))
 }))
+test('writer rejects plaintext buffers before creating an encrypted artifact',()=>fixture(({root,key,ctx})=>{
+  assert.throws(()=>writeEncryptedSet(root,Buffer.from('synthetic plaintext'),ctx,key))
+  assert.deepEqual(readdirSync(root),[])
+}))
+test('writer rejects invalid components and key before creating an encrypted artifact',()=>fixture(({root,key,ctx,data})=>{
+  assert.throws(()=>writeEncryptedSet(root,{...data,unexpected:Buffer.from('x')},ctx,key))
+  assert.deepEqual(readdirSync(root),[])
+  assert.throws(()=>writeEncryptedSet(root,data,ctx,Buffer.alloc(16)))
+  assert.deepEqual(readdirSync(root),[])
+}))
 test('source commit, source hashes and run substitution rejected',()=>fixture(({key,ctx,data})=>{
   const b=sealSyntheticBackup(data,ctx,key)
   for(const c of [{...ctx,run:randomUUID()},{...ctx,sourceCommit:'c'.repeat(40)},{...ctx,sourceFiles:[{...ctx.sourceFiles[0],sha256:'d'.repeat(64)}]}])assert.throws(()=>openSyntheticBackup(b,key,c))
@@ -68,30 +78,30 @@ test('invalid or duplicate source fingerprints rejected',()=>fixture(({key,ctx,d
   for(const sourceFiles of [[],[{file:'../outside',sha256:'b'.repeat(64)}],[ctx.sourceFiles[0],ctx.sourceFiles[0]],[{file:'a',sha256:'invalid'}]])assert.throws(()=>sealSyntheticBackup(data,{...ctx,sourceFiles},key))
 }))
 test('exclusive encrypted output verifies without plaintext files',()=>fixture(({root,key,ctx,data})=>{
-  const b=sealSyntheticBackup(data,ctx,key), m=writeEncryptedSet(root,b,ctx)
+  const m=writeEncryptedSet(root,data,ctx,key)
   assert.deepEqual(readdirSync(root),['backup.spenc'])
   assert.equal(m.artifacts[0].sha256,sha256(readFileSync(join(root,'backup.spenc'))))
   assert.deepEqual(verifyEncryptedSet(root,m,key,ctx),data)
-  assert.throws(()=>writeEncryptedSet(root,b,ctx))
+  assert.throws(()=>writeEncryptedSet(root,data,ctx,key))
 }))
 test('modified sidecar manifest rejected',()=>fixture(({root,key,ctx,data})=>{
-  const m=writeEncryptedSet(root,sealSyntheticBackup(data,ctx,key),ctx)
+  const m=writeEncryptedSet(root,data,ctx,key)
   for(const mutate of [x=>{x.artifacts[0].sha256='0'.repeat(64)},x=>{x.extra='injected'},x=>{x.version=2},x=>{x.artifacts=[]},x=>{x.artifacts.push(x.artifacts[0])},x=>{x.artifacts[0].name='../outside'}]){
     const changed=structuredClone(m);mutate(changed);assert.throws(()=>verifyEncryptedSet(root,changed,key,ctx))
   }
 }))
 test('missing encrypted artifact rejected',()=>fixture(({root,key,ctx,data})=>{
-  const m=writeEncryptedSet(root,sealSyntheticBackup(data,ctx,key),ctx)
+  const m=writeEncryptedSet(root,data,ctx,key)
   rmSync(join(root,'backup.spenc'));assert.throws(()=>verifyEncryptedSet(root,m,key,ctx))
 }))
 test('artifact replacement rejected even with recomputed untrusted checksum',()=>fixture(({root,key,ctx,data})=>{
-  const m=writeEncryptedSet(root,sealSyntheticBackup(data,ctx,key),ctx), foreign={...ctx,run:randomUUID()}
+  const m=writeEncryptedSet(root,data,ctx,key), foreign={...ctx,run:randomUUID()}
   const b=sealSyntheticBackup(data,foreign,key);writeFileSync(join(root,'backup.spenc'),b)
   m.artifacts[0]={name:'backup.spenc',bytes:b.length,sha256:sha256(b)}
   assert.throws(()=>verifyEncryptedSet(root,m,key,ctx))
 }))
 test('hard-linked artifact rejected',()=>fixture(({root,key,ctx,data})=>{
-  const m=writeEncryptedSet(root,sealSyntheticBackup(data,ctx,key),ctx)
+  const m=writeEncryptedSet(root,data,ctx,key)
   linkSync(join(root,'backup.spenc'),join(root,'alias'))
   assert.throws(()=>verifyEncryptedSet(root,m,key,ctx))
 }))
@@ -100,12 +110,11 @@ test('directory/junction escape rejected',()=>fixture(({root,key,ctx,data})=>{
   const alias=join(root,'escape')
   try{
     symlinkSync(foreign,alias,process.platform==='win32'?'junction':'dir')
-    const blob=sealSyntheticBackup(data,ctx,key)
-    assert.throws(()=>writeEncryptedSet(alias,blob,ctx))
+    assert.throws(()=>writeEncryptedSet(alias,data,ctx,key))
   }finally{rmSync(foreign,{recursive:true})}
 }))
 test('artifact directory substituted for regular file rejected',()=>fixture(({root,key,ctx,data})=>{
-  const m=writeEncryptedSet(root,sealSyntheticBackup(data,ctx,key),ctx)
+  const m=writeEncryptedSet(root,data,ctx,key)
   rmSync(join(root,'backup.spenc'));symlinkSync(root,join(root,'backup.spenc'),process.platform==='win32'?'junction':'dir')
   assert.throws(()=>verifyEncryptedSet(root,m,key,ctx))
 }))

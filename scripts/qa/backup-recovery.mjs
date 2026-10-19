@@ -6,7 +6,7 @@ import { resolve, join } from 'node:path'
 import { randomBytes, randomInt, randomUUID } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { assertOwned, assertInventory, sha256 } from './recovery-safety.mjs'
-import { sealSyntheticBackup, openSyntheticBackup, writeEncryptedSet, verifyEncryptedSet } from './encrypted-backup.mjs'
+import { openSyntheticBackup, writeEncryptedSet, verifyEncryptedSet } from './encrypted-backup.mjs'
 import { hashPin, verifyPin } from '../../lib/pin.ts'
 
 assert.equal(process.versions.node.split('.')[0], '22', 'Use Node.js 22.x')
@@ -130,8 +130,8 @@ try {
   const rawRoles=Buffer.from(rolesRaw.toString().replace(/^CREATE ROLE postgres;\r?\n/gm,'').replace(/^ALTER ROLE postgres .*;\r?\n/gm,''))
   plaintextBuffers.push(rawRoles)
   const backupContext={run,sourceCommit:report.sourceCommit,sourceFiles:[...report.qaFiles,...report.sqlFiles]}
-  const envelope=sealSyntheticBackup({'database.dump':rawDump,'roles.sql':rawRoles},backupContext,backupKey)
-  const manifest=writeEncryptedSet(dir,envelope,backupContext)
+  const manifest=writeEncryptedSet(dir,{'database.dump':rawDump,'roles.sql':rawRoles},backupContext,backupKey)
+  const envelope=readFileSync(join(dir,'backup.spenc'))
   writeFileSync(join(dir,'backup-manifest.json'),JSON.stringify(manifest,null,2))
   rawDump.fill(0);rawRoles.fill(0);rolesRaw.fill(0)
   // Only authenticated, hash-verified plaintext from the persisted envelope reaches Restore.

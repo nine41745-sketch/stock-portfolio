@@ -106,10 +106,11 @@ function safeRoot(root) {
 function descriptor(blob, context) {
   return {format:'stock-portfolio-encrypted-set',version:1,syntheticOnly:true,context,artifacts:[{name:ARTIFACT,bytes:blob.length,sha256:sha256(blob)}]}
 }
-export function writeEncryptedSet(root, blob, context) {
-  validateContext(context)
-  assert.ok(Buffer.isBuffer(blob) && blob.length <= MAX_DATA + MAX_HEADER + 40)
+export function writeEncryptedSet(root, data, context, key) {
   const base = safeRoot(root)
+  // Seal the exact allowlisted components here so callers cannot persist an
+  // arbitrary Buffer while receiving metadata that claims it is encrypted.
+  const blob = sealSyntheticBackup(data, context, key)
   // Exclusive creation prevents overwrite; only this fixed artifact name is ever used.
   writeFileSync(join(base,ARTIFACT),blob,{flag:'wx',mode:0o600})
   return descriptor(blob,context)
