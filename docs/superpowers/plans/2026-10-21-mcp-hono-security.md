@@ -32,7 +32,7 @@
 - [x] Update the obsolete SDK 1.31.0 critical assertion to enforce the patched dependency contract; wire the focused regression into the critical chain.
 - [x] Run the focused regression, audit classifier negative controls, npm ci, npm run ci, Full audit, production-only audit, and diff checks.
 - [x] Independently review the complete diff; resolve material findings and record the evidence below.
-- [ ] Commit only scoped files, verify remote main and deployment policy, push once, and create a Draft PR. Inspect hosted CI/Preview; never merge or deploy Production.
+- [x] Commit only scoped files, verify remote main and deployment policy, push the scoped fix, create a Draft PR, and inspect hosted CI/Preview; never merge or deploy Production.
 
 ## Evidence ledger
 
@@ -46,3 +46,4 @@
 - Independent read-only review: no Critical/Important findings; one Minor finding that any rejected send could satisfy the redirect test. Resolved by requiring StreamableHTTPError, HTTP 307 and the explicit same-origin redirect-refusal diagnostic. Focused tests still 6/6 PASS, exit 0. Final complete npm run ci rerun also PASS, exit 0; existing warnings remain.
 - Audit classifier, documented braces exception, package.json, deployment policy, application source and cloud settings remain unchanged. No live-provider, authenticated integration or Production behavior is established by these synthetic tests.
 - Before push: remote main remains c5254bfdac3e7e7abc6a41d0686eb8877a86fe39; feature branch absent. Production alias remains dpl_DVGLXvESkS2JmKzok2pqiEZUxE6L, updatedAt 1792062684531. Main Git deployments remain disabled; the feature push may trigger one automatic Preview.
+- Initial PR #79 push completed at b58496119a8057baf070861b6ca50b7818feb6ed. Hosted CI run 39500952825 passed both verify and security-audit; the Vercel Preview deployment dpl_6ECvJRD4WPNgyfjgAr5wya4pJcTJ reached READY. PR remained Draft and unmerged. Production alias remained dpl_DVGLXvESkS2JmKzok2pqiEZUxE6L, updatedAt 1792062684531; remote main remained c5254bfdac3e7e7abc6a41d0686eb8877a86fe39. Branch-protection API was unavailable to the connected GitHub integration (403), so those rules were not independently verified.
