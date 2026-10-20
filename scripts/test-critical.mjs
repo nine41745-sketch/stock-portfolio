@@ -98,7 +98,11 @@ assert.equal(
 )
 
 const vercel = JSON.parse(fs.readFileSync('vercel.json', 'utf8'))
-assert.deepEqual(vercel.git?.deploymentEnabled, { 'dependabot/**': false }, 'Only Dependabot Git branches may disable Vercel automatic deployments; main and feature previews must remain enabled')
+assert.deepEqual(
+  vercel.git?.deploymentEnabled,
+  { 'dependabot/**': false, main: false },
+  'Vercel must skip automatic deployments from main and Dependabot while leaving PR branches enabled by default'
+)
 assert.ok(vercel.crons?.some(c => c.path === '/api/cron/daily-analyze' && c.schedule === '15 1 * * 2-6'), 'Post-close cron must remain ~08:15 ICT for US Mon-Fri sessions')
 assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 12 * * 1-5'), 'Pre-market cron must include EDT candidate 12:45 UTC')
 assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 13 * * 1-5'), 'Pre-market cron must include EST candidate 13:45 UTC')
