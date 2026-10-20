@@ -2,11 +2,11 @@
 
 โปรเจกต์นี้ใช้ [Semantic Versioning](https://semver.org/) รูปแบบ `MAJOR.MINOR.PATCH` (เช่น `v1.10.1`)
 
-The application version display resolves through the exact @/config/changelog alias in tsconfig.json. This candidate points to config/changelog-v1370.ts; its CURRENT_VERSION is v1.37.0 and the entry date is Unreleased — Release Candidate. package.json and both root version fields in the tracked package-lock.json must match 1.37.0. Preserve the complete imported history, including unreleased v1.36.0 and v1.35.1 entries. The original config/changelog.ts remains the shared type and historical record, not the current alias target.
+The application version display resolves through the exact @/config/changelog alias in tsconfig.json. This candidate points to config/changelog-v1400.ts; its CURRENT_VERSION is v1.40.0 and the entry date is Unreleased — Release Candidate. package.json and both root version fields in the tracked package-lock.json must match 1.40.0. Preserve the complete imported history, including unreleased v1.35.1–v1.39.0 entries. The original config/changelog.ts remains the shared type and historical record, not the current alias target.
 
 ## Development version boundary
 
-Remote main was inspected at 5d796cc452b79220a47dfc20c4efa526b9bdd785 (merged v1.35.0 baseline). The integrated v1.37.0 Release Candidate is unreleased; no Production status is newly verified by this local preparation. Owner-approved candidate metadata is not a release timestamp or authority to push, merge, deploy, tag or publish. Security / Production Release Gate remains HOLD — Full Audit 7 High. See [candidate checklist](docs/release-v1370.md).
+Remote main was inspected at 5d796cc452b79220a47dfc20c4efa526b9bdd785 (merged v1.35.0 baseline). The integrated v1.40.0 Release Candidate remains unreleased in Draft PR #73. Hosted CI and disposable authenticated QA are recorded in docs/release-v1400.md; neither establishes Production behavior. Owner-approved candidate metadata is not a release timestamp or authority to push, merge, deploy, tag or publish. Security / Production Release Gate remains HOLD. Full Audit has the documented GHSA-vfj7-8cjw-p6xm CI exception (7 High); Production-only Audit is clean. This exception does not accept Production risk. See [candidate checklist](docs/release-v1400.md).
 
 Candidate entries must retain Unreleased / Release Candidate instead of assigning a completed release time. Timestamp rules below apply when recording an actual authorized release.
 

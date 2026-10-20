@@ -1,6 +1,6 @@
 # v1.40.0 — Personal Investment Command Center Release Candidate
 
-**Status: Unreleased / Release Candidate. Production Release Gate: HOLD.** This local candidate is based on `867d38c7bf111053cbe7f8280a42f369189c7e82`. It is not pushed, merged, previewed, deployed, tagged, or released. v1.35.1–v1.39.0 remain unreleased candidates. The historical Full npm Audit baseline remains 7 High; no risk acceptance is recorded.
+**Status: Unreleased / Release Candidate. Production Release Gate: HOLD.** The candidate is published as Draft PR #73 and remains unmerged, untagged and unreleased. Latest hosted evidence appears below; original local validation is retained as historical evidence. v1.35.1–v1.39.0 remain unreleased candidates. Full npm Audit remains 7 High with the documented CI-only advisory exception; no Production risk acceptance is recorded.
 
 ## Integration architecture
 
@@ -30,7 +30,9 @@ The snapshot and explicit quote refresh are abortable on the client, use `no-sto
 - No database writes, schema/migration changes, new dependency, trade execution, Production credential, or real portfolio fixture is added.
 - The page is decision-support UI only. No Buy/Sell execution control exists.
 
-## Inherited limitations and QA boundaries
+## Historical local limitations and QA boundaries
+
+The following records the original Windows/local validation environment. The later hosted results below supersede its CI, build and disposable-browser status only; they do not prove Production behavior.
 
 v1.39.0 limitations remain: Windows Turbopack/PostCSS child-process failure, npm Registry DNS failures in the restricted environment, and Authenticated Browser QA blocked by Windows/Docker network isolation. Those historical results are not v1.40.0 verification. This candidate uses synthetic deterministic projection fixtures and source-contract checks; those do not prove live Auth/PIN, RLS, browser behavior, provider availability, or Production behavior. No attempt is made to recreate the previously blocked Docker QA stack.
 
@@ -40,7 +42,7 @@ The existing external-data adapters still have their own rate limits and data fr
 
 `package.json`, the lockfile root metadata, `tsconfig.json` alias, and `config/changelog-v1400.ts` identify v1.40.0 as `Unreleased — Release Candidate`, chained to `changelog-v1390.ts`. Earlier changelog history is preserved. No prior v1.35.1–v1.39.0 candidate is marked released here.
 
-## Validation evidence
+## Historical local validation evidence
 
 Validated locally with Node.js `v22.23.3` and npm `10.9.9`:
 
@@ -55,6 +57,18 @@ Validated locally with Node.js `v22.23.3` and npm `10.9.9`:
 - Theme/responsive/accessibility: UI/static contract checks and component tests only; no claim of real browser visual/axe verification at 375/768/1440 px.
 
 No Production credentials, real portfolio data, SEC Live, or external market-provider calls were used. Full Audit and Production-only Audit are separate gates; the historical 7 High finding is not treated as cleared by the Production-only result.
+
+## Latest hosted PR evidence — 2026-10-20
+
+- Draft PR #73 head: `490ab3515b14eb7cf197ed7420cf15b5dfacd80c`; base main: `5d796cc452b79220a47dfc20c4efa526b9bdd785`. No merge or Production deployment was performed.
+- [CI #39416814395](https://github.com/nine41745-sketch/stock-portfolio/actions/runs/39416814395): verify (lint, typecheck, critical regression and build) and security-audit PASS. Pull-request CI checked merge commit `25af980de909b155194379bd410bf5bf1a124a32`, whose parents are that main and PR head.
+- Full audit: PASS_WITH_EXCEPTION, 7 High solely propagated from GHSA-vfj7-8cjw-p6xm. Production-only audit: PASS, zero findings. See the scoped [exception record](security-audit-exception-braces-ghsa-vfj7-8cjw-p6xm.md); this is not Production security risk acceptance.
+- [Authenticated Browser QA #39418345913](https://github.com/nine41745-sketch/stock-portfolio/actions/runs/39418345913): exact PR head checkout, Node 22, 69/69 checks PASS using synthetic data on a loopback-only disposable Supabase instance. Auth/PIN, account/portfolio isolation, direct PostgREST RLS/RPC denials, creation boundaries, Risk/SEC, themes, responsive widths and accessibility passed. No Production database or live providers were tested.
+- HTTP final aggregation: 46 expected failures, zero unexpected (401: 7; 409: 34; 503: 5). Pending requests/responses, failed requests and collection errors: zero. Twelve raw request cancellations were accepted by the existing correlated lifecycle classifier.
+- Cleanup: Supabase stop exit 0; run-owned containers, volumes and networks all absent. Server outbound guard blocked 9 attempts; browser non-local requests: zero.
+- Automatic Vercel Preview `dpl_GJDqCpTMGzLV9wRRHdU1CLiwHTxQ`: READY on the PR head. This does not establish Production readiness.
+- Read-only Vercel inspection confirms Production tracks `main` and auto-assigns Production domains. Merging this PR would create a Production deployment under the present configuration; separate approval of a safe release/deployment-control plan is required before merge. No settings were changed.
+- Codex static review covered the 132-file PR diff across API/Auth, UI/business logic, CI/QA and documentation. No confirmed newly introduced runtime blocker was found. This is not a human GitHub approval or an exhaustive proof of correctness.
 
 ## Release prerequisites
 

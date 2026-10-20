@@ -1,6 +1,6 @@
 # Stock Portfolio — Roadmap
 
-Status: v1.40.0 Personal Investment Command Center Release Candidate / Unreleased is in local development from authorized v1.39.0 candidate commit `867d38c7bf111053cbe7f8280a42f369189c7e82`. v1.35.1–v1.39.0 remain unreleased candidates. Security / Production Release Gate: HOLD — Full Audit baseline 7 High. See [v1.40.0 candidate release handoff](docs/release-v1400.md).
+Status: v1.40.0 Personal Investment Command Center remains Release Candidate / Unreleased in Draft PR #73 at `490ab3515b14eb7cf197ed7420cf15b5dfacd80c`. Hosted CI #39416814395 and exact-head disposable Authenticated QA #39418345913 passed (69 checks). v1.35.1–v1.39.0 remain unreleased candidates. Full Audit retains 7 High under its CI-only documented exception; Production-only Audit passed. Security / Production Release Gate remains HOLD, including the verified main-to-Production automatic deployment coupling. See [v1.40.0 candidate release handoff](docs/release-v1400.md).
 
 Historical status (2026-10-15): v1.35.1 Hotfix is pushed to `fix/v1.35.1-contrast-notes` as Draft PR #67; source, security guards and metadata are prepared but UNRELEASED. Separate v1.35.1 Security Decision and Merge/Production approval remain pending.
 Release-preparation review: 2026-10-17 (Asia/Bangkok). Historical Production evidence below was not revalidated in this local-only task.
