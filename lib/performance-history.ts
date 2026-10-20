@@ -9,6 +9,9 @@ import {
 const yahooFinance = new YahooFinance()
 const MAX_HISTORY_YEARS = 5
 const MAX_CURVE_POINTS = 220
+const MAX_HISTORY_SYMBOLS = 12
+const MAX_HISTORY_CONCURRENCY = 2
+const HISTORY_DEADLINE_MS = 8_000
 
 export interface PerformanceHistory {
   points: PerformanceCurvePoint[]
@@ -17,6 +20,7 @@ export interface PerformanceHistory {
   spy_return_pct: number | null
   truncated: boolean
   missing_symbols: string[]
+  complete: boolean
 }
 
 function dateKey(value: Date | string): string {
@@ -40,7 +44,7 @@ function downsample<T>(items: T[], maxPoints: number): T[] {
   return sampled
 }
 
-async function fetchDailyCloses(symbol: string, startDate: string): Promise<HistoricalPricePoint[]> {
+async function fetchDailyCloses(symbol: string, startDate: string, signal: AbortSignal): Promise<HistoricalPricePoint[]> {
   try {
     const period1 = new Date(`${startDate}T00:00:00.000Z`)
     period1.setUTCDate(period1.getUTCDate() - 7)
@@ -51,7 +55,7 @@ async function fetchDailyCloses(symbol: string, startDate: string): Promise<Hist
       period1,
       period2,
       interval: '1d',
-    })
+    }, { fetchOptions: { signal } })
 
     return (result.quotes ?? [])
       .filter(q => q.date && typeof q.close === 'number' && Number.isFinite(q.close))
@@ -74,6 +78,7 @@ function percentReturn(points: HistoricalPricePoint[], startDate: string): numbe
 
 export async function getPerformanceHistory(
   transactions: PerformanceTransaction[],
+  requestSignal?: AbortSignal,
 ): Promise<PerformanceHistory> {
   const stockTransactions = transactions.filter(item =>
     item.symbol && ['BUY', 'SELL', 'OPENING_POSITION'].includes(item.transaction_type)
@@ -86,6 +91,7 @@ export async function getPerformanceHistory(
       spy_return_pct: null,
       truncated: false,
       missing_symbols: [],
+      complete: true,
     }
   }
 
@@ -96,17 +102,41 @@ export async function getPerformanceHistory(
   const capStart = yearsAgoDate(MAX_HISTORY_YEARS)
   const effectiveStart = requestedStart < capStart ? capStart : requestedStart
   const truncated = effectiveStart !== requestedStart
-  const symbols = [...new Set(stockTransactions.map(item => String(item.symbol).toUpperCase()))].sort()
-
-  const entries = await Promise.all(
-    [...symbols, 'SPY'].map(async symbol => [symbol, await fetchDailyCloses(symbol, effectiveStart)] as const)
-  )
+  const allSymbols = [...new Set(stockTransactions.map(item => String(item.symbol).toUpperCase()))].sort()
+  const stockSymbols = allSymbols.filter(symbol => symbol !== 'SPY')
+  const symbols = stockSymbols.slice(0, MAX_HISTORY_SYMBOLS - 1)
+  const unrequestedSymbols = stockSymbols.slice(MAX_HISTORY_SYMBOLS - 1)
+  const symbolsToFetch = [...symbols, 'SPY']
+  const deadline = new AbortController()
+  const timer = setTimeout(() => deadline.abort(new DOMException('Historical price request deadline exceeded', 'TimeoutError')), HISTORY_DEADLINE_MS)
+  const signal = requestSignal
+    ? AbortSignal.any([requestSignal, deadline.signal])
+    : deadline.signal
+  const entries: Array<readonly [string, HistoricalPricePoint[]]> = []
+  let nextIndex = 0
+  const worker = async () => {
+    while (nextIndex < symbolsToFetch.length && !signal.aborted) {
+      const index = nextIndex++
+      const symbol = symbolsToFetch[index]
+      entries[index] = [symbol, await fetchDailyCloses(symbol, effectiveStart, signal)]
+    }
+  }
+  try {
+    await Promise.all(Array.from({ length: Math.min(MAX_HISTORY_CONCURRENCY, symbolsToFetch.length) }, worker))
+  } finally {
+    clearTimeout(timer)
+  }
   const pricesBySymbol: Record<string, HistoricalPricePoint[]> = {}
-  const missingSymbols: string[] = []
-  for (const [symbol, points] of entries) {
+  const missingSymbols: string[] = [...unrequestedSymbols]
+  for (const entry of entries) {
+    if (!entry) continue
+    const [symbol, points] = entry
     pricesBySymbol[symbol] = points
     if (symbol !== 'SPY' && points.length === 0) missingSymbols.push(symbol)
   }
+  if (!pricesBySymbol.SPY?.length) missingSymbols.push('SPY')
+  const uniqueMissingSymbols = [...new Set(missingSymbols)].sort()
+  const complete = uniqueMissingSymbols.length === 0 && !signal.aborted
 
   const spy = pricesBySymbol.SPY ?? []
   const calendar = spy.length
@@ -122,7 +152,8 @@ export async function getPerformanceHistory(
       end_date: null,
       spy_return_pct: null,
       truncated,
-      missing_symbols: missingSymbols,
+      missing_symbols: uniqueMissingSymbols,
+      complete: false,
     }
   }
 
@@ -130,11 +161,12 @@ export async function getPerformanceHistory(
   const points = buildPerformanceCurve(transactions, pricesBySymbol, calendar)
 
   return {
-    points: downsample(points, MAX_CURVE_POINTS),
-    start_date: points[0]?.date ?? effectiveStart,
-    end_date: points.at(-1)?.date ?? null,
-    spy_return_pct: percentReturn(spy, effectiveStart),
+    points: complete ? downsample(points, MAX_CURVE_POINTS) : [],
+    start_date: complete ? points[0]?.date ?? effectiveStart : effectiveStart,
+    end_date: complete ? points.at(-1)?.date ?? null : null,
+    spy_return_pct: complete ? percentReturn(spy, effectiveStart) : null,
     truncated,
-    missing_symbols: missingSymbols,
+    missing_symbols: uniqueMissingSymbols,
+    complete,
   }
 }

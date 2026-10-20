@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { resolveActivePortfolio } from '@/lib/portfolio-context'
+import { noPortfolioResponse, resolveActivePortfolio } from '@/lib/portfolio-context'
 import { InputValidationError, parseSettingAmount } from '@/lib/portfolio-validation'
 
 export async function GET() {
@@ -8,6 +8,7 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const portfolio = await resolveActivePortfolio(user.id, supabase)
+  if (portfolio.mode === 'empty') return noPortfolioResponse()
 
   let query = supabase
     .from('user_settings')
@@ -37,6 +38,7 @@ export async function PUT(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const portfolio = await resolveActivePortfolio(user.id, supabase)
+  if (portfolio.mode === 'empty') return noPortfolioResponse()
 
   let body: Record<string, unknown>
   try {

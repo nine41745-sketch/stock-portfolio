@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { resolveActivePortfolio } from '@/lib/portfolio-context'
+import { createServiceClient } from '@/lib/supabase/server'
+import { phaseAErrorResponse, requirePhaseAPortfolio } from '@/lib/phase-a-context'
 import { getMultipleQuotes } from '@/lib/finnhub'
 import { getCompanyProfiles, type CompanyProfileLite } from '@/lib/company-profile'
 import { calculateRiskSnapshot, type RiskHoldingInput } from '@/lib/risk'
@@ -26,24 +26,19 @@ function asNumber(value: unknown): number | null {
 }
 
 export async function GET() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const portfolio = await resolveActivePortfolio(user.id, supabase)
+  let context: Awaited<ReturnType<typeof requirePhaseAPortfolio>>
+  try { context = await requirePhaseAPortfolio() } catch (error) { return phaseAErrorResponse(error) }
+  const { supabase, userId, portfolioId, portfolioName } = context
 
   const serviceClient = createServiceClient()
-  const holdingArgs = portfolio.mode === 'portfolio'
-    ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
-    : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
-  const planArgs = portfolio.mode === 'portfolio'
-    ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
-    : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+  const holdingArgs = { p_user_id: userId, p_portfolio_id: portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
+  const planArgs = { p_user_id: userId, p_portfolio_id: portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
 
   let settingsQuery = supabase
     .from('user_settings')
     .select('cash_balance, dime_balance, initial_capital')
-    .eq('user_id', user.id)
-  if (portfolio.mode === 'portfolio') settingsQuery = settingsQuery.eq('portfolio_id', portfolio.portfolioId)
+    .eq('user_id', userId)
+    .eq('portfolio_id', portfolioId)
 
   const [holdingsResult, settingsResult, plansResult] = await Promise.all([
     serviceClient.rpc('get_decrypted_holdings', holdingArgs),
@@ -51,14 +46,8 @@ export async function GET() {
     serviceClient.rpc('get_decrypted_trade_plans', planArgs),
   ])
 
-  if (holdingsResult.error) {
-    console.error('[risk] holdings load failed:', holdingsResult.error)
-    return NextResponse.json({ error: 'โหลด Holdings สำหรับ Risk ไม่สำเร็จ' }, { status: 500 })
-  }
-  if (settingsResult.error) {
-    console.error('[risk] settings load failed:', settingsResult.error)
-    return NextResponse.json({ error: 'โหลดยอดเงินสำหรับ Risk ไม่สำเร็จ' }, { status: 500 })
-  }
+  if (holdingsResult.error) return NextResponse.json({ error: 'โหลด Holdings สำหรับ Risk ไม่สำเร็จ' }, { status: 503, headers: { 'Cache-Control': 'no-store' } })
+  if (settingsResult.error) return NextResponse.json({ error: 'โหลดยอดเงินสำหรับ Risk ไม่สำเร็จ' }, { status: 503, headers: { 'Cache-Control': 'no-store' } })
 
   const rows = (holdingsResult.data ?? []) as HoldingRow[]
   const symbols = Array.from(new Set(rows.map(row => String(row.symbol ?? '').toUpperCase()).filter(Boolean)))
@@ -66,6 +55,11 @@ export async function GET() {
     symbols.length ? getMultipleQuotes(symbols) : Promise.resolve({} as Record<string, number>),
     symbols.length ? getCompanyProfiles(symbols) : Promise.resolve({} as Record<string, CompanyProfileLite>),
   ])
+  const unpricedSymbols = rows.flatMap(row => {
+    const symbol = String(row.symbol ?? '').trim().toUpperCase()
+    const shares = Number(row.shares)
+    return Number.isFinite(shares) && shares > 0 && symbol && (!Number.isFinite(quotes[symbol]) || quotes[symbol] <= 0) ? [symbol] : []
+  }).filter((symbol, index, all) => all.indexOf(symbol) === index)
 
   const enteredStops = new Map<string, number>()
   let stopPlansAvailable = true
@@ -108,9 +102,12 @@ export async function GET() {
 
   return NextResponse.json({
     ...snapshot,
-    portfolio: portfolio.mode === 'portfolio'
-      ? { id: portfolio.portfolioId, name: portfolio.portfolio.name }
-      : null,
+    portfolio: { id: portfolioId, name: portfolioName },
+    data_quality: {
+      priced_holding_count: snapshot.positions.length,
+      unpriced_symbols: unpricedSymbols,
+      price_freshness: 'unknown',
+    },
     warnings,
     balances: {
       dime_balance: Number.isFinite(dimeBalance) ? dimeBalance : 0,
@@ -118,12 +115,13 @@ export async function GET() {
       dime_included_in_risk_total: false,
     },
     methodology: {
-      portfolio_total: 'Current Holdings market value + cash_balance; dime_balance excluded to avoid possible double counting',
+      portfolio_total: 'Selected portfolio Current Holdings market value + cash_balance; dime_balance excluded to avoid possible double counting',
       position_concentration: 'Current market value / investable portfolio value',
       industry_concentration: 'Finnhub profile2 finnhubIndustry; not guaranteed to equal standardized GICS sector',
       stop_risk: 'Only ENTERED Trade Plan stop below current price is counted; missing or breached stops remain unquantified',
       rebalance: 'Deterministic heuristics only: position 20% watch / 30% high, industry 45% high, cash below 5% watch',
-      side_effects: 'Read-only; does not mutate Holdings, Transactions, Trade Plans, Cash, AI, Scanner, Cron, or Track Record',
+      price_freshness: 'Unknown because the current quote adapter returns numeric prices without per-symbol observation timestamps',
+      side_effects: 'Read-only; verifies Auth, PIN, ownership and selected portfolio without creating a default portfolio; does not mutate Holdings, Transactions, Trade Plans, Cash, AI, Scanner, Cron, or Track Record',
     },
   }, { headers: { 'Cache-Control': 'no-store' } })
 }

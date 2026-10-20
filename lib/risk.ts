@@ -64,6 +64,23 @@ export interface ShockScenario {
   new_portfolio_value: number
 }
 
+export type PortfolioStressInput =
+  | { type: 'market'; shock_pct: number }
+  | { type: 'industry'; industry: string; shock_pct: number }
+  | { type: 'symbols'; shocks: Record<string, number> }
+
+export interface PortfolioStressScenario {
+  baseline_portfolio_value: number
+  baseline_equity_value: number
+  simulated_pnl: number
+  new_portfolio_value: number
+  affected_market_value: number
+  coverage_pct: number | null
+  affected_symbols: string[]
+  unpriced_symbols: string[]
+  assumptions: string[]
+}
+
 function round(value: number, digits = 2): number {
   const factor = 10 ** digits
   return Math.round((value + Number.EPSILON) * factor) / factor
@@ -250,5 +267,66 @@ export function calculateShockScenario(
     impact_amount: round(impact),
     impact_pct_portfolio: pct(impact, portfolioValue),
     new_portfolio_value: round(portfolioValue + impact),
+  }
+}
+
+/** Deterministic, read-only stress calculation over priced positions only. */
+export function calculatePortfolioStressScenario(
+  snapshot: Pick<RiskSnapshot, 'positions' | 'summary'>,
+  input: PortfolioStressInput,
+  unpricedSymbols: string[] = [],
+): PortfolioStressScenario | null {
+  const normalizedShocks = new Map<string, number>()
+  let assumptions: string[]
+
+  if (input.type === 'market' || input.type === 'industry') {
+    if (!Number.isFinite(input.shock_pct)) return null
+    const shock = Math.max(-100, Math.min(100, input.shock_pct))
+    if (input.type === 'market') {
+      snapshot.positions.forEach(position => normalizedShocks.set(position.symbol, shock))
+      assumptions = [`หุ้นที่มีราคาพร้อมทุกตัวเปลี่ยน ${shock}%`, 'เงินสดคงเดิม', 'หุ้นที่ไม่มีราคาไม่ถูกรวมในผลกระทบและแสดงแยก']
+    } else {
+      const industry = input.industry.trim().toLowerCase()
+      if (!industry) return null
+      snapshot.positions.filter(position => position.industry.trim().toLowerCase() === industry)
+        .forEach(position => normalizedShocks.set(position.symbol, shock))
+      if (!normalizedShocks.size) return null
+      const actualIndustry = snapshot.positions.find(position => position.industry.trim().toLowerCase() === industry)?.industry ?? input.industry
+      assumptions = [`หุ้นใน Industry “${actualIndustry}” เปลี่ยน ${shock}%`, 'Industry ใช้ข้อมูล Finnhub และไม่เทียบเท่า GICS โดยอัตโนมัติ', 'เงินสดคงเดิม']
+    }
+  } else {
+    const entries = Object.entries(input.shocks)
+    if (!entries.length || entries.length > 12 || entries.some(([, value]) => !Number.isFinite(value))) return null
+    for (const [rawSymbol, rawShock] of entries) {
+      const symbol = rawSymbol.trim().toUpperCase()
+      if (!symbol) return null
+      const position = snapshot.positions.find(item => item.symbol === symbol)
+      if (position) normalizedShocks.set(symbol, Math.max(-100, Math.min(100, rawShock)))
+    }
+    if (!normalizedShocks.size) return null
+    assumptions = ['ใช้ shock แยกตามหุ้นที่ระบุและมีราคาพร้อม', 'เงินสดและหุ้นที่ไม่ได้ระบุคงเดิม', 'หุ้นที่ไม่มีราคาไม่ถูกรวมในผลกระทบและแสดงแยก']
+  }
+
+  let impact = 0
+  let affectedValue = 0
+  const affectedSymbols: string[] = []
+  for (const position of snapshot.positions) {
+    const shock = normalizedShocks.get(position.symbol)
+    if (shock === undefined) continue
+    affectedSymbols.push(position.symbol)
+    affectedValue += position.market_value
+    impact += position.market_value * (shock / 100)
+  }
+  if (!affectedSymbols.length) return null
+  return {
+    baseline_portfolio_value: snapshot.summary.investable_portfolio_value,
+    baseline_equity_value: snapshot.summary.equity_market_value,
+    simulated_pnl: round(impact),
+    new_portfolio_value: round(snapshot.summary.investable_portfolio_value + impact),
+    affected_market_value: round(affectedValue),
+    coverage_pct: pct(affectedValue, snapshot.summary.equity_market_value),
+    affected_symbols: affectedSymbols.sort(),
+    unpriced_symbols: [...new Set(unpricedSymbols.map(symbol => symbol.trim().toUpperCase()).filter(Boolean))].sort(),
+    assumptions,
   }
 }

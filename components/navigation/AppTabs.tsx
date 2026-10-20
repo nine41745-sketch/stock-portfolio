@@ -9,7 +9,9 @@ import PortfolioSwitcher from '@/components/navigation/PortfolioSwitcher'
 
 const TABS = [
   { href: '/dashboard', label: 'พอร์ต', icon: '📊' },
+  { href: '/command-center', label: 'ศูนย์ลงทุน', icon: '🧭' },
   { href: '/scanner', label: 'สแกนหุ้น', icon: '🔎' },
+  { href: '/discovery', label: 'ค้นหาโอกาส', icon: '🧭' },
   { href: '/intelligence', label: 'วิเคราะห์ตลาด', icon: '🧠' },
   { href: '/transactions', label: 'ธุรกรรม', icon: '🧾' },
   { href: '/imports', label: 'Import Preview', icon: '📥' },
@@ -148,7 +150,7 @@ export default function AppTabs() {
             <button
               type="button"
               onClick={toggleTheme}
-              className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
+              className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 hover:bg-gray-800 hover:text-white"
               title={theme === 'light' ? 'โหมดปัจจุบัน: สว่าง · กดเพื่อเปลี่ยนเป็นมืด' : 'โหมดปัจจุบัน: มืด · กดเพื่อเปลี่ยนเป็นสว่าง'}
               aria-label={theme === 'light' ? 'โหมดสว่าง กดเพื่อเปลี่ยนเป็นโหมดมืด' : 'โหมดมืด กดเพื่อเปลี่ยนเป็นโหมดสว่าง'}
             >
@@ -157,7 +159,7 @@ export default function AppTabs() {
             <button
               type="button"
               onClick={() => void handleLock()}
-              className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
+              className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 hover:bg-gray-800 hover:text-white"
               title="ล็อกพอร์ต โดยยังคง session เข้าสู่ระบบไว้"
             >
               🔒 ล็อก
@@ -166,7 +168,7 @@ export default function AppTabs() {
               <button
                 type="button"
                 onClick={() => setAccountOpen(open => !open)}
-                className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
+                className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 hover:bg-gray-800 hover:text-white"
                 aria-expanded={accountOpen}
                 aria-haspopup="menu"
               >
@@ -215,7 +217,7 @@ export default function AppTabs() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors sm:px-4 ${
+              className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold sm:px-4 ${
                 active
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'

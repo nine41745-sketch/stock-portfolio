@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import ts from 'typescript'
 
-async function importTsModule(filePath) {
-  const source = fs.readFileSync(filePath, 'utf8')
+async function importTsModule(filePath, transform = source => source) {
+  const source = transform(fs.readFileSync(filePath, 'utf8'))
   const compiled = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.ES2022,
@@ -20,6 +20,12 @@ async function importTsModule(filePath) {
 }
 
 const perf = await importTsModule('lib/performance.ts')
+globalThis.__testPerformance = perf
+globalThis.__testYahoo = { chart: undefined }
+const historyModule = await importTsModule('lib/performance-history.ts', source => source
+  .replace(/import YahooFinance from 'yahoo-finance2'\r?\n/, '')
+  .replace(/import \{[\s\S]*?\} from '@\/lib\/performance'\r?\n/, 'const { buildPerformanceCurve } = globalThis.__testPerformance\n')
+  .replace('const yahooFinance = new YahooFinance()', 'const yahooFinance = globalThis.__testYahoo'))
 
 const baseTransactions = [
   { id: '1', transaction_type: 'OPENING_POSITION', symbol: 'NVDA', shares: 10, price: 100, fee: null, amount: null, trade_date: '2026-01-02' },
@@ -85,6 +91,96 @@ for (const path of [
   'lib/performance-history.ts',
 ]) assert.equal(fs.existsSync(path), true, `${path} is required`)
 
+const historyTransactions = Array.from({ length: 14 }, (_, index) => ({
+  id: `h${index}`, transaction_type: 'BUY', symbol: `S${String(index).padStart(2, '0')}`,
+  shares: 1, price: 10, fee: 0, amount: null, trade_date: '2026-01-01',
+}))
+let activeHistoryRequests = 0
+let maximumHistoryConcurrency = 0
+const historyCalls = []
+globalThis.__testYahoo.chart = async (symbol, _options, moduleOptions) => {
+    historyCalls.push(symbol)
+    activeHistoryRequests += 1
+    maximumHistoryConcurrency = Math.max(maximumHistoryConcurrency, activeHistoryRequests)
+    try {
+      assert.ok(moduleOptions?.fetchOptions?.signal instanceof AbortSignal, 'Yahoo chart must receive a cancellable signal')
+      await new Promise(resolve => setTimeout(resolve, 5))
+      return { quotes: [{ date: new Date('2026-01-01T00:00:00Z'), close: 10 }, { date: new Date('2026-01-02T00:00:00Z'), close: 11 }] }
+    } finally {
+      activeHistoryRequests -= 1
+    }
+  }
+const boundedHistory = await historyModule.getPerformanceHistory(historyTransactions)
+assert.ok(historyCalls.length <= 12, 'Performance history must cap all Yahoo requests, including SPY, at 12')
+assert.ok(maximumHistoryConcurrency <= 2, 'Performance history Yahoo concurrency must not exceed two')
+assert.equal(boundedHistory.complete, false, 'Capped symbols must mark historical coverage incomplete')
+assert.deepEqual(boundedHistory.points, [], 'Incomplete price coverage must not produce a complete-looking curve')
+assert.ok(boundedHistory.missing_symbols.length > 0)
+assert.equal(maximumHistoryConcurrency, 2, 'the history loader should use its bounded parallelism for independent symbols')
+
+const normalHistory = await historyModule.getPerformanceHistory(historyTransactions.slice(0, 1))
+assert.equal(normalHistory.complete, true)
+assert.equal(normalHistory.points.length, 2)
+globalThis.__testYahoo.chart = async symbol => symbol === 'SPY'
+  ? { quotes: [] }
+  : { quotes: [{ date: new Date('2026-01-01T00:00:00Z'), close: 10 }, { date: new Date('2026-01-02T00:00:00Z'), close: 11 }] }
+const benchmarkFailure = await historyModule.getPerformanceHistory(historyTransactions.slice(0, 1))
+assert.equal(benchmarkFailure.complete, false, 'an unavailable SPY benchmark is not presented as complete history')
+assert.deepEqual(benchmarkFailure.points, [])
+assert.ok(benchmarkFailure.missing_symbols.includes('SPY'))
+
+const spyQuotes = [
+  { date: new Date('2026-01-01T00:00:00Z'), close: 10 },
+  { date: new Date('2026-01-02T00:00:00Z'), close: 11 },
+]
+async function verifySpyDeduplication(symbols, label) {
+  const calls = []
+  globalThis.__testYahoo.chart = async symbol => {
+    calls.push(symbol)
+    return { quotes: spyQuotes }
+  }
+  const transactions = symbols.map((symbol, index) => ({
+    id: `${label}-${index}`, transaction_type: 'BUY', symbol,
+    shares: 1, price: 10, fee: 0, amount: null, trade_date: '2026-01-01',
+  }))
+  const history = await historyModule.getPerformanceHistory(transactions)
+  assert.equal(calls.filter(symbol => symbol === 'SPY').length, 1, `${label}: benchmark SPY is fetched exactly once`)
+  assert.equal(calls.length, new Set(calls).size, `${label}: the request budget contains unique symbols`)
+  assert.ok(calls.length <= 12, `${label}: total requests remain within the twelve-symbol cap`)
+  assert.equal(history.complete, true, `${label}: valid complete price coverage remains complete`)
+  assert.equal(history.missing_symbols.includes('SPY'), false, `${label}: successful SPY is not marked missing`)
+}
+
+await verifySpyDeduplication(['AAA', 'SPY', 'ZZZ'], 'spy-inside-first-eleven')
+await verifySpyDeduplication([
+  'AAPL', 'AMZN', 'BRK.B', 'C', 'DIS', 'F', 'GOOGL', 'JPM', 'MSFT', 'NVDA', 'QQQ', 'SPY',
+], 'spy-last-sorted')
+await verifySpyDeduplication(['AAA', 'BBB'], 'spy-absent-from-portfolio')
+const emptyHistory = await historyModule.getPerformanceHistory([])
+assert.equal(emptyHistory.complete, true)
+assert.deepEqual(emptyHistory.points, [])
+
+const timedOutSymbols = []
+globalThis.__testYahoo.chart = async (symbol, _options, moduleOptions) => {
+  timedOutSymbols.push(symbol)
+  const signal = moduleOptions.fetchOptions.signal
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason ?? new Error('aborted'))
+    if (signal.aborted) abort()
+    else signal.addEventListener('abort', abort, { once: true })
+  })
+}
+const originalConsoleError = console.error
+console.error = () => {}
+const timeoutStartedAt = Date.now()
+const timedOutHistory = await historyModule.getPerformanceHistory(historyTransactions.slice(0, 1))
+console.error = originalConsoleError
+assert.ok(Date.now() - timeoutStartedAt >= 7_500 && Date.now() - timeoutStartedAt < 10_000, 'history deadline is enforced near eight seconds')
+assert.equal(timedOutHistory.complete, false)
+assert.deepEqual(timedOutHistory.points, [])
+assert.deepEqual(new Set(timedOutHistory.missing_symbols), new Set(['S00', 'SPY']))
+assert.equal(timedOutSymbols.length, 2)
+
 const api = fs.readFileSync('app/api/performance/route.ts', 'utf8')
 assert.match(api, /get_decrypted_portfolio_transactions/, 'Performance must read the encrypted Transaction Ledger server-side')
 assert.match(api, /get_decrypted_holdings/, 'Performance must compare against current Holdings')
@@ -96,6 +192,10 @@ const history = fs.readFileSync('lib/performance-history.ts', 'utf8')
 assert.match(history, /yahoo-finance2/, 'Historical performance must use the existing Yahoo Finance dependency')
 assert.match(history, /MAX_HISTORY_YEARS = 5/, 'Historical requests need a bounded lookback')
 assert.match(history, /SPY/, 'Performance must include the SPY reference benchmark')
+assert.match(history, /MAX_HISTORY_SYMBOLS\s*=\s*12/)
+assert.match(history, /MAX_HISTORY_CONCURRENCY\s*=\s*2/)
+assert.match(history, /HISTORY_DEADLINE_MS\s*=\s*8_000/)
+assert.match(api, /getPerformanceHistory\(transactions, request\.signal\)/, 'client cancellation must reach the history adapter')
 
 const ui = fs.readFileSync('components/portfolio/PerformanceDashboard.tsx', 'utf8')
 assert.match(ui, /กำไร\/ขาดทุนที่รับรู้/, 'UI must expose realized P/L')

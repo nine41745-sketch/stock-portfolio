@@ -1,13 +1,13 @@
 {
   "name": "stock-portfolio",
-  "version": "1.35.0",
+  "version": "1.40.0",
   "private": true,
   "engines": {
     "node": "22.x"
   },
   "scripts": {
     "dev": "next dev",
-    "test:critical": "node scripts/test-critical.mjs && node scripts/test-fundamentals.mjs && node scripts/test-sec-xbrl.mjs && node scripts/test-sec-filing-index.mjs && node scripts/test-stock-check.mjs && node scripts/test-multi-portfolio.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-watchlist-v1350.mjs && node scripts/test-command-center.mjs && node scripts/test-transactions.mjs && node scripts/test-auto-trades.mjs && node scripts/test-performance.mjs && node scripts/test-trade-plan.mjs && node scripts/test-risk.mjs && node scripts/test-allocation.mjs && node scripts/test-alerts-calendar.mjs && node --experimental-strip-types --test scripts/test-market-intelligence.mjs && node scripts/test-phase-a.mjs && node scripts/test-import-preview.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-scanner-isolation.mjs",
+    "test:critical": "node scripts/test-critical.mjs && node scripts/test-investment-command-center.mjs && node scripts/test-fundamentals.mjs && node scripts/test-sec-xbrl.mjs && node scripts/test-sec-risk.mjs && node scripts/test-sec-risk-provider.mjs && node scripts/test-sec-filing-index.mjs && node scripts/test-stock-check.mjs && node scripts/test-multi-portfolio.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-watchlist-v1350.mjs && node scripts/test-command-center.mjs && node scripts/test-transactions.mjs && node scripts/test-auto-trades.mjs && node scripts/test-performance.mjs && node scripts/test-journal-performance.mjs && node scripts/test-smart-dip-buying.mjs && node scripts/test-smart-dip-cancellation.mjs && node scripts/test-trade-plan.mjs && node scripts/test-risk.mjs && node scripts/test-allocation.mjs && node scripts/test-alerts-calendar.mjs && node --experimental-strip-types --test scripts/test-market-intelligence.mjs && node scripts/test-phase-a.mjs && node scripts/test-import-preview.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-scanner-isolation.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-discovery.mjs && node --test scripts/test-portfolio-initialization.mjs scripts/test-discovery-deadline.mjs scripts/test-qa-http-failures.mjs scripts/test-qa-runner-evidence.mjs scripts/test-qa-portfolio-creation-boundary.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "build": "npm run test:critical && next build",
@@ -18,9 +18,9 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.45.4",
-    "next": "16.3.8",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
+    "next": "16.4.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "technicalindicators": "^3.1.0",
     "tesseract.js": "7.0.0",
     "yahoo-finance2": "^4.0.0"
@@ -32,7 +32,7 @@
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.6.1",
     "eslint": "^9",
-    "eslint-config-next": "16.3.8",
+    "eslint-config-next": "16.4.1",
     "playwright": "1.63.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",

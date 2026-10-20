@@ -95,6 +95,32 @@ assert.equal(verifier.resolveSecPrimaryDocument({ ...amended.expected, form: '10
 assert.equal('epsVerified' in aaplResult, false, 'Resolved filing is not represented as EPS Verified')
 assert.equal(aaplResult.status, 'resolved')
 
+const recentFilings = verifier.selectSecRecentFilings('0000320193', {
+  requestUrl: 'https://data.sec.gov/submissions/CIK0000320193.json',
+  payload: { cik: 320193, filings: { recent: {
+    accessionNumber: ['0000320193-26-000010', '0000320193-26-000009', '0000320193-26-000008', '0000320193-26-000007', '0000320193-26-000006'],
+    form: ['10-Q', '8-K', '10-K/A', '8-K/A', 'S-1'],
+    filingDate: ['2026-07-30', '2026-07-20', '2026-06-01', '2026-05-30', '2026-05-01'],
+    primaryDocument: ['q2.htm', 'event.htm', 'amended.htm', 'event-amend.htm', 'registration.htm'],
+  } } },
+})
+assert.equal(recentFilings.length, 4, 'Monitor supports 10-K, 10-Q, 8-K and their amendments only')
+assert.deepEqual(recentFilings.map(item => item.form), ['10-Q', '8-K', '10-K/A', '8-K/A'])
+assert.equal(recentFilings[0].filingDate, '2026-07-30')
+assert.equal(recentFilings[0].cik, '0000320193')
+assert.equal(recentFilings[0].accession, '0000320193-26-000010')
+assert.equal(recentFilings[0].sourceUrl, 'https://www.sec.gov/Archives/edgar/data/320193/000032019326000010/q2.htm')
+assert.equal(recentFilings[0].contentAnalyzed, false, 'Filing link is not represented as analyzed content')
+const invalidFilingDate = verifier.selectSecRecentFilings('0000320193', {
+  requestUrl: 'https://data.sec.gov/submissions/CIK0000320193.json', payload: { cik: 320193, filings: { recent: {
+    accessionNumber: ['0000320193-26-000010'], form: ['10-Q'], filingDate: ['2026-02-31'], primaryDocument: ['q2.htm'],
+  } } },
+})
+assert.deepEqual(invalidFilingDate, [], 'Invalid calendar dates are omitted')
+assert.deepEqual(verifier.selectSecRecentFilings('0000320193', {
+  requestUrl: 'https://data.sec.gov/submissions/CIK0000789019.json', payload: { cik: 789019, filings: { recent: {} } },
+}), [], 'Wrong CIK fails closed')
+
 const ledger = createEvidenceLedger('synthetic')
 for (const caseId of ['aapl-matching-prefix', 'msft-different-prefix', 'wrong-issuer-cik', 'accession-form-mismatch',
   'primary-missing-duplicate-unsafe', 'archive-directory-mismatch', 'ten-k-amendment', 'resolved-not-eps-verified']) {

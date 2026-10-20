@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { resolveActivePortfolio } from '@/lib/portfolio-context'
+import { noPortfolioResponse, resolveActivePortfolio } from '@/lib/portfolio-context'
 import {
   InputValidationError,
   parseCostBasis,
@@ -14,6 +14,7 @@ async function requireContext() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const
   const portfolio = await resolveActivePortfolio(user.id, supabase)
+  if (portfolio.mode === 'empty') return { response: noPortfolioResponse() } as const
   return { supabase, user, portfolio } as const
 }
 

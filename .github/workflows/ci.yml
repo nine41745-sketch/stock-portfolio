@@ -46,8 +46,89 @@ jobs:
       - name: Install exact dependencies
         run: npm ci
 
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
-
       - name: Typecheck, regression tests and production build
         run: npm run ci
+
+  security-audit:
+    name: security-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Test synthetic audit evidence summarizer
+        run: node scripts/test-npm-audit-summary.mjs
+
+      - name: Run Full npm audit and capture sanitized summary
+        id: full-audit
+        shell: bash
+        run: |
+          set +e
+          npm audit --audit-level=high --json > "$RUNNER_TEMP/npm-audit-full.json" 2> "$RUNNER_TEMP/npm-audit-full.stderr"
+          audit_exit=$?
+          set -e
+          npm ls --all --json > "$RUNNER_TEMP/npm-tree.json" 2>/dev/null || printf '{"name":"stock-portfolio","dependencies":{}}' > "$RUNNER_TEMP/npm-tree.json"
+          status="$(node scripts/qa/summarize-npm-audit.mjs Full "$RUNNER_TEMP/npm-audit-full.json" "$RUNNER_TEMP/npm-tree.json" "$audit_exit" "$RUNNER_TEMP/full-audit-summary.md")"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/full-audit-summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run production-only npm audit and capture sanitized summary
+        id: production-audit
+        shell: bash
+        run: |
+          set +e
+          npm audit --omit=dev --audit-level=high --json > "$RUNNER_TEMP/npm-audit-production.json" 2> "$RUNNER_TEMP/npm-audit-production.stderr"
+          audit_exit=$?
+          set -e
+          npm ls --omit=dev --all --json > "$RUNNER_TEMP/npm-tree-production.json" 2>/dev/null || printf '{"name":"stock-portfolio","dependencies":{}}' > "$RUNNER_TEMP/npm-tree-production.json"
+          status="$(node scripts/qa/summarize-npm-audit.mjs Production-only "$RUNNER_TEMP/npm-audit-production.json" "$RUNNER_TEMP/npm-tree-production.json" "$audit_exit" "$RUNNER_TEMP/production-audit-summary.md")"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/production-audit-summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record audit blocked before reports were produced
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/audit-evidence"
+          for report in full-audit-summary.md production-audit-summary.md; do
+            if [ ! -f "$RUNNER_TEMP/$report" ]; then
+              printf '# npm audit\n\n- Status: BLOCKED\n- Reason: Audit prerequisites failed before a complete report was produced.\n' > "$RUNNER_TEMP/$report"
+            fi
+          done
+
+      - name: Upload sanitized audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v1.40.0-security-audit-summaries
+          path: |
+            ${{ runner.temp }}/full-audit-summary.md
+            ${{ runner.temp }}/production-audit-summary.md
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Enforce audit gate without suppressing findings
+        if: always()
+        shell: bash
+        env:
+          FULL_AUDIT_STATUS: ${{ steps.full-audit.outputs.status }}
+          PRODUCTION_AUDIT_STATUS: ${{ steps.production-audit.outputs.status }}
+        run: |
+          if [ "$FULL_AUDIT_STATUS" != "PASS" ] && [ "$FULL_AUDIT_STATUS" != "PASS_WITH_EXCEPTION" ] || [ "$PRODUCTION_AUDIT_STATUS" != "PASS" ]; then
+            echo "Security audit gate is not PASS (full=$FULL_AUDIT_STATUS, production-only=$PRODUCTION_AUDIT_STATUS). Review the uploaded sanitized evidence."
+            exit 1
+          fi
+          if [ "$FULL_AUDIT_STATUS" = "PASS_WITH_EXCEPTION" ]; then
+            echo "Full audit accepted its sole documented exception; production-only audit passed. See docs/security-audit-exception-braces-ghsa-vfj7-8cjw-p6xm.md."
+          fi

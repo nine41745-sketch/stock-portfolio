@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { resolveActivePortfolio } from '@/lib/portfolio-context'
+import { noPortfolioResponse, resolveActivePortfolio } from '@/lib/portfolio-context'
 import {
   parseTransactionInput,
   TransactionValidationError,
@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const portfolio = await resolveActivePortfolio(user.id, supabase)
+  if (portfolio.mode === 'empty') return noPortfolioResponse()
   if (portfolio.mode !== 'portfolio') return migrationRequired()
 
   let input

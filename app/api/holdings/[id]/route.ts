@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { resolveActivePortfolio } from '@/lib/portfolio-context'
+import { noPortfolioResponse, resolveActivePortfolio } from '@/lib/portfolio-context'
 import {
   assertUuid,
   InputValidationError,
@@ -25,6 +25,7 @@ export async function PUT(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const portfolio = await resolveActivePortfolio(user.id, supabase)
+  if (portfolio.mode === 'empty') return noPortfolioResponse()
 
   let body: Record<string, unknown>
   try {
@@ -143,6 +144,7 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const portfolio = await resolveActivePortfolio(user.id, supabase)
+  if (portfolio.mode === 'empty') return noPortfolioResponse()
 
   let deleteQuery = supabase
     .from('holdings')

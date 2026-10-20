@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { resolveActivePortfolio } from '@/lib/portfolio-context'
+import { noPortfolioResponse, resolveActivePortfolio } from '@/lib/portfolio-context'
 import { getMultipleQuotesWithMetrics } from '@/lib/finnhub'
 import {
   calculatePerformance,
@@ -9,6 +9,7 @@ import {
   type PerformanceTransactionType,
 } from '@/lib/performance'
 import { getPerformanceHistory } from '@/lib/performance-history'
+import { summarizeTradeStatistics } from '@/lib/trade-statistics'
 
 export const maxDuration = 60
 
@@ -49,11 +50,12 @@ function migrationMissing(error: { code?: string; message?: string } | null): bo
     || message.includes('portfolio_transactions') && message.includes('does not exist')
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const portfolio = await resolveActivePortfolio(user.id, supabase)
+  if (portfolio.mode === 'empty') return noPortfolioResponse()
 
   const serviceClient = createServiceClient()
   const transactionArgs = portfolio.mode === 'portfolio'
@@ -107,9 +109,20 @@ export async function GET() {
   }))
 
   const performance = calculatePerformance(transactions, holdings)
+  const totalRecordedFees = transactions.reduce((sum, item) => sum + Math.max(0, item.fee ?? 0), 0)
+  const tradeStatistics = summarizeTradeStatistics(performance.closed_trades, totalRecordedFees)
+  const tradeStatisticsBySymbol = performance.by_symbol.map(row => ({
+    symbol: row.symbol,
+    ...summarizeTradeStatistics(
+      performance.closed_trades.filter(trade => trade.symbol === row.symbol),
+      transactions
+        .filter(item => item.symbol === row.symbol)
+        .reduce((sum, item) => sum + Math.max(0, item.fee ?? 0), 0),
+    ),
+  }))
   let history
   try {
-    history = await getPerformanceHistory(transactions)
+    history = await getPerformanceHistory(transactions, request.signal)
   } catch (error) {
     console.error('[performance] history load failed:', error)
     history = {
@@ -119,6 +132,7 @@ export async function GET() {
       spy_return_pct: null,
       truncated: false,
       missing_symbols: [],
+      complete: false,
     }
   }
 
@@ -131,6 +145,17 @@ export async function GET() {
 
   return NextResponse.json({
     ...performance,
+    trade_statistics: tradeStatistics,
+    trade_statistics_by_symbol: tradeStatisticsBySymbol,
+    fx_attribution: {
+      status: 'unavailable',
+      reason: 'Transaction Ledger ปัจจุบันไม่มีสกุลเงินหรืออัตรา FX ณ วันซื้อและขาย จึงไม่สร้างตัวเลขประมาณการ',
+      source_currency: null,
+      reporting_currency: null,
+      source: null,
+      acquisition_rate_date: null,
+      disposal_rate_date: null,
+    },
     history,
     portfolio: portfolio.mode === 'portfolio'
       ? { id: portfolio.portfolioId, name: portfolio.portfolio.name }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { resolveActivePortfolio } from '@/lib/portfolio-context'
+import { noPortfolioResponse, resolveActivePortfolio } from '@/lib/portfolio-context'
 
 const MIGRATION_FILE = 'supabase/migration_allocation_targets_v1.31.0.sql'
 const SYMBOL_RE = /^[A-Z0-9][A-Z0-9.-]{0,14}$/
@@ -57,6 +57,7 @@ async function requireContext() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const
   const portfolio = await resolveActivePortfolio(user.id, supabase)
+  if (portfolio.mode === 'empty') return { response: noPortfolioResponse() } as const
   if (portfolio.mode !== 'portfolio') return { response: migrationRequired() } as const
   return { supabase, user, portfolio } as const
 }

@@ -1,3 +1,4 @@
+import { discoveryFetch, type DiscoveryProviderContext } from '@/lib/discovery-deadline'
 import { FinnhubQuote } from '@/types'
 
 const BASE = 'https://finnhub.io/api/v1'
@@ -19,10 +20,13 @@ export interface StockMetrics {
   week52Low: number | null
 }
 
-export async function getQuote(symbol: string): Promise<FinnhubQuote | null> {
+export async function getQuote(symbol: string, signal?: AbortSignal): Promise<FinnhubQuote | null> {
   if (!KEY) return null
   try {
-    const res = await fetch(`${BASE}/quote?symbol=${symbol}&token=${KEY}`, { next: { revalidate: 60 } })
+    const res = await fetch(`${BASE}/quote?symbol=${symbol}&token=${KEY}`, {
+      next: { revalidate: 60 },
+      ...(signal ? { signal } : {}),
+    })
     if (!res.ok) return null
     const d = await res.json()
     if (!d.c) return null
@@ -40,14 +44,20 @@ export interface QuoteObservation {
 
 // Explicitly requested, bounded quote snapshot for Watchlist alerts. Do not poll or
 // fetch automatically on page load; getQuote's Next cache is limited to 60 seconds.
-export async function getQuoteObservations(symbols: string[]): Promise<Record<string, QuoteObservation>> {
+export async function getQuoteObservations(symbols: string[], options?: { signal?: AbortSignal }): Promise<Record<string, QuoteObservation>> {
   const fetchedAt = new Date().toISOString()
   const uniqueSymbols = normalizeSymbols(symbols)
   const result: Record<string, QuoteObservation> = {}
 
   for (let i = 0; i < uniqueSymbols.length; i += CHUNK_SIZE) {
+    if (options?.signal?.aborted) {
+      for (const symbol of uniqueSymbols.slice(i)) {
+        result[symbol] = { price: null, source: 'Finnhub', fetchedAt, providerTimestamp: null, freshness: 'unavailable' }
+      }
+      break
+    }
     const chunk = uniqueSymbols.slice(i, i + CHUNK_SIZE)
-    const settled = await Promise.allSettled(chunk.map(async symbol => ({ symbol, quote: await getQuote(symbol) })))
+    const settled = await Promise.allSettled(chunk.map(async symbol => ({ symbol, quote: await getQuote(symbol, options?.signal) })))
     for (let index = 0; index < settled.length; index += 1) {
       const symbol = chunk[index]
       const entry = settled[index]
@@ -195,24 +205,25 @@ function toUpcomingEarnings(row: EarningsCalendarRow, today: Date): UpcomingEarn
 
 // เช็ควันประกาศผลประกอบการที่ใกล้ที่สุด — ใช้เตือนความเสี่ยงก่อน AI วิเคราะห์
 // (technical indicators ไม่มีความหมายถ้าราคาจะเหวี่ยงแรงจากงบที่กำลังจะออก)
-export async function getUpcomingEarnings(symbol: string): Promise<UpcomingEarnings | null> {
+export async function getUpcomingEarnings(symbol: string, context?: DiscoveryProviderContext): Promise<UpcomingEarnings | null> {
   try {
     const today = new Date()
     const to = new Date(today)
     to.setDate(to.getDate() + 60)
 
     const url = `${BASE}/calendar/earnings?from=${fmtDate(today)}&to=${fmtDate(to)}&symbol=${symbol}&token=${KEY}`
-    const res = await fetch(url, { next: { revalidate: 21600 } })
-    if (!res.ok) return null
+    const res = context ? null : await fetch(url, { next: { revalidate: 21600 } })
+    if (res && !res.ok) return null
 
-    const data = await res.json()
+    const data = context ? await discoveryFetch(context, url, response => response.json()) : await res!.json()
     const list: EarningsCalendarRow[] = data?.earningsCalendar ?? []
     if (!list.length) return null
 
     const sorted = [...list].sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')))
     return toUpcomingEarnings(sorted[0], today)
   } catch (e) {
-    console.error(`[finnhub] getUpcomingEarnings error for ${symbol}:`, e)
+    if (!context) console.error(`[finnhub] getUpcomingEarnings error for ${symbol}:`, e)
+    if (context) throw e
     return null
   }
 }

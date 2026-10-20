@@ -15,20 +15,48 @@ concurrency:
 jobs:
   authenticated-browser-qa:
     if: >-
-      ${{ (github.event.pull_request.head.ref == 'fix/v1.34.1-theme-consistency' ||
-          github.event.pull_request.head.ref == 'codex/v1.35.0-watchlist-smart-alerts') &&
+      ${{ github.repository == 'nine41745-sketch/stock-portfolio' &&
+          github.event.pull_request.number == 73 &&
+          github.event.pull_request.head.ref == 'fix/v1.40.0-consolidated-remediation' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           github.event.label.name == 'authenticated-browser-qa' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       CI: 'true'
-      QA_ARTIFACT_DIR: .local-artifacts/authenticated-browser-qa/${{ github.run_id }}
+      QA_EXPECTED_PR_NUMBER: '73'
+      QA_EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      QA_ARTIFACT_DIR: .local-artifacts/authenticated-browser-qa-v1.40.0/${{ github.run_id }}
+      QA_BROWSER_RUNNER_TIMEOUT_SECONDS: '2280'
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify exact authorized PR and checked-out head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "nine41745-sketch/stock-portfolio"
+          test "$QA_EXPECTED_PR_NUMBER" = "73"
+          test "$QA_EXPECTED_HEAD_SHA" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "$QA_EXPECTED_HEAD_SHA"
+          python3 - "$GITHUB_EVENT_PATH" "$GITHUB_REPOSITORY" "$QA_EXPECTED_PR_NUMBER" "$QA_EXPECTED_HEAD_SHA" <<'PY'
+          import json, sys
+          event = json.load(open(sys.argv[1]))
+          repository, number, sha = sys.argv[2:]
+          pr = event.get("pull_request", {})
+          if str(event.get("number")) != number or str(pr.get("number")) != number:
+              raise SystemExit("Authenticated QA is restricted to PR #73")
+          head = pr.get("head", {})
+          if head.get("ref") != "fix/v1.40.0-consolidated-remediation":
+              raise SystemExit("Unexpected authenticated QA head branch")
+          if (head.get("repo", {}) or {}).get("full_name") != repository or head.get("sha") != sha:
+              raise SystemExit("Authenticated QA repository or exact head SHA mismatch")
+          if event.get("label", {}).get("name") != "authenticated-browser-qa":
+              raise SystemExit("Authenticated QA requires the explicit repository label")
+          PY
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v7
@@ -48,19 +76,131 @@ jobs:
         with:
           version: 2.84.2
 
+      - name: Prepare a unique loopback-only disposable Supabase project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${RUNNER_ENVIRONMENT:-}" = "github-hosted"
+          test "${GITHUB_REPOSITORY}" = "nine41745-sketch/stock-portfolio"
+          test ! -e supabase/.temp/project-ref
+          test "$(supabase --version)" = "2.84.2"
+          project_id="stock-v1400-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          network_name="supabase_network_${project_id}"
+          db_container="supabase_db_${project_id}"
+          db_volume="supabase_db_${project_id}"
+          test -z "$(docker ps -aq --filter "label=com.supabase.cli.project=${project_id}")"
+          test -z "$(docker volume ls -q --filter "label=com.supabase.cli.project=${project_id}")"
+          if docker network inspect "$network_name" >/dev/null 2>&1; then
+            echo "A network already exists for the supposedly unique QA project; refusing reuse." >&2
+            exit 1
+          fi
+          if docker container inspect "$db_container" >/dev/null 2>&1; then
+            echo "A database container already exists for the supposedly unique QA project; refusing reuse." >&2
+            exit 1
+          fi
+          if docker volume inspect "$db_volume" >/dev/null 2>&1; then
+            echo "A database volume already exists for the supposedly unique QA project; refusing reuse." >&2
+            exit 1
+          fi
+          read -r api_port db_port shadow_port app_port < <(python3 - <<'PY'
+          import socket
+          ports = []
+          for _ in range(4):
+              sock = socket.socket()
+              sock.bind(("127.0.0.1", 0))
+              ports.append(sock.getsockname()[1])
+              sock.close()
+          if len(set(ports)) != len(ports):
+              raise SystemExit("Failed to choose unique temporary QA ports")
+          print(*ports)
+          PY
+          )
+          python3 - "$project_id" "$api_port" "$db_port" "$shadow_port" "$app_port" <<'PY'
+          from pathlib import Path
+          import re, sys
+          project, api, db, shadow, app = sys.argv[1:]
+          path = Path("supabase/config.toml")
+          content = path.read_text()
+          replacements = [
+              (r'(?m)^project_id = "[^"]+"$', f'project_id = "{project}"'),
+              (r'(?m)^port = 54321$', f'port = {api}'),
+              (r'(?m)^port = 54322$', f'port = {db}'),
+              (r'(?m)^shadow_port = 54320$', f'shadow_port = {shadow}'),
+              (r'(?m)^site_url = "http://127\.0\.0\.1:3000"$', f'site_url = "http://127.0.0.1:{app}"'),
+              (r'(?m)^additional_redirect_urls = \["http://127\.0\.0\.1:3000"\]$', f'additional_redirect_urls = ["http://127.0.0.1:{app}"]'),
+          ]
+          for pattern, replacement in replacements:
+              content, count = re.subn(pattern, replacement, content)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one config match for {pattern!r}, found {count}")
+          path.write_text(content)
+          PY
+          # Supabase CLI v2.84.2 omits HostIp in Docker port bindings.
+          # Establish Docker's loopback default on the unique project bridge first.
+          docker network create --driver bridge \
+            --opt com.docker.network.bridge.host_binding_ipv4=127.0.0.1 \
+            --label "com.supabase.cli.project=${project_id}" \
+            --label "qa.owner.run=${GITHUB_RUN_ID}" \
+            "$network_name" >/dev/null
+          network_options="$(docker network inspect -f '{{json .Options}}' "$network_name")"
+          python3 - "$network_options" <<'PY'
+          import json, sys
+          options = json.loads(sys.argv[1])
+          if options.get("com.docker.network.bridge.host_binding_ipv4") != "127.0.0.1":
+              raise SystemExit("Unique Supabase bridge is not configured for loopback-only published ports")
+          PY
+          {
+            echo "QA_SUPABASE_PROJECT_ID=${project_id}"
+            echo "QA_SUPABASE_API_PORT=${api_port}"
+            echo "QA_SUPABASE_DB_PORT=${db_port}"
+            echo "QA_APP_PORT=${app_port}"
+            echo "QA_SUPABASE_NETWORK=${network_name}"
+            echo "QA_DB_CONTAINER=${db_container}"
+          } >> "$GITHUB_ENV"
+
       - name: Verify isolated project and tool versions
         shell: bash
         run: |
           set -euo pipefail
-          test ! -e supabase/.temp/project-ref
           test "$(supabase --version)" = "2.84.2"
-          grep -q '^project_id = "stock-portfolio-auth-browser-qa"$' supabase/config.toml
+          grep -q "^project_id = \"${QA_SUPABASE_PROJECT_ID}\"$" supabase/config.toml
+          grep -q "^port = ${QA_SUPABASE_API_PORT}$" supabase/config.toml
+          grep -q "^port = ${QA_SUPABASE_DB_PORT}$" supabase/config.toml
 
       - name: Start Local Supabase and validate endpoint identity
         shell: bash
         run: |
           set -euo pipefail
+          test "$(docker network inspect -f '{{json .Options}}' "$QA_SUPABASE_NETWORK" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("com.docker.network.bridge.host_binding_ipv4", ""))')" = "127.0.0.1"
           supabase start --exclude studio,inbucket,realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor,postgres-meta > "$RUNNER_TEMP/supabase-start.log" 2>&1
+          project_container_ids="$(docker ps -aq --filter "label=com.supabase.cli.project=${QA_SUPABASE_PROJECT_ID}")"
+          test -n "$project_container_ids"
+          docker inspect $project_container_ids > "$RUNNER_TEMP/supabase-containers.json"
+          docker volume ls -q --filter "label=com.supabase.cli.project=${QA_SUPABASE_PROJECT_ID}" > "$RUNNER_TEMP/supabase-volumes.txt"
+          test -s "$RUNNER_TEMP/supabase-volumes.txt"
+          python3 - "$RUNNER_TEMP/supabase-containers.json" "$QA_SUPABASE_PROJECT_ID" "$QA_SUPABASE_NETWORK" <<'PY'
+          import json, sys
+          containers = json.load(open(sys.argv[1]))
+          project, network = sys.argv[2:]
+          if not containers:
+              raise SystemExit("No Supabase containers found for the isolated project")
+          for container in containers:
+              labels = container.get("Config", {}).get("Labels", {}) or {}
+              if labels.get("com.supabase.cli.project") != project:
+                  raise SystemExit("Supabase container ownership label mismatch")
+              networks = container.get("NetworkSettings", {}).get("Networks", {}) or {}
+              if set(networks) != {network}:
+                  raise SystemExit("Supabase container is attached to an unexpected Docker network")
+              for bindings in (container.get("NetworkSettings", {}).get("Ports", {}) or {}).values():
+                  for binding in bindings or []:
+                      if binding.get("HostIp") != "127.0.0.1":
+                          raise SystemExit("A Supabase published port is not bound exclusively to IPv4 loopback")
+          db = next((c for c in containers if c.get("Name", "").lstrip("/") == f"supabase_db_{project}"), None)
+          if not db:
+              raise SystemExit("Unique disposable Supabase database container was not found")
+          if not any(m.get("Name") == f"supabase_db_{project}" for m in db.get("Mounts", [])):
+              raise SystemExit("Database container is not using the unique project-owned volume")
+          PY
           supabase status --output env > "$RUNNER_TEMP/supabase-status.env" 2>/dev/null
           node scripts/qa/export-local-supabase-env.mjs "$RUNNER_TEMP/supabase-status.env"
 
@@ -69,36 +209,262 @@ jobs:
         run: bash scripts/qa/bootstrap-local-supabase.sh
 
       - name: Run Authenticated Browser QA with external network blocked
+        id: browser_qa_runner
         shell: bash
         run: |
           set -euo pipefail
           export QA_NETWORK_GUARD_LOG="$RUNNER_TEMP/qa-network-guard.log"
           : > "$QA_NETWORK_GUARD_LOG"
           export NODE_OPTIONS="--require=$GITHUB_WORKSPACE/scripts/qa/deny-external-network.cjs"
-          (npm run dev -- --hostname 127.0.0.1 --port 3000 > "$RUNNER_TEMP/next-dev.log" 2>&1 & echo $! > "$RUNNER_TEMP/next-dev.pid")
-          for attempt in $(seq 1 90); do
-            curl --silent --fail http://127.0.0.1:3000/login >/dev/null && break
-            sleep 2
+          mkdir -p "$QA_ARTIFACT_DIR"
+          node scripts/qa/qa-runner-evidence.mjs stage "$QA_ARTIFACT_DIR" SERVER_STARTING
+          (./node_modules/.bin/next dev --hostname 127.0.0.1 --port "$QA_APP_PORT" > "$RUNNER_TEMP/next-dev.log" 2>&1 & echo $! > "$RUNNER_TEMP/next-dev.pid")
+          app_pid="$(cat "$RUNNER_TEMP/next-dev.pid")"
+          server_ready=0
+          for attempt in $(seq 1 36); do
+            if ! kill -0 "$app_pid" 2>/dev/null; then
+              echo "Next.js dev server exited before HTTP readiness; see the sanitized server-stage evidence." >&2
+              exit 1
+            fi
+            if timeout --signal=TERM --kill-after=1s 5s curl --silent --fail --connect-timeout 2 --max-time 4 "http://127.0.0.1:${QA_APP_PORT}/login" >/dev/null; then
+              server_ready=1
+              break
+            fi
+            sleep 1
           done
-          curl --silent --fail http://127.0.0.1:3000/login >/dev/null
-          node scripts/qa/authenticated-browser.mjs
+          if [ "$server_ready" -ne 1 ]; then
+            echo "Next.js HTTP readiness exceeded its bounded 3-minute window." >&2
+            exit 1
+          fi
+          node scripts/qa/qa-runner-evidence.mjs stage "$QA_ARTIFACT_DIR" SERVER_READY
+          export QA_BROWSER_DEADLINE_MS="$((QA_BROWSER_RUNNER_TIMEOUT_SECONDS * 1000))"
+          set +e
+          timeout --signal=TERM --kill-after=10s "${QA_BROWSER_RUNNER_TIMEOUT_SECONDS}s" node scripts/qa/authenticated-browser.mjs
+          browser_status=$?
+          set -e
+          if [ "$browser_status" -ne 0 ]; then
+            node scripts/qa/qa-runner-evidence.mjs interrupted "$QA_ARTIFACT_DIR" "$browser_status"
+            exit "$browser_status"
+          fi
+
+      - name: Stop only this QA application process
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'QA_STAGE {"stage":"CLEANUP"}'
+          if [ -s "$RUNNER_TEMP/next-dev.pid" ]; then
+            pid="$(cat "$RUNNER_TEMP/next-dev.pid")"
+            case "$pid" in
+              (*[!0-9]*|'') echo "Invalid QA app PID marker; leaving process untouched." >&2; exit 1 ;;
+              (*)
+                if process="$(ps -p "$pid" -o args=)"; then
+                  case "$process" in
+                    *"next dev --hostname 127.0.0.1 --port ${QA_APP_PORT}"*)
+                      kill "$pid"
+                      for attempt in $(seq 1 20); do
+                        if ! kill -0 "$pid" 2>/dev/null; then break; fi
+                        sleep 1
+                      done
+                      if kill -0 "$pid" 2>/dev/null; then
+                        echo "QA application process is still running after termination." >&2
+                        exit 1
+                      fi
+                      ;;
+                    *) echo "PID marker no longer identifies this QA application; leaving process untouched." >&2; exit 1 ;;
+                  esac
+                fi
+                ;;
+            esac
+          fi
 
       - name: Stop only this disposable project
         if: always()
         shell: bash
-        run: supabase stop > "$RUNNER_TEMP/supabase-stop.log" 2>&1 || true
+        run: |
+          set -uo pipefail
+          project_id="stock-v1400-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          network_name="supabase_network_${project_id}"
+          if [ -n "${QA_SUPABASE_PROJECT_ID:-}" ] && [ "$QA_SUPABASE_PROJECT_ID" != "$project_id" ]; then
+            echo "QA project ID does not match this workflow run; refusing cleanup." >&2
+            exit 1
+          fi
+          stop_status=not-run
+          if [ -n "${QA_SUPABASE_PROJECT_ID:-}" ]; then
+            if supabase stop --project-id "$project_id" > "$RUNNER_TEMP/supabase-stop.log" 2>&1; then
+              stop_status=0
+            else
+              stop_status=$?
+              echo "supabase stop returned ${stop_status}; continuing only with run-owned resource checks." >&2
+            fi
+          fi
+
+          cleanup_error=0
+          container_ids="$(docker ps -aq --filter "label=com.supabase.cli.project=${project_id}")" || { echo "Cannot inventory project containers." >&2; exit 1; }
+          for container_id in $container_ids; do
+            inspect_file="$RUNNER_TEMP/qa-container-inspect.json"
+            if ! docker inspect "$container_id" > "$inspect_file"; then
+              echo "Cannot verify container ownership; leaving it untouched." >&2
+              cleanup_error=1
+              continue
+            fi
+            if ! python3 - "$inspect_file" "$project_id" "$network_name" <<'PY'
+          import json, sys
+          item = json.load(open(sys.argv[1]))[0]
+          project, network = sys.argv[2:]
+          labels = item.get("Config", {}).get("Labels", {}) or {}
+          name = item.get("Name", "")
+          networks = set((item.get("NetworkSettings", {}).get("Networks", {}) or {}).keys())
+          if labels.get("com.supabase.cli.project") != project:
+              raise SystemExit("container project label mismatch")
+          if not name.startswith("/supabase_") or not name.endswith("_" + project):
+              raise SystemExit("container name is outside this run's Supabase namespace")
+          if networks != {network}:
+              raise SystemExit("container network ownership is not exclusive to this run")
+          PY
+            then
+              echo "Container ${container_id} is not proven run-owned; leaving it untouched." >&2
+              cleanup_error=1
+              continue
+            fi
+            if ! docker rm -f "$container_id" >/dev/null; then
+              echo "Failed to remove verified run-owned container ${container_id}." >&2
+              cleanup_error=1
+            fi
+          done
+
+          volume_names="$(docker volume ls -q --filter "label=com.supabase.cli.project=${project_id}")" || { echo "Cannot inventory project volumes." >&2; exit 1; }
+          for volume in $volume_names; do
+            inspect_file="$RUNNER_TEMP/qa-volume-inspect.json"
+            if ! docker volume inspect "$volume" > "$inspect_file"; then
+              echo "Cannot verify volume ownership; leaving it untouched." >&2
+              cleanup_error=1
+              continue
+            fi
+            if ! python3 - "$inspect_file" "$project_id" <<'PY'
+          import json, sys
+          item = json.load(open(sys.argv[1]))[0]
+          project = sys.argv[2]
+          labels = item.get("Labels", {}) or {}
+          name = item.get("Name", "")
+          if labels.get("com.supabase.cli.project") != project:
+              raise SystemExit("volume project label mismatch")
+          if not name.startswith("supabase_") or not name.endswith("_" + project):
+              raise SystemExit("volume name is outside this run's Supabase namespace")
+          PY
+            then
+              echo "Volume ${volume} is not proven run-owned; leaving it untouched." >&2
+              cleanup_error=1
+              continue
+            fi
+            if ! docker volume rm "$volume" >/dev/null; then
+              echo "Failed to remove verified run-owned volume ${volume}." >&2
+              cleanup_error=1
+            fi
+          done
+
+          if network_json="$(docker network inspect "$network_name" 2>/dev/null)"; then
+            printf '%s' "$network_json" > "$RUNNER_TEMP/qa-network-inspect.json"
+            if python3 - "$RUNNER_TEMP/qa-network-inspect.json" "$project_id" "$GITHUB_RUN_ID" <<'PY'
+          import json, sys
+          item = json.load(open(sys.argv[1]))[0]
+          project, run_id = sys.argv[2:]
+          labels = item.get("Labels", {}) or {}
+          if labels.get("com.supabase.cli.project") != project or labels.get("qa.owner.run") != run_id:
+              raise SystemExit("network ownership labels do not match this workflow run")
+          if item.get("Containers"):
+              raise SystemExit("network still has attached containers")
+          PY
+            then
+              if ! docker network rm "$network_name" >/dev/null; then
+                echo "Failed to remove verified run-owned network." >&2
+                cleanup_error=1
+              fi
+            else
+              echo "Network ownership or attachment check failed; leaving it untouched." >&2
+              cleanup_error=1
+            fi
+          fi
+
+          remaining_containers="$(docker ps -aq --filter "label=com.supabase.cli.project=${project_id}")" || exit 1
+          remaining_volumes="$(docker volume ls -q --filter "label=com.supabase.cli.project=${project_id}")" || exit 1
+          remaining_networks="$(docker network ls -q --filter "label=com.supabase.cli.project=${project_id}")" || exit 1
+          printf 'supabase_stop_status=%s\nremaining_containers=%s\nremaining_volumes=%s\nremaining_networks=%s\n' \
+            "$stop_status" "${remaining_containers:-none}" "${remaining_volumes:-none}" "${remaining_networks:-none}" \
+            | tee "$RUNNER_TEMP/qa-cleanup-summary.txt"
+          mkdir -p "$QA_ARTIFACT_DIR"
+          cp "$RUNNER_TEMP/qa-cleanup-summary.txt" "$QA_ARTIFACT_DIR/cleanup-summary.txt"
+          if [ -n "$remaining_containers" ] || [ -n "$remaining_volumes" ] || [ -n "$remaining_networks" ] || [ "$cleanup_error" -ne 0 ]; then
+            echo "Post-cleanup verification found owned resources or an ownership/cleanup error." >&2
+            exit 1
+          fi
+          if [ "$stop_status" != "0" ] && [ "$stop_status" != "not-run" ]; then
+            echo "supabase stop failed, but direct run-specific cleanup and empty post-checks succeeded; see stop log and cleanup summary." >&2
+          fi
 
       - name: Record blocked QA result
-        if: failure()
+        if: always()
         shell: bash
         run: |
           mkdir -p "$QA_ARTIFACT_DIR"
-          printf '{"status":"BLOCKED","reason":"An isolated QA precondition or assertion failed; inspect the failed workflow step. No raw logs or credentials are included."}\n' > "$QA_ARTIFACT_DIR/results.json"
+          python3 - "$QA_ARTIFACT_DIR/results.json" "$QA_ARTIFACT_DIR/runner-status.json" "${{ steps.browser_qa_runner.outcome }}" "${{ job.status }}" <<'PY'
+          import json, pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          checkpoint_path = pathlib.Path(sys.argv[2])
+          runner_outcome, job_status = sys.argv[3:]
+          try:
+              checkpoint = json.loads(checkpoint_path.read_text())
+          except (OSError, json.JSONDecodeError):
+              checkpoint = {}
+          stage = checkpoint.get("stage", "UNKNOWN")
+          check_names = checkpoint.get("checks", [])
+          if not isinstance(check_names, list):
+              check_names = []
+          checks = [{"name": name[:180], "status": "PASS"} for name in check_names[:500] if isinstance(name, str)]
+          if not path.exists():
+              cancelled = runner_outcome == "cancelled" or job_status == "cancelled"
+              reason = "The workflow was cancelled before complete browser results were recorded." if cancelled else "The browser workflow stopped before complete results were recorded."
+              result = {
+                  "status": "BLOCKED",
+                  "reason": reason,
+                  "data": "synthetic only",
+                  "finalStage": stage,
+                  "passedChecks": len(checks),
+                  "checks": checks,
+                  "elapsedMs": checkpoint.get("elapsedMs"),
+                  "stageDurationMs": checkpoint.get("stageElapsedMs"),
+                  "stageHistory": checkpoint.get("stageHistory", []),
+                  "failure": {"stage": stage, "name": "WorkflowCancelled" if cancelled else "RunnerStopped", "message": reason},
+              }
+          else:
+              try:
+                  result = json.loads(path.read_text())
+              except (OSError, json.JSONDecodeError):
+                  result = {
+                      "status": "BLOCKED",
+                      "reason": "The browser runner evidence file was incomplete or invalid JSON.",
+                      "data": "synthetic only",
+                      "finalStage": stage,
+                      "passedChecks": len(checks),
+                      "checks": checks,
+                      "elapsedMs": checkpoint.get("elapsedMs"),
+                      "stageDurationMs": checkpoint.get("stageElapsedMs"),
+                      "stageHistory": checkpoint.get("stageHistory", []),
+                      "failure": {"stage": stage, "name": "InvalidEvidence", "message": "The browser result was not valid JSON."},
+                  }
+              if result.get("status") == "PASS":
+                  if job_status != "success":
+                      result["status"] = "BLOCKED"
+                      result["workflowFailure"] = "A later workflow step failed or was cancelled; inspect sanitized step summaries."
+                      result["lastKnownStage"] = stage
+          path.write_text(json.dumps(result, separators=(",", ":")) + "\n")
+          PY
       - name: Upload synthetic QA evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: authenticated-browser-qa-v1.35.0
+          name: authenticated-browser-qa-v1.40.0
           path: ${{ env.QA_ARTIFACT_DIR }}/
           retention-days: 3
-          if-no-files-found: ignore
+          if-no-files-found: error
+          include-hidden-files: true

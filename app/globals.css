@@ -66,7 +66,7 @@
 [data-theme="light"] .divide-gray-800 > * + * { border-color: #e2e8f0 !important; }
 
 [data-theme="light"] input::placeholder,
-[data-theme="light"] textarea::placeholder { color: #64748b !important; opacity: 1; }
+[data-theme="light"] textarea::placeholder { color: #475569 !important; opacity: 1; }
 [data-theme="light"] select,
 [data-theme="light"] input,
 [data-theme="light"] textarea { color: #0f172a; }
@@ -155,3 +155,32 @@
 [data-theme="light"] .import-preview :is(button, input, textarea, [tabindex]):focus-visible {
   outline-color: #1d4ed8;
 }
+
+/* Risk dashboard semantic surfaces need explicit light-theme colors. Keep these
+   overrides local so other pages retain their existing light-theme palette. */
+[data-theme="light"] .risk-dashboard .text-yellow-200,
+[data-theme="light"] .risk-dashboard .text-yellow-100\/80 { color: #854d0e !important; }
+[data-theme="light"] .risk-dashboard .text-red-200,
+[data-theme="light"] .risk-dashboard .text-red-300 { color: #991b1b !important; }
+[data-theme="light"] .risk-dashboard .text-green-200,
+[data-theme="light"] .risk-dashboard .text-green-300 { color: #166534 !important; }
+[data-theme="light"] .risk-dashboard .text-blue-200 { color: #1e40af !important; }
+[data-theme="light"] .risk-dashboard .text-amber-200 { color: #854d0e !important; }
+[data-theme="light"] .risk-dashboard .text-gray-500 { color: #475569 !important; }
+[data-theme="light"] .risk-dashboard .text-white { color: #0f172a !important; }
+[data-theme="light"] .risk-dashboard .bg-blue-600.text-white { color: #ffffff !important; }
+[data-theme="light"] .risk-dashboard .bg-yellow-500\/10 { background-color: #fef9c3 !important; }
+[data-theme="light"] .risk-dashboard .bg-red-500\/10 { background-color: #fef2f2 !important; }
+[data-theme="light"] .risk-dashboard .bg-red-500\/15 { background-color: #fee2e2 !important; }
+[data-theme="light"] .risk-dashboard .bg-green-500\/10 { background-color: #dcfce7 !important; }
+[data-theme="light"] .risk-dashboard .bg-blue-500\/10 { background-color: #dbeafe !important; }
+[data-theme="light"] .risk-dashboard .bg-gray-950\/50 { background-color: #eef2f7 !important; }
+[data-theme="light"] .risk-dashboard .bg-gray-950\/70 { background-color: #f8fafc !important; }
+[data-theme="light"] .risk-dashboard .border-yellow-500\/30 { border-color: #a16207 !important; }
+[data-theme="light"] .risk-dashboard .border-red-500\/30,
+[data-theme="light"] .risk-dashboard .border-red-500\/50 { border-color: #b91c1c !important; }
+[data-theme="light"] .risk-dashboard .border-blue-500\/30 { border-color: #1d4ed8 !important; }
+
+/* Muted Risk dashboard copy must remain legible against the dark card surfaces. */
+[data-theme="dark"] .risk-dashboard .text-gray-500,
+[data-theme="dark"] .risk-dashboard .text-gray-600 { color: #9ca3af !important; }
