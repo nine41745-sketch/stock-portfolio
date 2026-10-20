@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import ts from 'typescript'
 
 async function importTsModule(filePath) {
@@ -384,7 +385,7 @@ assert.equal(fs.existsSync('package-lock.json'), true, 'A committed npm lockfile
 
 const packageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
 const mcpSdkLock = packageLock.packages?.['node_modules/@modelcontextprotocol/sdk']
-assert.equal(mcpSdkLock?.version, '1.31.0', 'v1.31.2 must pin the patched MCP SDK transitive dependency')
+assert.equal(mcpSdkLock?.version, '1.32.1', 'MCP SDK must retain the reviewed session-isolation and redirect security fixes')
 assert.equal(packageLock.version, packageJson.version, 'package-lock version must match package.json')
 assert.equal(packageLock.packages?.['']?.version, packageJson.version, 'lockfile root package version must match package.json')
 assert.equal(packageLock.packages?.['']?.engines?.node, '22.x', 'lockfile must preserve the Node 22 runtime pin')
@@ -498,4 +499,5 @@ await import('./test-quick-notes.mjs')
 await import('./test-scratchpad-security.mjs')
 // Pure backup safety regressions; the opt-in Docker restore exercise is never run by CI implicitly.
 await import('./test-recovery.mjs')
+execFileSync(process.execPath, ['--test', 'scripts/test-security-transitive-deps.mjs'], { stdio: 'inherit', timeout: 30000 })
 console.log('✓ Critical regression tests passed')
