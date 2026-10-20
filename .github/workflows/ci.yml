@@ -125,7 +125,10 @@ jobs:
           FULL_AUDIT_STATUS: ${{ steps.full-audit.outputs.status }}
           PRODUCTION_AUDIT_STATUS: ${{ steps.production-audit.outputs.status }}
         run: |
-          if [ "$FULL_AUDIT_STATUS" != "PASS" ] || [ "$PRODUCTION_AUDIT_STATUS" != "PASS" ]; then
+          if [ "$FULL_AUDIT_STATUS" != "PASS" ] && [ "$FULL_AUDIT_STATUS" != "PASS_WITH_EXCEPTION" ] || [ "$PRODUCTION_AUDIT_STATUS" != "PASS" ]; then
             echo "Security audit gate is not PASS (full=$FULL_AUDIT_STATUS, production-only=$PRODUCTION_AUDIT_STATUS). Review the uploaded sanitized evidence."
             exit 1
+          fi
+          if [ "$FULL_AUDIT_STATUS" = "PASS_WITH_EXCEPTION" ]; then
+            echo "Full audit accepted its sole documented exception; production-only audit passed. See docs/security-audit-exception-braces-ghsa-vfj7-8cjw-p6xm.md."
           fi
