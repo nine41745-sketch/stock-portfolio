@@ -16,47 +16,72 @@ jobs:
   authenticated-browser-qa:
     if: >-
       ${{ github.repository == 'nine41745-sketch/stock-portfolio' &&
-          github.event.pull_request.number == 73 &&
-          github.event.pull_request.head.ref == 'fix/v1.40.0-consolidated-remediation' &&
+          github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
-          github.event.label.name == 'authenticated-browser-qa' }}
+          github.event.label.name == 'authenticated-browser-qa' &&
+          ((github.event.pull_request.number == 73 &&
+            github.event.pull_request.head.ref == 'fix/v1.40.0-consolidated-remediation') ||
+           (github.event.pull_request.head.ref == 'codex/qa-main-readiness' &&
+            github.event.pull_request.base.ref == 'main' &&
+            github.event.pull_request.base.sha == '91218978ba2e4ae93bddb9e24ea3dd4a8ae04c48')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       CI: 'true'
-      QA_EXPECTED_PR_NUMBER: '73'
-      QA_EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      QA_EXPECTED_PR_NUMBER: ${{ github.event.pull_request.number }}
+      QA_EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.ref == 'codex/qa-main-readiness' && '91218978ba2e4ae93bddb9e24ea3dd4a8ae04c48' || github.event.pull_request.head.sha }}
       QA_ARTIFACT_DIR: .local-artifacts/authenticated-browser-qa-v1.40.0/${{ github.run_id }}
       QA_BROWSER_RUNNER_TIMEOUT_SECONDS: '2280'
     steps:
-      - name: Checkout PR head
+      - name: Checkout approved QA target
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ env.QA_EXPECTED_HEAD_SHA }}
+          persist-credentials: false
 
-      - name: Verify exact authorized PR and checked-out head
+      - name: Verify exact authorized target and checked-out head
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "nine41745-sketch/stock-portfolio"
-          test "$QA_EXPECTED_PR_NUMBER" = "73"
-          test "$QA_EXPECTED_HEAD_SHA" = "${{ github.event.pull_request.head.sha }}"
           test "$(git rev-parse HEAD)" = "$QA_EXPECTED_HEAD_SHA"
-          python3 - "$GITHUB_EVENT_PATH" "$GITHUB_REPOSITORY" "$QA_EXPECTED_PR_NUMBER" "$QA_EXPECTED_HEAD_SHA" <<'PY'
-          import json, sys
+          python3 - "$GITHUB_EVENT_PATH" "$GITHUB_REPOSITORY" "$QA_EXPECTED_PR_NUMBER" "$QA_EXPECTED_HEAD_SHA" "$GITHUB_EVENT_NAME" "$GITHUB_REF" <<'PY'
+          import json, re, sys
           event = json.load(open(sys.argv[1]))
-          repository, number, sha = sys.argv[2:]
+          repository, number, sha, event_name, workflow_ref = sys.argv[2:]
+          approved_sha = "91218978ba2e4ae93bddb9e24ea3dd4a8ae04c48"
+          if repository != "nine41745-sketch/stock-portfolio" or event_name != "pull_request":
+              raise SystemExit("Unexpected QA repository or event")
+          if not re.fullmatch(r"[0-9a-f]{40}", sha) or not re.fullmatch(r"[1-9][0-9]*", number):
+              raise SystemExit("Malformed QA target SHA or PR number")
           pr = event.get("pull_request", {})
           if str(event.get("number")) != number or str(pr.get("number")) != number:
-              raise SystemExit("Authenticated QA is restricted to PR #73")
+              raise SystemExit("QA PR number mismatch")
+          if workflow_ref != f"refs/pull/{number}/merge":
+              raise SystemExit("Unexpected QA workflow ref")
           head = pr.get("head", {})
-          if head.get("ref") != "fix/v1.40.0-consolidated-remediation":
-              raise SystemExit("Unexpected authenticated QA head branch")
-          if (head.get("repo", {}) or {}).get("full_name") != repository or head.get("sha") != sha:
-              raise SystemExit("Authenticated QA repository or exact head SHA mismatch")
+          if (head.get("repo", {}) or {}).get("full_name") != repository:
+              raise SystemExit("QA requires a same-repository head")
+          if not re.fullmatch(r"[0-9a-f]{40}", head.get("sha", "")):
+              raise SystemExit("Malformed QA workflow head SHA")
           if event.get("label", {}).get("name") != "authenticated-browser-qa":
-              raise SystemExit("Authenticated QA requires the explicit repository label")
+              raise SystemExit("QA requires the explicit repository label")
+          if head.get("ref") == "codex/qa-main-readiness":
+              base = pr.get("base", {})
+              if base.get("ref") != "main" or base.get("sha") != approved_sha or sha != approved_sha:
+                  raise SystemExit("Main QA requires the exact approved main SHA and base")
+          elif number != "73" or head.get("ref") != "fix/v1.40.0-consolidated-remediation" or head.get("sha") != sha:
+              raise SystemExit("Unexpected PR or target outside the approved QA routes")
+          print("Authorized exact-SHA synthetic QA target verified")
           PY
+          if [ "${{ github.event.pull_request.head.ref }}" = "codex/qa-main-readiness" ]; then
+            current_main="$(git ls-remote --exit-code origin refs/heads/main | cut -f1)"
+            test "$current_main" = "$QA_EXPECTED_HEAD_SHA"
+          fi
+          mkdir -p "$QA_ARTIFACT_DIR"
+          printf 'target_sha=%s\nworkflow_ref=%s\nworkflow_sha=%s\nevent=%s\n' \
+            "$QA_EXPECTED_HEAD_SHA" "$GITHUB_WORKFLOW_REF" "$GITHUB_WORKFLOW_SHA" "$GITHUB_EVENT_NAME" \
+            > "$QA_ARTIFACT_DIR/target-metadata.txt"
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v7
