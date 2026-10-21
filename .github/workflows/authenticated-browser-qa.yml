@@ -4,39 +4,49 @@ on:
   pull_request:
     types: [labeled]
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact current main commit SHA to test
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: authenticated-browser-qa-${{ github.event.pull_request.number }}
+  group: authenticated-browser-qa-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   authenticated-browser-qa:
     if: >-
       ${{ github.repository == 'nine41745-sketch/stock-portfolio' &&
-          github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository &&
-          github.event.label.name == 'authenticated-browser-qa' &&
-          ((github.event.pull_request.number == 73 &&
-            github.event.pull_request.head.ref == 'fix/v1.40.0-consolidated-remediation') ||
-           (github.event.pull_request.head.ref == 'codex/qa-main-readiness' &&
-            github.event.pull_request.base.ref == 'main' &&
-            github.event.pull_request.base.sha == '91218978ba2e4ae93bddb9e24ea3dd4a8ae04c48')) }}
+          ((github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.full_name == github.repository &&
+            github.event.label.name == 'authenticated-browser-qa' &&
+            ((github.event.pull_request.number == 73 &&
+              github.event.pull_request.head.ref == 'fix/v1.40.0-consolidated-remediation') ||
+             (github.event.pull_request.head.ref == 'codex/qa-main-readiness' &&
+              github.event.pull_request.base.ref == 'main' &&
+              github.event.pull_request.base.sha != ''))) ||
+           (github.event_name == 'workflow_dispatch' &&
+            github.ref == 'refs/heads/main' &&
+            github.actor == 'nine41745-sketch' &&
+            inputs.target_sha != '')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       CI: 'true'
-      QA_EXPECTED_PR_NUMBER: ${{ github.event.pull_request.number }}
-      QA_EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.ref == 'codex/qa-main-readiness' && '91218978ba2e4ae93bddb9e24ea3dd4a8ae04c48' || github.event.pull_request.head.sha }}
+      QA_EXPECTED_PR_NUMBER: ${{ github.event.pull_request.number || '0' }}
+      QA_EXPECTED_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || (github.event.pull_request.head.ref == 'codex/qa-main-readiness' && github.event.pull_request.base.sha || github.event.pull_request.head.sha) }}
       QA_ARTIFACT_DIR: .local-artifacts/authenticated-browser-qa-v1.40.0/${{ github.run_id }}
       QA_BROWSER_RUNNER_TIMEOUT_SECONDS: '2280'
     steps:
       - name: Checkout approved QA target
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.QA_EXPECTED_HEAD_SHA }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || env.QA_EXPECTED_HEAD_SHA }}
           persist-credentials: false
 
       - name: Verify exact authorized target and checked-out head
@@ -45,11 +55,20 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "nine41745-sketch/stock-portfolio"
           test "$(git rev-parse HEAD)" = "$QA_EXPECTED_HEAD_SHA"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            test "$GITHUB_REF" = "refs/heads/main"
+            test "$GITHUB_ACTOR" = "nine41745-sketch"
+            [[ "$QA_EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+            current_main="$(git ls-remote --exit-code origin refs/heads/main | cut -f1)"
+            test "$current_main" = "$QA_EXPECTED_HEAD_SHA"
+            git checkout --detach "$QA_EXPECTED_HEAD_SHA"
+            test "$(git rev-parse HEAD)" = "$QA_EXPECTED_HEAD_SHA"
+            echo "Authorized exact-main SHA synthetic QA target verified"
+          else
           python3 - "$GITHUB_EVENT_PATH" "$GITHUB_REPOSITORY" "$QA_EXPECTED_PR_NUMBER" "$QA_EXPECTED_HEAD_SHA" "$GITHUB_EVENT_NAME" "$GITHUB_REF" <<'PY'
           import json, re, sys
           event = json.load(open(sys.argv[1]))
           repository, number, sha, event_name, workflow_ref = sys.argv[2:]
-          approved_sha = "91218978ba2e4ae93bddb9e24ea3dd4a8ae04c48"
           if repository != "nine41745-sketch/stock-portfolio" or event_name != "pull_request":
               raise SystemExit("Unexpected QA repository or event")
           if not re.fullmatch(r"[0-9a-f]{40}", sha) or not re.fullmatch(r"[1-9][0-9]*", number):
@@ -68,8 +87,8 @@ jobs:
               raise SystemExit("QA requires the explicit repository label")
           if head.get("ref") == "codex/qa-main-readiness":
               base = pr.get("base", {})
-              if base.get("ref") != "main" or base.get("sha") != approved_sha or sha != approved_sha:
-                  raise SystemExit("Main QA requires the exact approved main SHA and base")
+              if base.get("ref") != "main" or not re.fullmatch(r"[0-9a-f]{40}", base.get("sha", "")) or sha != base.get("sha"):
+                  raise SystemExit("Main QA requires the exact current main base SHA")
           elif number != "73" or head.get("ref") != "fix/v1.40.0-consolidated-remediation" or head.get("sha") != sha:
               raise SystemExit("Unexpected PR or target outside the approved QA routes")
           print("Authorized exact-SHA synthetic QA target verified")
@@ -77,6 +96,7 @@ jobs:
           if [ "${{ github.event.pull_request.head.ref }}" = "codex/qa-main-readiness" ]; then
             current_main="$(git ls-remote --exit-code origin refs/heads/main | cut -f1)"
             test "$current_main" = "$QA_EXPECTED_HEAD_SHA"
+          fi
           fi
           mkdir -p "$QA_ARTIFACT_DIR"
           printf 'target_sha=%s\nworkflow_ref=%s\nworkflow_sha=%s\nevent=%s\n' \
@@ -426,6 +446,22 @@ jobs:
           if [ "$stop_status" != "0" ] && [ "$stop_status" != "not-run" ]; then
             echo "supabase stop failed, but direct run-specific cleanup and empty post-checks succeeded; see stop log and cleanup summary." >&2
           fi
+
+      - name: Confirm main SHA is still current
+        if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'codex/qa-main-readiness'))
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "nine41745-sketch/stock-portfolio"
+          [[ "$QA_EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            test "$GITHUB_REF" = "refs/heads/main"
+            test "$GITHUB_ACTOR" = "nine41745-sketch"
+          else
+            test "$GITHUB_REF" = "refs/pull/$QA_EXPECTED_PR_NUMBER/merge"
+          fi
+          current_main="$(git ls-remote --exit-code origin refs/heads/main | cut -f1)"
+          test "$current_main" = "$QA_EXPECTED_HEAD_SHA"
 
       - name: Record blocked QA result
         if: always()

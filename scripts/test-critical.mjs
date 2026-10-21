@@ -418,6 +418,8 @@ assert.equal(packageLock.packages?.['']?.dependencies?.['@anthropic-ai/sdk'], un
 
 assert.equal(fs.existsSync('.github/workflows/ci.yml'), true, 'GitHub Actions CI workflow is required')
 assert.equal(fs.existsSync('.github/dependabot.yml'), true, 'Dependabot configuration is required')
+assert.equal(fs.existsSync('scripts/test-authenticated-qa-workflow.mjs'), true, 'Authenticated QA workflow safety tests are required')
+await import('./test-authenticated-qa-workflow.mjs')
 const dependabotSource = fs.readFileSync('.github/dependabot.yml', 'utf8')
 assert.match(dependabotSource, /^    rebase-strategy: disabled$/m, 'Dependabot must disable unnecessary automatic rebases')
 assert.match(dependabotSource, /react-family:/, 'Dependabot must group React and ReactDOM updates')
