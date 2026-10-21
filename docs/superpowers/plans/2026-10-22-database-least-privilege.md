@@ -8,7 +8,7 @@
 
 ## Constraints
 
-- Owner approved migration development and isolated synthetic tests only; no commit/push/merge/deploy or Production operations.
+- The initial approval covered migration development and isolated synthetic tests only. The owner later separately approved committing and pushing the exact reviewed 14-file package to Draft PR #81. Merge, deployment and Production operations remain unauthorized.
 - Preserve existing work and the old untracked security-hardening package.
 - Node.js 22.x; committed lockfile; no dependency changes.
 - No production keys, credentials, rows, or private identities.
@@ -26,14 +26,14 @@ Preserve service-role and unrelated custom grants. Fail on inherited/column priv
 
 ## Execution rulings
 
-Execute inline under the owner's instruction to finish continuously. No commit is authorized. Tool/environment blockers must remain explicit; no fallback to Production or a remote database.
+Execute inline under the owner's instruction to finish continuously. At the planning stage, no commit was authorized; the owner later approved the exact 14-file commit and push now recorded in Draft PR #81. Merge, deployment and Production operations remain unauthorized. Tool/environment blockers must remain explicit; no fallback to Production or a remote database.
 
 - Ruling: use the managed worktree returned by the app, with approved execution access scoped to local tools; do not change filesystem ACLs or the owner's existing root checkout. Docker Desktop was started as a normal user, not Administrator.
 - Ruling: preserve explicit backend/custom grants; refuse PUBLIC/delegated table grants, column ACLs or inherited effective access rather than silently broadening the migration. Cost: unusual installations require separate review.
 - Ruling: restore normalized ACL semantics rather than promise identical raw ACL array ordering or NULL representation. Snapshot equality still includes grantors, grant options, object identities, policy expressions and function settings.
 - Review closure: exact PUBLIC-only removable policy, validated rollback privilege tokens/shapes, and explicitly local Docker endpoint pinned for every call; regression checks added for each.
 - Verification: expected baseline RED exit 1 at security verifier; final synthetic integration 12 grouped checks PASS with cleanup PASS/exit 0; endpoint safety tests 2/2 PASS/exit 0; npm ci, production-only audit and npm run ci exit 0; final lint exit 0 with three pre-existing warnings.
-- No Production call or existing database/container reuse occurred in this implementation round. No commit/push/merge/deploy.
+- No Production call or existing database/container reuse occurred in the implementation round. At that stage no commit/push/merge/deploy had been authorized; the owner later approved the exact 14-file commit/push to Draft PR #81. Merge and deployment remain unauthorized.
 
 ## Owner-approved pre-PR revision
 
@@ -50,9 +50,9 @@ Execute inline under the owner's instruction to finish continuously. No commit i
 
 ## Subsequent owner-approved local Supabase QA
 
-- [x] Apply the two-file deployment exclusion for only `codex/db-least-privilege` locally, retaining main/QA/Dependabot exclusions and strict assertion. No push or remote-setting change.
+- [x] Apply the two-file deployment exclusion for only `codex/db-least-privilege`, retaining main/QA/Dependabot exclusions and the strict assertion. The owner later approved these files as part of the 14-file commit/pushed PR package; no Vercel project setting was changed.
 - [x] Diagnose engine 29.8.2 ignoring the per-network default with an independent no-data probe; remove only owned probe resources.
 - [x] Use temporary local Docker transport to enforce explicit 127.0.0.1 before container create, validate effective bindings, and retain project/network/mount/cleanup boundaries. No daemon-wide change.
 - [x] Close review findings for automatic publishing, inherited mounts, versionless create and malformed JSON logging; 13 combined regressions pass.
 - [x] Real Supabase CLI 2.84.2 startup/bootstrap/verifier/reapply pass, followed by 69/69 authenticated browser checks with synthetic data and existing external-network guard. Run c6a99ac4-39a0-4e7d-9b50-d4726305e386, exit 0, cleanup PASS.
-- Scope: local Auth/PostgREST/browser QA baseline, not every Supabase service or Production. Prior platform BLOCKED/failed results remain historical evidence; this run supersedes that local blocker only. Gates remain HOLD; no commit/push/merge/deploy authorized.
+- Scope: local Auth/PostgREST/browser QA baseline, not every Supabase service or Production. Prior platform BLOCKED/failed results remain historical evidence; this run supersedes that local blocker only. Gates remain HOLD. At the time of this QA run, no commit/push/merge/deploy had yet been authorized; the owner later approved the 14-file commit/push to Draft PR #81. Merge and deployment remain unauthorized.

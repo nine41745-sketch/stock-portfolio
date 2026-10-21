@@ -1,8 +1,8 @@
 # Database least-privilege migration and rollback
 
-Status: local development/test package only. Production, Backup, Recovery, Security and Release gates remain HOLD. No commit, push, merge or deployment is included.
+Status: development package in Draft PR #81. The reviewed 14-file package was committed and pushed on 22 October 2026. Production, Backup, Recovery, Security and Release gates remain HOLD. No Production access, merge or deployment is included; the migration has not been applied.
 
-Revision after pre-PR review: F1–F4 are corrected and covered by isolated regression/bootstrap tests. On separate owner approval, the branch-only deployment policy and matching assertion were applied locally. The package is now fourteen files, including the bootstrap change, two deployment-policy files and two local Docker transport/test files. Real local Supabase Auth/PostgREST and authenticated browser QA now pass; see the latest evidence section. No remote setting, push, Production access or deployment is included.
+Revision after pre-PR review: F1–F4 are corrected and covered by isolated regression/bootstrap tests. On separate owner approval, the branch-only deployment policy and matching assertion were added. The fourteen-file package, including the bootstrap change and local Docker transport/tests, is committed as `1ebb31e6b4d8519eaf0447a7f83fac5a702aa8b5` and pushed to Draft PR #81. Local synthetic Supabase Auth/PostgREST and authenticated browser QA passed; see the latest evidence section. No Vercel project setting was changed, and no Production access or deployment occurred.
 
 Base: `1ccd8e83ca2ecc267477623de024320d19c8303c`, remote `main` verified 22 October 2026 (Asia/Bangkok). The Supabase CLI generated the migration filename using UTC on 21 October; the timestamp is an identifier, not a release or execution claim.
 
@@ -59,7 +59,7 @@ Rollback deliberately reopens the prior excessive privileges. It is a recovery r
 ## Future approval prerequisites
 
 1. Review the exact final diff, test report and rollback hashes; confirm the intended portfolio/settings client operations.
-2. Separately approve any commit/push and expected Preview impact. This branch is not automatically deployment-exempt.
+2. The owner-approved commit/push of the reviewed 14-file package is complete in Draft PR #81. `vercel.json` disables automatic deployments for `codex/db-least-privilege` only; unspecified branches remain enabled by default. The exact commit has no Vercel deployment record as of 22 October 2026.
 3. Before any Production migration: separate scoped approval; current catalog and baseline capture; verified backup/recovery or an explicit owner risk decision; short lock/maintenance window; backend/PIN and user/portfolio isolation checks; tested same-target rollback plan.
 4. Deployment of main features is a separate decision. Migration development does not release the app or clear any gate.
 
@@ -72,7 +72,7 @@ Rollback deliberately reopens the prior excessive privileges. It is a recovery r
 - Final lint: exit 0, three existing warnings (two PerformanceDashboard hook dependencies and one PortfolioDashboard unused directive); these unrelated app files are unchanged.
 - One fresh independent static review completed. Its three findings are closed: forward/rollback agree on the exact PUBLIC policy baseline; external rollback ACL tokens/shapes are validated before DDL; local Docker endpoints are strictly validated and pinned. Integration tests reject altered policy roles, injected ACL tokens and wrong-object baselines, and verify unchanged catalog after refusal.
 - Additional tests cover inherited grants, column ACLs, malformed policy predicates, pre-COMMIT failure atomicity, missing/drifted rollback snapshots (including an added table column), exact rollback, roll-forward, and the absent-platform-event-function fresh-bootstrap case. Snapshot structure fingerprints cover columns/defaults, constraints, indexes and triggers without returning literal default expressions.
-- No new Production inspection or mutation, no app-source/dependency/configuration changes, no commit/push/merge/deploy. Broader default grants and other tables remain outside this narrow package. PostgreSQL fixtures do not replace live Supabase authenticated browser testing.
+- No new Production inspection or mutation, no app-source/dependency changes and no merge/deploy. The reviewed package was committed and pushed to Draft PR #81. Broader default grants and other tables remain outside this narrow package. PostgreSQL fixtures do not replace live Supabase authenticated browser testing.
 
 ## Pre-PR findings closure and revised validation
 
@@ -91,7 +91,7 @@ An actual Supabase CLI 2.84.2 startup experiment was stopped safely: internal ne
 
 Rollback configuration reconstruction uses RESET ALL only inside the transaction for the one affected function whose validated original settings are immediately rebuilt in original order. Other GUCs must match the captured state; any mismatch/failure rolls the transaction back. This preserves exact normalized proconfig ordering as well as list semantics.
 
-The separately approved deployment patch now adds only `codex/db-least-privilege: false` to the local vercel.json and matching strict test-critical expected map. It retains main/Dependabot/QA exclusions, other PR defaults and all cron definitions. These changes have not been pushed or applied to a remote environment. Commit/push still require separate approval.
+The owner-approved deployment patch adds only `codex/db-least-privilege: false` to `vercel.json` and the matching strict test-critical expected map. It retains the existing main/Dependabot/QA exclusions, defaults for other branches and all cron definitions. It is included in commit `1ebb31e6b4d8519eaf0447a7f83fac5a702aa8b5` on Draft PR #81. No Vercel project setting was changed; a read-only lookup found no deployment for this SHA as of 22 October 2026.
 
 ## Latest real-platform QA evidence (22 October 2026)
 
