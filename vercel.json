@@ -8,7 +8,8 @@
     "deploymentEnabled": {
       "dependabot/**": false,
       "main": false,
-      "codex/qa-main-readiness": false
+      "codex/qa-main-readiness": false,
+      "codex/db-least-privilege": false
     }
   }
 }

@@ -46,4 +46,13 @@ docker exec -i "$db" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supaba
 docker exec -i "$db" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/verify_portfolio_watchlist_v1.35.0.sql >/dev/null 2>&1 || {
   echo 'v1.35.0 post-roll-forward verification failed.' >&2; exit 1;
 }
+
+# Manual legacy migration: run only AFTER the application schema and guarded
+# watchlist rollback/roll-forward are complete. Do not place in auto migrations/.
+docker exec -i "$db" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/migration_least_privilege_v1.40.0.sql >/dev/null 2>&1 || {
+  echo 'Least-privilege migration failed on disposable database.' >&2; exit 1;
+}
+docker exec -i "$db" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/verify_least_privilege.sql >/dev/null 2>&1 || {
+  echo 'Least-privilege post-bootstrap verification failed.' >&2; exit 1;
+}
 echo 'Repository SQL bootstrap, portfolio isolation, idempotency, actual rollback, and roll-forward passed on disposable local database.'
