@@ -14,6 +14,10 @@ has(/ref: \$\{\{ github\.event_name == 'workflow_dispatch' && 'main' \|\| env\.Q
 has(/test "\$\(git rev-parse HEAD\)" = "\$QA_EXPECTED_HEAD_SHA"/, 'Checkout must match the verified expected target SHA')
 has(/github\.event\.pull_request\.head\.ref == 'codex\/qa-main-readiness'[\s\S]*?github\.event\.pull_request\.base\.ref == 'main'/, 'The isolated QA PR route must be restricted to its dedicated branch and main base')
 has(/github\.event\.pull_request\.head\.ref == 'codex\/qa-main-readiness' && github\.event\.pull_request\.base\.sha/, 'The QA PR must test its exact main base SHA, not the workflow branch head')
+has(/github\.event\.pull_request\.number == 83/, 'QA #47 must be restricted to its exact PR')
+has(/github\.event\.pull_request\.head\.ref == 'codex\/qa47-pin-completion'/, 'QA #47 must use its dedicated branch')
+has(/github\.event\.pull_request\.base\.ref == 'main'/, 'QA #47 must target main')
+has(/elif number == "83" and head\.get\("ref"\) == "codex\/qa47-pin-completion"[\s\S]*?head\.get\("sha"\) != sha/, 'QA #47 must test the exact PR head SHA and reject other targets')
 has(/sha != base\.get\("sha"\)/, 'The PR validator must bind the target SHA to the event base SHA')
 has(/git ls-remote --exit-code origin refs\/heads\/main/, 'Manual QA must compare its target with live main before and after tests')
 has(/Confirm main SHA is still current[\s\S]*?if: always\(\)/, 'The final exact-main check must run even after a failed QA step')
@@ -25,5 +29,6 @@ has(/permissions:\s*\n\s+contents: read/, 'Workflow token permissions must remai
 
 const vercel = JSON.parse(fs.readFileSync('vercel.json', 'utf8'))
 assert.equal(vercel.git?.deploymentEnabled?.['codex/qa-main-readiness'], false, 'The QA branch must stay excluded from Vercel deployments')
+assert.equal(vercel.git?.deploymentEnabled?.['codex/qa47-pin-completion'], false, 'QA #47 must stay excluded from Vercel deployments')
 
 console.log('Authenticated QA workflow safety assertions passed')
