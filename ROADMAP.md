@@ -1,6 +1,6 @@
 # Stock Portfolio — Roadmap
 
-Status: v1.40.0 Personal Investment Command Center remains Release Candidate / Unreleased in Draft PR #73 at `490ab3515b14eb7cf197ed7420cf15b5dfacd80c`. Hosted CI #39416814395 and exact-head disposable Authenticated QA #39418345913 passed (69 checks). v1.35.1–v1.39.0 remain unreleased candidates. Full Audit retains 7 High under its CI-only documented exception; Production-only Audit passed. Security / Production Release Gate remains HOLD, including the verified main-to-Production automatic deployment coupling. See [v1.40.0 candidate release handoff](docs/release-v1400.md).
+Status (2026-10-23): GitHub `main` is `ae88fe8afe7c42e678c772a5e327bbd32ad78db7`. Vercel reports the latest Production deployment READY on that same SHA. Earlier hosted CI and disposable Authenticated QA evidence for v1.40.0 remain recorded below and in [the v1.40.0 release handoff](docs/release-v1400.md); this status update does not claim new QA or release-gate approval. Backup/Recovery/Security/Release Gates remain HOLD. A locally tested `ip-address` security patch is being prepared on a separate branch and is not part of `main`.
 
 Historical status (2026-10-15): v1.35.1 Hotfix is pushed to `fix/v1.35.1-contrast-notes` as Draft PR #67; source, security guards and metadata are prepared but UNRELEASED. Separate v1.35.1 Security Decision and Merge/Production approval remain pending.
 Release-preparation review: 2026-10-17 (Asia/Bangkok). Historical Production evidence below was not revalidated in this local-only task.
