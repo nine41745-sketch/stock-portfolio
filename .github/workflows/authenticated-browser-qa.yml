@@ -116,6 +116,9 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Test PIN setup completion ordering on a synthetic loopback server
+        run: node scripts/test-qa-pin-setup-browser.mjs
+
       - name: Setup pinned Supabase CLI
         uses: supabase/setup-cli@v3
         with:

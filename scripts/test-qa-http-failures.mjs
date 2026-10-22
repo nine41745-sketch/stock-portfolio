@@ -512,3 +512,293 @@ test('console HTTP errors are accounted for one-for-one against expected endpoin
     { kind: 'http-status', status: 503, path: '/api/portfolios' },
   ])
 })
+
+// Reduced from the actual synthetic QA #47 artifact; no historical sequence is rewritten.
+test('QA #47 response 53 before independent PIN-ready proof 54 remains rejected', () => {
+  const actual47 = {
+    "failure": {
+      "path": "/api/daily-analyses/today",
+      "status": 409,
+      "sequence": 49,
+      "pathname": "/api/daily-analyses/today",
+      "documentPath": "/dashboard",
+      "documentNavigationId": 4,
+      "stage": "pin-setup",
+      "authReady": true,
+      "pinReady": false,
+      "authAttemptId": "A-1",
+      "authPhase": "pin-submitting",
+      "method": "GET",
+      "account": "A",
+      "portfolioState": "unknown",
+      "requestSequence": 49,
+      "responseSequence": 53,
+      "authGate": "unclassified",
+      "responseBodyStatus": "json",
+      "failureCode": "PORTFOLIO_REQUIRED"
+    },
+    "lifecycle": {
+      "authAttempts": [
+        {
+          "id": "A-1",
+          "account": "A",
+          "phase": "pin-ready",
+          "startedSequence": 2,
+          "unauthenticatedControlSequence": 1,
+          "authenticatedControlSequence": 38,
+          "authenticatedHasPin": false,
+          "pinSetupControlSequence": 38,
+          "pinSetupHasPin": false,
+          "pinSubmissionSequence": 39,
+          "initialPinReadyControlSequence": 54,
+          "pinReadyControlSequence": 478,
+          "pinLockTransitions": [
+            {
+              "startedSequence": 187,
+              "unlockedControlSequence": 232
+            }
+          ],
+          "authRequestSequence": 26
+        }
+      ],
+      "portfolioInitializations": [
+        {
+          "account": "A",
+          "state": "created",
+          "emptyDatabaseCount": 0,
+          "emptyDatabaseControlSequence": 55,
+          "emptyControls": [
+            {
+              "path": "/api/portfolios",
+              "requestSequence": 56,
+              "controlSequence": 59
+            },
+            {
+              "path": "/api/performance",
+              "requestSequence": 60,
+              "controlSequence": 61
+            },
+            {
+              "path": "/api/transactions",
+              "requestSequence": 62,
+              "controlSequence": 63
+            },
+            {
+              "path": "/api/daily-analyses/today",
+              "requestSequence": 64,
+              "controlSequence": 65
+            },
+            {
+              "path": "/api/daily-analyses/today",
+              "requestSequence": 86,
+              "controlSequence": 95
+            },
+            {
+              "path": "/api/daily-analyses/today",
+              "requestSequence": 116,
+              "controlSequence": 125
+            },
+            {
+              "path": "/api/daily-analyses/today",
+              "requestSequence": 146,
+              "controlSequence": 159
+            }
+          ],
+          "pageEffectControls": [
+            {
+              "correlationId": "page-effect-A-6-86",
+              "account": "A",
+              "method": "GET",
+              "path": "/api/daily-analyses/today",
+              "documentPath": "/dashboard",
+              "documentNavigationId": 6,
+              "stage": "account-a-empty-portfolio-initialization",
+              "status": 409,
+              "responseBodyStatus": "json",
+              "failureCode": "PORTFOLIO_REQUIRED",
+              "requestSequence": 86,
+              "responseSequence": 91,
+              "controlSequence": 95
+            },
+            {
+              "correlationId": "page-effect-A-8-116",
+              "account": "A",
+              "method": "GET",
+              "path": "/api/daily-analyses/today",
+              "documentPath": "/transactions",
+              "documentNavigationId": 8,
+              "stage": "account-a-empty-portfolio-initialization",
+              "status": 409,
+              "responseBodyStatus": "json",
+              "failureCode": "PORTFOLIO_REQUIRED",
+              "requestSequence": 116,
+              "responseSequence": 121,
+              "controlSequence": 125
+            },
+            {
+              "correlationId": "page-effect-A-10-146",
+              "account": "A",
+              "method": "GET",
+              "path": "/api/daily-analyses/today",
+              "documentPath": "/performance",
+              "documentNavigationId": 10,
+              "stage": "account-a-empty-portfolio-initialization",
+              "status": 409,
+              "responseBodyStatus": "json",
+              "failureCode": "PORTFOLIO_REQUIRED",
+              "requestSequence": 146,
+              "responseSequence": 153,
+              "controlSequence": 159
+            }
+          ],
+          "creationBarrierVerified": true,
+          "creationBarrierSequence": 160,
+          "creationStageTransitionSequence": 161,
+          "creationStartedSequence": 162,
+          "creationPost": {
+            "correlationId": "portfolio-create-A-1",
+            "method": "POST",
+            "path": "/api/portfolios",
+            "startSequence": 162,
+            "invocationSequence": 163,
+            "completionSequence": 164,
+            "status": 200,
+            "responseBodyStatus": "json",
+            "durationMs": 105
+          },
+          "createdControlSequence": 165
+        }
+      ],
+      "controls": [
+        {
+          "kind": "auth-positive-control",
+          "account": "A",
+          "status": 200,
+          "hasPin": false,
+          "sequence": 38
+        },
+        {
+          "kind": "protected-api-positive-control",
+          "account": "A",
+          "status": 200,
+          "sequence": 54
+        },
+        {
+          "kind": "empty-portfolio-database-control",
+          "account": "A",
+          "portfolioCount": 0,
+          "sequence": 55
+        },
+        {
+          "kind": "empty-portfolio-negative-control",
+          "account": "A",
+          "path": "/api/portfolios",
+          "status": 409,
+          "code": "PORTFOLIO_REQUIRED",
+          "requestSequence": 56,
+          "sequence": 59
+        },
+        {
+          "kind": "empty-portfolio-negative-control",
+          "account": "A",
+          "path": "/api/performance",
+          "status": 409,
+          "code": "PORTFOLIO_REQUIRED",
+          "requestSequence": 60,
+          "sequence": 61
+        },
+        {
+          "kind": "empty-portfolio-negative-control",
+          "account": "A",
+          "path": "/api/transactions",
+          "status": 409,
+          "code": "PORTFOLIO_REQUIRED",
+          "requestSequence": 62,
+          "sequence": 63
+        },
+        {
+          "kind": "empty-portfolio-negative-control",
+          "account": "A",
+          "path": "/api/daily-analyses/today",
+          "status": 409,
+          "code": "PORTFOLIO_REQUIRED",
+          "requestSequence": 64,
+          "sequence": 65
+        },
+        {
+          "kind": "empty-portfolio-negative-control",
+          "account": "A",
+          "path": "/api/daily-analyses/today",
+          "status": 409,
+          "code": "PORTFOLIO_REQUIRED",
+          "requestSequence": 86,
+          "responseSequence": 91,
+          "correlationId": "page-effect-A-6-86",
+          "source": "browser-page-effect",
+          "documentPath": "/dashboard",
+          "documentNavigationId": 6,
+          "sequence": 95
+        },
+        {
+          "kind": "empty-portfolio-negative-control",
+          "account": "A",
+          "path": "/api/daily-analyses/today",
+          "status": 409,
+          "code": "PORTFOLIO_REQUIRED",
+          "requestSequence": 116,
+          "responseSequence": 121,
+          "correlationId": "page-effect-A-8-116",
+          "source": "browser-page-effect",
+          "documentPath": "/transactions",
+          "documentNavigationId": 8,
+          "sequence": 125
+        },
+        {
+          "kind": "empty-portfolio-negative-control",
+          "account": "A",
+          "path": "/api/daily-analyses/today",
+          "status": 409,
+          "code": "PORTFOLIO_REQUIRED",
+          "requestSequence": 146,
+          "responseSequence": 153,
+          "correlationId": "page-effect-A-10-146",
+          "source": "browser-page-effect",
+          "documentPath": "/performance",
+          "documentNavigationId": 10,
+          "sequence": 159
+        },
+        {
+          "kind": "first-portfolio-creation-start",
+          "account": "A",
+          "method": "POST",
+          "path": "/api/portfolios",
+          "correlationId": "portfolio-create-A-1",
+          "sequence": 162
+        },
+        {
+          "kind": "first-portfolio-created-control",
+          "account": "A",
+          "status": 200,
+          "portfolioCount": 1,
+          "defaultCount": 1,
+          "correlationId": "portfolio-create-A-1",
+          "sequence": 165
+        },
+        {
+          "kind": "protected-api-positive-control",
+          "account": "A",
+          "status": 200,
+          "sequence": 232
+        },
+        {
+          "kind": "protected-api-positive-control",
+          "account": "A",
+          "status": 200,
+          "sequence": 478
+        }
+      ]
+    }
+  }
+  assert.equal(isExpectedHttpFailure(actual47.failure, actual47.lifecycle), false)
+  assert.throws(() => assertNoUnexpectedHttpFailures([actual47.failure], actual47.lifecycle), /Unexpected failed browser responses/)
+})
