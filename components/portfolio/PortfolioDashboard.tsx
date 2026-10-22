@@ -244,7 +244,7 @@ function TrackRecordCard() {
         <>
           <div className="flex items-baseline gap-2 mb-3">
             <span className={`text-2xl font-bold ${winColor}`}>{winRate}%</span>
-            <span className="text-gray-500 text-xs">Win Rate ({data.overall.correct}/{data.overall.total} ครั้งถูก)</span>
+            <span className="text-gray-500 text-xs">ความแม่นยำของสัญญาณ ({data.overall.correct}/{data.overall.total} ครั้งถูก ใน {days} วัน)</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {data.bySymbol.map(s => {
@@ -958,7 +958,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
     <div className="max-w-7xl mx-auto space-y-4">
 
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+        <div role="status" aria-live="polite" className={`fixed bottom-4 right-4 z-50 max-w-[min(24rem,calc(100vw-2rem))] rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
           {toast.msg}
         </div>
       )}

@@ -16,7 +16,7 @@ export default async function PinPage() {
     <div className="flex min-h-screen items-center justify-center bg-gray-950">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-white">📈 พอร์ตน้องเจน</h1>
+          <h1 className="text-2xl font-bold text-white">📈 ระบบจัดการหุ้น</h1>
           <p className="mt-2 text-gray-400">ยืนยันตัวตนด้วย PIN เพื่อเข้าพอร์ต</p>
         </div>
         <PinGate userEmail={user.email ?? ''} />

@@ -209,6 +209,7 @@ export default function TransactionLedger() {
   }
 
   function startEdit(item: TransactionItem) {
+    if (!window.confirm('แก้ไขรายการ Ledger นี้หรือไม่? การแก้ไขจะไม่ Sync จำนวนหุ้นใน Holdings อัตโนมัติ กรุณาตรวจเทียบพอร์ตหลังบันทึก')) return
     setEditingId(item.id)
     setForm({
       transaction_type: item.transaction_type,
@@ -469,9 +470,9 @@ export default function TransactionLedger() {
         ) : visibleItems.length === 0 ? (
           <div className="py-10 text-center text-sm text-gray-400">ยังไม่มีธุรกรรมตามตัวกรองนี้</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="max-h-96 overflow-auto rounded-lg" aria-label="ประวัติธุรกรรม เลื่อนดูรายการเพิ่มเติมได้">
             <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="border-b border-gray-800 text-xs text-gray-400">
+              <thead className="sticky top-0 z-10 border-b border-gray-800 bg-gray-900 text-xs text-gray-400">
                 <tr>
                   <th className="px-2 py-3">วันที่</th>
                   <th className="px-2 py-3">ประเภท</th>
