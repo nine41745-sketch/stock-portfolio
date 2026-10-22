@@ -29,7 +29,10 @@ jobs:
               github.event.pull_request.head.ref == 'fix/v1.40.0-consolidated-remediation') ||
              (github.event.pull_request.head.ref == 'codex/qa-main-readiness' &&
               github.event.pull_request.base.ref == 'main' &&
-              github.event.pull_request.base.sha != ''))) ||
+              github.event.pull_request.base.sha != '') ||
+             (github.event.pull_request.number == 83 &&
+              github.event.pull_request.head.ref == 'codex/qa47-pin-completion' &&
+              github.event.pull_request.base.ref == 'main'))) ||
            (github.event_name == 'workflow_dispatch' &&
             github.ref == 'refs/heads/main' &&
             github.actor == 'nine41745-sketch' &&
@@ -89,6 +92,10 @@ jobs:
               base = pr.get("base", {})
               if base.get("ref") != "main" or not re.fullmatch(r"[0-9a-f]{40}", base.get("sha", "")) or sha != base.get("sha"):
                   raise SystemExit("Main QA requires the exact current main base SHA")
+          elif number == "83" and head.get("ref") == "codex/qa47-pin-completion":
+              base = pr.get("base", {})
+              if base.get("ref") != "main" or head.get("sha") != sha:
+                  raise SystemExit("QA #47 requires the exact PR head SHA and main base")
           elif number != "73" or head.get("ref") != "fix/v1.40.0-consolidated-remediation" or head.get("sha") != sha:
               raise SystemExit("Unexpected PR or target outside the approved QA routes")
           print("Authorized exact-SHA synthetic QA target verified")
@@ -115,6 +122,9 @@ jobs:
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+
+      - name: Test PIN setup completion ordering on a synthetic loopback server
+        run: node scripts/test-qa-pin-setup-browser.mjs
 
       - name: Setup pinned Supabase CLI
         uses: supabase/setup-cli@v3

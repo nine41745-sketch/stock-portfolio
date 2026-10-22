@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { assertNoUnexpectedHttpFailures, isExpectedHttpFailure, readHttpFailureEvidence, unexpectedConsoleHttpErrors } from './expected-http-failures.mjs'
 import { markQaStageSync, recordQaCheckSync, recordInterruptedRunSync } from './qa-runner-evidence.mjs'
 import { getVerifiedLocalUserAccessToken } from './local-user-auth-token.mjs'
-import { createHttpEvidenceLifecycle, installDailyAnalysisBodyObserver } from './http-response-evidence.mjs'
+import { createHttpEvidenceLifecycle, installDailyAnalysisBodyObserver, installPinSetupReadinessBarrier } from './http-response-evidence.mjs'
 import { completeEmptyPortfolioCreationBarrier, EMPTY_PORTFOLIO_PAGE_PATHS, submitFirstPortfolioRequest, waitForEmptyPortfolioPageEffect } from './portfolio-creation-lifecycle.mjs'
 import { createRequestCancellationEvidence, installRequestCancellationObserver, flushRequestCancellationEvidence, requestFailureReason, waitForOwnedRequestLifecycle } from './request-cancellation-evidence.mjs'
 const base = new URL(process.env.QA_BASE_URL ?? '')
@@ -250,6 +250,25 @@ try {
    })()
    httpEvidence.trackResponse(task)
   }
+ })
+ // PIN setup returns its HttpOnly cookie before the UI navigates. Independently
+ // verify the same session now, so Dashboard GETs cannot outrun the QA control.
+ await installPinSetupReadinessBarrier(context, {
+  origin:base.origin,
+  verifyReady:async({page:sourcePage},{timeoutMs})=>{
+   assert.equal(sourcePage,page,'PIN proof must belong to the active QA page')
+   const attempt=activeAuthAttempt
+   assert(attempt && attempt.account===activeAccount && attempt.phase==='pin-submitting','PIN proof requires the active setup attempt')
+   assert.equal(attempt.authenticatedHasPin,false,'This barrier is only for first PIN setup')
+   const response=await requestGet(sourcePage.request,new URL('/api/fundamentals?symbols=AAPL',base).href,{timeout:timeoutMs})
+   assert.equal(response.status(),200,'Server must independently verify the PIN session before navigation')
+   return {attempt,response}
+  },
+  onReady:(_source,{attempt,response})=>{
+   assert.equal(activeAuthAttempt,attempt,'PIN proof cannot transfer to a different auth attempt')
+   recordPinReadyControl(attempt,response)
+  },
+  onFailure:()=>httpEvidence.bodyObserverFailed(),
  })
  const waitForPortfolioPageEffect=async(initialization,documentPath,minimumDocumentNavigationId)=>{
   const trace=await waitForEmptyPortfolioPageEffect({page,requestContextFor:request=>requestContexts.get(request),

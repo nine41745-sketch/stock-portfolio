@@ -163,3 +163,68 @@ export async function installDailyAnalysisBodyObserver(context, tracker, { timeo
     }
   }, { timeoutMs })
 }
+
+/** QA-only completion barrier; retain the original fetch response and every HTTP assertion.
+ * The server's HttpOnly PIN cookie is already installed when fetch resolves. Verify it
+ * independently before the UI consumes the success body and navigates to Dashboard.
+ */
+export async function installPinSetupReadinessBarrier(context, { origin, verifyReady, onReady, onFailure, timeoutMs = 5_000 }) {
+  const target = new URL(origin)
+  if (target.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(target.hostname) || target.origin !== origin ||
+      !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5_000 ||
+      [verifyReady, onReady, onFailure].some(callback => typeof callback !== 'function')) {
+    throw new Error('PIN setup barrier requires bounded loopback verification callbacks')
+  }
+  await context.exposeBinding('__qaPinSetupReadiness', async (source, completeBody) => {
+    let timer
+    try {
+      const url = new URL(source.frame.url())
+      if (source.frame !== source.page.mainFrame() || url.origin !== origin || url.pathname !== '/pin' || completeBody !== true) {
+        throw new Error('Invalid PIN setup completion source')
+      }
+      const proof = await Promise.race([
+        Promise.resolve().then(() => verifyReady(source, { timeoutMs })),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('PIN proof deadline')), timeoutMs) }),
+      ])
+      onReady(source, proof)
+    } catch {
+      onFailure()
+      throw new Error('PIN setup readiness proof failed')
+    } finally { clearTimeout(timer) }
+  })
+  await context.addInitScript(({ origin, timeoutMs }) => {
+    const nativeFetch = globalThis.fetch
+    globalThis.fetch = async function (input, init) {
+      const response = await nativeFetch.call(this, input, init)
+      const url = new URL(response.url, globalThis.location.origin)
+      const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
+      if (method !== 'POST' || url.origin !== origin || url.pathname !== '/api/pin/setup' || response.status !== 200) return response
+      let completeBody = false, timer, reader
+      try {
+        // A separate bounded clone leaves the application's original body untouched.
+        reader = response.clone().body.getReader()
+        const bytes = await Promise.race([
+          (async () => {
+            const chunks = []; let size = 0
+            for (;;) {
+              const { done, value } = await reader.read()
+              if (done) break
+              size += value.byteLength
+              if (size > 65_536) throw new Error('PIN response limit')
+              chunks.push(value)
+            }
+            const body = new Uint8Array(size); let offset = 0
+            for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength }
+            return body
+          })(),
+          new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('PIN body deadline')), timeoutMs) }),
+        ])
+        const payload = JSON.parse(new TextDecoder().decode(bytes))
+        completeBody = payload?.ok === true
+      } catch { /* An incomplete/unrecognized success must fail its proof, never be accepted. */ }
+      finally { clearTimeout(timer); if (reader) void reader.cancel().catch(() => {}) }
+      await globalThis.__qaPinSetupReadiness(completeBody)
+      return response
+    }
+  }, { origin, timeoutMs })
+}
