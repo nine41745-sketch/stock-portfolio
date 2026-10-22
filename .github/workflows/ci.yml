@@ -46,6 +46,9 @@ jobs:
       - name: Install exact dependencies
         run: npm ci
 
+      - name: Test local database isolation and loopback safety
+        run: node --test scripts/test-database-lp-safety.mjs scripts/test-supabase-loopback-proxy.mjs
+
       - name: Typecheck, regression tests and production build
         run: npm run ci
 

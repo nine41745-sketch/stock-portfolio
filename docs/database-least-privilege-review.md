@@ -1,10 +1,10 @@
 # Database least-privilege migration and rollback
 
-Status: development package in Draft PR #81. The reviewed 14-file package was committed and pushed on 22 October 2026. Production, Backup, Recovery, Security and Release gates remain HOLD. No Production access, merge or deployment is included; the migration has not been applied.
+Status: PR #81 is open and Ready for review (not merged), inspected 22 October 2026. Current PR/worktree HEAD is `ea80c755259930d5a34e6c2b5cf4a5edca0c0c82`; remote main is `99d7f21574b751fa5e3e17d110dd7f15de53d721`, already incorporated into this HEAD. Production, Backup, Recovery, Security and Release gates remain HOLD. No Production access, merge or deployment is included; the migration has not been applied.
 
-Revision after pre-PR review: F1–F4 are corrected and covered by isolated regression/bootstrap tests. On separate owner approval, the branch-only deployment policy and matching assertion were added. The fourteen-file package, including the bootstrap change and local Docker transport/tests, is committed as `1ebb31e6b4d8519eaf0447a7f83fac5a702aa8b5` and pushed to Draft PR #81. Local synthetic Supabase Auth/PostgREST and authenticated browser QA passed; see the latest evidence section. No Vercel project setting was changed, and no Production access or deployment occurred.
+Revision after pre-PR review: F1–F4 are corrected and covered by isolated regression/bootstrap tests. On separate owner approval, the branch-only deployment policy and matching assertion were added. The fourteen-file package, including the bootstrap change and local Docker transport/tests, is committed as `1ebb31e6b4d8519eaf0447a7f83fac5a702aa8b5` and pushed to then-Draft PR #81. Local synthetic Supabase Auth/PostgREST and authenticated browser QA passed; see the latest evidence section. No Vercel project setting was changed, and no Production access or deployment occurred.
 
-Base: `1ccd8e83ca2ecc267477623de024320d19c8303c`, remote `main` verified 22 October 2026 (Asia/Bangkok). The Supabase CLI generated the migration filename using UTC on 21 October; the timestamp is an identifier, not a release or execution claim.
+Original development base: `1ccd8e83ca2ecc267477623de024320d19c8303c`. Current integration base is remote main `99d7f21574b751fa5e3e17d110dd7f15de53d721`, verified 22 October 2026 (Asia/Bangkok). The Supabase CLI generated the migration filename using UTC on 21 October; the timestamp is an identifier, not a release or execution claim.
 
 ## Evidence and scope
 
@@ -59,7 +59,7 @@ Rollback deliberately reopens the prior excessive privileges. It is a recovery r
 ## Future approval prerequisites
 
 1. Review the exact final diff, test report and rollback hashes; confirm the intended portfolio/settings client operations.
-2. The owner-approved commit/push of the reviewed 14-file package is complete in Draft PR #81. `vercel.json` disables automatic deployments for `codex/db-least-privilege` only; unspecified branches remain enabled by default. The exact commit has no Vercel deployment record as of 22 October 2026.
+2. The previously approved package and main integration were committed/pushed to PR #81, now Ready for review. The existing `vercel.json` disables `codex/db-least-privilege`, `main`, `codex/qa-main-readiness` and `dependabot/**`; unspecified branches remain enabled by default. The latest inspected branch-specific Vercel lookup on 22 October returned no deployment. This is historical metadata/configuration evidence, not a new Production inspection or proof of every deployment route. The local CI/documentation revision below still requires separate commit/push approval.
 3. Before any Production migration: separate scoped approval; current catalog and baseline capture; verified backup/recovery or an explicit owner risk decision; short lock/maintenance window; backend/PIN and user/portfolio isolation checks; tested same-target rollback plan.
 4. Deployment of main features is a separate decision. Migration development does not release the app or clear any gate.
 
@@ -74,7 +74,7 @@ Rollback deliberately reopens the prior excessive privileges. It is a recovery r
 - Additional tests cover inherited grants, column ACLs, malformed policy predicates, pre-COMMIT failure atomicity, missing/drifted rollback snapshots (including an added table column), exact rollback, roll-forward, and the absent-platform-event-function fresh-bootstrap case. Snapshot structure fingerprints cover columns/defaults, constraints, indexes and triggers without returning literal default expressions.
 - No new Production inspection or mutation, no app-source/dependency changes and no merge/deploy. The reviewed package was committed and pushed to Draft PR #81. Broader default grants and other tables remain outside this narrow package. PostgreSQL fixtures do not replace live Supabase authenticated browser testing.
 
-## Pre-PR findings closure and revised validation
+## Historical pre-PR findings closure and revised validation
 
 | Finding | Correction | Regression |
 | --- | --- | --- |
@@ -93,7 +93,7 @@ Rollback configuration reconstruction uses RESET ALL only inside the transaction
 
 The owner-approved deployment patch adds only `codex/db-least-privilege: false` to `vercel.json` and the matching strict test-critical expected map. It retains the existing main/Dependabot/QA exclusions, defaults for other branches and all cron definitions. It is included in commit `1ebb31e6b4d8519eaf0447a7f83fac5a702aa8b5` on Draft PR #81. No Vercel project setting was changed; a read-only lookup found no deployment for this SHA as of 22 October 2026.
 
-## Latest real-platform QA evidence (22 October 2026)
+## Earlier real-platform QA evidence (22 October 2026)
 
 The prior full-stack BLOCKED result above is historical and superseded for this project's local QA scope. Docker Desktop engine 29.8.2 ignored the unique bridge's `host_binding_ipv4=127.0.0.1` default in an independent no-data probe, publishing wildcard IPv4/IPv6. Supabase CLI 2.84.2 omits HostIp in its published-port requests. No daemon-wide settings, firewall or ACL changes were made.
 
@@ -111,5 +111,15 @@ Final run `c6a99ac4-39a0-4e7d-9b50-d4726305e386`:
 The inspectable local orchestrator is `.local-artifacts/database-lp-platform/run.mjs`; reports are under `.local-artifacts/database-lp-startup/<run>/`. Isolated HOME/USERPROFILE/Docker configuration and explicitly selected already-installed Chromium avoid account credential reuse or downloads. A prior browser attempt failed before launch because isolated HOME had no browser cache; another reached 53 checks then failed a Windows EPERM checkpoint rename. Those failed reports remain evidence and are not counted as PASS. The successful run read progress logs instead of concurrently opening the checkpoint through PowerShell. No evidence-writing assertions were relaxed.
 
 This does not test cloud Supabase, Production data/credentials/catalog, Storage/Realtime/Edge services excluded by the committed QA baseline, real provider calls, Production lock behavior or recovery readiness. Backup/Recovery/Security/Release gates remain HOLD. Latest hashes, exit codes, source diff and sanitized evidence are in `.local-artifacts/database-lp-platform-handoff/`.
+
+## Current HEAD and CI regression wiring (22 October 2026)
+
+- Reviewed PR HEAD: `ea80c755259930d5a34e6c2b5cf4a5edca0c0c82`; integration tree: `337f020580565dba744b3aaf3cada9748d7fe2cf`. Main parent: `99d7f21574b751fa5e3e17d110dd7f15de53d721`. No migration, application source, dependency, lockfile, deployment policy or audit exception changes are part of this follow-up.
+- Hosted [CI #413](https://github.com/nine41745-sketch/stock-portfolio/actions/runs/39743301151) passed both verify and security-audit on that HEAD. These hosted results precede the uncommitted CI/documentation follow-up and do not validate it.
+- Latest inspected local integration evidence for the same implementation tree: PostgreSQL fixture run `13023274-27a5-4714-a79d-855856da86a6` (15 grouped checks PASS), bootstrap fixture `f716403f-f1a3-412b-914a-33abf156b6b0` (PASS), and isolated real Auth/PostgREST/browser run `570277dc-6f8d-439f-8924-55be19ffbb03` (69 checks PASS). Each reports cleanup PASS. These are existing local synthetic results, not newly repeated tests or hosted QA of this follow-up.
+- The verify job now explicitly runs `node --test scripts/test-database-lp-safety.mjs scripts/test-supabase-loopback-proxy.mjs` after npm ci and before npm run ci. The existing 3 endpoint/packaging tests and 10 loopback/transport tests run as a required, unconditional step with failure propagation; the job name and existing checks remain unchanged.
+- The 13 tests use in-process synthetic requests and a temporary local mock socket/pipe. They need no running Docker engine, database, Cloud account or Production credentials. They exercise endpoint rejection, migration ordering, create-request isolation, loopback enforcement, malformed-input rejection and transport behavior; they do not replace real Supabase integration tests.
+- Fresh follow-up validation on Node.js 22.23.3: npm ci exit 0; the exact new CI test command passes 13/13 with exit 0; npm run ci (lint/typecheck/all existing critical regressions/build) exit 0; YAML parse and comparison confirm only the required test step changed, with security-audit identical. Lint retains three pre-existing warnings and zero errors. The unchanged audit classifier regression exits 0; real Full audit is PASS_WITH_EXCEPTION (npm exit 1, summarizer exit 0), and Production-only is PASS (npm/summarizer exit 0). No audit fix or dependency change was performed.
+- Current follow-up validation and exit codes are recorded separately in `.local-artifacts/pr81-ci-regression-20261022/`. Hosted CI for these local changes remains unrun until a separately approved commit/push. No gate is cleared by this documentation update.
 
 References: [PostgreSQL 17 RLS](https://www.postgresql.org/docs/17/ddl-rowsecurity.html), [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security).
