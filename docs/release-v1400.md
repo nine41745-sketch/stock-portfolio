@@ -1,6 +1,6 @@
 # v1.40.0 — Personal Investment Command Center Release Candidate
 
-**Status: Unreleased / Release Candidate. Production Release Gate: HOLD.** The candidate is published as Draft PR #73 and remains unmerged, untagged and unreleased. Latest hosted evidence appears below; original local validation is retained as historical evidence. v1.35.1–v1.39.0 remain unreleased candidates. Full npm Audit remains 7 High with the documented CI-only advisory exception; no Production risk acceptance is recorded.
+**Status (2026-10-23): v1.40.0 is present on `main` and Vercel reports the latest Production deployment READY at the same SHA, `ae88fe8afe7c42e678c772a5e327bbd32ad78db7`.** This is deployment metadata evidence, not a fresh live-feature acceptance. Earlier hosted CI and exact-head disposable Authenticated QA results remain historical evidence. **Production Release Gate: HOLD.** Backup/Recovery/Security Gates remain HOLD. Full npm Audit on `main` had 7 High findings under the existing CI-only braces exception and 1 Moderate `ip-address` finding; the Moderate is addressed by a local, separately tested lockfile-only patch that has not been pushed or merged.
 
 ## Integration architecture
 
