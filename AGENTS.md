@@ -31,6 +31,39 @@ Approval for one action does not authorize another. READ-ONLY instructions prohi
 - Use the least resources needed; avoid unnecessary GitHub Actions runs and Vercel Hobby builds/Previews. Do not weaken security checks or change deployment policy to save quota.
 - Report unavailable tools or insufficient permissions and propose a safe alternative. Claim connection, execution or success only with inspected evidence.
 
+### Context7 and Superpowers Usage
+
+**Context7**
+
+- Use Context7 when checking Library, Framework, API, or SDK documentation against the versions actually used by the project.
+- Prefer official documentation and verifiable information.
+- Avoid unnecessary calls when the available evidence is already sufficient.
+
+**Superpowers**
+
+- Select relevant Skills and Workflows for Planning, Debugging, Test-Driven Development, QA, Verification, and Security Review when useful.
+- Choose them according to task complexity; using them is not mandatory for every task.
+- They do not replace actual tests or CI evidence.
+
+**Automatic Tool Selection**
+
+- Codex may select Context7 and Superpowers automatically within the owner's approved task scope.
+- Do not ask again to use tools that are already available and authorized.
+- Installing, connecting, or expanding permissions remains subject to the existing approval rules.
+- If a tool is unavailable, report the limitation; never claim or invent tool usage.
+
+**Reporting**
+
+- Report only tools and Skills actually used.
+- Do not claim Context7 or Superpowers usage unless they were actually invoked.
+- Distinguish inspected results from recommendations and assumptions.
+
+**Safety**
+
+- These guidelines do not grant permission to Push, Merge, Deploy, or modify Database, Cloud, Secrets, or Production systems.
+- They do not change existing Security Gates or approval boundaries.
+- Tools must not be used to act outside the approved task scope.
+
 ## Security and setup
 
 - Never read, disclose or copy Production Secrets; never connect Production Database for development tests.
