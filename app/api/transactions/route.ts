@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { noPortfolioResponse, resolveActivePortfolio } from '@/lib/portfolio-context'
+import { loadTransactionMutationFlags } from '@/lib/transaction-metadata'
 import {
   parseTransactionId,
   parseTransactionInput,
@@ -10,6 +11,9 @@ import {
 
 interface TransactionRow {
   id: string
+  sync_portfolio: boolean
+  correction_revision: number | null
+  correction_values?: { shares: string; price: string; fee: string }
   transaction_type: string
   symbol: string | null
   shares: number | null
@@ -44,6 +48,8 @@ function roundShares(value: number): number {
 function normalizeRows(data: any[] | null): TransactionRow[] {
   return (data ?? []).map(row => ({
     id: String(row.id),
+    sync_portfolio: row.sync_portfolio !== false,
+    correction_revision: Number.isInteger(row.correction_revision) ? row.correction_revision : null,
     transaction_type: String(row.transaction_type),
     symbol: row.symbol === null ? null : String(row.symbol),
     shares: asNumber(row.shares),
@@ -147,7 +153,34 @@ export async function GET() {
     return NextResponse.json({ error: 'ตรวจเทียบ Holdings ไม่สำเร็จ' }, { status: 500 })
   }
 
-  const items = normalizeRows(data as any[] | null)
+  // The historical decrypt RPC omits the immutable Auto Sync classification.
+  // Load it from the same owned portfolio and fail closed if metadata is incomplete.
+  const rawItems = (data ?? []) as any[]
+  let items: TransactionRow[] = []
+  if (rawItems.length) {
+    try {
+      const flags = await loadTransactionMutationFlags(rawItems.map(row => String(row.id)), ids => {
+        let query = serviceClient.from('portfolio_transactions').select('id, sync_portfolio')
+          .eq('user_id', user.id).in('id', ids)
+        if (portfolio.mode === 'portfolio') query = query.eq('portfolio_id', portfolio.portfolioId)
+        return query
+      })
+      items = normalizeRows(rawItems.map(row => ({ ...row, sync_portfolio: flags.get(String(row.id)) })))
+    } catch {
+      return NextResponse.json({ error: 'ตรวจสอบสิทธิ์แก้ไขธุรกรรมไม่สำเร็จ กรุณาโหลดใหม่' }, { status: 503 })
+    }
+  }
+  if (portfolio.mode === 'portfolio' && items.some(item => item.sync_portfolio)) {
+    const { data: capabilities, error: capabilityError } = await serviceClient.rpc('get_trade_correction_capability', { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! })
+    // Optional, forward-compatible capability: legacy installations remain read-only.
+    if (capabilityError && !['42883', 'PGRST202'].includes(capabilityError.code)) return NextResponse.json({ error: 'ตรวจสอบสถานะการแก้ไขธุรกรรมไม่สำเร็จ' }, { status: 503 })
+    const revisions = new Map<string, { revision: number; values: { shares: string; price: string; fee: string } }>()
+    for (const row of (capabilities ?? []) as Array<{ transaction_id: string; revision: number; shares_exact: string; price_exact: string; fee_exact: string }>) {
+      const decimal = (value: unknown): value is string => typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value)
+      if (typeof row.transaction_id === 'string' && Number.isInteger(row.revision) && row.revision >= 0 && decimal(row.shares_exact) && decimal(row.price_exact) && decimal(row.fee_exact)) revisions.set(row.transaction_id, { revision: row.revision, values: { shares: row.shares_exact, price: row.price_exact, fee: row.fee_exact } })
+    }
+    items = items.map(item => ({ ...item, correction_revision: revisions.get(item.id)?.revision ?? null, correction_values: revisions.get(item.id)?.values }))
+  }
   const holdings = (holdingRows ?? []).map(row => ({
     symbol: String(row.symbol).toUpperCase(),
     shares: Number(row.shares),
@@ -203,6 +236,9 @@ async function saveTransaction(request: NextRequest, id: string | null) {
   const { data, error } = await serviceClient.rpc('save_portfolio_transaction', rpcArgs)
 
   if (error) {
+    if (error.code === 'P0001' && error.message === 'synced transaction is immutable') {
+      return NextResponse.json({ error: 'รายการซื้อ/ขายจริงที่ Sync แล้วแก้ไขไม่ได้ เพื่อป้องกันยอดหุ้นและเงินไม่ตรงกัน', code: 'SYNCED_TRANSACTION_IMMUTABLE' }, { status: 409 })
+    }
     if (isMigrationMissing(error)) {
       return NextResponse.json({
         error: 'Transaction Ledger ยังไม่ได้ติดตั้งฐานข้อมูล',
@@ -260,6 +296,9 @@ export async function DELETE(request: NextRequest) {
   const { data: deleted, error } = await query.select('id').maybeSingle()
 
   if (error) {
+    if (error.code === 'P0001' && error.message === 'synced transaction is immutable') {
+      return NextResponse.json({ error: 'รายการซื้อ/ขายจริงที่ Sync แล้วลบไม่ได้ เพื่อป้องกันยอดหุ้นและเงินไม่ตรงกัน', code: 'SYNCED_TRANSACTION_IMMUTABLE' }, { status: 409 })
+    }
     if (isMigrationMissing(error)) {
       return NextResponse.json({
         error: 'Transaction Ledger ยังไม่ได้ติดตั้งฐานข้อมูล',

@@ -1,11 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import SyncedTradeCorrection from './SyncedTradeCorrection'
 
 type TransactionType = 'BUY' | 'SELL' | 'OPENING_POSITION' | 'DIVIDEND' | 'DEPOSIT' | 'WITHDRAW'
 
 interface TransactionItem {
   id: string
+  sync_portfolio: boolean
+  correction_revision: number | null
+  correction_values?: { shares: string; price: string; fee: string }
   transaction_type: TransactionType
   symbol: string | null
   shares: number | null
@@ -124,6 +128,7 @@ export default function TransactionLedger() {
   const [migrationPath, setMigrationPath] = useState('supabase/migration_transactions_v1.21.0.sql')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [correcting, setCorrecting] = useState<TransactionItem | null>(null)
   const [form, setForm] = useState<FormState>(() => blankForm())
   const [filterType, setFilterType] = useState<'ALL' | TransactionType>('ALL')
   const [filterSymbol, setFilterSymbol] = useState('ALL')
@@ -209,6 +214,8 @@ export default function TransactionLedger() {
   }
 
   function startEdit(item: TransactionItem) {
+    if (item.sync_portfolio !== false) return
+    if (!window.confirm('แก้ไขรายการ Ledger นี้หรือไม่? การแก้ไขจะไม่ Sync จำนวนหุ้นใน Holdings อัตโนมัติ กรุณาตรวจเทียบพอร์ตหลังบันทึก')) return
     setEditingId(item.id)
     setForm({
       transaction_type: item.transaction_type,
@@ -252,6 +259,7 @@ export default function TransactionLedger() {
   }
 
   async function remove(item: TransactionItem) {
+    if (item.sync_portfolio !== false) return
     if (!window.confirm(`ลบรายการ ${TYPE_LABELS[item.transaction_type]} ${item.symbol ?? ''} วันที่ ${item.trade_date} ใช่หรือไม่?`)) return
     setError(null)
     try {
@@ -282,7 +290,7 @@ export default function TransactionLedger() {
       </div>
 
       <div className="rounded-xl border border-blue-500/30 bg-blue-500/15 p-4 text-sm text-blue-400">
-        <strong>Data Safety:</strong> Ledger รุ่นนี้เป็นข้อมูลประกอบเท่านั้น การเพิ่ม/แก้/ลบรายการจะไม่เปลี่ยนจำนวนหุ้น ต้นทุนเฉลี่ย เงินสด Daily Cron หรือ AI Track Record เดิม
+        <strong>Data Safety:</strong> การเพิ่ม/แก้/ลบรายการ Ledger ที่บันทึกเองจะไม่เปลี่ยนจำนวนหุ้น ต้นทุนเฉลี่ย เงินสด Daily Cron หรือ AI Track Record เดิม ส่วนรายการซื้อ/ขายจริงห้ามแก้/ลบตรง ๆ รายการล่าสุดที่มีหลักฐานครบจะแสดง “แก้ตัวเลขล่าสุด” เพื่อคำนวณหุ้นและ DIME ใหม่แบบ Atomic พร้อมเก็บประวัติ
       </div>
 
       {migrationRequired && (
@@ -315,6 +323,7 @@ export default function TransactionLedger() {
         ))}
       </div>
 
+      {correcting && <SyncedTradeCorrection key={`${correcting.id}-${correcting.correction_revision}`} item={correcting} onClose={() => setCorrecting(null)} onSaved={async () => { setCorrecting(null); await load() }} />}
       {showForm && (
         <form onSubmit={submitForm} className="rounded-xl border border-gray-700 bg-gray-900 p-4 md:p-5">
           <div className="mb-4 flex items-center justify-between">
@@ -469,9 +478,9 @@ export default function TransactionLedger() {
         ) : visibleItems.length === 0 ? (
           <div className="py-10 text-center text-sm text-gray-400">ยังไม่มีธุรกรรมตามตัวกรองนี้</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="max-h-96 overflow-auto rounded-lg" aria-label="ประวัติธุรกรรม เลื่อนดูรายการเพิ่มเติมได้">
             <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="border-b border-gray-800 text-xs text-gray-400">
+              <thead className="sticky top-0 z-10 border-b border-gray-800 bg-gray-900 text-xs text-gray-400">
                 <tr>
                   <th className="px-2 py-3">วันที่</th>
                   <th className="px-2 py-3">ประเภท</th>
@@ -496,8 +505,12 @@ export default function TransactionLedger() {
                     <td className="px-2 py-3 text-right font-medium text-white">{money(rowValue(item))}</td>
                     <td className="max-w-[260px] truncate px-2 py-3" title={item.note ?? ''}>{item.note ?? '—'}</td>
                     <td className="px-2 py-3 text-right whitespace-nowrap">
+                      {item.sync_portfolio === false ? <>
                       <button type="button" onClick={() => startEdit(item)} className="mr-3 text-blue-400 hover:underline">แก้ไข</button>
                       <button type="button" onClick={() => void remove(item)} className="text-red-400 hover:underline">ลบ</button>
+                      </> : typeof item.correction_revision === 'number'
+                        ? <button type="button" onClick={() => { setShowForm(false); setCorrecting(item) }} className="text-amber-400 hover:underline">แก้ตัวเลขล่าสุด</button>
+                        : <span className="text-xs text-gray-400">ซื้อ/ขายจริง · ล็อกแล้ว</span>}
                     </td>
                   </tr>
                 ))}
