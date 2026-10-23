@@ -335,7 +335,7 @@ export default function PerformanceDashboard() {
         <StatCard label="กำไร/ขาดทุนที่รับรู้" value={money(summary.realized_pnl)} valueClass={pnlClass(summary.realized_pnl)} sub={`FIFO · ${summary.closed_trades} รายการขาย`} />
         <StatCard label="กำไร/ขาดทุนที่ยังไม่รับรู้" value={money(summary.unrealized_pnl)} valueClass={pnlClass(summary.unrealized_pnl)} sub="หุ้นที่ยังถืออยู่" />
         <StatCard label="ปันผล" value={money(summary.dividends)} valueClass={pnlClass(summary.dividends)} />
-        <StatCard label="Win Rate" value={summary.win_rate_pct === null ? '—' : `${summary.win_rate_pct.toFixed(1)}%`} sub={`${summary.wins} ชนะ / ${summary.losses} แพ้`} />
+        <StatCard label="Win Rate" value={summary.win_rate_pct === null ? '—' : `${summary.win_rate_pct.toFixed(1)}%`} sub={`${summary.wins} ดีลกำไร ÷ ${summary.closed_trades} ดีลปิดทั้งหมด (รวมดีลเสมอ) · นับจาก SELL ที่ FIFO ยอมรับ`} />
         <StatCard label="กระแสเงินสุทธิ" value={money(summary.net_cash_flow)} sub={`ฝาก ${money(summary.deposits)} · ถอน ${money(summary.withdrawals)}`} />
         <StatCard label="มูลค่ารวมตามระบบ" value={money(data.balances.configured_total_value)} sub={`หุ้น + เงินสด ${money(data.balances.cash_balance)} + Dime ${money(data.balances.dime_balance)}`} />
       </section>

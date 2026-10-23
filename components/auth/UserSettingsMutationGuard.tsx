@@ -116,7 +116,8 @@ export default function UserSettingsMutationGuard() {
         }
 
         const manualAnalyze = pathname === '/api/analyze' && method === 'POST'
-        if (holdingMutation || cashMutation || manualAnalyze) {
+        const tradeMutation = method === 'POST' && ['/api/trades', '/api/trades/correct', '/api/trade-plans/execute'].includes(pathname)
+        if (holdingMutation || cashMutation || manualAnalyze || tradeMutation) {
           queueMicrotask(() => { void refreshFreshness(originalFetch) })
         }
       }
@@ -133,7 +134,7 @@ export default function UserSettingsMutationGuard() {
   if (!staleSymbols.length && !financialReadError) return null
 
   return (
-    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[80] w-[calc(100%-1.5rem)] max-w-3xl space-y-2">
+    <div role="status" aria-live="polite" className="mx-auto my-3 w-[calc(100%-1.5rem)] max-w-3xl space-y-2">
       {financialReadError && (
         <div className="rounded-xl border border-red-400/50 bg-red-950/95 px-4 py-3 text-red-100 shadow-2xl backdrop-blur">
           <p className="text-sm font-semibold">⚠️ ข้อมูลยอดเงินยังโหลดไม่สำเร็จ</p>

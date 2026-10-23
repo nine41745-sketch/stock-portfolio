@@ -1,0 +1,18 @@
+# Atomic correction of the latest real trade
+
+Owner authorized development, disposable Supabase with synthetic data, regression and UI tests only. No commit, push, merge, cloud mutation or deployment. All gates remain HOLD.
+
+The implementation choice is deliberately bounded: correct shares, price and fee of the latest serialized real trade in a portfolio, only if a snapshot captured at execution is present and current holdings/DIME and linked plan status still match it. Legacy rows, older trades, changed state, or stale revisions fail closed. Type, symbol and date do not change. This does not solve arbitrary historical corrections.
+
+1. Add an explicitly reviewed migration, applied only to the disposable QA database. Preserve a private copy of the existing atomic engine. Wrap new executions with before/after snapshots, without backfilling old rows.
+2. Store snapshots, immutable correction audit and transaction-scoped write permits in a private schema with RLS and no client/service table grants. Public RPCs are service-role only. Direct mutations of synced ledger rows remain forbidden. A guarded correction retains the original ledger ID and writes an audit entry; no compensating duplicate affects performance.
+3. Serialize on existing portfolio cash locks; for plan-linked trades acquire the plan lock first to match the existing execution lock order. Verify latest execution sequence, revision, current cash/holding and plan status. Restore the recorded base, reapply the same accounting engine, replace the original ledger values through an exact-row/exact-operation private permit, update the snapshot and audit. Any failure rolls back every effect.
+4. Add authenticated/PIN-protected API and explicit numeric validation. UI shows correction only for a capable latest row, requires a reason and confirmation, and retains the existing manual ledger distinction.
+5. Tests: latest BUY, partial/full SELL, linked plans, repeated correction, reason/scale validation, legacy denial, stale revision/state, insufficient money and later trades, foreign user/portfolio, direct write bypass, audit access denial, forced failure after state changes, concurrency, unchanged state on denial, performance readback and mobile UI.
+6. Check lint, TypeScript, regressions, production build with placeholders; run actual disposable Supabase/browser QA and remove only run-owned resources. Ship Diff and evidence, not a deployment.
+
+Rollback before any corrections can restore prior function definitions and drop the new private structures. Once corrections exist, do not erase audit/snapshots or pretend a rollback restores prior balances: freeze corrections and use an explicitly reviewed forward recovery. No rollback is authorized on Production.
+
+Precision boundary: correction inputs, capability readback and form prefills preserve decimal strings through PostgreSQL NUMERIC, including reopening a form and changing only the fee. Shares/price/fee accept at most six decimal places; DIME retains its existing two-decimal database precision. Presentation summaries elsewhere still use the existing numeric display pipeline and are not a replacement for exact stored accounting values.
+
+Release boundary: this SQL file is a manually reviewed development candidate outside `supabase/migrations`; it has been applied only to disposable synthetic QA. The local Diff is not part of hosted PR checks until a separately approved commit/push. Production migration, deployment and historical corrections are not authorized. After any actual corrections, reverting application code alone cannot undo accounting changes or replace a reviewed recovery procedure.

@@ -20,6 +20,18 @@ async function importTsModule(filePath) {
 }
 
 const validation = await importTsModule('lib/transaction-validation.ts')
+const { loadTransactionMutationFlags } = await importTsModule('lib/transaction-metadata.ts')
+const metadataIds = Array.from({ length: 251 }, (_, index) => `row-${index}`)
+let metadataCalls = 0
+const metadataFlags = await loadTransactionMutationFlags(metadataIds, async ids => {
+  metadataCalls++; assert(ids.length <= 100, 'Metadata lookup must not create an oversized UUID URL')
+  return { data: ids.slice().reverse().map(id => ({ id, sync_portfolio: true })), error: null }
+})
+assert.equal(metadataCalls, 3); assert.equal(metadataFlags.size, 251)
+await assert.rejects(() => loadTransactionMutationFlags(['known'], async () => ({ data: [], error: null })))
+await assert.rejects(() => loadTransactionMutationFlags(['known'], async () => ({ data: [{ id: 'foreign', sync_portfolio: false }], error: null })))
+await assert.rejects(() => loadTransactionMutationFlags(['known'], async () => ({ data: null, error: { code: '42501' } })))
+assert.equal((await loadTransactionMutationFlags([], async () => { throw new Error('Must not query an empty ledger') })).size, 0)
 
 const buy = validation.parseTransactionInput({
   transaction_type: 'buy',
@@ -109,6 +121,11 @@ assert.match(pinPage, /ระบบจัดการหุ้น/, 'PIN page us
 const portfolioDashboard = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
 assert.match(portfolioDashboard, /ความแม่นยำของสัญญาณ/, 'Analysis track-record metric is distinguished from trade profitability')
 assert.match(portfolioDashboard, /fixed bottom-4 right-4/, 'Toast does not cover the investment start date at the top')
+const mutationGuard = fs.readFileSync('components/auth/UserSettingsMutationGuard.tsx', 'utf8')
+assert.doesNotMatch(mutationGuard, /className="fixed /, 'Persistent financial and stale-AI warnings must occupy document space instead of overlaying portfolio controls')
+assert.match(mutationGuard, /role="status" aria-live="polite"/, 'Persistent warnings remain announced to assistive technology')
+const performanceDashboard = fs.readFileSync('components/portfolio/PerformanceDashboard.tsx', 'utf8')
+assert.match(performanceDashboard, /summary\.closed_trades[\s\S]*รวมดีลเสมอ/, 'Performance Win Rate explains the complete closed-trade denominator')
 
 const nav = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')
 assert.match(nav, /href: '\/transactions'/, 'Transactions must be a main navigation tab')
