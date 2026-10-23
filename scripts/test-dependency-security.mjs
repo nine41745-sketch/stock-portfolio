@@ -24,6 +24,15 @@ assert.ok(finance, 'yahoo-finance2 must remain present in the production depende
 assertAtLeast(finance.version, '4.0.5', 'yahoo-finance2')
 assert.ok(finance.integrity, 'yahoo-finance2 must keep an integrity hash in the lockfile')
 
+const bodyParserPackages = Object.entries(lock.packages)
+  .filter(([packagePath]) => packagePath === 'node_modules/body-parser' || packagePath.endsWith('/node_modules/body-parser'))
+assert.ok(bodyParserPackages.length > 0, 'The production dependency tree must contain body-parser')
+for (const [packagePath, packageInfo] of bodyParserPackages) {
+  assertAtLeast(packageInfo.version, '2.4.0', `${packagePath} body-parser`)
+  assert.notEqual(packageInfo.dev, true, `${packagePath} body-parser must remain a production dependency`)
+  assert.ok(packageInfo.integrity, `${packagePath} body-parser must keep an integrity hash in the lockfile`)
+}
+
 const zodPackages = Object.entries(lock.packages)
   .filter(([packagePath]) => packagePath === 'node_modules/zod' || packagePath.endsWith('/node_modules/zod'))
 assert.ok(zodPackages.length > 0, 'The production dependency tree must contain zod')
@@ -32,4 +41,4 @@ for (const [packagePath, packageInfo] of zodPackages) {
   assert.ok(packageInfo.integrity, `${packagePath} zod must keep an integrity hash in the lockfile`)
 }
 
-console.log(`Dependency security regression passed: yahoo-finance2 ${finance.version}; ${zodPackages.length} zod package(s) at or above 4.6.6.`)
+console.log(`Dependency security regression passed: yahoo-finance2 ${finance.version}; ${bodyParserPackages.length} body-parser package(s) at or above 2.4.0; ${zodPackages.length} zod package(s) at or above 4.6.6.`)
