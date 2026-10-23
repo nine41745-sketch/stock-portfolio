@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import ts from 'typescript'
+const migration = fs.readFileSync('supabase/20261023074534_atomic_trade_correction.sql', 'utf8')
+assert.match(migration, /CREATE TRIGGER portfolio_transactions_protect_synced\s+BEFORE UPDATE OR DELETE ON public\.portfolio_transactions\s+FOR EACH ROW EXECUTE FUNCTION public\.prevent_synced_transaction_mutation\(\)/i, 'Synced transaction writes must be guarded by the correction-aware trigger')
 const source = fs.readFileSync('lib/trade-correction-validation.ts', 'utf8')
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2020 } }).outputText
 const { parseTradeCorrection } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
