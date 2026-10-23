@@ -1,5 +1,7 @@
 # v1.40.0 — Personal Investment Command Center Release Candidate
 
+**Production Release Gate: HOLD.**
+
 **Status checkpoint — 2026-10-23: PR #85 follow-up is Draft and unmerged at review. Backup/Recovery/Security/Release Gates: HOLD.** Remote `main` is `ae88fe8afe7c42e678c772a5e327bbd32ad78db7`; the reviewed [PR #85](https://github.com/nine41745-sketch/stock-portfolio/pull/85) implementation HEAD is `03b22f74debadfe512d86a456abf26dcd367da64`. Existing source release metadata still identifies v1.40.0 as Unreleased / Release Candidate. This handoff does not publish a release, change a tag or assert the current Production version. Earlier PR #73 evidence below is historical, not the current review target.
 
 ## Current PR #85 scope and evidence
