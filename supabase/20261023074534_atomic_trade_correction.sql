@@ -62,6 +62,11 @@ BEGIN
 END; $$;
 REVOKE ALL ON FUNCTION public.prevent_synced_transaction_mutation() FROM PUBLIC,anon,authenticated;
 
+DROP TRIGGER IF EXISTS portfolio_transactions_protect_synced ON public.portfolio_transactions;
+CREATE TRIGGER portfolio_transactions_protect_synced
+  BEFORE UPDATE OR DELETE ON public.portfolio_transactions
+  FOR EACH ROW EXECUTE FUNCTION public.prevent_synced_transaction_mutation();
+
 CREATE OR REPLACE FUNCTION trade_correction_internal.record_synced_trade_core(
   p_user_id UUID,
   p_portfolio_id UUID,
