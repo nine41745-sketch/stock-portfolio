@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "test:critical": "node scripts/test-critical.mjs && node scripts/test-investment-command-center.mjs && node scripts/test-fundamentals.mjs && node scripts/test-sec-xbrl.mjs && node scripts/test-sec-risk.mjs && node scripts/test-sec-risk-provider.mjs && node scripts/test-sec-filing-index.mjs && node scripts/test-stock-check.mjs && node scripts/test-multi-portfolio.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-watchlist-v1350.mjs && node scripts/test-command-center.mjs && node scripts/test-transactions.mjs && node scripts/test-trade-correction.mjs && node scripts/test-auto-trades.mjs && node scripts/test-performance.mjs && node scripts/test-journal-performance.mjs && node scripts/test-smart-dip-buying.mjs && node scripts/test-smart-dip-cancellation.mjs && node scripts/test-trade-plan.mjs && node scripts/test-risk.mjs && node scripts/test-allocation.mjs && node scripts/test-alerts-calendar.mjs && node --experimental-strip-types --test scripts/test-market-intelligence.mjs && node scripts/test-phase-a.mjs && node scripts/test-import-preview.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-scanner-isolation.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-discovery.mjs && node --test scripts/test-portfolio-initialization.mjs scripts/test-discovery-deadline.mjs scripts/test-qa-http-failures.mjs scripts/test-qa-runner-evidence.mjs scripts/test-qa-portfolio-creation-boundary.mjs",
+    "test:critical": "node scripts/test-critical.mjs && node scripts/test-dependency-security.mjs && node scripts/test-investment-command-center.mjs && node scripts/test-fundamentals.mjs && node scripts/test-sec-xbrl.mjs && node scripts/test-sec-risk.mjs && node scripts/test-sec-risk-provider.mjs && node scripts/test-sec-filing-index.mjs && node scripts/test-stock-check.mjs && node scripts/test-multi-portfolio.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-watchlist-v1350.mjs && node scripts/test-command-center.mjs && node scripts/test-transactions.mjs && node scripts/test-trade-correction.mjs && node scripts/test-auto-trades.mjs && node scripts/test-performance.mjs && node scripts/test-journal-performance.mjs && node scripts/test-smart-dip-buying.mjs && node scripts/test-smart-dip-cancellation.mjs && node scripts/test-trade-plan.mjs && node scripts/test-risk.mjs && node scripts/test-allocation.mjs && node scripts/test-alerts-calendar.mjs && node --experimental-strip-types --test scripts/test-market-intelligence.mjs && node scripts/test-phase-a.mjs && node scripts/test-import-preview.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-scanner-isolation.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-discovery.mjs && node --test scripts/test-portfolio-initialization.mjs scripts/test-discovery-deadline.mjs scripts/test-qa-http-failures.mjs scripts/test-qa-runner-evidence.mjs scripts/test-qa-portfolio-creation-boundary.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "build": "npm run test:critical && next build",
@@ -23,7 +23,7 @@
     "react-dom": "19.3.1",
     "technicalindicators": "^3.1.0",
     "tesseract.js": "7.0.0",
-    "yahoo-finance2": "^4.0.0"
+    "yahoo-finance2": "^4.0.5"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
@@ -39,6 +39,7 @@
     "typescript": "^5"
   },
   "overrides": {
-    "postcss-selector-parser": "7.1.6"
+    "postcss-selector-parser": "7.1.6",
+    "zod": "^4.6.6"
   }
 }
