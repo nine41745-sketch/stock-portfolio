@@ -1,13 +1,15 @@
 # Stock Portfolio — Roadmap
 
-Status: v1.40.0 Personal Investment Command Center remains Release Candidate / Unreleased in Draft PR #73 at `490ab3515b14eb7cf197ed7420cf15b5dfacd80c`. Hosted CI #39416814395 and exact-head disposable Authenticated QA #39418345913 passed (69 checks). v1.35.1–v1.39.0 remain unreleased candidates. Full Audit retains 7 High under its CI-only documented exception; Production-only Audit passed. Security / Production Release Gate remains HOLD, including the verified main-to-Production automatic deployment coupling. See [v1.40.0 candidate release handoff](docs/release-v1400.md).
+Status checkpoint — 2026-10-23 (Asia/Bangkok): remote `main` is `ae88fe8afe7c42e678c772a5e327bbd32ad78db7`. [Draft PR #85](https://github.com/nine41745-sketch/stock-portfolio/pull/85), reviewed implementation HEAD `03b22f74debadfe512d86a456abf26dcd367da64`, contains the PIN/transaction UI follow-up, the transitive `ip-address` patch and guarded atomic correction of the latest real trade. [CI #39927666008](https://github.com/nine41745-sketch/stock-portfolio/actions/runs/39927666008) passed verify/security-audit on the PR test merge-ref; local synthetic QA passed 10 manual-ledger and 16 correction groups plus 6 platform/isolation/cleanup groups on the working tree subsequently committed as that HEAD. It was not a new exact-HEAD hosted authenticated QA run. Full Audit remains PASS_WITH_EXCEPTION (7 High, existing braces exception only); Production-only Audit passed with zero findings. Backup/Recovery/Security/Release Gates remain HOLD.
+
+Checkpoint boundaries: PR #85 was unmerged and Draft at review. Its manually reviewed SQL candidate has been applied only to disposable synthetic QA; merge does not apply it. Historical trades without an execution snapshot remain locked. Read-only Vercel configuration inspection on 2026-10-23 confirmed `git.deploymentEnabled.main=false`, the Ignored Build Step skips `main`, and Auto-assign domains is disabled. Branch Preview remains enabled; the single Preview approved for HEAD `03b22f7` was READY. This evidence checkpoint grants no authority for further commits/pushes, Previews, migrations, merges or deployments; later approved revisions need their own CI evidence. Production behavior was not inspected. Existing source metadata still labels v1.40.0 Release Candidate / Unreleased; this checkpoint does not publish a release or alter earlier version records. See [current handoff](docs/release-v1400.md) and [atomic correction scope/evidence](docs/superpowers/plans/2026-10-23-atomic-trade-correction.md).
 
 Historical status (2026-10-15): v1.35.1 Hotfix is pushed to `fix/v1.35.1-contrast-notes` as Draft PR #67; source, security guards and metadata are prepared but UNRELEASED. Separate v1.35.1 Security Decision and Merge/Production approval remain pending.
-Release-preparation review: 2026-10-17 (Asia/Bangkok). Historical Production evidence below was not revalidated in this local-only task.
+Historical release-preparation review: 2026-10-17 (Asia/Bangkok). Historical Production evidence below was not revalidated by the current documentation update.
 Historical update: 2026-10-15 (Asia/Bangkok)
-Repository baseline: `main` at `5d796cc452b79220a47dfc20c4efa526b9bdd785` (merged PR #66, v1.35.0). Production deployment `dpl_DVGLXvESkS2JmKzok2pqiEZUxE6L` was rechecked READY on that SHA; no v1.35.1 Production deployment or authenticated Production acceptance has occurred.
+Historical repository baseline (2026-10-15): `main` at `5d796cc452b79220a47dfc20c4efa526b9bdd785` (merged PR #66, v1.35.0). At that checkpoint, Production deployment `dpl_DVGLXvESkS2JmKzok2pqiEZUxE6L` was rechecked READY on that SHA; no v1.35.1 Production deployment or authenticated Production acceptance had occurred. This is not the current main or a current Production assertion.
 
-## Evidence and boundaries
+## Historical evidence and boundaries — 2026-10-15
 
 | Item | Verified status |
 | --- | --- |
