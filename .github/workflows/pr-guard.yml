@@ -4,21 +4,52 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
-  group: pr-guard-${{ github.event.pull_request.number }}
+  group: pr-guard-${{ github.event.pull_request.number }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
   guard:
+    if: github.event_name == 'pull_request_target'
     name: guard
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout PR head and base history
+      - name: Checkout trusted base revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+      - name: Fetch PR commit as data only
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: git fetch --no-tags origin "refs/pull/$PR_NUMBER/head:refs/remotes/origin/pr/$PR_NUMBER"
+      - name: Test trusted guard rules
+        run: node --test scripts/test-pr-guard.mjs
+      - name: Enforce trusted guard
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GUARD_OVERRIDE_APPROVED: ${{ github.event.action == 'labeled' && github.event.label.name == 'guard-override' && github.actor == github.repository_owner }}
+          GUARD_CODE_UPDATE_APPROVED: ${{ github.event.action == 'labeled' && github.event.label.name == 'guard-code-update' && github.actor == github.repository_owner }}
+        run: node scripts/qa/check-pr-guard.mjs
+
+  guard-bootstrap:
+    if: github.event_name == 'pull_request'
+    name: guard-bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout PR head for bootstrap validation
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -27,12 +58,14 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-      - name: Test guard rules with synthetic inputs
+      - name: Test proposed guard rules
         run: node --test scripts/test-pr-guard.mjs
-      - name: Enforce PR guard
+      - name: Enforce proposed guard rules
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          GUARD_OVERRIDE_APPROVED: ${{ github.event.action == 'labeled' && github.event.label.name == 'guard-override' && github.actor == github.repository_owner }}
+          GUARD_OVERRIDE_APPROVED: 'false'
+          GUARD_CODE_UPDATE_APPROVED: 'false'
         run: node scripts/qa/check-pr-guard.mjs
+
