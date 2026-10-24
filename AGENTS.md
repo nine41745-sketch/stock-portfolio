@@ -42,6 +42,12 @@
 - Use the least resources needed; avoid unnecessary GitHub Actions runs and Vercel Hobby builds/Previews. Do not weaken security checks or change deployment policy to save quota.
 - Report unavailable tools or insufficient permissions and propose a safe alternative. Claim connection, execution or success only with inspected evidence.
 
+## Independent review for security and enforcement changes
+
+- PRs that add or modify CI workflows, required-check or Ruleset enforcement, security gates/checkers, or tests/assertions that determine whether a security gate passes must receive independent review before being marked Ready or merged.
+- The reviewer must be someone other than the PR author and must review the exact current PR head SHA. A review of an earlier SHA is stale; request a new review after the head changes. Preserve the reviewer decision and SHA with the PR or task record. CI and author self-review do not replace independent review.
+- Keep these PRs Draft until the reviewer explicitly approves the current head SHA. If an owner-directed merge occurs without pre-merge review, report that fact plainly and keep the Security Gate on HOLD until independent post-merge review and required validation are complete. Never describe a post-merge review as pre-merge review.
+
 ## Security and setup
 
 - Never read, disclose or copy Production Secrets; never connect Production Database for development tests.
