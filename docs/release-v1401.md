@@ -1,8 +1,29 @@
 # v1.40.1 — PIN and transaction experience
 
-**Status: Release Candidate / Unreleased. Security / Production Release Gate: HOLD.**
+**Status: Production. Security Gate: HOLD.**
 
-This release-candidate entry records the six owner-requested interface and transaction updates included in PR #85. The in-app update history will display these notes as v1.40.1 when this revision is built and deployed. No release date is claimed here.
+v1.40.1 was promoted on 2026-10-24 under the owner's explicit release authorization. Exact deployed SHA: `0a5ab7e4161f89d570620e426eeab9f83089c631`; deployment `dpl_AH7JDQFJJUezYJ7A54c5jnWujv7Q`. The app version remains 1.40.1. This documentation update itself is not deployed yet.
+
+## Verified Production checkpoint
+
+- [Main CI 40081718626](https://github.com/nine41745-sketch/stock-portfolio/actions/runs/40081718626) passed verify and security-audit on the exact deployed SHA.
+- Staged with `--prod --skip-domain`: READY; build completed in 49 seconds. Promotion reused that build, without rebuilding or changing the database/environment/secrets.
+- The live alias `stock-portfolio-nine41745.vercel.app` was verified pointing to `dpl_AH7JDQFJJUezYJ7A54c5jnWujv7Q`. Dashboard, Transactions and Performance loaded without an app crash in the owner's authenticated browser. These were read-only smoke checks, not real-trade write tests. No error/fatal runtime records were returned in the five-minute inspection window; this is not ongoing monitoring.
+- Rollback candidate `dpl_BrT7iaoxny7TrhiJjkNfZGpmsDMf` at `f65c62ff750665ae43e7cf52c8e17f6c3c835aeb` remained READY. Rollback was not exercised; reverting an alias does not revert database or environment changes.
+- Project Vercel Authentication was enabled (`all_except_custom_domains`); anonymous HTTP checks reached Vercel SSO. No protection setting was changed. App-browser smoke checks do not prove anonymous access for other users.
+- Security Gate remains HOLD. Owner removed Backup/Recovery as release requirements; this is a risk decision, not evidence that backups or recovery were tested. No tag or GitHub Release was created.
+- Main Git auto-deploy remains disabled (`main: false`). Future pushes/merges do not authorize Production deployment.
+
+## Pending local closeout (not deployed)
+
+- Remove Import Preview from navigation only; preserve its direct route and read-only safeguards.
+- Fix micro-share FIFO tolerance with synthetic regressions, without changing stored holdings or ledger rows.
+- A genuine historical Ledger/Holdings difference is still visible. See [reconciliation review](ledger-holdings-review.md). Broker evidence is required before deciding which stored record is wrong; no automatic balancing/backfill is authorized.
+- The new navigation, precision fix and release-metadata text need separate Commit/Push, Merge and deployment approvals.
+
+## Historical preparation evidence
+
+The sections below record earlier checkpoints. Their RC/HOLD/pending wording is historical and is superseded by the verified Production checkpoint above; it is not the current deployment status.
 
 ## Included changes
 
