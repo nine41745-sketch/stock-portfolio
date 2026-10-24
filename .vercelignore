@@ -1,0 +1,7 @@
+# Keep local evidence, other checkouts and environment files out of uploads.
+.local-artifacts/
+.worktrees/
+.env*
+
+# SEC evidence checks need the reviewed ignore policy in Gitless builds.
+!.gitignore
