@@ -68,8 +68,8 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 ## Vercel Hobby
 
 - Inspect the current deployment trigger and likely build impact before branch pushes or PR creation. Use the fewest builds needed to validate the requested fix.
-- Treat `vercel.json` branch rules as deployment controls: a branch explicitly set to `false` will not receive Git deployments; unspecified branches default to enabled.
-- Keep the regression check aligned with the intended behavior for `main` and every branch intentionally excluded from deployments.
+- Treat `vercel.json` branch rules as deployment controls: `main: false` deliberately prevents Git-triggered Production deployments and preserves staged release control; unspecified branches default to enabled.
+- Keep the regression check aligned with `main: false` and every branch intentionally excluded from deployments. Do not enable `main` without scoped owner approval after checking Vercel's current custom Production domain auto-assignment behavior and accepting the automatic Production impact.
 - Do not bypass CI or security checks. If a needed build would incur a charge or hit a known Hobby limit, stop and report before triggering it.
 
 ## Architecture, documentation and releases
