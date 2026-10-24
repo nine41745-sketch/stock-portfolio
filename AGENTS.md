@@ -12,6 +12,7 @@
 - Inspect the system and propose a plan before starting a new feature. A ROADMAP entry is not Development approval.
 - After scoped approval, use a dedicated Feature/Fix/Maintenance Branch and Pull Request. Never push directly to main.
 - Never merge or deploy Production without explicit approval. Development/PR/push approval does not authorize either.
+- When the owner explicitly authorizes the Merge-and-Stage workflow for a named PR and head SHA, that approval covers rechecking that exact SHA and its required CI/security checks, merging only that reviewed PR, waiting for CI on the resulting `main` commit, and creating a staged Production deployment from that exact `main` SHA with no domain/alias assignment. Report the deployment ID, URL, SHA, checks and rollback target, then stop. This approval never authorizes Promote, alias/domain changes, or live traffic; those require a separate approval naming the deployment ID and SHA. If merge would auto-assign a Production domain, stop before merging unless that behavior is separately authorized and controlled.
 - Never weaken security gates or assertions merely to make CI pass.
 
 ## Scoped approvals
@@ -19,6 +20,8 @@
 Require explicit approval before adding, changing or applying Database Migrations/schema/data; changing Supabase, Environment Variables/Secrets or Cloud Environment settings; changing Vercel configuration or operating deployments; changing GitHub Rulesets/Security settings; creating/changing Git Tags/Releases; removing/cancelling old deployments; or operating other systems.
 
 Approval for one action does not authorize another. READ-ONLY instructions prohibit file/branch/commit/PR/configuration mutations and commands that modify local outputs.
+
+- When the owner replies affirmatively (including “อนุมัติ”, “ลุย” or “เริ่มเลย”) to an immediately preceding proposal that states the exact branch, changed-file list, commit/push count, and expected Automatic Preview impact, that reply authorizes only the enumerated commit/push and Preview. It does not authorize Merge, Production deployment/promotion, or any other separately scoped action. A reply approving a different action does not count as approval for the proposal.
 
 ## Tool Selection and Approval Boundaries
 
