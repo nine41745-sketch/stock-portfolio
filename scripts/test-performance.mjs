@@ -72,6 +72,48 @@ const mismatch = perf.calculatePerformance(baseTransactions, [
 assert.equal(mismatch.summary.ledger_complete, false)
 assert.match(mismatch.summary.warnings.join('\n'), /Ledger 6 หุ้น แต่ Holdings 7 หุ้น/)
 
+// NUMERIC(15,6) permits one micro-share: it must never be treated as zero.
+const microBuy = { id: 'micro-buy', transaction_type: 'BUY', symbol: 'SYNTH', shares: 0.000001, price: 1000000, fee: 0, amount: null, trade_date: '2026-01-01' }
+const microSell = { ...microBuy, id: 'micro-sell', transaction_type: 'SELL', price: 2000000, trade_date: '2026-01-02' }
+const microClosed = perf.calculatePerformance([microBuy, microSell], [])
+assert.equal(microClosed.summary.ledger_complete, true, 'Selling one micro-share must consume its lot')
+assert.equal(microClosed.closed_trades[0].cost, 1, 'A micro-share SELL must retain its FIFO cost')
+assert.equal(microClosed.summary.realized_pnl, 1)
+
+const microRemainder = perf.calculatePerformance([
+  { ...microBuy, shares: 1.000001 },
+  { ...microSell, shares: 1 },
+], [{ symbol: 'SYNTH', shares: 0.000001, cost_basis: 1000000, current_price: 2000000 }])
+assert.equal(microRemainder.by_symbol[0].ledger_shares, 0.000001, 'A valid micro-share remainder must not be discarded')
+assert.equal(microRemainder.summary.ledger_complete, true)
+assert.equal(microRemainder.summary.open_cost, 1, 'A positive micro-share holding must retain its cost basis')
+assert.equal(microRemainder.summary.unrealized_pnl, 1)
+
+const microOversell = perf.calculatePerformance([
+  { ...microBuy, shares: 1 },
+  { ...microSell, shares: 1.000001 },
+], [{ symbol: 'SYNTH', shares: 1, cost_basis: 1000000, current_price: 1000000 }])
+assert.equal(microOversell.summary.closed_trades, 0, 'An over-sell of one micro-share must be rejected')
+assert.equal(microOversell.summary.net_sells, 0)
+assert.equal(microOversell.by_symbol[0].ledger_shares, 1, 'Rejected SELL must preserve all lots')
+assert.equal(microOversell.summary.ledger_complete, false)
+
+const genuineFractionalMismatch = perf.calculatePerformance([
+  { ...microBuy, transaction_type: 'OPENING_POSITION', shares: 2.123456, price: 10 },
+  { ...microBuy, id: 'add', shares: 1, price: 11 },
+  { ...microSell, id: 'reduce', shares: 0.5, price: 12 },
+  { ...microSell, id: 'reduce-again', shares: 0.5, price: 12, trade_date: '2026-01-03' },
+], [{ symbol: 'SYNTH', shares: 2.127656, cost_basis: 10, current_price: 12 }])
+assert.equal(genuineFractionalMismatch.by_symbol[0].difference, -0.0042)
+assert.equal(genuineFractionalMismatch.summary.ledger_complete, false, 'A real fractional discrepancy must remain visible')
+assert.match(genuineFractionalMismatch.summary.warnings.join('\n'), /Ledger.*Holdings/)
+
+const microCurve = perf.buildPerformanceCurve([microBuy], {
+  SYNTH: [{ date: '2026-01-01', close: 2000000 }],
+}, ['2026-01-01'])
+assert.equal(microCurve[0].pnl, 1, 'Historical P/L must include positive micro-share positions')
+assert.deepEqual(perf.buildPerformanceCurve([microBuy], {}, ['2026-01-01']), [], 'A micro-share position without a price must not produce a complete-looking curve')
+
 const curve = perf.buildPerformanceCurve(
   [{ id: 'x', transaction_type: 'OPENING_POSITION', symbol: 'AAPL', shares: 1, price: 100, fee: null, amount: null, trade_date: '2026-01-01' }],
   { AAPL: [{ date: '2026-01-01', close: 100 }, { date: '2026-01-02', close: 110 }] },

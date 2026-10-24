@@ -171,7 +171,7 @@ assert.match(page, /href="\/dashboard"/)
 assert.doesNotMatch(page, /AppTabs|PortfolioSwitcher|QuickNotesDrawer/)
 assert.match(page, /InactivityPinLock/)
 const nav = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')
-assert.match(nav, /href: '\/imports'/)
+assert.doesNotMatch(nav, /href: '\/imports'/, 'Import Preview must not appear in the navigation')
 const rootGuard = fs.readFileSync('components/auth/UserSettingsMutationGuard.tsx', 'utf8')
 assert.match(rootGuard, /pathname === '\/imports' \|\| pathname\.startsWith\('\/imports\/'\)/, 'preview route must skip the global portfolio data read')
 

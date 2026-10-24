@@ -113,7 +113,9 @@ interface LedgerState {
   warnings: string[]
 }
 
-const EPS = 0.000001
+// Floating-point tolerance must be smaller than one valid NUMERIC(15,6)
+// share unit; otherwise a micro-share lot or SELL is silently skipped.
+const EPS = 0.000000001
 
 function round(value: number, decimals = 6): number {
   const factor = 10 ** decimals
