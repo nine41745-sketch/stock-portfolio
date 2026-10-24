@@ -3,7 +3,7 @@ name: PR Guard
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -34,4 +34,5 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GUARD_OVERRIDE_APPROVED: ${{ github.event.action == 'labeled' && github.event.label.name == 'guard-override' && github.actor == github.repository_owner }}
         run: node scripts/qa/check-pr-guard.mjs

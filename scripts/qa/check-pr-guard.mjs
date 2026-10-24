@@ -16,9 +16,9 @@ export function detectRecognizedSecret(line) {
   if (/^(?:true|false|null|undefined)$/i.test(assignment[2])) return null;
   return "credential assignment";
 }
-export function evaluatePullRequest({ prTitle, changedFiles, agentsPatch, vercelConfigText, additionsPatch }) {
+export function evaluatePullRequest({ prTitle, changedFiles, agentsPatch, vercelConfigText, additionsPatch, agentsOverrideApproved = false }) {
   const errors = [];
-  if (agentsPatch.split(/\r?\n/).some((line) => line.startsWith("-") && !line.startsWith("---"))) errors.push("AGENTS.md: existing lines may not be deleted or edited; additions are allowed.");
+  if (!agentsOverrideApproved && agentsPatch.split(/\r?\n/).some((line) => line.startsWith("-") && !line.startsWith("---"))) errors.push("AGENTS.md: existing lines may not be deleted or edited; additions are allowed unless the owner-approved override is active.");
   try {
     const config = JSON.parse(vercelConfigText);
     if (config?.git?.deploymentEnabled?.main === true) errors.push("vercel.json: git.deploymentEnabled.main must remain false.");
@@ -51,7 +51,7 @@ function main() {
   const agentsPatch = gitDiff(["--unified=0", range, "--", "AGENTS.md"]);
   const additionsPatch = gitDiff(["--unified=0", range]);
   const vercelConfigText = readFileSync("vercel.json", "utf8");
-  const errors = evaluatePullRequest({ prTitle: process.env.PR_TITLE ?? "", changedFiles, agentsPatch, vercelConfigText, additionsPatch });
+  const errors = evaluatePullRequest({ prTitle: process.env.PR_TITLE ?? "", changedFiles, agentsPatch, vercelConfigText, additionsPatch, agentsOverrideApproved: process.env.GUARD_OVERRIDE_APPROVED === "true" });
   if (errors.length) {
     console.error("PR guard failed:");
     for (const error of errors) console.error("- " + error);

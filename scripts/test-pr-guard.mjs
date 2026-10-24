@@ -51,3 +51,28 @@ test("docs-prefixed PR may change only docs/ and root AGENTS.md", () => {
 test("non-docs PRs are not restricted by the docs title rule", () => {
   assert.deepEqual(evaluatePullRequest({ ...clean, prTitle: "fix: update page", changedFiles: ["src/page.tsx"] }), []);
 });
+
+test("allows an AGENTS.md rule change only with an owner-approved override event", () => {
+  const agentsPatch = "@@ -1 +1 @@\n-old rule\n+new rule";
+  assert.match(evaluatePullRequest({ ...clean, agentsPatch }).join("\n"), /AGENTS\.md/);
+  assert.deepEqual(evaluatePullRequest({ ...clean, agentsPatch, agentsOverrideApproved: true }), []);
+});
+test("AGENTS.md override leaves every other guard active", () => {
+  const token = ["ghp", "Z".repeat(36)].join("_");
+  const errors = evaluatePullRequest({
+    ...clean,
+    agentsPatch: "@@ -1 +1 @@\n-old rule\n+new rule",
+    agentsOverrideApproved: true,
+    vercelConfigText: JSON.stringify({ git: { deploymentEnabled: { main: true } } }),
+    additionsPatch: "+credential = " + token
+  });
+  assert.match(errors.join("\n"), /vercel\.json/);
+  assert.match(errors.join("\n"), /token\/secret pattern/);
+  assert.doesNotMatch(errors.join("\n"), new RegExp(token));
+});
+test("guard failure messages never include the detected secret value", () => {
+  const token = ["ghp", "Z".repeat(36)].join("_");
+  const errors = evaluatePullRequest({ ...clean, additionsPatch: "+credential = " + token });
+  assert.match(errors.join("\n"), /token\/secret pattern/);
+  assert.doesNotMatch(errors.join("\n"), new RegExp(token));
+});
