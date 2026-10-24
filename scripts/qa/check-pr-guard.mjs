@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 const PLACEHOLDER = /^(?:ci[-_ ]?placeholder|placeholder|example|your[-_ ]|<[^>]+>|\$\{[^}]+\}|redacted|replace[-_ ]?me|fake[-_ ]|test[-_ ]|dummy)/i;
 export function detectRecognizedSecret(line) {
   if (/-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/.test(line)) return "private key";
@@ -58,7 +60,7 @@ function main() {
   }
   console.log("PR guard passed.");
 }
-if (process.argv[1] && import.meta.url === new URL(process.argv[1], "file:").href) {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { main(); } catch (error) {
     console.error("PR guard could not verify the change: " + error.message);
     process.exitCode = 1;
