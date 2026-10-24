@@ -1,6 +1,10 @@
-## Latest read-only recheck — 2026-10-24 19:22 Asia/Bangkok
+# Production Release Status
 
-This section supersedes older status statements below where they conflict. Current main is `011dcdcd062f53c04b74a148c31faf125e560fe5` after documentation-only PR #103; no application code/runtime change was made by that merge.
+**Checked:** 2026-10-24 19:22 Asia/Bangkok  
+**Repository:** [nine41745-sketch/stock-portfolio](https://github.com/nine41745-sketch/stock-portfolio)  
+**Current source of truth:** GitHub `main` at `011dcdcd062f53c04b74a148c31faf125e560fe5`, after documentation-only PR #103. That merge did not change application code/runtime behavior.
+
+## Latest read-only recheck
 
 ### Staged source provenance
 
@@ -11,17 +15,17 @@ This section supersedes older status statements below where they conflict. Curre
 
 ### Production alias versus d753e22d
 
-- Read-only Vercel `get_alias` for `stock-portfolio-nine41745.vercel.app` returned deployment `dpl_AH7JDQFJJUezYJ7A54c5jnWujv7Q`. Read-only `get_deployment` for that ID returned Git SHA `0a5ab7e4161f89d570620e426ee6a2b…`—the full SHA is `0a5ab7e4161f89d570620e426eeab9f83089c631`.
+- Read-only Vercel `get_alias` for `stock-portfolio-nine41745.vercel.app` returned deployment `dpl_AH7JDQFJJUezYJ7A54c5jnWujv7Q`. Read-only `get_deployment` for that ID returned Git SHA `0a5ab7e4161f89d570620e426eeab9f83089c631`.
 - Commit `d753e22df98ef78bf6725ce7746e2a510f34f368` has a separate Vercel deployment, `dpl_AUmobP52KXKis87mwLUrUwWpmLQf`, state `READY`, target `production`, but its alias list is empty and Vercel marks it a rollback candidate. A Production target/badge identifies the deployment environment; it does not establish that the live custom alias points to it. That is why a d753e22d deployment record can differ from the current alias, which points to 0a5ab7e4.
-- No alias history was changed or inferred from the UI badge; the current mapping above comes from Vercel's alias API and the deployment's Git metadata.
+- The current mapping above comes from Vercel's alias API and the deployment's Git metadata. No alias history was changed.
 
 ### Owner-run authenticated, read-only Staged QA (about 5 minutes)
 
 The owner has stated that this Staged build uses Production environment variables. Treat every authenticated page as capable of displaying real portfolio data. These steps are visual/read-only checks only; do not share screenshots containing balances, holdings, or personal details.
 
 1. Open the exact Staged URL: [stock-portfolio-i4wra5wwa-nine41745.vercel.app](https://stock-portfolio-i4wra5wwa-nine41745.vercel.app). Confirm the host is the deployment URL above.
-2. Complete Vercel SSO yourself in that browser. If the app asks for PIN/login, enter it yourself; do not send credentials or codes in chat. No temporary share URL or bypass token is being requested or used.
-3. After the app opens, check the version/changelog label and load **Dashboard**; confirm the page renders without an error.
+2. Complete Vercel SSO yourself in that browser. If the app asks for PIN/login, enter it yourself; do not send credentials or codes in chat. No temporary share URL or bypass token is requested or used.
+3. Check the version/changelog label and load **Dashboard**; confirm the page renders without an error.
 4. Open **Transactions** and **Performance** only to view the current display and any warning/error state. Do not edit or save.
 5. Enter `/imports` in the address bar and confirm it redirects to Dashboard.
 6. Stop after those checks. Report only pass/fail per page and any visible error text with private values removed.
@@ -36,12 +40,6 @@ Do not click Buy/Sell, trade correction/edit/delete, Save, Execute, plan/alert c
 - Remaining before considering release: complete the owner-run steps above; independently establish the Staged build's exact source SHA; then review the Security Gate and obtain separate scoped release approval. The historical Ledger/Holdings discrepancy still requires broker evidence before any data correction.
 
 ---
-
-# Production Release Status
-
-**Checked:** 2026-10-24 19:02 Asia/Bangkok  
-**Repository:** [nine41745-sketch/stock-portfolio](https://github.com/nine41745-sketch/stock-portfolio)  
-**Source of truth:** GitHub `main` at `0c9adb55473241aa32ea113f6ec6ce3389d65f5e`. This commit only changes `AGENTS.md` and has no application/runtime impact.
 
 ## Production
 
