@@ -78,3 +78,10 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 - Changelog records completed releases; ROADMAP records direction/priorities/acceptance; Issues hold tasks; PRs hold implementation/review evidence; governance/runbooks hold procedures.
 - Do not invent an approved roadmap, release or Production result. SemVer follows actual release behavior; docs/maintenance/tests are not automatically minor releases.
 - v1.33.0 is a completed release at commit `ea76e7bf4a68b62b3649c2f8f9bfa063d7796411`; GitHub Release v1.33.0 is published. Verify the current release tag and production evidence before making further release claims.
+
+## Reporting and approval prompts
+
+- End every owner-facing report with exactly one `ขั้นต่อไปที่แนะนำ` item.
+- When owner approval is needed, make that final item a copy-ready approval sentence that names the exact action and target, including the exact PR number plus head SHA or deployment ID, and explicit prohibited scope such as no promotion, domain/alias changes, environment changes or database changes as applicable.
+- If there are multiple possible actions, recommend one and provide only one approval sentence for that recommended action.
+- When no approval or further action is needed, state in the final item that no action is needed and why the task is complete.
