@@ -85,3 +85,9 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 - When owner approval is needed, make that final item a copy-ready approval sentence that names the exact action and target, including the exact PR number plus head SHA or deployment ID, and explicit prohibited scope such as no promotion, domain/alias changes, environment changes or database changes as applicable.
 - If there are multiple possible actions, recommend one and provide only one approval sentence for that recommended action.
 - When no approval or further action is needed, state in the final item that no action is needed and why the task is complete.
+
+## Production Release Reporting
+
+- Every release or deployment closeout report must include a section titled `ภาพรวมการปล่อย Production` with: (1) the current Production deployment ID and SHA, (2) any staged deployment awaiting Promote with its ID and SHA, (3) Security Gate and release-gate status with reasons, and (4) remaining work before the intended Production release.
+- Never conclude that no further action is needed based only on PR completion. Compare the complete release state with the currently intended version.
+- After any release or deployment work, update `docs/RELEASE_STATUS.md` with the verified current Production deployment, staged deployment, gate status and reasons, and remaining work. Distinguish verified facts from unavailable or unverified evidence.
