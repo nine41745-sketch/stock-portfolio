@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { assertEvidenceIgnored } from './sec-evidence-ignore.mjs'
+import './test-sec-evidence-ignore.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -139,7 +140,7 @@ assert.equal(ledger.requests.length, 1)
 assert.deepEqual(checkpointPaths.map(file => JSON.parse(fs.readFileSync(file, 'utf8')).requests.at(-1).outcome), ['pending', 'success'],
   'Attempt is persisted before request and updated after response')
 for (const artifactPath of checkpointPaths) {
-  execFileSync('git', ['check-ignore', '-q', artifactPath], { stdio: 'ignore' })
+  assertEvidenceIgnored(process.cwd(), artifactPath)
 }
 
 const retryLedger = createEvidenceLedger('synthetic')
@@ -224,7 +225,8 @@ const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sec-ledger-test-'))
 try {
   const artifactPath = writeEvidenceArtifact(ledger, tempRoot, 'no-overwrite')
   assert.match(path.basename(artifactPath), /^sec-filing-verification-.+\.json$/)
-  execFileSync('git', ['check-ignore', '-q', path.resolve('.local-artifacts', 'synthetic-ignore-probe.json')], { stdio: 'ignore' })
+  // The actual checkpoint paths above are checked; retain the temporary artifact
+  // no-overwrite and redaction assertions below independently of Git availability.
   const before = fs.readFileSync(artifactPath, 'utf8')
   assert.throws(() => writeEvidenceArtifact(probe, tempRoot, 'no-overwrite'), error => error.code === 'EEXIST',
     'Existing artifact name is never overwritten')
