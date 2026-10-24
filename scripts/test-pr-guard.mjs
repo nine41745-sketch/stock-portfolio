@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import { evaluatePullRequest, detectRecognizedSecret } from "./qa/check-pr-guard.mjs";
 
 const clean = {
@@ -79,3 +80,19 @@ test("non-docs PRs are not restricted by the docs title rule", () => {
   assert.deepEqual(evaluatePullRequest({ ...clean, prTitle: "fix: update page", changedFiles: ["src/page.tsx"] }), []);
 });
 
+
+test("required guard check only exists on an unconditional pull_request_target workflow", () => {
+  const trusted = readFileSync(new URL("../.github/workflows/pr-guard.yml", import.meta.url), "utf8");
+  const bootstrapPath = new URL("../.github/workflows/pr-guard-bootstrap.yml", import.meta.url);
+  assert.equal(existsSync(bootstrapPath), true, "bootstrap validation must live in its own workflow");
+  const bootstrap = readFileSync(bootstrapPath, "utf8");
+
+  assert.match(trusted, /^  pull_request_target:\s*$/m);
+  assert.doesNotMatch(trusted, /^  pull_request:\s*$/m);
+  assert.match(trusted, /^  guard:\s*\r?\n    name: guard/m);
+  assert.doesNotMatch(trusted, /^    if:/m);
+  assert.match(bootstrap, /^  pull_request:\s*$/m);
+  assert.doesNotMatch(bootstrap, /^  pull_request_target:\s*$/m);
+  assert.match(bootstrap, /^  guard-bootstrap:\s*\r?\n    name: guard-bootstrap/m);
+  assert.doesNotMatch(bootstrap, /^  guard:\s*$/m);
+});
