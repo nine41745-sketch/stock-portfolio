@@ -7,7 +7,7 @@
   "git": {
     "deploymentEnabled": {
       "dependabot/**": false,
-      "main": false,
+      "main": true,
       "codex/qa-main-readiness": false,
       "codex/db-least-privilege": false,
       "codex/qa47-pin-completion": false
