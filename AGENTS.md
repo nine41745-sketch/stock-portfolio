@@ -9,19 +9,27 @@
 
 ## Planning, Branch and PR
 
-- Inspect the system and propose a plan before starting a new feature. A ROADMAP entry is not Development approval.
-- After scoped approval, use a dedicated Feature/Fix/Maintenance Branch and Pull Request. Never push directly to main.
-- Never merge or deploy Production without explicit approval. Development/PR/push approval does not authorize either.
-- When the owner explicitly authorizes the Merge-and-Stage workflow for a named PR and head SHA, that approval covers rechecking that exact SHA and its required CI/security checks, merging only that reviewed PR, waiting for CI on the resulting `main` commit, and creating a staged Production deployment from that exact `main` SHA with no domain/alias assignment. Report the deployment ID, URL, SHA, checks and rollback target, then stop. This approval never authorizes Promote, alias/domain changes, or live traffic; those require a separate approval naming the deployment ID and SHA. If merge would auto-assign a Production domain, stop before merging unless that behavior is separately authorized and controlled.
-- Never weaken security gates or assertions merely to make CI pass.
+- Inspect the system and keep a short internal plan before acting. Resolve routine questions with read-only evidence and proceed without asking the owner to choose among options.
+- Work only in a dedicated branch based on the verified remote `main`; preserve existing user changes. Never push directly to `main`.
+- Do not weaken security gates or assertions to make CI pass.
+- A staged Vercel deployment created with `vercel deploy --prod --skip-domain` does not assign a domain or switch live traffic. It may be used when the current task requires deployment verification and the exact commit, project and target are verified first.
+- Never merge into `main`, promote a deployment, assign/change an alias or domain, or otherwise route live traffic without separate explicit owner authorization naming the intended PR or deployment and SHA.
 
-## Scoped approvals
+## Autonomous execution
 
-Require explicit approval before adding, changing or applying Database Migrations/schema/data; changing Supabase, Environment Variables/Secrets or Cloud Environment settings; changing Vercel configuration or operating deployments; changing GitHub Rulesets/Security settings; creating/changing Git Tags/Releases; removing/cancelling old deployments; or operating other systems.
+- For an active owner request, work autonomously through read-only investigation, scoped code/document changes on a task branch, tests, lint, typecheck and build, then commit/push the branch and open or update a PR when those steps are needed to complete the request.
+- Do not pause for routine choices or ask the owner to repeat authorization already given in the active task. A task authorizes only the scope it explicitly requests.
+- When needed to verify an exact commit on Vercel, a staged `--prod --skip-domain` deployment is allowed within the task scope. Do not promote it or assign a domain; report its URL, ID, SHA evidence, logs and checks.
+- Do not send progress reports during autonomous work unless the owner asks. Give one complete final report when finished or when a stop condition is reached.
+- If the same fix fails to make progress after more than three attempts, stop and report the evidence, likely cause, next action, risk and required owner decision.
 
-Approval for one action does not authorize another. READ-ONLY instructions prohibit file/branch/commit/PR/configuration mutations and commands that modify local outputs.
+## Boundaries requiring separate owner authorization
 
-- When the owner replies affirmatively (including “อนุมัติ”, “ลุย” or “เริ่มเลย”) to an immediately preceding proposal that states the exact branch, changed-file list, commit/push count, and expected Automatic Preview impact, that reply authorizes only the enumerated commit/push and Preview. It does not authorize Merge, Production deployment/promotion, or any other separately scoped action. A reply approving a different action does not count as approval for the proposal.
+- Stop before merging into `main`, deploying or promoting traffic to a real domain, or changing an alias/domain.
+- Stop before accessing or modifying Production database data/schema/migrations, Supabase or cloud environment settings, environment variables/secrets, GitHub/Vercel security settings, or another system.
+- Stop before force-pushing, deleting/cancelling an existing deployment, or taking an action that incurs a charge or reaches a known Vercel Hobby limit.
+- If a required credential or permission is unavailable, stop without requesting passwords, tokens or secrets in chat; report the official sign-in/permission step needed.
+- Do not infer approval for actions outside the active task.
 
 ## Tool Selection and Approval Boundaries
 
@@ -59,10 +67,10 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 
 ## Vercel Hobby
 
-- Inspect deployment triggers before push and report expected impact. Avoid unnecessary builds/Previews; combine documentation with the first approved Development PR when suitable.
-- Do not assume docs branches are deployment-exempt. Baseline `dependabot/**` deployments are disabled, but feature/docs/main deployments are not disabled by that rule.
-- Do not change deployment policy or skip CI to save quota without approval.
-- Phase A owner authorization permits one initial push/automatic Preview, then a Draft PR. Stop if evidence shows that push would exceed the approved deployment scope; do not merge or deploy Production.
+- Inspect the current deployment trigger and likely build impact before branch pushes or PR creation. Use the fewest builds needed to validate the requested fix.
+- Treat `vercel.json` branch rules as deployment controls: `main: false` deliberately prevents Git-triggered Production deployments and preserves staged release control; unspecified branches default to enabled.
+- Keep the regression check aligned with `main: false` and every branch intentionally excluded from deployments. Do not enable `main` without scoped owner approval after checking Vercel's current custom Production domain auto-assignment behavior and accepting the automatic Production impact.
+- Do not bypass CI or security checks. If a needed build would incur a charge or hit a known Hobby limit, stop and report before triggering it.
 
 ## Architecture, documentation and releases
 
