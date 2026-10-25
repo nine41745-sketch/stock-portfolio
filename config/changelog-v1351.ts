@@ -1,10 +1,10 @@
 import { changelog as previousChangelog } from './changelog-v1350'
 import type { ChangelogEntry } from './changelog'
 
-// Development history; a standalone Production release time has not been established.
+// Preview alias assignment time; this is not a Production release time.
 const v1351: ChangelogEntry = {
   version: 'v1.35.1',
-  date: 'Development History — ไม่ยืนยันเวลา Production แยกรุ่น',
+  date: 'Development History — Preview alias 2026-10-15 23:59 ICT (ไม่ใช่ Production)',
   changes: [
     'แก้ Placeholder ใน Light Theme ให้มี Contrast ผ่าน WCAG AA และตรวจ Computed Styles ใน Light/Dark บนความกว้าง 375/768/1440px ด้วยข้อมูลสังเคราะห์',
     'ใช้ QuickNotesDrawer ร่วมกันบน Dashboard และหน้าอื่น ปิดแล้วออกจาก Accessibility Tree และ Tab Sequence พร้อม Focus Trap, Escape, Focus Restoration และสถานะ ARIA ของปุ่มเปิด',

@@ -1,10 +1,10 @@
 import { changelog as previousChangelog } from './changelog-v1360'
 import type { ChangelogEntry } from './changelog'
 
-// Development history; a standalone Production release time has not been established.
+// Preview alias assignment time; this is not a Production release time.
 const v1370: ChangelogEntry = {
   version: 'v1.37.0',
-  date: 'Development History — ไม่ยืนยันเวลา Production แยกรุ่น',
+  date: 'Development History — Preview alias 2026-10-17 15:07 ICT (ไม่ใช่ Production)',
   changes: [
     'Portfolio Stress Test: จำลอง Market/Industry/Symbol Shock ในหน่วยความจำ พร้อม Portfolio Risk Intelligence และการเปิดเผย Coverage, Missing Prices และ Freshness ที่ยังไม่ทราบ',
     'SEC Financial Risk Radar และ Filing Monitor แบบ On-demand พร้อม CIK/Issuer, Filing Provenance, Period/Units และสถานะ Missing/Unavailable; ใช้ Synthetic Mock QA โดยยังไม่ยืนยัน SEC Live',

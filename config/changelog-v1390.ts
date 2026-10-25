@@ -1,10 +1,10 @@
 import { changelog as previousChangelog } from './changelog-v1380'
 import type { ChangelogEntry } from './changelog'
 
-// Development history; a standalone Production release time has not been established.
+// Feature commit time; this is not a Production release time.
 const v1390: ChangelogEntry = {
   version: 'v1.39.0',
-  date: 'Development History — ไม่ยืนยันเวลา Production แยกรุ่น',
+  date: 'Development History — Feature commit 2026-10-18 04:38 ICT (ไม่ใช่ Production)',
   changes: [
     'Smart Dip Buying ใช้ข้อมูล Holdings, Watchlist, DIME, Target Allocation, ค่าธรรมเนียม และ Support/Resistance ของพอร์ตที่เลือก เพื่อจำลองแผน 1–3 Tranche แบบ read-only',
     'Decision states REVIEW_DIP / WAIT / BLOCKED อธิบายเหตุผล, freshness, assumptions, Reserve, projected weight และข้อมูลที่ขาด โดยไม่สร้างคำสั่งซื้อขายอัตโนมัติ',
