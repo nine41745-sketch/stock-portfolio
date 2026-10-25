@@ -175,9 +175,9 @@ assert.doesNotMatch(nav, /href: '\/imports'/, 'Import Preview must not appear in
 const rootGuard = fs.readFileSync('components/auth/UserSettingsMutationGuard.tsx', 'utf8')
 assert.match(rootGuard, /pathname === '\/imports' \|\| pathname\.startsWith\('\/imports\/'\)/, 'preview route must skip the global portfolio data read')
 const currentChangelog = fs.readFileSync('config/changelog-v1402.ts', 'utf8')
-assert.match(currentChangelog, /version: 'v1\.40\.2'/, 'the removal must be recorded under its pending patch candidate')
+assert.match(currentChangelog, /version: 'v1\.40\.2'/, 'the removal must remain recorded under the released patch')
 assert.match(currentChangelog, /Import Preview/)
-assert.match(currentChangelog, /Unreleased — Release Candidate/)
-assert.match(currentChangelog, /Security Gate: HOLD/)
+assert.match(currentChangelog, /date: '2026-10-25 14:24 ICT · Production'/)
+assert.match(currentChangelog, /Security Gate และ Production Release Gate: เจ้าของอนุมัติปลด HOLD เฉพาะการปล่อย v1\.40\.2 นี้/)
 
 console.log('✓ Import Preview deterministic regression tests passed')
