@@ -38,7 +38,7 @@ The owner accepted the stated QA limitations. These decisions do not claim that 
 - [security-audit](https://github.com/nine41745-sketch/stock-portfolio/actions/runs/40124938602/job/120964238353): PASS. The retained Full Audit and Production-only Audit summaries both report PASS, audit exit code 0, and zero affected packages across severities.
 - No new Critical/High finding was identified in the evidence accepted by the independent reviewer. This is a statement about that reviewed evidence, not an unlimited or continuously refreshed security guarantee.
 - The historical braces exception document remains in the repository; this accepted run reported PASS rather than PASS_WITH_EXCEPTION. Original raw npm audit JSON was not retained as an uploaded artifact; the retained job logs and audit summaries were reviewed instead.
-- These are existing exact-release results. CI, Audit, Build and QA were not rerun to justify this documentation change.
+- These are existing exact-release results. Automatic checks on the documentation PR are separate and do not replace the accepted release evidence; no manual release QA or CI rerun was requested.
 
 ### Production authenticated read-only smoke test
 
