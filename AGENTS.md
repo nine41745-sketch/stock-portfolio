@@ -97,3 +97,28 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 - Every release or deployment closeout report must include a section titled `ภาพรวมการปล่อย Production` with: (1) the current Production deployment ID and SHA, (2) any staged deployment awaiting Promote with its ID and SHA, (3) Security Gate and release-gate status with reasons, and (4) remaining work before the intended Production release.
 - Never conclude that no further action is needed based only on PR completion. Compare the complete release state with the currently intended version.
 - After any release or deployment work, update `docs/RELEASE_STATUS.md` with the verified current Production deployment, staged deployment, gate status and reasons, and remaining work. Distinguish verified facts from unavailable or unverified evidence.
+
+## รูปแบบท้ายรายงาน
+ทุกรายงานที่ขออนุมัติหรือจบงาน ปิดท้ายด้วย 3 ส่วนตามลำดับ:
+
+1. ต้องส่งผู้ตรวจไหม: ใช่/ไม่ใช่ พร้อมเหตุผล 1 ประโยค
+   ใช่ เมื่อ PR แตะ AGENTS.md (นอกจากเพิ่มกฎ), vercel.json, workflow, env, test assertion, โค้ด runtime หรือก่อน Promote / เปลี่ยน alias / เปิด main:true / แก้ข้อมูลจริง
+   ไม่ใช่ เมื่อแก้เฉพาะเอกสารที่ไม่มียอดเงินหรือข้อมูลพอร์ต และ CI ผ่าน
+
+2. ถ้าข้อ 1 = ไม่ใช่: แสดงรายชื่อไฟล์ที่เปลี่ยนและยืนยันว่าไม่มียอดเงิน/ข้อมูลพอร์ต/secret
+   ถ้าข้อ 1 = ใช่: ใส่ข้อความสำหรับแชตผู้ตรวจในกล่องโค้ด เติมเลขจริงครบ ไม่มี <...> ค้าง รูปแบบ:
+   ตรวจ PR #<เลข>
+   head SHA ที่ Codex รายงาน: <SHA เต็ม>
+   ขอบเขตงาน: <1-2 บรรทัด และไฟล์ที่ควรแตะ/ไม่ควรแตะ>
+   จุดที่ต้องดูเพิ่ม: <ความเสี่ยงเฉพาะงานนี้>
+   สิ่งที่ยืนยันไม่ได้: <รายการ หรือ ไม่มี>
+   diff: https://github.com/nine41745-sketch/stock-portfolio/pull/<เลข>.diff
+   (ถ้าเปิดลิงก์ไม่ได้ ผมจะวาง diff ให้)
+   ห้ามใส่คำตัดสินหรือข้อสรุปว่าผ่านในข้อความนี้ ให้มีเฉพาะข้อเท็จจริงและจุดที่ให้ตรวจ
+
+3. ขั้นต่อไปของเจ้าของ (ขั้นเดียว) พร้อมประโยคอนุมัติสำเร็จรูปในกล่องโค้ด (การกระทำ + SHA/Deployment ID เต็ม + ขอบเขตห้าม Promote/alias/domain/Env/Secrets/Production DB)
+   ถ้าข้อ 1 = ใช่ ให้บอกว่าส่งประโยคนี้ต่อเมื่อผู้ตรวจตอบ 'อนุมัติได้' และ SHA ตรงกัน
+   ถ้าข้อ 1 = ไม่ใช่ ให้บอกว่าส่งประโยคนี้ได้เลย
+   ถ้าไม่ต้องทำอะไร ให้ระบุว่าไม่ต้อง พร้อมสถานะภาพรวมการปล่อย Production ที่เหลือ
+
+กฎคงที่: repo เป็น Public ห้ามมียอดเงิน ข้อมูลพอร์ต หรือ secret ในไฟล์/PR; Staged ต้องฝัง SHA เต็มและตรวจด้วย vercel inspect; ห้ามสร้างลิงก์ bypass/token โดยไม่ได้รับอนุมัติ
