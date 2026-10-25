@@ -1,1 +1,526 @@
-Y™Áäx-ÆÈ‹j◊ù¢Îi∫⁄+äßj[hëÈ‹¢ÈÌ◊é˜—:-jZ.∂õ≠ñ)ﬁ≥Vñ◊˜'B76W'Bg&ˆ“vÊˆFS¶76W'B˜7G&ñ7Bp¶ñ◊˜'Bg2g&ˆ“vÊˆFS¶g2p¶ñ◊˜'B≤WÜV4fñ∆U7ñÊ2“g&ˆ“vÊˆFS¶6Üñ∆E˜&ˆ6W72p¶ñ◊˜'BG2g&ˆ“wGóW67&óBp†¶7ñÊ2gVÊ7Fñˆ‚ñ◊˜'EG4÷ˆGV∆RÜfñ∆UFÇí∞¢6ˆÁ7B6˜W&6R“g2Á&VDfñ∆U7ñÊ2Üfñ∆UFÇ¬wWFcÇrê¢6ˆÁ7B6ˆ◊ñ∆VB“G2ÁG&Á7ñ∆T÷ˆGV∆Rá6˜W&6R¬∞¢6ˆ◊ñ∆W$˜FñˆÁ3¢∞¢÷ˆGV∆S¢G2‰÷ˆGV∆T∂ñÊB‰U3##"¿¢F&vWC¢G2Â67&óEF&vWB‰U3##¿¢7G&ñ7C¢G'VR¿¢“¿¢fñ∆TÊ÷S¢fñ∆UFÇ¿¢&W˜'DFñvÊ˜7Fñ73¢G'VR¿¢“ê†¢6ˆÁ7BW'&˜'2“Ü6ˆ◊ñ∆VBÊFñvÊ˜7Fñ72ÛÚµ“íÊfñ«FW"ÜB”‚BÊ6FVv˜'í””“G2‰FñvÊ˜7Fñ46FVv˜'í‰W'&˜"ê¢76W'BÊWV¬ÜW'&˜'2Ê∆VÊwFÇ¬¬G∂fñ∆UFá“G&Á7ñ∆RFñvÊ˜7Fñ73¢G∂W'&˜'2Ê÷ÜR”‚RÊ÷W76vUFWáBíÊ¶ˆñ‚Çs≤ró÷ê†¢6ˆÁ7BVÊ6ˆFVB“'VffW"Êg&ˆ“Ü6ˆ◊ñ∆VBÊ˜WGWEFWáBíÁFı7G&ñÊrÇv&6ScBrê¢&WGW&‚ñ◊˜'BÜFFßFWáBˆ¶f67&óC∂&6ScB¬G∂VÊ6ˆFVG÷êß–†¶gVÊ7Fñˆ‚76W'EFá&˜w5f∆ñFFñˆ‚Üf‚¬∆&V¬í∞¢76W'BÁFá&˜w2Üf‚¬W'&˜"”‚W'&˜"ñÁ7FÊ6VˆbW'&˜"bbW'&˜"ÊÊ÷R””“tñÁWEf∆ñFFñˆ‰W'&˜"r¬∆&V¬êß–†¶6ˆÁ7Bf∆ñFFñˆ‚“vóBñ◊˜'EG4÷ˆGV∆RÇv∆ñ"˜˜'Ffˆ∆ñÚ◊f∆ñFFñˆ‚ÁG2rê¶76W'BÊWV¬áf∆ñFFñˆ‚Á'6U6Ü&W2Çs"„Rrí¬"„Rê¶76W'BÊWV¬áf∆ñFFñˆ‚Á'6U6Ü&W2áVÊFVfñÊVBí¬ê¶76W'EFá&˜w5f∆ñFFñˆ‚ÇÇí”‚f∆ñFFñˆ‚Á'6U6Ü&W2Ç”í¬vÊVvFófR6Ü&W2◊W7B&R&V¶V7FVBrê¶76W'EFá&˜w5f∆ñFFñˆ‚ÇÇí”‚f∆ñFFñˆ‚Á'6U6Ü&W2ÇtÊ‚rí¬tÊ‚6Ü&W2◊W7B&R&V¶V7FVBrê¶76W'EFá&˜w5f∆ñFFñˆ‚ÇÇí”‚f∆ñFFñˆ‚Á'6U6Ü&W2Çs„#3CScrrí¬w6Ü&W2&WñˆÊBÂT‘U$î2ÉR√bí66∆R◊W7B&R&V¶V7FVBrê¶76W'BÊWV¬áf∆ñFFñˆ‚Á'6U6Ü&W2Çs„#3CSbrí¬„#3CSbê¶76W'EFá&˜w5f∆ñFFñˆ‚ÇÇí”‚f∆ñFFñˆ‚Á'6U6WGFñÊt÷˜VÁBÇ”¬~òà~ãNâûäÆâBrí¬vÊVvFófR66Ç◊W7B&R&V¶V7FVBrê¶76W'BÊWV¬áf∆ñFFñˆ‚Á'6U6WGFñÊt÷˜VÁBÇs„r¬~òà~ãNâûäÆâBrí¬¬w6WGFñÊw2◊W7B&RWá∆ñ6óF«íÊ˜&÷∆ó¶VBFÚÂT‘U$î2ÉR√"írê¶76W'BÊWV¬áf∆ñFFñˆ‚Á'6U6WGFñÊt÷˜VÁBÇs#í„ÉSsCbr¬~òà~ãNâûäÆâBrí¬#í„ÉR¬uDÑ"”ÂU4B6ˆÁfW'6ñˆ‚◊W7BÊ˜&÷∆ó¶R6fV«íFÚ"FV6ñ÷«2rê¶76W'BÊWV¬áf∆ñFFñˆ‚Á'6U6WGFñÊt÷˜VÁBÇs„r¬~òà~ãNâûäÆâBrí¬„ê¶76W'EFá&˜w5f∆ñFFñˆ‚ÇÇí”‚f∆ñFFñˆ‚Á'6T6˜7D&6ó2Çs„#3CScrrí¬v6˜7B&6ó2WÜ6W76ófR&V6ó6ñˆ‚◊W7B&R&V¶V7FVBrê¶76W'BÊWV¬áf∆ñFFñˆ‚Á'6U7ñ÷&ˆ¬Çr÷WFrí¬t‘UDrê¶76W'EFá&˜w5f∆ñFFñˆ‚ÇÇí”‚f∆ñFFñˆ‚Á'6U7ñ÷&ˆ¬Çt$B5î‘$Ù¬rí¬vñÁf∆ñBFñ6∂W"◊W7B&R&V¶V7FVBrê†¶6ˆÁ7BÊWw2“vóBñ◊˜'EG4÷ˆGV∆RÇv∆ñ"ˆÊWw2◊&V∆WfÊ6RÁG2rê¶76W'BÊWV¬ÜÊWw2Êó4ÊWw5&V∆WfÁEFıF&vWBÇtñÁ7Fw&“∆VÊ6ÜW2ÊWr7&VF˜"&ˆGV7Br¬t‘UDrí¬G'VRê¶76W'BÊWV¬ÜÊWw2Êó4ÊWw5&V∆WfÁEFıF&vWBÇußV6∂W&&W&rFó67W76W2íñÊg&7G'V7GW&R7VÊFñÊrr¬t‘UDrí¬G'VRê¶76W'BÊWV¬ÜÊWw2Êó4ÊWw5&V∆WfÁEFıF&vWBÇt'&ˆF6ˆ“&ó6W2óG2&WfVÁVR˜WF∆ˆˆ≤r¬t‘UDrí¬f«6Rê¶76W'BÊWV¬ÜÊWw2Êó4ÊWw5&V∆WfÁEFıF&vWBÇtñÁfW7F˜'2ÊVVBFÚ7BÊ˜r&Vf˜&RFÜR÷&∂WB˜VÁ2r¬t‰ırrí¬f«6Rê¶76W'BÊWV¬ÜÊWw2Êó4ÊWw5&V∆WfÁEFıF&vWBÇu6W'fñ6TÊ˜rÊÊ˜VÊ6W2VÁFW'&ó6RíWáÁ6ñˆ‚r¬t‰ırrí¬G'VRê¶76W'BÊWV¬ÜÊWw2Êó4ÊWw5&V∆WfÁEFıF&vWBÇt˜&6∆RWáÊG26∆˜VB66óGír¬tı$4¬rí¬G'VRê¶76W'BÊWV¬ÜÊWw2Êó4ÊWw5&V∆WfÁEFıF&vWBÇtÊWv«í∆ó7FVB6ˆ◊Áí&W˜'G2V&ÊñÊw2r¬t‰UuÇrí¬G'VRê†¶6ˆÁ7Bg&W6ÜÊW72“vóBñ◊˜'EG4÷ˆGV∆RÇv∆ñ"ˆÊ«ó6ó2÷g&W6ÜÊW72ÁG2rê¶6ˆÁ7B6ÜÊvR“g&W6ÜÊW72Ê∆FW7E˜'Ffˆ∆ñÙ6ÜÊvUFñ÷W7F◊Çs##b”í”eC££¢r¬s##b”í”eC#££¢rê¶76W'BÊWV¬Ü6ÜÊvR¬FFRÁ'6RÇs##b”í”eC#££¢ríê¶76W'BÊWV¬Üg&W6ÜÊW72Êó4Ê«ó6ó57F∆RÑFFRÁ'6RÇs##b”í”eC£3£¢rí¬6ÜÊvRí¬G'VRê¶76W'BÊWV¬Üg&W6ÜÊW72Êó4Ê«ó6ó57F∆RÑFFRÁ'6RÇs##b”í”eC#£3£¢rí¬6ÜÊvRí¬f«6Rê¶76W'BÊWV¬Üg&W6ÜÊW72Êó4Ê«ó6ó57F∆RÑFFRÁ'6RÇs##b”í”eC#££¢rí¬6ÜÊvRí¬f«6Rê†¶6ˆÁ7Bñ◊˜'FÁE7W˜'B“vóBñ◊˜'EG4÷ˆGV∆RÇv∆ñ"ˆñ◊˜'FÁB◊7W˜'BÁG2rê¶6ˆÁ7B&WVFVE7vñÊt∆˜w2“≥R√B√2√√√"√B√2√„"√„R√"√R√B√"√„Ç√"„R√e–¶6ˆÁ7Bñ◊˜'FÁD∆WfV¬“ñ◊˜'FÁE7W˜'BÊ6∆7V∆FTñ◊˜'FÁE7W˜'Bá&WVFVE7vñÊt∆˜w2¬"ê¶76W'BÊˆ≤Üñ◊˜'FÁD∆WfV¬Ê∆WfV¬”“ÁV∆¬¬u&WVFVB7vñÊr∆˜w26Ü˜V∆B7&VFR‚ñ◊˜'FÁB7W˜'B∆WfV¬rê¶76W'BÊˆ≤Üñ◊˜'FÁD∆WfV¬ÁF˜V6ÜW2„“"¬tñ◊˜'FÁB7W˜'B◊W7B&WVó&R&WVFVBF˜V6ÜW2rê¶76W'BÊWV¬Üñ◊˜'FÁE7W˜'BÊvWDñ◊˜'FÁE7W˜'E7FFRÉ"¬íÁ7FGW2¬t‰T"rê¶76W'BÊWV¬Üñ◊˜'FÁE7W˜'BÊvWDñ◊˜'FÁE7W˜'E7FFRÉìí¬íÁ7FGW2¬t%$Ù¥T‚rê¶76W'BÊWV¬Üñ◊˜'FÁE7W˜'BÊvWDñ◊˜'FÁE7W˜'E7FFRÉ¬íÁ7FGW2¬td"rê†¶6ˆÁ7BFÇ“vóBñ◊˜'EG4÷ˆGV∆RÇv∆ñ"ˆFÇÁG2rê¶76W'BÊFVWWV¬ÜFÇÊvWDFÖ7FFRÉ¬í¬≤7FGW3¢tDÇr¬Fó7FÊ6U7C¢“ê¶76W'BÊWV¬ÜFÇÊvWDFÖ7FFRÉìí„ìR¬íÁ7FGW2¬tDÇrê¶76W'BÊWV¬ÜFÇÊvWDFÖ7FFRÉìÇ¬íÁ7FGW2¬t‰T%ÙDÇrê¶76W'BÊWV¬ÜFÇÊvWDFÖ7FFRÉì¬íÁ7FGW2¬t$TƒıuÙDÇrê¶76W'BÊWV¬ÜFÇÊvWDFÖ7FFRÜÁV∆¬¬íÁ7FGW2¬uT‰¥‰ıt‚rê†¶6ˆÁ7B66ÊÊW"“vóBñ◊˜'EG4÷ˆGV∆RÇv∆ñ"˜7Fˆ6≤◊66ÊÊW"ÁG2rê¶6ˆÁ7B7G&ˆÊu66‚“66ÊÊW"Á66˜&U66ÊÊW$6ÊFñFFRá∞¢G&VÊC¢uUE$T‰Br¬'6ìC¢SR¬vVV∂«ï'6ìC¢SÇ¬÷6DÜó7Fˆw&”¢¿¢∆7D6∆˜6S¢¬7W˜'C¢ìr¬&W6ó7FÊ6S¢¬fˆ«V÷U&FñÛ¢„¿ß“ê¶76W'BÊWV¬á7G&ˆÊu66‚Ê∆&V¬¬~âûòéã.äÆâûò>àÇr¬vÜV«FáíWG&VÊB66ÊÊW"6ÊFñFFR6Ü˜V∆B&Ê≤2ñÁFW&W7FñÊrrê¶76W'BÊˆ≤á7G&ˆÊu66‚Á66˜&R„“s"¬w7G&ˆÊr66ÊÊW"6ÊFñFFR6Ü˜V∆B66˜&R„“s"rê¶6ˆÁ7BvVµ66‚“66ÊÊW"Á66˜&U66ÊÊW$6ÊFñFFRá∞¢G&VÊC¢tDıtÂE$T‰Br¬'6ìC¢É¬vVV∂«ï'6ìC¢sÇ¬÷6DÜó7Fˆw&”¢”¿¢∆7D6∆˜6S¢ì¬7W˜'C¢É¬&W6ó7FÊ6S¢¬fˆ«V÷U&FñÛ¢„Ç¿ß“ê¶76W'BÊWV¬ávVµ66‚Ê∆&V¬¬~ä.ãà~òNäòéòâNòéâír¬wvV≤ˆ˜fW&ÜVFVBF˜vÁG&VÊB6ÊFñFFR◊W7BÊ˜B&Ê≤2ñÁFW&W7FñÊrrê¶76W'BÊWV¬ávVµ66‚Á6WGW¬tdÙîBr¬vF˜vÁG&VÊB66ÊÊW"6ÊFñFFR6Ü˜V∆B6∆76ñgí2dÙîBrê¶76W'BÊˆ≤á66ÊÊW"Â44‰‰U%ıT‰ïdU%4U2ÊíÊñÊ6«VFW2ÇtÂdDrí¬tí66ÊÊW"VÊófW'6R◊W7BñÊ6«VFRÂdDrê¶76W'BÊˆ≤á66ÊÊW"Â44‰‰U%ıT‰ïdU%4U2Êw&˜wFÇÊñÊ6«VFW2ÇuDT“rí¬tw&˜wFÇ66ÊÊW"VÊófW'6R◊W7BñÊ6«VFRDT“rê†¶6ˆÁ7B∆FW7B“vóBñ◊˜'EG4÷ˆGV∆RÇv∆ñ"ˆ∆FW7B÷Ê«ó6ó2ÁG2rê¶76W'BÊWV¬Ü∆FW7BÁ6Ü˜V∆E&W∆6TÊ«ó6ó2áVÊFVfñÊVB¬í¬G'VRê¶76W'BÊWV¬Ü∆FW7BÁ6Ü˜V∆E&W∆6TÊ«ó6ó2É¬í¬G'VRê¶76W'BÊWV¬Ü∆FW7BÁ6Ü˜V∆E&W∆6TÊ«ó6ó2É¬í¬f«6Rê¶76W'BÊWV¬Ä¢∆FW7BÊvWE&W7V«EFñ÷W7F◊á≤Ê«ó6VDC¢s##b”í”eC3££¢r“¬s##b”í”UC££¢rí¿¢FFRÁ'6RÇs##b”í”eC3££¢rê¢ê†¶6ˆÁ7BfW&6V¬“•4Ù‚Á'6RÜg2Á&VDfñ∆U7ñÊ2ÇwfW&6V¬Êß6ˆ‚r¬wWFcÇríê¶76W'BÊFVWWV¬Ä¢fW&6V¬ÊvóCÚÊFW∆˜ñ÷VÁDVÊ&∆VB¿¢≤vFWVÊF&˜BÚ¢¢s¢f«6R¬÷ñ„¢f«6R¬v6ˆFWÇ˜÷÷ñ‚◊&VFñÊW72s¢f«6R¬v6ˆFWÇˆF"÷∆V7B◊&ófñ∆VvRs¢f«6R¬v6ˆFWÇ˜Cr◊ñ‚÷6ˆ◊∆WFñˆ‚s¢f«6R“¿¢ufW&6V¬◊W7B6∂óWFˆ÷Fñ2÷ñ‚FW∆˜ñ÷VÁG2vÜñ∆R6ˆÁFñÁVñÊrFÚ6∂óFWVÊF&˜BÊBFÜR&˜fVB˜6V7W&óGí'&Ê6ÜW2p¢ê¶76W'BÊˆ≤áfW&6V¬Ê7&ˆÁ3ÚÁ6ˆ÷RÜ2”‚2ÁFÇ””“rˆíˆ7&ˆ‚ˆFñ«í÷Ê«ó¶Rrbb2Á66ÜVGV∆R””“sR¢¢"”brí¬u˜7B÷6∆˜6R7&ˆ‚◊W7B&V÷ñ‚„É£Rî5Bf˜"U2÷ˆ‚‘g&í6W76ñˆÁ2rê¶76W'BÊˆ≤áfW&6V¬Ê7&ˆÁ3ÚÁ6ˆ÷RÜ2”‚2ÁFÇ””“rˆíˆ7&ˆ‚˜&V÷&∂WB÷Ê«ó¶Rrbb2Á66ÜVGV∆R””“sCR"¢¢”Rrí¬u&R÷÷&∂WB7&ˆ‚◊W7BñÊ6«VFRTEB6ÊFñFFR#£CRUD2rê¶76W'BÊˆ≤áfW&6V¬Ê7&ˆÁ3ÚÁ6ˆ÷RÜ2”‚2ÁFÇ””“rˆíˆ7&ˆ‚˜&V÷&∂WB÷Ê«ó¶Rrbb2Á66ÜVGV∆R””“sCR2¢¢”Rrí¬u&R÷÷&∂WB7&ˆ‚◊W7BñÊ6«VFRU5B6ÊFñFFR3£CRUD2rê†¶f˜"Ü6ˆÁ7B&˜WFRˆb∞¢vˆíˆÊ«ó¶R˜&˜WFRÁG2r¿¢vˆíˆ7&ˆ‚ˆFñ«í÷Ê«ó¶R˜&˜WFRÁG2r¿¢vˆíˆÊWw2˜&˜WFRÁG2r¿•“í∞¢6ˆÁ7B6˜W&6R“g2Á&VDfñ∆U7ñÊ2á&˜WFR¬wWFcÇrê¢76W'BÊ÷F6Çá6˜W&6R¬Ù¬ˆ∆ñ%¬ˆÊWw2◊&V∆WfÊ6RÚ¬G∑&˜WFW“◊W7BW6RFÜR6Ü&VBÊWw2&V∆WfÊ6RÜV«W&êß–†¶6ˆÁ7B÷&∂WE7FGW2“vóBñ◊˜'EG4÷ˆGV∆RÇv∆ñ"ˆ÷&∂WB◊7FGW2ÁG2rê¶6ˆÁ7BVGE&T˜V‚“÷&∂WE7FGW2ÊvWEW4÷&∂WD6∆ˆ6≤ÜÊWrFFRÇs##b”í”#C#£CS£¢ríê¶76W'BÊWV¬ÜVGE&T˜V‚ÊÜ˜W"¬Çê¶76W'BÊWV¬ÜVGE&T˜V‚Ê÷ñÁWFR¬CRê¶76W'BÊWV¬ÜVGE&T˜V‚Êó5G&FñÊtFí¬G'VRê¶76W'BÊWV¬Ü÷&∂WE7FGW2Êó5&V÷&∂WD7&ˆÂvñÊF˜rÜVGE&T˜V‚í¬G'VR¬tTEBÉ£CRUB◊W7B&R7FófRrê¶6ˆÁ7BVGDFV∆ñVB“÷&∂WE7FGW2ÊvWEW4÷&∂WD6∆ˆ6≤ÜÊWrFFRÇs##b”í”#C3£CC£¢ríê¶76W'BÊWV¬Ü÷&∂WE7FGW2Êó5&V÷&∂WD7&ˆÂvñÊF˜rÜVGDFV∆ñVBí¬G'VR¬tTEB6ÊFñFFRFV∆ñVBFÚì£CBUB◊W7B7Fñ∆¬WÜV7WFRrê¶6ˆÁ7BVGEFˆÙ∆FR“÷&∂WE7FGW2ÊvWEW4÷&∂WD6∆ˆ6≤ÜÊWrFFRÇs##b”í”#C3£CS£¢ríê¶76W'BÊWV¬Ü÷&∂WE7FGW2Êó5&V÷&∂WD7&ˆÂvñÊF˜rÜVGEFˆÙ∆FRí¬f«6R¬tTEB∆FW"6ÊFñFFRBì£CRUB◊W7BÊ˜BWÜV7WFRrê†¶6ˆÁ7BW7EFˆÙV&«í“÷&∂WE7FGW2ÊvWEW4÷&∂WD6∆ˆ6≤ÜÊWrFFRÇs##b”"”uC3£CC£¢ríê¶76W'BÊWV¬Ü÷&∂WE7FGW2Êó5&V÷&∂WD7&ˆÂvñÊF˜rÜW7EFˆÙV&«íí¬f«6R¬tU5BV&∆ñW"6ÊFñFFRFV∆ñVBˆÊ«íFÚÉ£CBUB◊W7BÊ˜BWÜV7WFRrê¶6ˆÁ7BW7E&T˜V‚“÷&∂WE7FGW2ÊvWEW4÷&∂WD6∆ˆ6≤ÜÊWrFFRÇs##b”"”uC3£CS£¢ríê¶76W'BÊWV¬ÜW7E&T˜V‚ÊÜ˜W"¬Çê¶76W'BÊWV¬ÜW7E&T˜V‚Ê÷ñÁWFR¬CRê¶76W'BÊWV¬ÜW7E&T˜V‚Êó5G&FñÊtFí¬G'VRê¶76W'BÊWV¬Ü÷&∂WE7FGW2Êó5&V÷&∂WD7&ˆÂvñÊF˜rÜW7E&T˜V‚í¬G'VR¬tU5BÉ£CRUB◊W7B&R7FófRrê¶6ˆÁ7BW7DFV∆ñVB“÷&∂WE7FGW2ÊvWEW4÷&∂WD6∆ˆ6≤ÜÊWrFFRÇs##b”"”uCC£CC£¢ríê¶76W'BÊWV¬Ü÷&∂WE7FGW2Êó5&V÷&∂WD7&ˆÂvñÊF˜rÜW7DFV∆ñVBí¬G'VR¬tU5B6ÊFñFFRFV∆ñVBFÚì£CBUB◊W7B7Fñ∆¬WÜV7WFRrê†¶6ˆÁ7BFÜÊ∑6vófñÊr“÷&∂WE7FGW2ÊvWEW4÷&∂WD6∆ˆ6≤ÜÊWrFFRÇs##b””#eC3£CS£¢ríê¶76W'BÊWV¬áFÜÊ∑6vófñÊrÊó5G&FñÊtFí¬f«6Rê¶76W'BÊWV¬áFÜÊ∑6vófñÊrÊó4Üˆ∆ñFí¬G'VRê¶76W'BÊWV¬Ü÷&∂WE7FGW2Êó5&V÷&∂WD7&ˆÂvñÊF˜ráFÜÊ∑6vófñÊrí¬f«6R¬uU2÷&∂WBÜˆ∆ñFó2◊W7BÊWfW"WÜV7WFR&R÷÷&∂WBÊ«ó6ó2rê†¶6ˆÁ7B&V÷&∂WEG&ñvvW"“vóBñ◊˜'EG4÷ˆGV∆RÇv∆ñ"˜&V÷&∂WB◊G&ñvvW"ÁG2rê¶76W'BÊˆ≤á&V÷&∂WEG&ñvvW"ÊWf«VFU&V÷&∂WEG&ñvvW'2á≤&ñ6S¢"„¬6ÜÊvU7C¢"„¬7W˜'C¢ìR¬&W6ó7FÊ6S¢¬V&ÊñÊw4Fó5VÁFñ√¢¬ÊWu&V∆WfÁDÊWw46˜VÁC¢“íÊ∆VÊwFÇ‚ê¶76W'BÊˆ≤á&V÷&∂WEG&ñvvW"ÊWf«VFU&V÷&∂WEG&ñvvW'2á≤&ñ6S¢„R¬6ÜÊvU7C¢„R¬7W˜'C¢¬&W6ó7FÊ6S¢¬V&ÊñÊw4Fó5VÁFñ√¢¬ÊWu&V∆WfÁDÊWw46˜VÁC¢“íÁ6ˆ÷RáÇ”‚ÇÊñÊ6«VFW2Ç~òâûä~ä>ãâ¢rííê¶76W'BÊWV¬á&V÷&∂WEG&ñvvW"ÊWf«VFU&V÷&∂WEG&ñvvW'2á≤&ñ6S¢R¬6ÜÊvU7C¢„R¬7W˜'C¢ìR¬&W6ó7FÊ6S¢R¬V&ÊñÊw4Fó5VÁFñ√¢¬ÊWu&V∆WfÁDÊWw46˜VÁC¢“íÊ∆VÊwFÇ¬ê†¶6ˆÁ7B7&ˆÂ6˜W&6R“g2Á&VDfñ∆U7ñÊ2Çvˆíˆ7&ˆ‚ˆFñ«í÷Ê«ó¶R˜&˜WFRÁG2r¬wWFcÇrê¶76W'BÊ÷F6ÇÜ7&ˆÂ6˜W&6R¬ˆ6ˆÁ7B7&ˆÂ6V7&WB“&ˆ6W75¬ÊVÁe¬‰5$ÙÂı4T5$UBÚ¬t7&ˆ‚◊W7B&VB5$ÙÂı4T5$UBñÁFÚ‚Wá∆ñ6óBwV&Brê¶76W'BÊ÷F6ÇÜ7&ˆÂ6˜W&6R¬ˆñb¬Ç7&ˆÂ6V7&WE¬íÚ¬t7&ˆ‚◊W7Bfñ¬6∆˜6VBvÜV‚5$ÙÂı4T5$UBó2÷ó76ñÊrrê¶76W'BÊ÷F6ÇÜ7&ˆÂ6˜W&6R¬˜6WGFñÊw5&W7ˆÁ6U¬ÊW'&˜"Ú¬t7&ˆ‚◊W7Bfñ¬ñÁ7FVBˆbG&VFñÊr6WGFñÊw2D"W'&˜"2¶W&Ú66Çrê¶76W'BÊ÷F6ÇÜ7&ˆÂ6˜W&6R¬ˆvWEW4÷&∂WD6∆ˆ6≤Ú¬u˜7B÷6∆˜6R7&ˆ‚◊W7B&W7V7BU2G&FñÊr÷Fí6∆VÊF"rê†¶76W'BÊWV¬Üg2ÊWÜó7G57ñÊ2Çvˆíˆ7&ˆ‚˜&V÷&∂WB÷Ê«ó¶R˜&˜WFRÁG2rí¬G'VR¬u&R÷÷&∂WBG&ñvvW"7&ˆ‚&˜WFRó2&WVó&VBrê¶6ˆÁ7B&V÷&∂WD7&ˆÂ6˜W&6R“g2Á&VDfñ∆U7ñÊ2Çvˆíˆ7&ˆ‚˜&V÷&∂WB÷Ê«ó¶R˜&˜WFRÁG2r¬wWFcÇrê¶76W'BÊ÷F6Çá&V÷&∂WD7&ˆÂ6˜W&6R¬ˆvWE&T÷&∂WE6Ê6Ü˜G2Ú¬u&R÷÷&∂WB7&ˆ‚◊W7BW6RWá∆ñ6óB&R÷÷&∂WB÷&∂WBFFrê¶76W'BÊ÷F6Çá&V÷&∂WD7&ˆÂ6˜W&6R¬ˆWf«VFU&V÷&∂WEG&ñvvW'2Ú¬u&R÷÷&∂WB7&ˆ‚◊W7BvFRw&˜&VÜñÊBFWFW&÷ñÊó7Fñ2G&ñvvW'2rê¶76W'BÊ÷F6Çá&V÷&∂WD7&ˆÂ6˜W&6R¬˜6fUˆ∆FW7Eˆ÷ÁV≈ˆÊ«ó6ó2Ú¬u&R÷÷&∂WBWFFR◊W7Bw&óFR∆FW7BÊ«ó6ó2vóFÜ˜WB7&VFñÊrG&6≤&V6˜&B&˜w2rê¶76W'BÊ÷F6Çá&V÷&∂WD7&ˆÂ6˜W&6R¬ˆÊ«ó6ó4÷ˆFS•«2¢u$T‘$¥UEıE$îttU"rÚ¬u&R÷÷&∂WB&W7V«G2◊W7B&Rfó6ñ&«íFvvVBrê¶76W'BÊ÷F6Çá&V÷&∂WD7&ˆÂ6˜W&6R¬ˆó5&V÷&∂WD7&ˆÂvñÊF˜u¬Ü÷&∂WD6∆ˆ6µ¬íÚ¬u&R÷÷&∂WB7&ˆ‚◊W7BW6RFÜRFV∆í◊Fˆ∆W&ÁBE5B÷v&RWÜV7WFñˆ‚vñÊF˜rrê¶76W'BÊ÷F6Çá&V÷&∂WD7&ˆÂ6˜W&6R¬ı$T‘$¥UEÙ5$ÙÂıtî‰DırÚ¬u&R÷÷&∂WB7&ˆ‚&W7ˆÁ6W2◊W7BWá˜6RFÜR7FófRUBFˆ∆W&Ê6RvñÊF˜rrê¶76W'BÊFˆW4Ê˜D÷F6Çá&V÷&∂WD7&ˆÂ6˜W&6R¬ˆ÷&∂WD6∆ˆ6µ¬ÊÜ˜W"”“ÇÚ¬t'&óGF∆RWÜ7B÷Ü˜W"vFR◊W7BÊ˜B&WGW&‚rê¶76W'BÊ÷F6Çá&V÷&∂WD7&ˆÂ6˜W&6R¬ˆvWEW6ˆ÷ñÊtV&ÊñÊw4f˜%7ñ÷&ˆ«2Ú¬u&R÷÷&∂WBG&ñvvW"6Ü˜V∆B&F6ÇV&ÊñÊw26∆VÊF"66W72rê†¶6ˆÁ7BÊ«ó¶U6˜W&6R“g2Á&VDfñ∆U7ñÊ2ÇvˆíˆÊ«ó¶R˜&˜WFRÁG2r¬wWFcÇrê¶76W'BÊ÷F6ÇÜÊ«ó¶U6˜W&6R¬ˆñb¬á6WGFñÊw4W'%¬íÚ¬t÷ÁV¬Ê«ó¶R◊W7BÜÊF∆RW6W"◊6WGFñÊw2VW'ífñ«W&Rrê¶76W'BÊ÷F6ÇÜÊ«ó¶U6˜W&6R¬˜7FGW3¢S2Ú¬t÷ÁV¬Ê«ó¶R6WGFñÊw2fñ«W&R◊W7B7F˜Ê«ó6ó2rê†¶6ˆÁ7B&ñ6W56˜W&6R“g2Á&VDfñ∆U7ñÊ2Çvˆí˜&ñ6W2˜&˜WFRÁG2r¬wWFcÇrê¶76W'BÊ÷F6Çá&ñ6W56˜W&6R¬˜'6U7ñ÷&ˆ¬Ú¬rˆí˜&ñ6W2◊W7Bf∆ñFFRFñ6∂W"7ñ÷&ˆ«2rê¶76W'BÊ÷F6Çá&ñ6W56˜W&6R¬Ù‘Öı5î‘$Ù≈5ıU%ı$UTU5BÚ¬rˆí˜&ñ6W2◊W7B6&WVW7Bf‚÷˜WBrê†¶6ˆÁ7BÜˆ∆FñÊuWE6˜W&6R“g2Á&VDfñ∆U7ñÊ2ÇvˆíˆÜˆ∆FñÊw2ı∂ñE“˜&˜WFRÁG2r¬wWFcÇrê¶76W'BÊ÷F6ÇÜÜˆ∆FñÊuWE6˜W&6R¬ˆÜ4˜vÂ&˜W'Gï¬Ê6∆≈¬Ü&ˆGí¬w6Ü&W2u¬íÚ¬tÜˆ∆FñÊrUB◊W7B&WVó&R6Ü&W2Wá∆ñ6óF«írê†¶6ˆÁ7BFñ«ïFˆFï6˜W&6R“g2Á&VDfñ∆U7ñÊ2ÇvˆíˆFñ«í÷Ê«ó6W2˜FˆFí˜&˜WFRÁG2r¬wWFcÇrê¶76W'BÊ÷F6ÇÜFñ«ïFˆFï6˜W&6R¬ı¬Êg&ˆ’¬ÇvÜˆ∆FñÊw2u¬íÚ¬tg&W6ÜÊW72VÊGˆñÁB◊W7B∆ˆB7W'&VÁBÜˆ∆FñÊw2rê¶76W'BÊ÷F6ÇÜFñ«ïFˆFï6˜W&6R¬ı¬ÊñÂ¬Çw7ñ÷&ˆ¬r¬7FófU7ñ÷&ˆ«5¬íÚ¬tFñ«íˆ÷ÁV¬Ê«ó6W2◊W7B&R&W7G&ñ7FVBFÚ7W'&VÁBÜˆ∆FñÊw2rê¶76W'BÊ÷F6ÇÜFñ«ïFˆFï6˜W&6R¬ˆ7FófU6WE¬ÊÜ5¬á7ñ÷&ˆ≈¬íÚ¬u6ˆ∆B7ñ÷&ˆ«2◊W7BÊ˜BV"ñ‚7F∆Rív&ÊñÊw2rê†¶6ˆÁ7BF6Ü&ˆ&EvU6˜W&6R“g2Á&VDfñ∆U7ñÊ2ÇvˆF6Ü&ˆ&B˜vRÁG7Çr¬wWFcÇrê¶76W'BÊ÷F6ÇÜF6Ü&ˆ&EvU6˜W&6R¬ıı%DdÙƒîıÙƒÙEÙdîƒTBÚ¬tF6Ü&ˆ&B◊W7BÊ˜B&VÊFW"D"ˆFV7'óBfñ«W&R2‚V◊Gí˜'Ffˆ∆ñÚrê¶76W'BÊ÷F6ÇÜF6Ü&ˆ&EvU6˜W&6R¬ÙF'2Ú¬tF6Ü&ˆ&B◊W7BWá˜6RFÜR6Ü&VB˜'Ffˆ∆ñÚ˜66ÊÊW"ÊfñvFñˆ‚rê¶76W'BÊFˆW4Ê˜D÷F6ÇÜF6Ü&ˆ&EvU6˜W&6R¬Ù˜˜'GVÊóGîáV"Ú¬u66ÊÊW"v˜&∑76R◊W7B7FíˆfbFÜR÷ñ‚˜'Ffˆ∆ñÚF6Ü&ˆ&Brê¶76W'BÊWV¬Üg2ÊWÜó7G57ñÊ2ÇvˆF6Ü&ˆ&BˆW'&˜"ÁG7Çrí¬G'VR¬tF6Ü&ˆ&B◊W7B&˜fñFR&V6˜fW'íW'&˜"&˜VÊF'írê†¶6ˆÁ7B66ÊÊW%vU6˜W&6R“g2Á&VDfñ∆U7ñÊ2Çv˜66ÊÊW"˜vRÁG7Çr¬wWFcÇrê¶76W'BÊ÷F6Çá66ÊÊW%vU6˜W&6R¬Ù˜˜'GVÊóGîáV"Ú¬tFVFñ6FVB66ÊÊW"vR◊W7B&VÊFW"FÜR66ÊÊW"˜vF6Ü∆ó7Bv˜&∑76Rrê¶76W'BÊ÷F6Çá66ÊÊW%vU6˜W&6R¬ÙF'2Ú¬tFVFñ6FVB66ÊÊW"vR◊W7BWá˜6R6Ü&VBÊfñvFñˆ‚rê¶76W'BÊWV¬Üg2ÊWÜó7G57ñÊ2Çv˜66ÊÓ{ﬂKhëÈÏ∂ªßq´^uŸ•Ω’ÃÅÿƒ∏Ã–∏ƒÅïπ—…‰Åµ’Õ–Å…ïµÖ•∏Å•π—Öç–ú§)ÖÕÕï…–πµÖ—ç†°¡…ïŸ•Ω’ÕIï±ïÖÕï°Öπùï±Ωú∞ÄΩô…Ω¥ÄùpπpΩç°Öπùï±ΩúµÿƒÃ–¿úº∞Äùÿƒ∏Ã–∏ƒÅç°Öπùï±ΩúÅµ’Õ–Å…ï—Ö•∏ÅïÖ…±•ï»Å°•Õ—Ω…‰ú§)ÖÕÕï…–πµÖ—ç†°¡…ïŸ•Ω’ÕIï±ïÖÕï°Öπùï±Ωú∞ÄΩëÖ—Ñµ—°ïµîÙâëÖ…¨àº∞Äùÿƒ∏Ã–∏ƒÅµ’Õ–ÅëΩç’µïπ–Å—°îÅÖ¡¿µÕçΩ¡ïêÅ—°ïµîÅô•‡ú§)ÖÕÕï…–πëΩïÕ9Ω—5Ö—ç†°¡…ïŸ•Ω’ÕIï±ïÖÕï°Öπùï±Ωú∞ÄΩME0ÅMïç’…•—‰Å!Ö…ëïπ•πùÒM’¡ÖâÖÕîÅ±Ω’êÅMïç’…•—‰Ω§∞Äùÿƒ∏Ã–∏ƒÅµ’Õ–ÅπΩ–Åç±Ö•¥Å’π…ï±ïÖÕïêÅME0ÅΩ»Å±Ω’êÅÕïç’…•—‰Åô•·ïÃú§)çΩπÕ–Å…ï±ïÖÕï°Öπùï±ΩúÄÙÅôÃπ…ïÖë•±ïMÂπå†ùçΩπô•úΩç°Öπùï±ΩúµÿƒÃ–¿π—Ãú∞Äù’—ò‡ú§)ÖÕÕï…–πµÖ—ç†°…ï±ïÖÕï°Öπùï±Ωú∞ÄΩŸï…Õ•Ω∏ËÄùÿ≈p∏Ã—p∏¿úº∞ÄùA…ïŸ•Ω’Õ±‰Å…ï±ïÖÕïêÅÿƒ∏Ã–∏¿Åç°Öπùï±ΩúÅµ’Õ–Å…ïµÖ•∏Å•π—Öç–ú§)ÖÕÕï…–πµÖ—ç†°…ï±ïÖÕï°Öπùï±Ωú∞ÄΩ’πëÖµïπ—Ö∞ÅπÖ±ÂÕ•Ãº§)ÖÕÕï…–πµÖ—ç†°…ï±ïÖÕï°Öπùï±Ωú∞ÄΩM—Ωç¨ÅΩµ¡Ö…•ÕΩ∏º§)ÖÕÕï…–πµÖ—ç†°…ï±ïÖÕï°Öπùï±Ωú∞ÄΩç—’Ö∞ÅŸÃÅÕ—•µÖ—îÉÇ‚ãÇ‚«Ç‚ÇÊÇ‚áÇÊ#ÇÊÇ‚oÇ‚”Ç‚SÇÊÇ‚+ÇÊ$º§)ÖÕÕï…–πµÖ—ç†°…ï±ïÖÕï°Öπùï±Ωú∞ÄΩApΩÅ	ïÖ…pΩ	ÖÕïpΩ	’±∞º§)ÖÕÕï…–πµÖ—ç†°…ï±ïÖÕï°Öπùï±Ωú∞ÄΩMÅa	I0º§)ÖÕÕï…–πµÖ—ç†°…ï±ïÖÕï°Öπùï±Ωú∞ÄøÇÊÇ‚áÇÊ#ÇÊÇ‚´Ç‚SÇ‚Ç‚èÇ‚ÀÇ‚Ç‚»ÅMçïπÖ…•ºº§)ÖÕÕï…–πëΩïÕ9Ω—5Ö—ç†°…ï±ïÖÕï°Öπùï±Ωú∞ÄΩME0ÅMïç’…•—‰Å!Ö…ëïπ•πùÒM’¡ÖâÖÕîÅ±Ω’êÅMïç’…•—‰Ω§∞Äùÿƒ∏Ã–∏¿Åµ’Õ–ÅπΩ–Åç±Ö•¥Å’π…ï±ïÖÕïêÅME0ÅΩ»Å±Ω’êÅÕïç’…•—‰Åô•·ïÃú§)çΩπÕ–ÅÕçÖππï…Iï±ïÖÕï°Öπùï±ΩúÄÙÅôÃπ…ïÖë•±ïMÂπå†ùçΩπô•úΩç°Öπùï±ΩúµÿƒÃÃƒπ—Ãú∞Äù’—ò‡ú§)ÖÕÕï…–πµÖ—ç†°ÕçÖππï…Iï±ïÖÕï°Öπùï±Ωú∞ÄΩŸï…Õ•Ω∏ËÄùÿ≈p∏ÃÕp∏ƒúº§)ÖÕÕï…–πµÖ—ç†°ÕçÖππï…Iï±ïÖÕï°Öπùï±Ωú∞ÄΩMçÖππï»Åµ•πîËÉÇÊÇ‚+ÇÊ$Å!Ω±ë•πùÃÉÇ‚Ç‚∑Ç‚Ç‚{Ç‚∑Ç‚èÇÊ3Ç‚WÇ‚_Ç‚◊ÇÊ#ÇÊÇ‚óÇ‚ﬂÇ‚∑Ç‚ÇÊÇ‚_ÇÊ#Ç‚ÀÇ‚gÇ‚«ÇÊ'Ç‚dº§)ÖÕÕï…–πµÖ—ç†°ÕçÖππï…Iï±ïÖÕï°Öπùï±Ωú∞ÄøÇ‚WÇ‚èÇ‚üÇ‚ Å’—°pΩA%8ÉÇÊÇ‚óÇ‚¿ÅAΩ…—ôΩ±•ºÅ=›πï…Õ°•¿ÉÇ‚wÇ‚«ÇÊ#Ç‚ÅMï…Ÿï»º§)ÖÕÕï…–πµÖ—ç†°ÕçÖππï…Iï±ïÖÕï°Öπùï±Ωú∞ÄøÇÊÇ‚áÇÊ#Ç‚èÇ‚üÇ‚ÑÅ]Ö—ç°±•Õ–ÉÇ‚èÇ‚√Ç‚SÇ‚«Ç‚kÇ‚kÇ‚«Ç‚7Ç‚+Ç‚◊Ç‚#Ç‚gÇ‚[Ç‚€Ç‚Åÿ≈p∏Ã’p∏¿º§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πïπù•πïÃ¸ππΩëî∞Äú»»π‡ú∞ÄùI’π—•µîÅµ’Õ–ÅÕ—Ö‰Å¡•ππïêÅ—ºÅ—°îÅÕ’¡¡Ω…—ïêÅ9ΩëîÄ»»ÅµÖ©Ω»ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πëï¡ïπëïπç•ïÃ¸ππï·–∞Äúƒÿ∏–∏ƒú∞ÄùAÖ—ç°ïêÅ9ï·–π©ÃÅ…ï±ïÖÕîÅµ’Õ–ÅÕ—Ö‰Å¡•ππïêú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πëï¡ïπëïπç•ïÃ¸π…ïÖç–∞Äúƒ‰∏Ã∏ƒú∞ÄùIïÖç–ÅÖπêÅIïÖç—=4Åµ’Õ–ÅÕ—Ö‰ÅÖ±•ùπïêÅΩ∏Å—°îÅÕÖµîÅ…ï±ïÖÕîú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πëï¡ïπëïπç•ïÃ¸πlù…ïÖç–µëΩ¥ùt∞Äúƒ‰∏Ã∏ƒú∞ÄùIïÖç–ÅÖπêÅIïÖç—=4Åµ’Õ–ÅÕ—Ö‰ÅÖ±•ùπïêÅΩ∏Å—°îÅÕÖµîÅ…ï±ïÖÕîú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πëïŸï¡ïπëïπç•ïÃ¸πlù—Â¡ïÃΩ…ïÖç–ùt∞Äùxƒ‰∏Ã∏¿ú∞ÄùIïÖç–Å—Â¡îÅ¡Öç≠ÖùïÃÅµ’Õ–ÅÕ—Ö‰ÅÖ±•ùπïêÅ›•—†ÅIïÖç–Äƒ‰∏Ãú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πëïŸï¡ïπëïπç•ïÃ¸πlù—Â¡ïÃΩ…ïÖç–µëΩ¥ùt∞Äùxƒ‰∏Ã∏¿ú∞ÄùIïÖç–Å=4Å—Â¡îÅ¡Öç≠ÖùïÃÅµ’Õ–ÅÕ—Ö‰ÅÖ±•ùπïêÅ›•—†ÅIïÖç–Äƒ‰∏Ãú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πëïŸï¡ïπëïπç•ïÃ¸πÖ’—Ω¡…ïô•·ï»∞Äùxƒ¿∏ÿ∏ƒú∞Äù’—Ω¡…ïô•·ï»ÅµÖ•π—ïπÖπçîÅô±ΩΩ»Åµ’Õ–ÅÕ—Ö‰Åç’……ïπ–ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πëïŸï¡ïπëïπç•ïÃ¸πlùïÕ±•π–µçΩπô•úµπï·–ùt∞Äúƒÿ∏–∏ƒú∞ÄùïÕ±•π–µçΩπô•úµπï·–Åµ’Õ–ÅÕ—Ö‰ÅÖ±•ùπïêÅ›•—†Å9ï·–π©Ãú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πëïŸï¡ïπëïπç•ïÃ¸πlù—Â¡ïÃΩπΩëîùt∞Äùx»»ú∞Äù9ΩëîÅ—Â¡ïÃÅµ’Õ–ÅÕ—Ö‰ÅΩ∏Å—°îÅ9ΩëîÄ»»Å…’π—•µîÅµÖ©Ω»ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πëï¡ïπëïπç•ïÃ¸πlùÕ’¡ÖâÖÕîΩÕÕ»ùt∞Äùx¿∏ƒ»∏‹ú∞Äùÿƒ∏Ãƒ∏»Åµ’Õ–Å¡…ïÕï…ŸîÅ—°îÅÖ’ë•—ïêÅM’¡ÖâÖÕîÅMMHÅëï¡ïπëïπç‰ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πëï¡ïπëïπç•ïÃ¸πlùÖπ—°…Ω¡•åµÖ§ΩÕë¨ùt∞Å’πëïô•πïê∞ÄùUπ’ÕïêÅπ—°…Ω¡•åÅM,Åµ’Õ–ÅÕ—Ö‰Å…ïµΩŸïêú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πÕç…•¡—Ã¸π±•π–∞ÄùïÕ±•π–Ä∏ú∞Äù9ï·–π©ÃÄƒÿÅµ’Õ–Å’ÕîÅ—°îÅM1•π–Å1$ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πÕç…•¡—Ã¸π—Â¡ïç°ïç¨∞Äù—ÕåÄ¥µπΩµ•–ú∞Äù$Åµ’Õ–Åï·¡ΩÕîÅÖ∏Åï·¡±•ç•–ÅQÂ¡ïMç…•¡–Åç°ïç¨ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πÕç…•¡—Ã¸πç§∞Äùπ¡¥Å…’∏Å±•π–ÄòòÅπ¡¥Å…’∏Å—Â¡ïç°ïç¨ÄòòÅπ¡¥Å…’∏Åâ’•±êú∞Äù$Åµ’Õ–Å…’∏Å±•π–∞Å—Â¡ïç°ïç¨ÅÖπêÅ—°îÅù’Ö…ëïêÅ¡…Ωë’ç—•Ω∏Åâ’•±êú§)ÖÕÕï…–πï≈’Ö∞°ôÃπï·•Õ—ÕMÂπå†ù¡Öç≠Öùîµ±Ωç¨π©ÕΩ∏ú§∞Å—…’î∞ÄùÅçΩµµ•——ïêÅπ¡¥Å±Ωç≠ô•±îÅ•ÃÅ…ï≈’•…ïêÅôΩ»Å…ï¡…Ωë’ç•â±îÅâ’•±ëÃú§()çΩπÕ–Å¡Öç≠Öùï1Ωç¨ÄÙÅ)M=8π¡Ö…Õî°ôÃπ…ïÖë•±ïMÂπå†ù¡Öç≠Öùîµ±Ωç¨π©ÕΩ∏ú∞Äù’—ò‡ú§§)çΩπÕ–Åµç¡Më≠1Ωç¨ÄÙÅ¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlùπΩëï}µΩë’±ïÃΩµΩëï±çΩπ—ï·—¡…Ω—ΩçΩ∞ΩÕë¨ùt)ÖÕÕï…–πï≈’Ö∞°µç¡Më≠1Ωç¨¸πŸï…Õ•Ω∏∞Äúƒ∏Ã»∏ƒú∞Äù5@ÅM,Åµ’Õ–Å…ï—Ö•∏Å—°îÅ…ïŸ•ï›ïêÅÕïÕÕ•Ω∏µ•ÕΩ±Ö—•Ω∏ÅÖπêÅ…ïë•…ïç–ÅÕïç’…•—‰Åô•·ïÃú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨πŸï…Õ•Ω∏∞Å¡Öç≠Öùï)ÕΩ∏πŸï…Õ•Ω∏∞Äù¡Öç≠Öùîµ±Ωç¨ÅŸï…Õ•Ω∏Åµ’Õ–ÅµÖ—ç†Å¡Öç≠Öùîπ©ÕΩ∏ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlúùt¸πŸï…Õ•Ω∏∞Å¡Öç≠Öùï)ÕΩ∏πŸï…Õ•Ω∏∞Äù±Ωç≠ô•±îÅ…ΩΩ–Å¡Öç≠ÖùîÅŸï…Õ•Ω∏Åµ’Õ–ÅµÖ—ç†Å¡Öç≠Öùîπ©ÕΩ∏ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlúùt¸πïπù•πïÃ¸ππΩëî∞Äú»»π‡ú∞Äù±Ωç≠ô•±îÅµ’Õ–Å¡…ïÕï…ŸîÅ—°îÅ9ΩëîÄ»»Å…’π—•µîÅ¡•∏ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlúùt¸πëï¡ïπëïπç•ïÃ¸ππï·–∞Äúƒÿ∏–∏ƒú∞Äù±Ωç≠ô•±îÅµ’Õ–Å¡…ïÕï…ŸîÅ—°îÅ¡Ö—ç°ïêÅ9ï·–π©ÃÅŸï…Õ•Ω∏ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlùπΩëï}µΩë’±ïÃΩπï·–ùt¸πŸï…Õ•Ω∏∞Äúƒÿ∏–∏ƒú∞Äù±Ωç≠ô•±îÅµ’Õ–Å…ïÕΩ±ŸîÅ9ï·–π©ÃÄƒÿ∏–∏ƒú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlúùt¸πëï¡ïπëïπç•ïÃ¸π…ïÖç–∞Äúƒ‰∏Ã∏ƒú∞Äù±Ωç≠ô•±îÅ…ΩΩ–Åµ’Õ–Å¡•∏Å¡Ö—ç°ïêÅIïÖç–ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlúùt¸πëï¡ïπëïπç•ïÃ¸πlù…ïÖç–µëΩ¥ùt∞Äúƒ‰∏Ã∏ƒú∞Äù±Ωç≠ô•±îÅ…ΩΩ–Åµ’Õ–Å¡•∏Å¡Ö—ç°ïêÅIïÖç—=4ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlùπΩëï}µΩë’±ïÃΩ…ïÖç–ùt¸πŸï…Õ•Ω∏∞Äúƒ‰∏Ã∏ƒú∞Äù±Ωç≠ô•±îÅµ’Õ–Å…ïÕΩ±ŸîÅIïÖç–Äƒ‰∏Ã∏ƒú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlùπΩëï}µΩë’±ïÃΩ…ïÖç–µëΩ¥ùt¸πŸï…Õ•Ω∏∞Äúƒ‰∏Ã∏ƒú∞Äù±Ωç≠ô•±îÅµ’Õ–Å…ïÕΩ±ŸîÅIïÖç—=4Äƒ‰∏Ã∏ƒú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlùπΩëï}µΩë’±ïÃΩ—Â¡ïÃΩ…ïÖç–ùt¸πŸï…Õ•Ω∏∞Äúƒ‰∏Ã∏¿ú∞Äù±Ωç≠ô•±îÅµ’Õ–Å…ïÕΩ±ŸîÅIïÖç–Å—Â¡ïÃÄƒ‰∏Ã∏¿ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlùπΩëï}µΩë’±ïÃΩ—Â¡ïÃΩ…ïÖç–µëΩ¥ùt¸πŸï…Õ•Ω∏∞Äúƒ‰∏Ã∏¿ú∞Äù±Ωç≠ô•±îÅµ’Õ–Å…ïÕΩ±ŸîÅIïÖç—=4Å—Â¡ïÃÄƒ‰∏Ã∏¿ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlùπΩëï}µΩë’±ïÃΩÖ’—Ω¡…ïô•·ï»ùt¸πŸï…Õ•Ω∏∞Äúƒ¿∏ÿ∏ƒú∞Äù±Ωç≠ô•±îÅµ’Õ–Å…ïÕΩ±ŸîÅ’—Ω¡…ïô•·ï»Äƒ¿∏ÿ∏ƒú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlúùt¸πëïŸï¡ïπëïπç•ïÃ¸πlùïÕ±•π–µçΩπô•úµπï·–ùt∞Äúƒÿ∏–∏ƒú∞Äù±Ωç≠ô•±îÅ…ΩΩ–Åµ’Õ–Å¡•∏Å—°îÅµÖ—ç°•πúÅ9ï·–π©ÃÅM1•π–ÅçΩπô•úú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlùπΩëï}µΩë’±ïÃΩïÕ±•π–µçΩπô•úµπï·–ùt¸πŸï…Õ•Ω∏∞Äúƒÿ∏–∏ƒú∞Äù±Ωç≠ô•±îÅµ’Õ–Å…ïÕΩ±ŸîÅïÕ±•π–µçΩπô•úµπï·–Äƒÿ∏–∏ƒú§)ôΩ»Ä°çΩπÕ–ÅπÖµîÅΩòÅlùπï·–Ωïπÿú∞Äùπï·–ΩïÕ±•π–µ¡±’ù•∏µπï·–ùt§ÅÏ(ÄÅÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πmÅπΩëï}µΩë’±ïÃºëÌπÖµïıÅt¸πŸï…Õ•Ω∏∞Äúƒÿ∏–∏ƒú∞ÅÄëÌπÖµïÙÅµ’Õ–ÅµÖ—ç†Å—°îÅ¡Ö—ç°ïêÅ9ï·–π©ÃÅ…ï±ïÖÕïÄ§)Ù)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlùπΩëï}µΩë’±ïÃΩÕ°Ö…¿ùt¸πŸï…Õ•Ω∏∞Äú¿∏Ã‘∏‘ú∞Äù%µÖùîÅ=¡—•µ•ÈÖ—•Ω∏Åµ’Õ–Å…ïÕΩ±ŸîÅ—°îÅ¡Ö—ç°ïêÅM°Ö…¿Å…ï±ïÖÕîú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlùπΩëï}µΩë’±ïÃΩÕ’¡ÖâÖÕîΩÕÕ»ùt¸πŸï…Õ•Ω∏∞Äú¿∏ƒ»∏‹ú∞Äù±Ωç≠ô•±îÅµ’Õ–Å…ïÕΩ±ŸîÅÖ’ë•—ïêÅÕ’¡ÖâÖÕîΩÕÕ»Ä¿∏ƒ»∏‹ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlùπΩëï}µΩë’±ïÃΩÕ’¡ÖâÖÕîΩÕ’¡ÖâÖÕîµ©Ãùt¸πŸï…Õ•Ω∏∞Äú»∏ƒƒÿ∏¿ú∞Äù±Ωç≠ô•±îÅµ’Õ–Å…ïÕΩ±ŸîÅçΩµ¡Ö—•â±îÅÕ’¡ÖâÖÕîΩÕ’¡ÖâÖÕîµ©ÃÄ»∏ƒƒÿ∏¿ú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πëïŸï¡ïπëïπç•ïÃ¸π—Ö•±›•πëçÕÃ∞ÄùxÃ∏–∏ƒ–ú∞ÄùMïç’…•—‰Å…ïµïë•Ö—•Ω∏Åµ’Õ–Å¡…ïÕï…ŸîÅQÖ•±›•πêÅMLÄÃÅ›°•±îÅçΩµ¡Ö—•â•±•—‰Å•ÃÅ—ïÕ—ïêú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï)ÕΩ∏πΩŸï……•ëïÃ¸πlù¡ΩÕ—çÕÃµÕï±ïç—Ω»µ¡Ö…Õï»ùt∞Äú‹∏ƒ∏ÿú∞ÄùΩ…çîÅ—°îÅ¡Ö…Õï»ÅçΩπ—Ö•π•πúÅ—°îÅ≈’Öë…Ö—•åµÕï±ïç—Ω»ÅÕïç’…•—‰Åô•‡ú§)çΩπÕ–ÅÕï±ïç—Ω…AÖ…Õï…π—…•ïÃÄÙÅ=â©ïç–πïπ—…•ïÃ°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃÄ¸¸ÅÌÙ§πô•±—ï»†°m¡Ö—°t§ÄÙ¯Å¡Ö—†πïπëÕ]•—††ùπΩëï}µΩë’±ïÃΩ¡ΩÕ—çÕÃµÕï±ïç—Ω»µ¡Ö…Õï»ú§§)ÖÕÕï…–πΩ¨°Õï±ïç—Ω…AÖ…Õï…π—…•ïÃπ±ïπù—†Ä¯Ä¿∞ÄùQÖ•±›•πêÅMLÄÃÅµ’Õ–Å…ïÕΩ±ŸîÅ—°îÅÕï±ïç—Ω»Å¡Ö…Õï»Åëï¡ïπëïπç‰ú§)ôΩ»Ä°çΩπÕ–Åm¡Ö—†∞ÅµÖπ•ôïÕ—tÅΩòÅÕï±ïç—Ω…AÖ…Õï…π—…•ïÃ§ÅÏ(ÄÅÖÕÕï…–πï≈’Ö∞°µÖπ•ôïÕ–πŸï…Õ•Ω∏∞Äú‹∏ƒ∏ÿú∞Äù•ÕÖ±±Ω‹ÅŸ’±πï…Öâ±îÅ¡ΩÕ—çÕÃµÕï±ïç—Ω»µ¡Ö…Õï»Å•∏ÄúÄ¨Å¡Ö—†§)Ù)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlùπΩëï}µΩë’±ïÃΩ—Ö•±›•πëçÕÃùt¸πŸï…Õ•Ω∏∞ÄúÃ∏–∏ƒ‰ú∞ÄùMïç’…•—‰Å…ïµïë•Ö—•Ω∏Åµ’Õ–Å¡…ïÕï…ŸîÅÖ’ë•—ïêÅQÖ•±›•πêÅMLÄÃú§)ÖÕÕï…–πï≈’Ö∞°¡Öç≠Öùï1Ωç¨π¡Öç≠ÖùïÃ¸πlúùt¸πëï¡ïπëïπç•ïÃ¸πlùÖπ—°…Ω¡•åµÖ§ΩÕë¨ùt∞Å’πëïô•πïê∞ÄùIïµΩŸïêÅëï¡ïπëïπç•ïÃÅµ’Õ–ÅπΩ–Å…ïµÖ•∏Å•∏Å±Ωç≠ô•±îÅ…ΩΩ–ú§()ÖÕÕï…–πï≈’Ö∞°ôÃπï·•Õ—ÕMÂπå†úπù•—°’àΩ›Ω…≠ô±Ω›ÃΩç§πÂµ∞ú§∞Å—…’î∞Äù•—!’àÅç—•ΩπÃÅ$Å›Ω…≠ô±Ω‹Å•ÃÅ…ï≈’•…ïêú§)ÖÕÕï…–πï≈’Ö∞°ôÃπï·•Õ—ÕMÂπå†úπù•—°’àΩëï¡ïπëÖâΩ–πÂµ∞ú§∞Å—…’î∞Äùï¡ïπëÖâΩ–ÅçΩπô•ù’…Ö—•Ω∏Å•ÃÅ…ï≈’•…ïêú§)ÖÕÕï…–πï≈’Ö∞°ôÃπï·•Õ—ÕMÂπå†ùÕç…•¡—ÃΩ—ïÕ–µÖ’—°ïπ—•çÖ—ïêµ≈Ñµ›Ω…≠ô±Ω‹πµ©Ãú§∞Å—…’î∞Äù’—°ïπ—•çÖ—ïêÅEÅ›Ω…≠ô±Ω‹ÅÕÖôï—‰Å—ïÕ—ÃÅÖ…îÅ…ï≈’•…ïêú§)Ö›Ö•–Å•µ¡Ω…–†ú∏Ω—ïÕ–µÖ’—°ïπ—•çÖ—ïêµ≈Ñµ›Ω…≠ô±Ω‹πµ©Ãú§)çΩπÕ–Åëï¡ïπëÖâΩ—MΩ’…çîÄÙÅôÃπ…ïÖë•±ïMÂπå†úπù•—°’àΩëï¡ïπëÖâΩ–πÂµ∞ú∞Äù’—ò‡ú§)ÖÕÕï…–πµÖ—ç†°ëï¡ïπëÖâΩ—MΩ’…çî∞ÄΩxÄÄÄÅ…ïâÖÕîµÕ—…Ö—ïù‰ËÅë•ÕÖâ±ïêêΩ¥∞Äùï¡ïπëÖâΩ–Åµ’Õ–Åë•ÕÖâ±îÅ’ππïçïÕÕÖ…‰ÅÖ’—ΩµÖ—•åÅ…ïâÖÕïÃú§)ÖÕÕï…–πµÖ—ç†°ëï¡ïπëÖâΩ—MΩ’…çî∞ÄΩ…ïÖç–µôÖµ•±‰Ëº∞Äùï¡ïπëÖâΩ–Åµ’Õ–Åù…Ω’¿ÅIïÖç–ÅÖπêÅIïÖç—=4Å’¡ëÖ—ïÃú§)ÖÕÕï…–πµÖ—ç†°ëï¡ïπëÖâΩ—MΩ’…çî∞ÄΩπï·–µôÖµ•±‰Ëº∞Äùï¡ïπëÖâΩ–Åµ’Õ–Åù…Ω’¿Å9ï·–π©ÃÅÖπêÅïÕ±•π–µçΩπô•úµπï·–Å’¡ëÖ—ïÃú§)ÖÕÕï…–πµÖ—ç†°ëï¡ïπëÖâΩ—MΩ’…çî∞ÄΩëï¡ïπëïπç‰µπÖµîÈqÃ©làùt˝—Â¡ïÕpΩπΩëïlàùt¸º∞Äùï¡ïπëÖâΩ–Åµ’Õ–Åï·¡±•ç•—±‰Åù’Ö…êÅ9ΩëîÅ—Â¡îÅµÖ©Ω»Å’¡ëÖ—ïÃú§)ÖÕÕï…–πµÖ—ç†°ëï¡ïπëÖâΩ—MΩ’…çî∞ÄΩŸï…Õ•Ω∏µ’¡ëÖ—îÈÕïµŸï»µµÖ©Ω»º∞Äùï¡ïπëÖâΩ–Åµ’Õ–Å•ùπΩ…îÅ—Â¡ïÃΩπΩëîÅµÖ©Ω»Å’¡ëÖ—ïÃÅâïÂΩπêÅ…’π—•µîú§)ÖÕÕï…–πµÖ—ç†°ëï¡ïπëÖâΩ—MΩ’…çî∞ÄΩ•π—ï…ŸÖ∞ÈqÃ©›ïï≠±‰º∞Äùï¡ïπëÖâΩ–Åµ’Õ–Åç°ïç¨Å’¡ëÖ—ïÃÅ›ïï≠±‰ú§)ÖÕÕï…–πµÖ—ç†°ëï¡ïπëÖâΩ—MΩ’…çî∞ÄΩëÖ‰ÈqÃ©µΩπëÖ‰º∞Äùï¡ïπëÖâΩ–Åµ’Õ–Å…ï—Ö•∏Å—°îÅ5ΩπëÖ‰Å’¡ëÖ—îÅ›•πëΩ‹ú§)ÖÕÕï…–πµÖ—ç†°ëï¡ïπëÖâΩ—MΩ’…çî∞ÄΩ—•µïÈΩπîÈqÃ©Õ•ÖpΩ	Öπù≠Ω¨º∞Äùï¡ïπëÖâΩ–Åµ’Õ–Å’ÕîÅQ°Ö§Å—•µîú§)ÖÕÕï…–πµÖ—ç†°ëï¡ïπëÖâΩ—MΩ’…çî∞Äº¥Åëï¡ïπëïπç‰µπÖµîÈqÃ©làùuïÕ±•π—làùuqÃ©qπqÃ©’¡ëÖ—îµ—Â¡ïÃÈqÃ©qπqÃ®µqÃ©làùuŸï…Õ•Ω∏µ’¡ëÖ—îÈÕïµŸï»µµÖ©Ω…làùtº∞Äùï¡ïπëÖâΩ–Åµ’Õ–Å¡Ö’ÕîÅM1•π–Äƒ¿ÅµÖ©Ω»ÅŸï…Õ•Ω∏ÅAIÃú§)ÖÕÕï…–πï≈’Ö∞°ôÃπï·•Õ—ÕMÂπå†ùMUI%Qdπµêú§∞Å—…’î∞ÄùMïç’…•—‰Å¡Ω±•ç‰Å•ÃÅ…ï≈’•…ïêú§)ÖÕÕï…–πï≈’Ö∞°ôÃπï·•Õ—ÕMÂπå†ù=AIQ%=9Lπµêú§∞Å—…’î∞Äù=¡ï…Ö—•ΩπÃÅ…’πâΩΩ¨Å•ÃÅ…ï≈’•…ïêú§)ÖÕÕï…–πï≈’Ö∞°ôÃπï·•Õ—ÕMÂπå†ùïÕ±•π–πçΩπô•úπµ©Ãú§∞Å—…’î∞Äù·¡±•ç•–ÅM1•π–Åô±Ö–ÅçΩπô•úÅ•ÃÅ…ï≈’•…ïêú§()çΩπÕ–Åç•MΩ’…çîÄÙÅôÃπ…ïÖë•±ïMÂπå†úπù•—°’àΩ›Ω…≠ô±Ω›ÃΩç§πÂµ∞ú∞Äù’—ò‡ú§)ÖÕÕï…–πµÖ—ç†°ç•MΩ’…çî∞ÄΩÖç—•ΩπÕpΩç°ïç≠Ω’—ÿ‹º∞Äù$Åµ’Õ–Å’ÕîÅ—°îÅç’……ïπ–Å9ΩëîÄ»–µâÖÕïêÅç°ïç≠Ω’–ÅÖç—•Ω∏ú§)ÖÕÕï…–πµÖ—ç†°ç•MΩ’…çî∞ÄΩÖç—•ΩπÕpΩÕï—’¿µπΩëïÿ‹º∞Äù$Åµ’Õ–Å’ÕîÅ—°îÅç’……ïπ–Å9ΩëîÄ»–µâÖÕïêÅÕï—’¿µπΩëîÅÖç—•Ω∏ú§)ÖÕÕï…–πµÖ—ç†°ç•MΩ’…çî∞ÄΩπΩëîµŸï…Õ•Ω∏ËÄú»»úº∞Äù$Åµ’Õ–Å…’∏Å—°îÅÖ¡¡±•çÖ—•Ω∏ÅΩ∏Å9ΩëîÄ»»ú§)ÖÕÕï…–πµÖ—ç†°ç•MΩ’…çî∞ÄΩπ¡¥Åç§º∞Äù$Åµ’Õ–Å•πÕ—Ö±∞Åô…Ω¥Å—°îÅï·Öç–Å±Ωç≠ô•±îú§)ÖÕÕï…–πµÖ—ç†°ç•MΩ’…çî∞ÄΩπ¡¥ÅÖ’ë•–Ä¥µΩµ•–ıëïÿÄ¥µÖ’ë•–µ±ïŸï∞ı°•ù†º∞Äù$Åµ’Õ–Åâ±Ωç¨Å°•ù†µÕïŸï…•—‰Å¡…Ωë’ç—•Ω∏Åëï¡ïπëïπç‰ÅÖëŸ•ÕΩ…•ïÃú§)ÖÕÕï…–πµÖ—ç†°ç•MΩ’…çî∞ÄΩπ¡¥Å…’∏Åç§º∞Äù$Åµ’Õ–Å…’∏Å—°îÅ¡…Ω©ïç–Å$ÅùÖ—îú§()çΩπÕ–Åπï·—Ωπô•ùMΩ’…çîÄÙÅôÃπ…ïÖë•±ïMÂπå†ùπï·–πçΩπô•úπ©Ãú∞Äù’—ò‡ú§)ÖÕÕï…–πµÖ—ç†°πï·—Ωπô•ùMΩ’…çî∞ÄΩ¡Ω›ï…ïë	Â!ïÖëï»ÈqÃ©ôÖ±Õîº∞Äù`µAΩ›ï…ïêµ	‰Åµ’Õ–ÅâîÅë•ÕÖâ±ïêú§)ÖÕÕï…–πµÖ—ç†°πï·—Ωπô•ùMΩ’…çî∞ÄΩ`µΩπ—ïπ–µQÂ¡îµ=¡—•ΩπÃº∞ÄùπΩÕπ•ôòÅÕïç’…•—‰Å°ïÖëï»Åµ’Õ–ÅâîÅçΩπô•ù’…ïêú§)ÖÕÕï…–πµÖ—ç†°πï·—Ωπô•ùMΩ’…çî∞ÄΩAï…µ•ÕÕ•ΩπÃµAΩ±•ç‰º∞ÄùAï…µ•ÕÕ•ΩπÃµAΩ±•ç‰ÅÕïç’…•—‰Å°ïÖëï»Åµ’Õ–ÅâîÅçΩπô•ù’…ïêú§)ÖÕÕï…–πëΩïÕ9Ω—5Ö—ç†°πï·—Ωπô•ùMΩ’…çî∞ÄΩ›ïâ¡Öç≠qÃ©p†º∞Äù9ï·–π©ÃÄƒÿÅÕ°Ω’±êÅπΩ–Å…ï≈’•…îÅÑÅ±ïùÖç‰Å›ïâ¡Öç¨ÅÖ±•ÖÃÅ°ΩΩ¨ú§()ÖÕÕï…–πï≈’Ö∞°ôÃπï·•Õ—ÕMÂπå†ù¡…Ω·‰π—Ãú§∞Å—…’î∞Äù9ï·–π©ÃÄƒÿÅπï—›Ω…¨Åù’Ö…êÅµ’Õ–Å’ÕîÅ¡…Ω·‰π—Ãú§)ÖÕÕï…–πï≈’Ö∞°ôÃπï·•Õ—ÕMÂπå†ùµ•ëë±ï›Ö…îπ—Ãú§∞ÅôÖ±Õî∞Äùï¡…ïçÖ—ïêÅµ•ëë±ï›Ö…îπ—ÃÅµ’Õ–ÅπΩ–Å…ï—’…∏ú§)çΩπÕ–Å¡…Ω·ÂMΩ’…çîÄÙÅôÃπ…ïÖë•±ïMÂπå†ù¡…Ω·‰π—Ãú∞Äù’—ò‡ú§)ÖÕÕï…–πµÖ—ç†°¡…Ω·ÂMΩ’…çî∞ÄΩï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Å¡…Ω·Âp†º∞ÄùA…Ω·‰Åµ’Õ–Åï·¡Ω…–Å—°îÅ9ï·–π©ÃÄƒÿÅ¡…Ω·‰Åô’πç—•Ω∏ú§)ÖÕÕï…–πµÖ—ç†°¡…Ω·ÂMΩ’…çî∞ÄΩA%9}MMM%=9}==-%}95º∞ÄùA…Ω·‰Åµ’Õ–Å¡…ïÕï…ŸîÅ—°îÅA%8ÅÕïÕÕ•Ω∏ÅùÖ—îú§()çΩπÕ–Å—ÕçΩπô•úÄÙÅ)M=8π¡Ö…Õî°ôÃπ…ïÖë•±ïMÂπå†ù—ÕçΩπô•úπ©ÕΩ∏ú∞Äù’—ò‡ú§§)çΩπÕ–Åç°Öπùï±ΩùIï±ïÖÕïQ•µïÃÄÙÅl(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒƒÿƒπ—Ãú∞Äú»¿»ÿ¥¿‰¥¿‡Ä¿»Ë–‡Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒƒ‹π—Ãú∞Äú»¿»ÿ¥¿‰¥¿‡Ä¿ÃË–¿Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒƒ‡π—Ãú∞Äú»¿»ÿ¥¿‰¥¿‡Ä¿–Ë‘–Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒƒ‡ƒπ—Ãú∞Äú»¿»ÿ¥¿‰¥¿‡Ä¿‘Ë¿¿Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒƒ‰π—Ãú∞Äú»¿»ÿ¥¿‰¥¿‰Ä»ÃËƒ¿Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»¿π—Ãú∞Äú»¿»ÿ¥¿‰¥ƒ¿Ä¿¿Ë–‡Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»ƒπ—Ãú∞Äú»¿»ÿ¥¿‰¥ƒ¿Ä¿»ËƒÿÅ%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»»π—Ãú∞Äú»¿»ÿ¥¿‰¥ƒ¿Ä¿ÃË‘‡Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»Ãπ—Ãú∞Äú»¿»ÿ¥¿‰¥ƒ¿Äƒ‘ËÃ‡Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»–π—Ãú∞Äú»¿»ÿ¥¿‰¥ƒ¿ÄƒÿË‘¿Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‘π—Ãú∞Äú»¿»ÿ¥¿‰¥ƒ¿Äƒ‹Ë‘ÃÅ%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‘ƒπ—Ãú∞Äú»¿»ÿ¥¿‰¥ƒƒÄ¿¿ËÃ‰Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»ÿπ—Ãú∞Äú»¿»ÿ¥¿‰¥ƒÃÄ¿»Ëƒ¿Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‹π—Ãú∞Äú»¿»ÿ¥¿‰¥ƒ‘Äƒ‘Ë–ÃÅ%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‹ƒπ—Ãú∞Äú»¿»ÿ¥¿‰¥ƒÿÄ¿»Ëƒ¿Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‹»π—Ãú∞Äú»¿»ÿ¥¿‰¥ƒ‹Ä¿ƒËÃ‘Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‹Ãπ—Ãú∞Äú»¿»ÿ¥¿‰¥ƒ‡Ä¿ÃË–»Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‹–π—Ãú∞Äú»¿»ÿ¥¿‰¥ƒ‰ÄƒÿË¿»Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‹‘π—Ãú∞Äú»¿»ÿ¥¿‰¥ƒ‰Äƒ‰Ë‘ƒÅ%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‡¿π—Ãú∞Äú»¿»ÿ¥¿‰¥»»Ä¿ÃËƒ‹Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‰¿π—Ãú∞Äú»¿»ÿ¥¿‰¥»ÃÄƒÿË–»Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‰ƒπ—Ãú∞Äú»¿»ÿ¥¿‰¥Ã¿Ä¿–Ëƒ‡Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‰»π—Ãú∞Äú»¿»ÿ¥ƒ¿¥¿–Äƒ‘ËƒÿÅ%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±Ωúµÿƒ»‰Ãπ—Ãú∞Äú»¿»ÿ¥ƒ¿¥¿‘Ä»ÃËƒ‰Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±ΩúµÿƒÃ¿¿π—Ãú∞Äú»¿»ÿ¥ƒ¿¥¿ÿÄƒ‰Ë‘‰Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±ΩúµÿƒÃƒ¿π—Ãú∞Äú»¿»ÿ¥ƒ¿¥¿ÿÄ»»Ë»‘Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±ΩúµÿƒÃƒƒπ—Ãú∞Äú»¿»ÿ¥ƒ¿¥¿‹Ä¿ƒË–¿Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±ΩúµÿƒÃƒ»π—Ãú∞Äú»¿»ÿ¥ƒ¿¥¿‹Ä¿»Ë»¿Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±ΩúµÿƒÃ»¿π—Ãú∞Äú»¿»ÿ¥ƒ¿¥ƒƒÄ¿ÃË‘–Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±ΩúµÿƒÃÃ¿π—Ãú∞Äú»¿»ÿ¥ƒ¿¥ƒÃÄ¿»Ë»¿Å%Pùt∞(ÄÅlùçΩπô•úΩç°Öπùï±ΩúµÿƒÃÃƒπ—Ãú∞Äú»¿»ÿ¥ƒ¿¥ƒÃÄƒ‡Ë¿ƒÅ%Pùt∞)t)ôΩ»Ä°çΩπÕ–Åmô•±î∞Åï·¡ïç—ïëQ•µïtÅΩòÅç°Öπùï±ΩùIï±ïÖÕïQ•µïÃ§ÅÏ(ÄÅçΩπÕ–ÅÕΩ’…çîÄÙÅôÃπ…ïÖë•±ïMÂπå°ô•±î∞Äù’—ò‡ú§(ÄÅÖÕÕï…–πΩ¨°ÕΩ’…çîπ•πç±’ëïÃ°ÅëÖ—îËÄúëÌï·¡ïç—ïëQ•µïÙùÄ§∞ÅÄëÌô•±ïÙÅµ’Õ–Å•πç±’ëîÅ…ï±ïÖÕîÅ—•µîÅ•∏Åeeedµ54µÅ! È54Å%PÅôΩ…µÖ—Ä§)Ù()ÖÕÕï…–πëïï¡≈’Ö∞°—ÕçΩπô•úπçΩµ¡•±ï…=¡—•ΩπÃ¸π¡Ö—°Ã¸πlù ΩçΩπô•úΩç°Öπùï±Ωúùt∞Ålú∏ΩçΩπô•úΩç°Öπùï±Ωúµÿƒ–¿»ùt∞Äù’……ïπ–Å…ï±ïÖÕîÅµ’Õ–Å’ÕîÅ—°îÅÿƒ∏–¿∏»ÅŸï…Õ•Ω∏ÅâÖëùîú§)ÖÕÕï…–πµÖ—ç†°…ï±ïÖÕï°Öπùï±Ωú∞ÄΩëÖ—îËÄùqëÏ—ÙµqëÏ…ÙµqëÏ…ÙÅqëÏ…ÙÈqëÏ…ÙÅ%Púº∞Äùÿƒ∏Ã–∏¿Åç°Öπùï±ΩúÅµ’Õ–ÅçΩπ—Ö•∏ÅÑÅ—•µïÕ—Öµ¿Å•∏Å—°îÅ…ï¡ΩÕ•—Ω…‰ÅôΩ…µÖ–ú§)ÖÕÕï…–πµÖ—ç†°±Ö—ïÕ—Iï±ïÖÕï°Öπùï±Ωú∞ÄΩëÖ—îËÄùqëÏ—ÙµqëÏ…ÙµqëÏ…ÙÅqëÏ…ÙÈqëÏ…ÙÅ%Púº∞Äùÿƒ∏Ã‘∏¿Åç°Öπùï±ΩúÅµ’Õ–ÅçΩπ—Ö•∏ÅÑÅ—•µïÕ—Öµ¿Å•∏Å—°îÅ…ï¡ΩÕ•—Ω…‰ÅôΩ…µÖ–ú§()Ö›Ö•–Å•µ¡Ω…–†ú∏Ω—ïÕ–µ≈’•ç¨µπΩ—ïÃπµ©Ãú§)Ö›Ö•–Å•µ¡Ω…–†ú∏Ω—ïÕ–µÕç…Ö—ç°¡ÖêµÕïç’…•—‰πµ©Ãú§(ººÅA’…îÅâÖç≠’¿ÅÕÖôï—‰Å…ïù…ïÕÕ•ΩπÃÏÅ—°îÅΩ¡–µ•∏ÅΩç≠ï»Å…ïÕ—Ω…îÅï·ï…ç•ÕîÅ•ÃÅπïŸï»Å…’∏Åâ‰Å$Å•µ¡±•ç•—±‰∏)Ö›Ö•–Å•µ¡Ω…–†ú∏Ω—ïÕ–µ…ïçΩŸï…‰πµ©Ãú§)ï·ïç•±ïMÂπå°¡…ΩçïÕÃπï·ïçAÖ—†∞Ålú¥µ—ïÕ–ú∞ÄùÕç…•¡—ÃΩ—ïÕ–µÕïç’…•—‰µ—…ÖπÕ•—•Ÿîµëï¡Ãπµ©Ãùt∞ÅÏÅÕ—ë•ºËÄù•π°ï…•–ú∞Å—•µïΩ’–ËÄÃ¿¿¿¿ÅÙ§)çΩπÕΩ±îπ±Ωú†üärLÅ…•—•çÖ∞Å…ïù…ïÕÕ•Ω∏Å—ïÕ—ÃÅ¡ÖÕÕïêú§
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import ts from 'typescript'
+
+async function importTsModule(filePath) {
+  const source = fs.readFileSync(filePath, 'utf8')
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2020,
+      strict: true,
+    },
+    fileName: filePath,
+    reportDiagnostics: true,
+  })
+
+  const errors = (compiled.diagnostics ?? []).filter(d => d.category === ts.DiagnosticCategory.Error)
+  assert.equal(errors.length, 0, `${filePath} transpile diagnostics: ${errors.map(e => e.messageText).join('; ')}`)
+
+  const encoded = Buffer.from(compiled.outputText).toString('base64')
+  return import(`data:text/javascript;base64,${encoded}`)
+}
+
+function assertThrowsValidation(fn, label) {
+  assert.throws(fn, error => error instanceof Error && error.name === 'InputValidationError', label)
+}
+
+const validation = await importTsModule('lib/portfolio-validation.ts')
+assert.equal(validation.parseShares('12.5'), 12.5)
+assert.equal(validation.parseShares(undefined), 0)
+assertThrowsValidation(() => validation.parseShares(-1), 'negative shares must be rejected')
+assertThrowsValidation(() => validation.parseShares('NaN'), 'NaN shares must be rejected')
+assertThrowsValidation(() => validation.parseShares('1.1234567'), 'shares beyond NUMERIC(15,6) scale must be rejected')
+assert.equal(validation.parseShares('1.123456'), 1.123456)
+assertThrowsValidation(() => validation.parseSettingAmount(-1, '‡πÄ‡∏á‡∏¥‡∏ô‡∏™‡∏î'), 'negative cash must be rejected')
+assert.equal(validation.parseSettingAmount('1.001', '‡πÄ‡∏á‡∏¥‡∏ô‡∏™‡∏î'), 1, 'settings must be explicitly normalized to NUMERIC(15,2)')
+assert.equal(validation.parseSettingAmount('29.850746', '‡πÄ‡∏á‡∏¥‡∏ô‡∏™‡∏î'), 29.85, 'THB->USD conversion must normalize safely to 2 decimals')
+assert.equal(validation.parseSettingAmount('1.01', '‡πÄ‡∏á‡∏¥‡∏ô‡∏™‡∏î'), 1.01)
+assertThrowsValidation(() => validation.parseCostBasis('10.1234567'), 'cost basis excessive precision must be rejected')
+assert.equal(validation.parseSymbol(' meta '), 'META')
+assertThrowsValidation(() => validation.parseSymbol('BAD SYMBOL'), 'invalid ticker must be rejected')
+
+const news = await importTsModule('lib/news-relevance.ts')
+assert.equal(news.isNewsRelevantToTarget('Instagram launches a new creator product', 'META'), true)
+assert.equal(news.isNewsRelevantToTarget('Zuckerberg discusses AI infrastructure spending', 'META'), true)
+assert.equal(news.isNewsRelevantToTarget('Broadcom raises its revenue outlook', 'META'), false)
+assert.equal(news.isNewsRelevantToTarget('Investors need to act now before the market opens', 'NOW'), false)
+assert.equal(news.isNewsRelevantToTarget('ServiceNow announces enterprise AI expansion', 'NOW'), true)
+assert.equal(news.isNewsRelevantToTarget('Oracle expands cloud capacity', 'ORCL'), true)
+assert.equal(news.isNewsRelevantToTarget('A newly listed company reports earnings', 'NEWX'), true)
+
+const freshness = await importTsModule('lib/analysis-freshness.ts')
+const change = freshness.latestPortfolioChangeTimestamp('2026-09-06T01:00:00Z', '2026-09-06T02:00:00Z')
+assert.equal(change, Date.parse('2026-09-06T02:00:00Z'))
+assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T01:30:00Z'), change), true)
+assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T02:30:00Z'), change), false)
+assert.equal(freshness.isAnalysisStale(Date.parse('2026-09-06T02:00:00Z'), change), false)
+
+const importantSupport = await importTsModule('lib/important-support.ts')
+const repeatedSwingLows = [105,104,103,101,100,102,104,103,101.2,100.5,102,105,104,102,100.8,102.5,106]
+const importantLevel = importantSupport.calculateImportantSupport(repeatedSwingLows, 102)
+assert.ok(importantLevel.level !== null, 'Repeated swing lows should create an important support level')
+assert.ok(importantLevel.touches >= 2, 'Important support must require repeated touches')
+assert.equal(importantSupport.getImportantSupportState(102, 100).status, 'NEAR')
+assert.equal(importantSupport.getImportantSupportState(99, 100).status, 'BROKEN')
+assert.equal(importantSupport.getImportantSupportState(110, 100).status, 'FAR')
+
+const ath = await importTsModule('lib/ath.ts')
+assert.deepEqual(ath.getAthState(100, 100), { status: 'ATH', distancePct: 0 })
+assert.equal(ath.getAthState(99.95, 100).status, 'ATH')
+assert.equal(ath.getAthState(98, 100).status, 'NEAR_ATH')
+assert.equal(ath.getAthState(90, 100).status, 'BELOW_ATH')
+assert.equal(ath.getAthState(null, 100).status, 'UNKNOWN')
+
+const scanner = await importTsModule('lib/stock-scanner.ts')
+const strongScan = scanner.scoreScannerCandidate({
+  trend: 'UPTREND', rsi14: 55, weeklyRsi14: 58, macdHistogram: 1,
+  lastClose: 100, support: 97, resistance: 110, volumeRatio: 1.1,
+})
+assert.equal(strongScan.label, '‡∏ô‡πà‡∏≤‡∏™‡∏ô‡πÉ‡∏à', 'healthy uptrend scanner candidate should rank as interesting')
+assert.ok(strongScan.score >= 72, 'strong scanner candidate should score >= 72')
+const weakScan = scanner.scoreScannerCandidate({
+  trend: 'DOWNTREND', rsi14: 80, weeklyRsi14: 78, macdHistogram: -1,
+  lastClose: 90, support: 80, resistance: 110, volumeRatio: 0.8,
+})
+assert.equal(weakScan.label, '‡∏¢‡∏±‡∏á‡πÑ‡∏°‡πà‡πÄ‡∏î‡πà‡∏ô', 'weak/overheated downtrend candidate must not rank as interesting')
+assert.equal(weakScan.setup, 'AVOID', 'downtrend scanner candidate should classify as AVOID')
+assert.ok(scanner.SCANNER_UNIVERSES.ai.includes('NVDA'), 'AI scanner universe must include NVDA')
+assert.ok(scanner.SCANNER_UNIVERSES.growth.includes('TEM'), 'Growth scanner universe must include TEM')
+
+const latest = await importTsModule('lib/latest-analysis.ts')
+assert.equal(latest.shouldReplaceAnalysis(undefined, 100), true)
+assert.equal(latest.shouldReplaceAnalysis(100, 101), true)
+assert.equal(latest.shouldReplaceAnalysis(100, 100), false)
+assert.equal(
+  latest.getResultTimestamp({ analysedAt: '2026-09-06T03:00:00Z' }, '2026-09-05T00:00:00Z'),
+  Date.parse('2026-09-06T03:00:00Z')
+)
+
+const vercel = JSON.parse(fs.readFileSync('vercel.json', 'utf8'))
+assert.deepEqual(
+  vercel.git?.deploymentEnabled,
+  { 'dependabot/**': false, main: false, 'codex/qa-main-readiness': false, 'codex/db-least-privilege': false, 'codex/qa47-pin-completion': false },
+  'Vercel must skip automatic main deployments while continuing to skip Dependabot and the approved QA/security branches'
+)
+assert.ok(vercel.crons?.some(c => c.path === '/api/cron/daily-analyze' && c.schedule === '15 1 * * 2-6'), 'Post-close cron must remain ~08:15 ICT for US Mon-Fri sessions')
+assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 12 * * 1-5'), 'Pre-market cron must include EDT candidate 12:45 UTC')
+assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 13 * * 1-5'), 'Pre-market cron must include EST candidate 13:45 UTC')
+
+for (const route of [
+  'app/api/analyze/route.ts',
+  'app/api/cron/daily-analyze/route.ts',
+  'app/api/news/route.ts',
+]) {
+  const source = fs.readFileSync(route, 'utf8')
+  assert.match(source, /@\/lib\/news-relevance/, `${route} must use the shared news relevance helper`)
+}
+
+const marketStatus = await importTsModule('lib/market-status.ts')
+const edtPreOpen = marketStatus.getUsMarketClock(new Date('2026-09-21T12:45:00Z'))
+assert.equal(edtPreOpen.hour, 8)
+assert.equal(edtPreOpen.minute, 45)
+assert.equal(edtPreOpen.isTradingDay, true)
+assert.equal(marketStatus.isPremarketCronWindow(edtPreOpen), true, 'EDT 08:45 ET must be active')
+const edtDelayed = marketStatus.getUsMarketClock(new Date('2026-09-21T13:44:00Z'))
+assert.equal(marketStatus.isPremarketCronWindow(edtDelayed), true, 'EDT candidate delayed to 09:44 ET must still execute')
+const edtTooLate = marketStatus.getUsMarketClock(new Date('2026-09-21T13:45:00Z'))
+assert.equal(marketStatus.isPremarketCronWindow(edtTooLate), false, 'EDT later candidate at 09:45 ET must not execute')
+
+const estTooEarly = marketStatus.getUsMarketClock(new Date('2026-12-07T13:44:00Z'))
+assert.equal(marketStatus.isPremarketCronWindow(estTooEarly), false, 'EST earlier candidate delayed only to 08:44 ET must not execute')
+const estPreOpen = marketStatus.getUsMarketClock(new Date('2026-12-07T13:45:00Z'))
+assert.equal(estPreOpen.hour, 8)
+assert.equal(estPreOpen.minute, 45)
+assert.equal(estPreOpen.isTradingDay, true)
+assert.equal(marketStatus.isPremarketCronWindow(estPreOpen), true, 'EST 08:45 ET must be active')
+const estDelayed = marketStatus.getUsMarketClock(new Date('2026-12-07T14:44:00Z'))
+assert.equal(marketStatus.isPremarketCronWindow(estDelayed), true, 'EST candidate delayed to 09:44 ET must still execute')
+
+const thanksgiving = marketStatus.getUsMarketClock(new Date('2026-11-26T13:45:00Z'))
+assert.equal(thanksgiving.isTradingDay, false)
+assert.equal(thanksgiving.isHoliday, true)
+assert.equal(marketStatus.isPremarketCronWindow(thanksgiving), false, 'US market holidays must never execute pre-market analysis')
+
+const premarketTrigger = await importTsModule('lib/premarket-trigger.ts')
+assert.ok(premarketTrigger.evaluatePremarketTriggers({ price: 102.1, changePct: 2.1, support: 95, resistance: 110, earningsDaysUntil: 10, newRelevantNewsCount: 0 }).length > 0)
+assert.ok(premarketTrigger.evaluatePremarketTriggers({ price: 100.5, changePct: 0.5, support: 100, resistance: 110, earningsDaysUntil: 10, newRelevantNewsCount: 0 }).some(x => x.includes('‡πÅ‡∏ô‡∏ß‡∏£‡∏±‡∏ö')))
+assert.equal(premarketTrigger.evaluatePremarketTriggers({ price: 105, changePct: 0.5, support: 95, resistance: 115, earningsDaysUntil: 10, newRelevantNewsCount: 0 }).length, 0)
+
+const cronSource = fs.readFileSync('app/api/cron/daily-analyze/route.ts', 'utf8')
+assert.match(cronSource, /const cronSecret = process\.env\.CRON_SECRET/, 'Cron must read CRON_SECRET into an explicit guard')
+assert.match(cronSource, /if \(!cronSecret\)/, 'Cron must fail closed when CRON_SECRET is missing')
+assert.match(cronSource, /settingsResponse\.error/, 'Cron must fail instead of treating a settings DB error as zero cash')
+assert.match(cronSource, /getUsMarketClock/, 'Post-close cron must respect US trading-day calendar')
+
+assert.equal(fs.existsSync('app/api/cron/premarket-analyze/route.ts'), true, 'Pre-market trigger cron route is required')
+const premarketCronSource = fs.readFileSync('app/api/cron/premarket-analyze/route.ts', 'utf8')
+assert.match(premarketCronSource, /getPreMarketSnapshots/, 'Pre-market cron must use explicit pre-market market data')
+assert.match(premarketCronSource, /evaluatePremarketTriggers/, 'Pre-market cron must gate Groq behind deterministic triggers')
+assert.match(premarketCronSource, /save_latest_manual_analysis/, 'Pre-market update must write latest analysis without creating Track Record rows')
+assert.match(premarketCronSource, /analysisMode:\s*'PREMARKET_TRIGGER'/, 'Pre-market results must be visibly tagged')
+assert.match(premarketCronSource, /isPremarketCronWindow\(marketClock\)/, 'Pre-market cron must use the delay-tolerant DST-aware execution window')
+assert.match(premarketCronSource, /PREMARKET_CRON_WINDOW/, 'Pre-market cron responses must expose the active ET tolerance window')
+assert.doesNotMatch(premarketCronSource, /marketClock\.hour !== 8/, 'Brittle exact-hour gate must not return')
+assert.match(premarketCronSource, /getUpcomingEarningsForSymbols/, 'Pre-market trigger should batch earnings calendar access')
+
+const analyzeSource = fs.readFileSync('app/api/analyze/route.ts', 'utf8')
+assert.match(analyzeSource, /if \(settingsErr\)/, 'Manual Analyze must handle user-settings query failure')
+assert.match(analyzeSource, /status: 503/, 'Manual Analyze settings failure must stop analysis')
+
+const pricesSource = fs.readFileSync('app/api/prices/route.ts', 'utf8')
+assert.match(pricesSource, /parseSymbol/, '/api/prices must validate ticker symbols')
+assert.match(pricesSource, /MAX_SYMBOLS_PER_REQUEST/, '/api/prices must cap request fan-out')
+
+const holdingPutSource = fs.readFileSync('app/api/holdings/[id]/route.ts', 'utf8')
+assert.match(holdingPutSource, /hasOwnProperty\.call\(body, 'shares'\)/, 'Holding PUT must require shares explicitly')
+
+const dailyTodaySource = fs.readFileSync('app/api/daily-analyses/today/route.ts', 'utf8')
+assert.match(dailyTodaySource, /\.from\('holdings'\)/, 'Freshness endpoint must load current holdings')
+assert.match(dailyTodaySource, /\.in\('symbol', activeSymbols\)/, 'Daily/manual analyses must be restricted to current holdings')
+assert.match(dailyTodaySource, /activeSet\.has\(symbol\)/, 'Sold symbols must not appear in stale AI warnings')
+
+const dashboardPageSource = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
+assert.match(dashboardPageSource, /PORTFOLIO_LOAD_FAILED/, 'Dashboard must not render DB/decrypt failure as an empty portfolio')
+assert.match(dashboardPageSource, /AppTabs/, 'Dashboard must expose the shared portfolio/scanner navigation')
+assert.doesNotMatch(dashboardPageSource, /OpportunityHub/, 'Scanner workspace must stay off the main portfolio dashboard')
+assert.equal(fs.existsSync('app/dashboard/error.tsx'), true, 'Dashboard must provide a recovery error boundary')
+
+const scannerPageSource = fs.readFileSync('app/scanner/page.tsx', 'utf8')
+assert.match(scannerPageSource, /OpportunityHub/, 'Dedicated scanner page must render the scanner/watchlist workspace')
+assert.match(scannerPageSource, /AppTabs/, 'Dedicated scanner page must expose shared navigation')
+assert.equal(fs.existsSync('app/scanner/error.tsx'), true, 'Scanner must provide a recovery error boundary')
+assert.equal(fs.existsSync('components/navigation/AppTabs.tsx'), true, 'Portfolio/scanner navigation tabs are required')
+
+const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
+const appTabsSource = fs.readFileSync('components/navigation/AppTabs.tsx', 'utf8')
+const portfolioSwitcherSource = fs.readFileSync('components/navigation/PortfolioSwitcher.tsx', 'utf8')
+const investingSinceSource = fs.readFileSync('components/portfolio/InvestingSinceBadge.tsx', 'utf8')
+assert.match(appTabsSource, /<PortfolioSwitcher[\s\S]*actions=/, 'Global utilities must share the portfolio top bar')
+assert.match(appTabsSource, /mx-auto w-full max-w-7xl/, 'Navigation shell must align with the dashboard width on desktop')
+assert.match(appTabsSource, /overflow-x-auto[\s\S]*scrollbar-width:none/, 'Primary navigation must remain usable on narrow mobile screens')
+assert.match(portfolioSwitcherSource, /flex w-full flex-col[\s\S]*sm:flex-row/, 'Portfolio controls must stack on phones and share one row on wider screens')
+const transactionsWidthPageSource = fs.readFileSync('app/transactions/page.tsx', 'utf8')
+const performanceWidthPageSource = fs.readFileSync('app/performance/page.tsx', 'utf8')
+for (const [name, source] of [
+  ['scanner', scannerPageSource],
+  ['transactions', transactionsWidthPageSource],
+  ['performance', performanceWidthPageSource],
+]) {
+  assert.match(source, /mx-auto w-full max-w-7xl/, `${name} content must align with the shared desktop shell while remaining full-width on mobile`)
+}
+
+
+assert.match(portfolioSwitcherSource, /actions\?: ReactNode/, 'Portfolio switcher must accept shared utility actions')
+assert.match(investingSinceSource, /inline-flex/, 'Investing duration must stay compact instead of a full-width banner')
+assert.match(dashboardSource, /grid grid-cols-2 gap-3 lg:grid-cols-4/, 'Primary KPI hierarchy must stay 4-up on desktop')
+assert.match(dashboardSource, /expandedAnalysisSymbol/, 'AI analysis must use a single-open accordion state')
+assert.match(dashboardSource, /analysis && expandedAnalysisSymbol === h\.symbol/, 'Only the selected stock AI analysis should be expanded')
+assert.match(dashboardSource, /whitespace-nowrap[\s\S]*üõ° ‡πÅ‡∏ô‡∏ß‡∏£‡∏±‡∏ö/, 'Important-support status badge must stay compact and single-line')
+assert.match(dashboardSource, /<details className="mt-3 border-t border-gray-800 pt-3">/, 'Secondary AI evidence must stay collapsed by default')
+assert.match(appTabsSource, /stock-portfolio-theme/, 'Shared theme toggle must persist the selected theme')
+assert.match(appTabsSource, /localStorage\.setItem/, 'Shared theme toggle must write browser preference')
+assert.match(appTabsSource, /useSyncExternalStore/, 'Theme toggle must expose the current mode without effect-driven state')
+assert.match(appTabsSource, /‚òÄÔ∏è ‡∏™‡∏ß‡πà‡∏≤‡∏á/, 'Light mode button label must identify the active light theme')
+assert.match(appTabsSource, /üåô ‡∏°‡∏∑‡∏î/, 'Dark mode button label must identify the active dark theme')
+const rootLayoutSource = fs.readFileSync('app/layout.tsx', 'utf8')
+assert.match(rootLayoutSource, /localStorage\.getItem\('stock-portfolio-theme'\)/, 'Root layout must restore the saved theme before page interaction')
+assert.match(rootLayoutSource, /beforeInteractive/, 'Saved theme must be restored before hydration to avoid dark-mode reset/flash')
+assert.match(dashboardSource, /Asia\/Bangkok/, 'Dashboard timestamps must force Asia/Bangkok')
+assert.match(dashboardSource, /08:15/, 'Track Record/Cron UI must show the real ~08:15 ICT schedule')
+assert.doesNotMatch(dashboardSource, /‡∏£‡∏±‡∏ô‡∏ó‡∏∏‡∏Å‡∏ß‡∏±‡∏ô 06:00 ‡∏ô\./, 'Old 06:00 Track Record label must not return')
+assert.match(dashboardSource, /exchangeRateSource/, 'Dashboard must distinguish live FX from fallback FX')
+assert.match(dashboardSource, /‡∏¢‡∏±‡∏á‡πÑ‡∏°‡πà‡∏°‡∏µ‡∏≠‡∏±‡∏ï‡∏£‡∏≤ USD\/THB ‡πÅ‡∏ö‡∏ö‡∏™‡∏î/, 'THB persistence must be blocked while only fallback FX is available')
+const quickNotesSource = fs.readFileSync('components/navigation/QuickNotesDrawer.tsx', 'utf8')
+assert.match(appTabsSource, /<QuickNotesDrawer\s*\/>/, 'Every authenticated page must expose the shared notes drawer')
+assert.match(quickNotesSource, /loadFailed/, 'Shared scratchpad initial-read failure must prevent auto-save overwrite')
+assert.match(appTabsSource, /if \(!response\.ok\) throw new Error\(await getErrorMessage\(response, '‡∏•‡πá‡∏≠‡∏Å‡∏û‡∏≠‡∏£‡πå‡∏ï‡πÑ‡∏°‡πà‡∏™‡∏≥‡πÄ‡∏£‡πá‡∏à'\)\)/, 'Shared PIN lock must verify the server lock response')
+
+const scratchpadSource = fs.readFileSync('app/api/scratchpad/route.ts', 'utf8')
+assert.match(scratchpadSource, /MAX_SCRATCHPAD_LENGTH/, 'Scratchpad must enforce a bounded payload')
+assert.match(scratchpadSource, /maybeSingle\(\)/, 'Scratchpad GET must distinguish missing row from query failure')
+
+// Scanner / Watchlist feature safety gates
+assert.equal(fs.existsSync('app/api/scanner/route.ts'), true, 'Stock scanner API is required')
+assert.equal(fs.existsSync('app/api/watchlist/route.ts'), true, 'Watchlist API is required')
+assert.equal(fs.existsSync('components/portfolio/OpportunityHub.tsx'), true, 'Opportunity Hub UI is required')
+assert.equal(fs.existsSync('supabase/migration_watchlist_v1.18.0.sql'), true, 'Watchlist RLS migration is required')
+const watchlistMigration = fs.readFileSync('supabase/migration_watchlist_v1.18.0.sql', 'utf8')
+assert.match(watchlistMigration, /ENABLE ROW LEVEL SECURITY/, 'Watchlist must enable RLS')
+assert.match(watchlistMigration, /auth\.uid\(\) = user_id/, 'Watchlist RLS must scope rows to the authenticated user')
+const scannerRouteSource = fs.readFileSync('app/api/scanner/route.ts', 'utf8')
+assert.match(scannerRouteSource, /MAX_SCAN_SYMBOLS/, 'Scanner must cap provider fan-out')
+assert.match(scannerRouteSource, /getTechnicalIndicators\('SPY'\)/, 'Scanner must benchmark Relative Strength against SPY')
+assert.match(scannerRouteSource, /getUpcomingEarnings/, 'Scanner must surface earnings catalyst risk')
+assert.match(scannerRouteSource, /scannerSupport/, 'Scanner must use completed-bar support levels')
+assert.match(scannerRouteSource, /scannerVolumeRatio/, 'Scanner must use scanner-safe volume ratio')
+assert.match(scannerRouteSource, /getAllTimeHigh/, 'Scanner must load true all-time high separately from 52W data')
+assert.match(scannerRouteSource, /athDistancePct/, 'Scanner API must expose ATH distance for filtering')
+
+const athSource = fs.readFileSync('lib/all-time-high.ts', 'utf8')
+assert.match(athSource, /period1:\s*0/, 'ATH source must request maximum available Yahoo history')
+assert.match(athSource, /interval:\s*'1mo'/, 'ATH source must use monthly bars to keep provider load bounded')
+assert.match(athSource, /CHUNK_SIZE/, 'ATH batch requests must be bounded')
+assert.equal(fs.existsSync('app/api/ath/route.ts'), true, 'Authenticated ATH endpoint is required for Dashboard')
+const athRouteSource = fs.readFileSync('app/api/ath/route.ts', 'utf8')
+assert.match(athRouteSource, /MAX_SYMBOLS_PER_REQUEST/, 'ATH endpoint must cap provider fan-out')
+assert.match(athRouteSource, /parseSymbol/, 'ATH endpoint must validate ticker symbols')
+
+const indicatorSource = fs.readFileSync('lib/indicators.ts', 'utf8')
+assert.match(indicatorSource, /bars\.slice\(0, -1\)/, 'Scanner support/resistance must exclude the current bar')
+assert.match(indicatorSource, /bars\.slice\(-\(window \+ 1\), -1\)/, 'Scanner volume average must exclude current-day volume')
+assert.match(indicatorSource, /return20dPct/, 'Scanner market data must expose 20-day returns')
+assert.match(indicatorSource, /week52High/, 'Scanner market data must expose 52-week range')
+assert.match(indicatorSource, /calculateImportantSupport/, 'Technical data must calculate repeated swing-low Important Support')
+assert.match(indicatorSource, /importantSupportTouches/, 'Technical data must expose Important Support touch count')
+assert.equal(fs.existsSync('app/api/important-support/route.ts'), true, 'Dashboard Important Support endpoint is required')
+const importantSupportRouteSource = fs.readFileSync('app/api/important-support/route.ts', 'utf8')
+assert.match(importantSupportRouteSource, /MAX_SYMBOLS_PER_REQUEST/, 'Important Support endpoint must cap provider fan-out')
+assert.match(importantSupportRouteSource, /CHUNK_SIZE = 2/, 'Important Support endpoint must bound Yahoo request concurrency')
+
+const opportunitySource = fs.readFileSync('components/portfolio/OpportunityHub.tsx', 'utf8')
+assert.match(opportunitySource, /Relative Strength/, 'Scanner UI must expose Relative Strength')
+assert.match(opportunitySource, /‡∏ã‡πà‡∏≠‡∏ô‡∏á‡∏ö ‚â§ 7 ‡∏ß‡∏±‡∏ô/, 'Scanner UI must provide earnings-risk filtering')
+assert.match(opportunitySource, /BREAKOUT/, 'Scanner UI must expose deterministic setup filtering')
+assert.match(opportunitySource, /‡πÄ‡∏£‡∏µ‡∏¢‡∏á: Score ‡∏™‡∏π‡∏á‡∏™‡∏∏‡∏î/, 'Scanner UI must provide deterministic sorting controls')
+assert.match(opportunitySource, /ATH \/ ‡πÉ‡∏Å‡∏•‡πâ ATH ‚â§ 3%/, 'Scanner UI must expose ATH filtering')
+assert.match(opportunitySource, /‡πÉ‡∏Å‡∏•‡πâ\/‡∏´‡∏•‡∏∏‡∏î‡πÅ‡∏ô‡∏ß‡∏£‡∏±‡∏ö‡∏™‡∏≥‡∏Ñ‡∏±‡∏ç/, 'Scanner UI must expose Important Support filtering')
+assert.match(opportunitySource, /‡πÄ‡∏£‡∏µ‡∏¢‡∏á: ‡πÉ‡∏Å‡∏•‡πâ‡πÅ‡∏ô‡∏ß‡∏£‡∏±‡∏ö‡∏™‡∏≥‡∏Ñ‡∏±‡∏ç/, 'Scanner UI must sort by Important Support proximity')
+assert.match(opportunitySource, /‡πÄ‡∏£‡∏µ‡∏¢‡∏á: ‡πÉ‡∏Å‡∏•‡πâ ATH/, 'Scanner UI must sort by ATH distance')
+assert.match(dashboardSource, /\/api\/ath\?symbols=/, 'Dashboard must load ATH data without delaying initial server render')
+assert.match(dashboardSource, /üèÜ ATH/, 'Dashboard must display ATH badges for held stocks')
+assert.doesNotMatch(dashboardSource, /status === 'BELOW_ATH'/, 'Dashboard must not show noisy far-from-ATH status; only ATH/near-ATH badges belong on the portfolio view')
+assert.match(dashboardSource, /\/api\/important-support\?symbols=/, 'Dashboard must load Important Support without blocking initial render')
+assert.match(dashboardSource, /‡πÉ‡∏Å‡∏•‡πâ‡πÅ‡∏ô‡∏ß‡∏£‡∏±‡∏ö‡∏™‡∏≥‡∏Ñ‡∏±‡∏ç/, 'Dashboard must display Important Support badges')
+assert.match(dashboardSource, /‡πÄ‡∏á‡∏¥‡∏ô‡∏™‡∏î‡∏Ñ‡∏á‡πÄ‡∏´‡∏•‡∏∑‡∏≠ \/ Buying Power ‡πÉ‡∏ô DIME/, 'Dime card must describe the balance as current buying power, not only unsettled sale proceeds')
+assert.match(dashboardSource, /‡∏≠‡∏±‡∏õ‡πÄ‡∏î‡∏ï‡∏•‡πà‡∏≤‡∏™‡∏∏‡∏î/, 'Dime card timestamp must cover both Auto Sync and manual balance updates')
+assert.match(dashboardSource, /‡∏Å‡∏≤‡∏£‡∏ö‡∏±‡∏ô‡∏ó‡∏∂‡∏Å‡∏¢‡∏≠‡∏î‡∏ô‡∏µ‡πâ‡∏à‡∏∞‡πÄ‡∏Ç‡∏µ‡∏¢‡∏ô‡∏ó‡∏±‡∏ö‡∏¢‡∏≠‡∏î DIME ‡∏õ‡∏±‡∏à‡∏à‡∏∏‡∏ö‡∏±‡∏ô‡∏ó‡∏µ‡πà Auto Sync ‡∏Ñ‡∏≥‡∏ô‡∏ß‡∏ì‡πÑ‡∏ß‡πâ/, 'Manual Dime edit must warn that it replaces the Auto Sync-calculated balance')
+assert.doesNotMatch(dashboardSource, /‡πÄ‡∏á‡∏¥‡∏ô‡∏à‡∏≤‡∏Å‡∏Ç‡∏≤‡∏¢‡∏´‡∏∏‡πâ‡∏ô ‡∏¢‡∏±‡∏á‡πÑ‡∏°‡πà‡πÇ‡∏≠‡∏ô/, 'Legacy misleading Dime description must not return')
+
+const lightModeCss = fs.readFileSync('app/globals.css', 'utf8')
+assert.match(lightModeCss, /text-green-400/, 'Light mode must override semantic green text for contrast')
+assert.match(lightModeCss, /text-yellow-400/, 'Light mode must override semantic yellow text for contrast')
+assert.match(lightModeCss, /bg-amber-950\\\/95/, 'Light mode must restyle the stale-analysis banner')
+assert.match(lightModeCss, /text-blue-300/, 'Light mode must keep blue helper text readable')
+assert.match(lightModeCss, /text-purple-300/, 'Light mode must keep purple AI text readable')
+assert.match(lightModeCss, /bg-blue-600\.text-white/, 'Light mode must preserve white text on primary blue buttons')
+assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native form controls with light color scheme')
+
+// Release metadata must match the verified deployment and the owner's scoped gate approval.
+const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+assert.equal(packageJson.version, '1.40.2', 'Package version must match the v1.40.2 release')
+const releasePackageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
+assert.equal(releasePackageLock.version, packageJson.version, 'Lockfile version must match package.json')
+assert.equal(releasePackageLock.packages?.['']?.version, packageJson.version, 'Lockfile root package version must match package.json')
+const releaseTsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
+assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1402'], 'Version badge must resolve to the v1.40.2 changelog')
+const candidateChangelog = fs.readFileSync('config/changelog-v1402.ts', 'utf8')
+assert.match(candidateChangelog, /version: 'v1\.40\.2'/)
+assert.match(candidateChangelog, /date: '2026-10-25 14:24 ICT ¬∑ Production'/)
+assert.match(candidateChangelog, /from '\.\/changelog-v1401'/, 'Release must preserve the completed v1.40.1 history')
+assert.match(candidateChangelog, /9e63f5173c6765b553d09a51ba992053976f9cd7/, 'Gate approval must identify the exact released application SHA')
+assert.match(candidateChangelog, /dpl_9RmeQ3tK7q9bPdWyQwm22cYGsM1n/, 'Gate approval must identify the approved Production deployment')
+assert.match(candidateChangelog, /Security Gate ‡πÅ‡∏•‡∏∞ Production Release Gate: ‡πÄ‡∏à‡πâ‡∏≤‡∏Ç‡∏≠‡∏á‡∏≠‡∏ô‡∏∏‡∏°‡∏±‡∏ï‡∏¥‡∏õ‡∏•‡∏î HOLD ‡πÄ‡∏â‡∏û‡∏≤‡∏∞‡∏Å‡∏≤‡∏£‡∏õ‡∏•‡πà‡∏≠‡∏¢ v1\.40\.2 ‡∏ô‡∏µ‡πâ/)
+assert.match(candidateChangelog, /Staged Authenticated QA: BLOCKED/)
+assert.match(candidateChangelog, /NOT TESTED \/ Owner-Accepted Limitation/)
+assert.doesNotMatch(candidateChangelog, /Unreleased ‚Äî Release Candidate|(?:Release|Security) Gate: HOLD|‡∏¢‡∏±‡∏á‡πÑ‡∏°‡πà‡πÄ‡∏ú‡∏¢‡πÅ‡∏û‡∏£‡πà Production/, 'Current release entry must not retain superseded release holds')
+assert.match(candidateChangelog, /Import Preview/)
+assert.match(candidateChangelog, /\/imports/)
+const priorRelease = fs.readFileSync('config/changelog-v1401.ts', 'utf8')
+assert.match(priorRelease, /version: 'v1\.40\.1'/)
+assert.match(priorRelease, /date: '2026-10-24 ¬∑ Production'/)
+assert.match(priorRelease, /0a5ab7e4161f89d570620e426eeab9f83089c631/)
+assert.match(priorRelease, /‡∏´‡∏ô‡πâ‡∏≤‡πÉ‡∏™‡πà PIN/)
+assert.match(priorRelease, /‡∏õ‡∏£‡∏∞‡∏ß‡∏±‡∏ï‡∏¥‡∏¢‡∏≤‡∏ß/)
+assert.match(priorRelease, /Win Rate/)
+assert.match(priorRelease, /Atomic/)
+assert.match(priorRelease, /‡∏ó‡∏®‡∏ô‡∏¥‡∏¢‡∏°‡∏™‡∏π‡∏á‡∏™‡∏∏‡∏î 6 ‡∏ï‡∏≥‡πÅ‡∏´‡∏ô‡πà‡∏á/)
+const priorReleaseCandidate = fs.readFileSync('config/changelog-v1400.ts', 'utf8')
+assert.match(priorReleaseCandidate, /version: 'v1\.40\.0'/)
+assert.match(priorReleaseCandidate, /Investment Command Center/)
+const v1390Changelog = fs.readFileSync('config/changelog-v1390.ts', 'utf8')
+assert.match(v1390Changelog, /version: 'v1\.39\.0'/)
+assert.match(v1390Changelog, /Smart Dip Buying/)
+assert.match(fs.readFileSync('config/changelog-v1380.ts', 'utf8'), /FX Profit Attribution/, 'v1.38.0 history must remain intact')
+const priorCandidateChangelog = fs.readFileSync('config/changelog-v1370.ts', 'utf8')
+assert.match(priorCandidateChangelog, /version: 'v1\.37\.0'/)
+assert.match(priorCandidateChangelog, /Unreleased ‚Äî Release Candidate/)
+const discoveryChangelog = fs.readFileSync('config/changelog-v1360.ts', 'utf8')
+assert.match(discoveryChangelog, /version: 'v1\.36\.0'/)
+assert.match(discoveryChangelog, /date: 'Unreleased/)
+assert.match(discoveryChangelog, /from '\.\/changelog-v1351'/)
+assert.match(discoveryChangelog, /ATH Cache/)
+assert.match(fs.readFileSync('components/portfolio/DiscoveryWorkspace.tsx', 'utf8'), /Investment Discovery ¬∑ \{CURRENT_VERSION\}/, 'Discovery must use the shared application version')
+const candidateReleaseNotes = fs.readFileSync('docs/release-v1401.md', 'utf8')
+assert.match(candidateReleaseNotes, /Status: Production/)
+assert.match(candidateReleaseNotes, /Security Gate: HOLD/)
+assert.match(candidateReleaseNotes, /dpl_AH7JDQFJJUezYJ7A54c5jnWujv7Q/)
+const hotfixChangelog = fs.readFileSync('config/changelog-v1351.ts', 'utf8')
+assert.match(hotfixChangelog, /version: 'v1\.35\.1'/)
+assert.match(hotfixChangelog, /from '\.\/changelog-v1350'/, 'Hotfix must preserve the complete earlier changelog chain')
+assert.match(hotfixChangelog, /date: 'Unreleased/, 'Prepared metadata must not invent a release time')
+assert.match(hotfixChangelog, /QuickNotesDrawer/)
+assert.match(hotfixChangelog, /Revision/)
+assert.match(hotfixChangelog, /Security Decision/, 'v1.35.1 must retain its separate security gate')
+const latestReleaseChangelog = fs.readFileSync('config/changelog-v1350.ts', 'utf8')
+assert.match(latestReleaseChangelog, /version: 'v1\.35\.0'/, 'Latest changelog entry must be v1.35.0')
+assert.match(latestReleaseChangelog, /from '\.\/changelog-v1341'/, 'v1.35.0 changelog must retain the v1.34.1 history')
+assert.match(latestReleaseChangelog, /Portfolio-scoped Watchlist/, 'v1.35.0 must document scoped Watchlist')
+assert.match(latestReleaseChangelog, /Smart Alerts/, 'v1.35.0 must document Smart Alerts')
+assert.match(latestReleaseChangelog, /Legacy Watchlist/, 'v1.35.0 must document preservation of legacy Watchlist')
+const previousReleaseChangelog = fs.readFileSync('config/changelog-v1341.ts', 'utf8')
+assert.match(previousReleaseChangelog, /version: 'v1\.34\.1'/, 'Previous v1.34.1 entry must remain intact')
+assert.match(previousReleaseChangelog, /from '\.\/changelog-v1340'/, 'v1.34.1 changelog must retain earlier history')
+assert.match(previousReleaseChangelog, /data-theme="dark"/, 'v1.34.1 must document the app-scoped theme fix')
+assert.doesNotMatch(previousReleaseChangelog, /SQL Security Hardening|Supabase Cloud Security/i, 'v1.34.1 must not claim unreleased SQL or Cloud security fixes')
+const releaseChangelog = fs.readFileSync('config/changelog-v1340.ts', 'utf8')
+assert.match(releaseChangelog, /version: 'v1\.34\.0'/, 'Previously released v1.34.0 changelog must remain intact')
+assert.match(releaseChangelog, /Fundamental Analysis/)
+assert.match(releaseChangelog, /Stock Comparison/)
+assert.match(releaseChangelog, /Actual vs Estimate ‡∏¢‡∏±‡∏á‡πÑ‡∏°‡πà‡πÄ‡∏õ‡∏¥‡∏î‡πÉ‡∏ä‡πâ/)
+assert.match(releaseChangelog, /P\/E Bear\/Base\/Bull/)
+assert.match(releaseChangelog, /SEC XBRL/)
+assert.match(releaseChangelog, /‡πÑ‡∏°‡πà‡πÅ‡∏™‡∏î‡∏á‡∏£‡∏≤‡∏Ñ‡∏≤ Scenario/)
+assert.doesNotMatch(releaseChangelog, /SQL Security Hardening|Supabase Cloud Security/i, 'v1.34.0 must not claim unreleased SQL or Cloud security fixes')
+const scannerReleaseChangelog = fs.readFileSync('config/changelog-v1331.ts', 'utf8')
+assert.match(scannerReleaseChangelog, /version: 'v1\.33\.1'/)
+assert.match(scannerReleaseChangelog, /Scanner mine: ‡πÉ‡∏ä‡πâ Holdings ‡∏Ç‡∏≠‡∏á‡∏û‡∏≠‡∏£‡πå‡∏ï‡∏ó‡∏µ‡πà‡πÄ‡∏•‡∏∑‡∏≠‡∏Å‡πÄ‡∏ó‡πà‡∏≤‡∏ô‡∏±‡πâ‡∏ô/)
+assert.match(scannerReleaseChangelog, /‡∏ï‡∏£‡∏ß‡∏à Auth\/PIN ‡πÅ‡∏•‡∏∞ Portfolio Ownership ‡∏ù‡∏±‡πà‡∏á Server/)
+assert.match(scannerReleaseChangelog, /‡πÑ‡∏°‡πà‡∏£‡∏ß‡∏° Watchlist ‡∏£‡∏∞‡∏î‡∏±‡∏ö‡∏ö‡∏±‡∏ç‡∏ä‡∏µ‡∏à‡∏ô‡∏ñ‡∏∂‡∏á v1\.35\.0/)
+assert.equal(packageJson.engines?.node, '22.x', 'Runtime must stay pinned to the supported Node 22 major')
+assert.equal(packageJson.dependencies?.next, '16.4.1', 'Patched Next.js release must stay pinned')
+assert.equal(packageJson.dependencies?.react, '19.3.1', 'React and ReactDOM must stay aligned on the same release')
+assert.equal(packageJson.dependencies?.['react-dom'], '19.3.1', 'React and ReactDOM must stay aligned on the same release')
+assert.equal(packageJson.devDependencies?.['@types/react'], '^19.3.0', 'React type packages must stay aligned with React 19.3')
+assert.equal(packageJson.devDependencies?.['@types/react-dom'], '^19.3.0', 'React DOM type packages must stay aligned with React 19.3')
+assert.equal(packageJson.devDependencies?.autoprefixer, '^10.6.1', 'Autoprefixer maintenance floor must stay current')
+assert.equal(packageJson.devDependencies?.['eslint-config-next'], '16.4.1', 'eslint-config-next must stay aligned with Next.js')
+assert.equal(packageJson.devDependencies?.['@types/node'], '^22', 'Node types must stay on the Node 22 runtime major')
+assert.equal(packageJson.dependencies?.['@supabase/ssr'], '^0.12.7', 'v1.31.2 must preserve the audited Supabase SSR dependency')
+assert.equal(packageJson.dependencies?.['@anthropic-ai/sdk'], undefined, 'Unused Anthropic SDK must stay removed')
+assert.equal(packageJson.scripts?.lint, 'eslint .', 'Next.js 16 must use the ESLint CLI')
+assert.equal(packageJson.scripts?.typecheck, 'tsc --noEmit', 'CI must expose an explicit TypeScript check')
+assert.equal(packageJson.scripts?.ci, 'npm run lint && npm run typecheck && npm run build', 'CI must run lint, typecheck and the guarded production build')
+assert.equal(fs.existsSync('package-lock.json'), true, 'A committed npm lockfile is required for reproducible builds')
+
+const packageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
+const mcpSdkLock = packageLock.packages?.['node_modules/@modelcontextprotocol/sdk']
+assert.equal(mcpSdkLock?.version, '1.32.1', 'MCP SDK must retain the reviewed session-isolation and redirect security fixes')
+assert.equal(packageLock.version, packageJson.version, 'package-lock version must match package.json')
+assert.equal(packageLock.packages?.['']?.version, packageJson.version, 'lockfile root package version must match package.json')
+assert.equal(packageLock.packages?.['']?.engines?.node, '22.x', 'lockfile must preserve the Node 22 runtime pin')
+assert.equal(packageLock.packages?.['']?.dependencies?.next, '16.4.1', 'lockfile must preserve the patched Next.js version')
+assert.equal(packageLock.packages?.['node_modules/next']?.version, '16.4.1', 'lockfile must resolve Next.js 16.4.1')
+assert.equal(packageLock.packages?.['']?.dependencies?.react, '19.3.1', 'lockfile root must pin patched React')
+assert.equal(packageLock.packages?.['']?.dependencies?.['react-dom'], '19.3.1', 'lockfile root must pin patched ReactDOM')
+assert.equal(packageLock.packages?.['node_modules/react']?.version, '19.3.1', 'lockfile must resolve React 19.3.1')
+assert.equal(packageLock.packages?.['node_modules/react-dom']?.version, '19.3.1', 'lockfile must resolve ReactDOM 19.3.1')
+assert.equal(packageLock.packages?.['node_modules/@types/react']?.version, '19.3.0', 'lockfile must resolve React types 19.3.0')
+assert.equal(packageLock.packages?.['node_modules/@types/react-dom']?.version, '19.3.0', 'lockfile must resolve ReactDOM types 19.3.0')
+assert.equal(packageLock.packages?.['node_modules/autoprefixer']?.version, '10.6.1', 'lockfile must resolve Autoprefixer 10.6.1')
+assert.equal(packageLock.packages?.['']?.devDependencies?.['eslint-config-next'], '16.4.1', 'lockfile root must pin the matching Next.js ESLint config')
+assert.equal(packageLock.packages?.['node_modules/eslint-config-next']?.version, '16.4.1', 'lockfile must resolve eslint-config-next 16.4.1')
+for (const name of ['@next/env', '@next/eslint-plugin-next']) {
+  assert.equal(packageLock.packages?.[`node_modules/${name}`]?.version, '16.4.1', `${name} must match the patched Next.js release`)
+}
+assert.equal(packageLock.packages?.['node_modules/sharp']?.version, '0.35.5', 'Image Optimization must resolve the patched Sharp release')
+assert.equal(packageLock.packages?.['node_modules/@supabase/ssr']?.version, '0.12.7', 'lockfile must resolve audited @supabase/ssr 0.12.7')
+assert.equal(packageLock.packages?.['node_modules/@supabase/supabase-js']?.version, '2.116.0', 'lockfile must resolve compatible @supabase/supabase-js 2.116.0')
+assert.equal(packageJson.devDependencies?.tailwindcss, '^3.4.14', 'Security remediation must preserve Tailwind CSS 3 while compatibility is tested')
+assert.equal(packageJson.overrides?.['postcss-selector-parser'], '7.1.6', 'Force the parser containing the quadratic-selector security fix')
+const selectorParserEntries = Object.entries(packageLock.packages ?? {}).filter(([path]) => path.endsWith('node_modules/postcss-selector-parser'))
+assert.ok(selectorParserEntries.length > 0, 'Tailwind CSS 3 must resolve the selector parser dependency')
+for (const [path, manifest] of selectorParserEntries) {
+  assert.equal(manifest.version, '7.1.6', 'Disallow vulnerable postcss-selector-parser in ' + path)
+}
+assert.equal(packageLock.packages?.['node_modules/tailwindcss']?.version, '3.4.19', 'Security remediation must preserve audited Tailwind CSS 3')
+assert.equal(packageLock.packages?.['']?.dependencies?.['@anthropic-ai/sdk'], undefined, 'Removed dependencies must not remain in lockfile root')
+
+assert.equal(fs.existsSync('.github/workflows/ci.yml'), true, 'GitHub Actions CI workflow is required')
+assert.equal(fs.existsSync('.github/dependabot.yml'), true, 'Dependabot configuration is required')
+assert.equal(fs.existsSync('scripts/test-authenticated-qa-workflow.mjs'), true, 'Authenticated QA workflow safety tests are required')
+await import('./test-authenticated-qa-workflow.mjs')
+const dependabotSource = fs.readFileSync('.github/dependabot.yml', 'utf8')
+assert.match(dependabotSource, /^    rebase-strategy: disabled$/m, 'Dependabot must disable unnecessary automatic rebases')
+assert.match(dependabotSource, /react-family:/, 'Dependabot must group React and ReactDOM updates')
+assert.match(dependabotSource, /next-family:/, 'Dependabot must group Next.js and eslint-config-next updates')
+assert.match(dependabotSource, /dependency-name:\s*["']?@types\/node["']?/, 'Dependabot must explicitly guard Node type major updates')
+assert.match(dependabotSource, /version-update:semver-major/, 'Dependabot must ignore @types/node major updates beyond runtime')
+assert.match(dependabotSource, /interval:\s*weekly/, 'Dependabot must check updates weekly')
+assert.match(dependabotSource, /day:\s*monday/, 'Dependabot must retain the Monday update window')
+assert.match(dependabotSource, /timezone:\s*Asia\/Bangkok/, 'Dependabot must use Thai time')
+assert.match(dependabotSource, /- dependency-name:\s*["']eslint["']\s*\n\s*update-types:\s*\n\s*-\s*["']version-update:semver-major["']/, 'Dependabot must pause ESLint 10 major version PRs')
+assert.equal(fs.existsSync('SECURITY.md'), true, 'Security policy is required')
+assert.equal(fs.existsSync('OPERATIONS.md'), true, 'Operations runbook is required')
+assert.equal(fs.existsSync('eslint.config.mjs'), true, 'Explicit ESLint flat config is required')
+
+const ciSource = fs.readFileSync('.github/workflows/ci.yml', 'utf8')
+assert.match(ciSource, /actions\/checkout@v7/, 'CI must use the current Node 24-based checkout action')
+assert.match(ciSource, /actions\/setup-node@v7/, 'CI must use the current Node 24-based setup-node action')
+assert.match(ciSource, /node-version: '22'/, 'CI must run the application on Node 22')
+assert.match(ciSource, /npm ci/, 'CI must install from the exact lockfile')
+assert.match(ciSource, /npm audit --omit=dev --audit-level=high/, 'CI must block high-severity production dependency advisories')
+assert.match(ciSource, /npm run ci/, 'CI must run the project CI gate')
+
+const nextConfigSource = fs.readFileSync('next.config.js', 'utf8')
+assert.match(nextConfigSource, /poweredByHeader:\s*false/, 'X-Powered-By must be disabled')
+assert.match(nextConfigSource, /X-Content-Type-Options/, 'nosniff security header must be configured')
+assert.match(nextConfigSource, /Permissions-Policy/, 'Permissions-Policy security header must be configured')
+assert.doesNotMatch(nextConfigSource, /webpack\s*\(/, 'Next.js 16 should not require a legacy webpack alias hook')
+
+assert.equal(fs.existsSync('proxy.ts'), true, 'Next.js 16 network guard must use proxy.ts')
+assert.equal(fs.existsSync('middleware.ts'), false, 'Deprecated middleware.ts must not return')
+const proxySource = fs.readFileSync('proxy.ts', 'utf8')
+assert.match(proxySource, /export async function proxy\(/, 'Proxy must export the Next.js 16 proxy function')
+assert.match(proxySource, /PIN_SESSION_COOKIE_NAME/, 'Proxy must preserve the PIN session gate')
+
+const tsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
+const changelogReleaseTimes = [
+  ['config/changelog-v1161.ts', '2026-09-08 02:48 ICT'],
+  ['config/changelog-v117.ts', '2026-09-08 03:40 ICT'],
+  ['config/changelog-v118.ts', '2026-09-08 04:54 ICT'],
+  ['config/changelog-v1181.ts', '2026-09-08 05:00 ICT'],
+  ['config/changelog-v119.ts', '2026-09-09 23:10 ICT'],
+  ['config/changelog-v120.ts', '2026-09-10 00:48 ICT'],
+  ['config/changelog-v121.ts', '2026-09-10 02:16 ICT'],
+  ['config/changelog-v122.ts', '2026-09-10 03:58 ICT'],
+  ['config/changelog-v123.ts', '2026-09-10 15:38 ICT'],
+  ['config/changelog-v124.ts', '2026-09-10 16:50 ICT'],
+  ['config/changelog-v125.ts', '2026-09-10 17:53 ICT'],
+  ['config/changelog-v1251.ts', '2026-09-11 00:39 ICT'],
+  ['config/changelog-v126.ts', '2026-09-13 02:10 ICT'],
+  ['config/changelog-v127.ts', '2026-09-15 15:43 ICT'],
+  ['config/changelog-v1271.ts', '2026-09-16 02:10 ICT'],
+  ['config/changelog-v1272.ts', '2026-09-17 01:35 ICT'],
+  ['config/changelog-v1273.ts', '2026-09-18 03:42 ICT'],
+  ['config/changelog-v1274.ts', '2026-09-19 16:02 ICT'],
+  ['config/changelog-v1275.ts', '2026-09-19 19:51 ICT'],
+  ['config/changelog-v1280.ts', '2026-09-22 03:17 ICT'],
+  ['config/changelog-v1290.ts', '2026-09-23 16:42 ICT'],
+  ['config/changelog-v1291.ts', '2026-09-30 04:18 ICT'],
+  ['config/changelog-v1292.ts', '2026-10-04 15:16 ICT'],
+  ['config/changelog-v1293.ts', '2026-10-05 23:19 ICT'],
+  ['config/changelog-v1300.ts', '2026-10-06 19:59 ICT'],
+  ['config/changelog-v1310.ts', '2026-10-06 22:25 ICT'],
+  ['config/changelog-v1311.ts', '2026-10-07 01:40 ICT'],
+  ['config/changelog-v1312.ts', '2026-10-07 02:20 ICT'],
+  ['config/changelog-v1320.ts', '2026-10-11 03:54 ICT'],
+  ['config/changelog-v1330.ts', '2026-10-13 02:20 ICT'],
+  ['config/changelog-v1331.ts', '2026-10-13 18:01 ICT'],
+]
+for (const [file, expectedTime] of changelogReleaseTimes) {
+  const source = fs.readFileSync(file, 'utf8')
+  assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
+}
+
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1402'], 'Current release must use the v1.40.2 version badge')
+assert.match(releaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.34.0 changelog must contain a timestamp in the repository format')
+assert.match(latestReleaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.35.0 changelog must contain a timestamp in the repository format')
+
+await import('./test-quick-notes.mjs')
+await import('./test-scratchpad-security.mjs')
+// Pure backup safety regressions; the opt-in Docker restore exercise is never run by CI implicitly.
+await import('./test-recovery.mjs')
+execFileSync(process.execPath, ['--test', 'scripts/test-security-transitive-deps.mjs'], { stdio: 'inherit', timeout: 30000 })
+console.log('‚úì Critical regression tests passed')
