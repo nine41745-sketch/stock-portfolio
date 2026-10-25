@@ -150,7 +150,7 @@ assert.ok(fs.readFileSync('app/api/performance/route.ts', 'utf8').includes('summ
 
 const changelog = fs.readFileSync('config/changelog-v1380.ts', 'utf8')
 assert.match(changelog, /v1\.38\.0/)
-assert.match(changelog, /date: 'Development History — ไม่ยืนยันเวลา Production แยกรุ่น'/)
+assert.match(changelog, /date: 'Development History — Feature commit 2026-10-18 02:48 ICT \(ไม่ใช่ Production\)'/)
 assert.ok(changelog.includes("from './changelog-v1370'"))
 assert.match(changelog, /FX Profit Attribution/, 'v1.38.0 development history must be preserved')
 const tsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
