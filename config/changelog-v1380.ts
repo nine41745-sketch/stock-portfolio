@@ -1,10 +1,10 @@
 import { changelog as previousChangelog } from './changelog-v1370'
 import type { ChangelogEntry } from './changelog'
 
-// Development history; a standalone Production release time has not been established.
+// Feature commit time; this is not a Production release time.
 const v1380: ChangelogEntry = {
   version: 'v1.38.0',
-  date: 'Development History — ไม่ยืนยันเวลา Production แยกรุ่น',
+  date: 'Development History — Feature commit 2026-10-18 02:48 ICT (ไม่ใช่ Production)',
   changes: [
     'Trading Journal แบบ transaction-linked draft-only ในหน่วยความจำ แยกตามพอร์ต โดยไม่เปลี่ยน Ledger และไม่มีความทนทานข้ามการ Reload/อุปกรณ์',
     'Advanced Trade Statistics ใช้หนึ่ง SELL ที่ FIFO ยอมรับเป็นหนึ่งดีล พร้อม Win/Loss/Breakeven, Average Win/Loss, Profit Factor, Expectancy และค่าธรรมเนียมที่บันทึก',
