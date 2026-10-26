@@ -20,7 +20,7 @@ export function fixture({ mode = 'production', host = stagedHost, env: changes =
     NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL: activeHost,
     NEXT_PUBLIC_SUPABASE_URL: 'https://synthetic-prod.supabase.co',
     NEXT_PUBLIC_SUPABASE_ANON_KEY: 'synthetic-anon', SUPABASE_SERVICE_ROLE_KEY: 'synthetic-service',
-    CRON_SECRET: 'synthetic-cron-secret', ...changes,
+    CRON_SECRET: 'test-cron-secret', ...changes,
   }, { get(target, key) { if (key === 'CRON_SECRET') calls.secretReads++; return target[key] } })
   const forbidden = label => () => { calls.providers++; throw new Error(`Unexpected provider: ${label}`) }
   const headers = new Headers({ host, ...(forwardedHost ? { 'x-forwarded-host': forwardedHost } : {}) })
