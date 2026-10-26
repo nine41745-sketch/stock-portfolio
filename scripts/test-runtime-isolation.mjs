@@ -120,6 +120,30 @@ for (const file of ['app/api/cron/daily-analyze/route.ts', 'app/api/cron/premark
     assert.equal(f.calls.providers, 0)
   })
 
+  test(`${file}: explicitly approved Preview branch still cannot invoke Production Cron`, async () => {
+    const approvedHost = 'pr115-preview.vercel.app'
+    const f = fixture({
+      mode: 'preview',
+      host: approvedHost,
+      env: {
+        VERCEL_URL: approvedHost,
+        NEXT_PUBLIC_VERCEL_URL: approvedHost,
+        VERCEL_GIT_COMMIT_REF: 'codex/active-production-identity',
+        NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF: 'codex/active-production-identity',
+        NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH: 'codex/active-production-identity',
+        NEXT_PUBLIC_SUPABASE_PRODUCTION_PROJECT_REF: 'prodproject123456789',
+        NEXT_PUBLIC_SUPABASE_URL: 'https://prodproject123456789.supabase.co',
+        CRON_SECRET: 'test-cron-secret',
+      },
+    })
+    const response = await f.load(file).GET(f.request('/api/cron/synthetic', 'Bearer test-cron-secret'))
+    assert.equal(response.status, 404)
+    assert.equal(f.calls.secretReads, 0)
+    assert.equal(f.calls.service, 0)
+    assert.equal(f.calls.db, 0)
+    assert.equal(f.calls.providers, 0)
+  })
+
   test(`${file}: unavailable Production identity fails closed before Cron secret`, async () => {
     const f = fixture({
       host: cronTargetHost,
@@ -183,4 +207,35 @@ test('An allowlisted synthetic Host permits factories; this does not attest depl
   await f.load('lib/supabase/server.ts').createServiceClient()
   assert.equal(f.calls.service, 1)
   assert.equal(f.calls.db, 0)
+})
+
+test('Only the branch-scoped approved Preview may use the Production target; this is synthetic and performs no DB operation', async () => {
+  const approvedHost = 'pr115-preview.vercel.app'
+  const before = boundary.snapshot().length
+  const f = fixture({
+    mode: 'preview',
+    host: approvedHost,
+    env: {
+      VERCEL_URL: approvedHost,
+      NEXT_PUBLIC_VERCEL_URL: approvedHost,
+      VERCEL_GIT_COMMIT_REF: 'codex/active-production-identity',
+      NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF: 'codex/active-production-identity',
+      NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH: 'codex/active-production-identity',
+      NEXT_PUBLIC_SUPABASE_PRODUCTION_PROJECT_REF: 'prodproject123456789',
+      NEXT_PUBLIC_SUPABASE_URL: 'https://prodproject123456789.supabase.co',
+    },
+  })
+  const server = f.load('lib/supabase/server.ts')
+  await server.createClient()
+  await server.createServiceClient()
+  f.load('lib/supabase/client.ts').createClient()
+  const result = await f.load('proxy.ts').proxy(f.request())
+  assert.equal(result.status, 307)
+  assert.equal(result.location, `https://${approvedHost}/login`)
+  assert.equal(f.calls.server, 2)
+  assert.equal(f.calls.service, 1)
+  assert.equal(f.calls.browser, 1)
+  assert.equal(f.calls.auth, 1)
+  assert.equal(f.calls.db, 0, 'The synthetic SDK must not execute any database operation')
+  assert.equal(boundary.snapshot().length, before, 'No outbound network is permitted')
 })

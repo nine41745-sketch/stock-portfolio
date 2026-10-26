@@ -11,7 +11,7 @@ import {
 } from '../lib/supabase/runtime-safety.mjs'
 
 const syntheticRef = 'synthetic-project-1234'
-const productionRef = 'production-project-9876'
+const productionRef = 'prodproject123456789'
 const productionHost = 'portfolio.example.test'
 const stagedHost = 'portfolio-preview-123.vercel.app'
 const previewConfig = {
@@ -49,6 +49,46 @@ assert.throws(
 assert.doesNotThrow(
   () => assertSupabaseTargetIsSafe({ ...previewConfig, supabaseUrl: `https://${syntheticRef}.supabase.co` }),
   'Preview may connect only to its separately allowlisted synthetic project'
+)
+const explicitlyApprovedPreviewProductionConfig = {
+  ...previewConfig,
+  requestHost: stagedHost,
+  deploymentUrl: stagedHost,
+  projectProductionUrl: productionHost,
+  supabaseUrl: `https://${productionRef}.supabase.co`,
+  previewProductionAccessBranch: 'codex/active-production-identity',
+  gitCommitRef: 'codex/active-production-identity',
+}
+assert.doesNotThrow(
+  () => assertSupabaseTargetIsSafe(explicitlyApprovedPreviewProductionConfig),
+  'Only the explicitly approved Preview branch may use its exact Production Supabase target'
+)
+for (const [overrides, reason] of [
+  [{ gitCommitRef: 'other-preview-branch' }, 'a different Preview branch must not use Production Supabase'],
+  [{ previewProductionAccessBranch: 'other-preview-branch', gitCommitRef: 'other-preview-branch' }, 'the opt-in cannot authorize a branch outside this owner-approved task'],
+  [{ requestHost: 'attacker.example.test' }, 'a request outside its deployment hostname must not use Production Supabase'],
+  [{ requestHost: productionHost, deploymentUrl: productionHost }, 'the Production hostname must not be treated as an approved Preview'],
+  [{ supabaseUrl: 'https://other-project.supabase.co' }, 'the approved Production access branch must not silently use a different target'],
+  [{ productionProjectRef: undefined }, 'Preview Production access must fail closed without an exact Production project ref'],
+  [{ previewProductionAccessBranch: undefined }, 'Preview Production access must fail closed without a branch-scoped opt-in'],
+]) {
+  assert.throws(
+    () => assertSupabaseTargetIsSafe({ ...explicitlyApprovedPreviewProductionConfig, ...overrides }),
+    /not isolated/,
+    reason
+  )
+}
+await assert.doesNotReject(
+  () => assertSupabaseTargetIsSafeForServer(explicitlyApprovedPreviewProductionConfig),
+  'The server guard must honor only the explicit, exact-target Preview branch opt-in'
+)
+await assert.rejects(
+  () => assertSupabaseTargetIsSafeForServer({
+    ...explicitlyApprovedPreviewProductionConfig,
+    gitCommitRef: 'unapproved-branch',
+  }),
+  /not isolated/,
+  'The server guard must reject Production Supabase from any other Preview branch'
 )
 assert.doesNotThrow(
   () => assertSupabaseTargetIsSafe({
@@ -131,6 +171,10 @@ assert.equal(isProductionCronEnvironment({ deploymentEnv: 'production' }), false
 assert.equal(isProductionCronEnvironment({ deploymentEnv: 'preview' }), false)
 assert.equal(isProductionCronEnvironment({ deploymentEnv: undefined }), false)
 assert.equal(isProductionCronEnvironment({ deploymentEnv: 'unknown' }), false)
+assert.equal(await isProductionCronRequestAllowed({
+  ...explicitlyApprovedPreviewProductionConfig,
+  deploymentEnv: 'preview',
+}), false, 'Preview Cron must stay blocked even when this Preview may use Production Supabase')
 
 const activeDeploymentIdentity = {
   deploymentEnv: 'production',
@@ -236,10 +280,14 @@ for (const file of ['lib/supabase/server.ts', 'proxy.ts']) {
   assert.match(text, /process\.env\.VERCEL_PROJECT_PRODUCTION_URL/, `${file} must provide Vercel's project Production URL`)
   assert.match(text, /process\.env\.VERCEL_DEPLOYMENT_ID/, `${file} must provide the current platform deployment identity`)
 }
+assert.match(source('lib/supabase/server.ts'), /gitCommitRef: process\.env\.VERCEL_GIT_COMMIT_REF/)
+assert.match(source('proxy.ts'), /gitCommitRef: process\.env\.VERCEL_GIT_COMMIT_REF/)
 const browserClient = source('lib/supabase/client.ts')
 assert.match(browserClient, /window\.location\.host/, 'Browser Supabase access must check the current request host')
 assert.match(browserClient, /NEXT_PUBLIC_VERCEL_URL/, 'Browser Supabase access must know the deployment-specific URL')
 assert.match(browserClient, /NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL/, 'Browser Supabase access must know the project Production URL')
+assert.match(browserClient, /NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH/, 'Browser Production access must require a branch-scoped opt-in')
+assert.match(browserClient, /NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF/, 'Browser Production access must compare the current Git branch to that opt-in')
 
 for (const [file, factory] of [
   ['app/api/cron/daily-analyze/route.ts', 'createServiceClient()'],
@@ -272,6 +320,8 @@ const nextConfig = source('next.config.js')
 assert.match(nextConfig, /NEXT_PUBLIC_VERCEL_ENV/)
 assert.match(nextConfig, /process\.env\.VERCEL_ENV/)
 assert.match(nextConfig, /unknown/)
+assert.match(nextConfig, /NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF/)
+assert.match(nextConfig, /NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH/)
 const safetySource = source('lib/supabase/runtime-safety.mjs')
 assert.match(safetySource, /stock-portfolio-nine41745\.vercel\.app/, 'The currently verified active Production alias must remain allowlisted')
 

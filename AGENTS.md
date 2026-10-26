@@ -105,3 +105,11 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 - Keep CI, Security Assertions, guard checks, Rulesets, secret/data protections and existing owner-approval boundaries intact. Self-review does not authorize Commit/Push, Merge, Deploy/Promote, alias/domain or Environment/Secrets changes, Production DB access, or releasing a HOLD Gate outside the owner's explicit task scope.
 - End every final report with exactly one `ขั้นต่อไปที่แนะนำ`: state the next action and who should do it. When owner approval is required, provide a copy-ready approval sentence for this Codex chat naming the exact action, SHA or Deployment ID and prohibited scope. Do not ask the owner to obtain approval from a separate reviewer chat.
 - If no action is needed, explain why the requested work is complete and identify any remaining Production-release work or accepted limitations relevant to the current task.
+
+## Owner-scoped Production database Preview exception (PR #115 only)
+
+- The owner explicitly authorized the SSO-protected Vercel Preview for PR #115, branch `codex/active-production-identity`, to read and write the Production database through the application's normal authenticated UI/API for this task only.
+- Keep the exception limited to that exact Preview branch, Vercel deployment hostname and verified Production Supabase project ref. Fail closed on missing or mismatched values.
+- Production Cron endpoints must remain blocked on every Preview, including this branch. Do not invoke Cron endpoints during QA.
+- This exception does not authorize direct database tooling, migrations, schema changes, manual data changes, Secrets access, Preview environment changes outside branch-scoped public identifiers, Merge, Promote or Production deployment.
+- Do not extend this exception to another PR, branch, Preview deployment or future task without fresh owner approval.

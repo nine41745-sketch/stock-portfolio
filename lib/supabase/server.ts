@@ -16,6 +16,8 @@ async function assertCurrentSupabaseTargetIsSafe() {
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
     previewProjectRef: process.env.NEXT_PUBLIC_SUPABASE_PREVIEW_PROJECT_REF,
     productionProjectRef: process.env.NEXT_PUBLIC_SUPABASE_PRODUCTION_PROJECT_REF,
+    previewProductionAccessBranch: process.env.NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH,
+    gitCommitRef: process.env.VERCEL_GIT_COMMIT_REF,
   })
 }
 
