@@ -9,7 +9,7 @@ import dns from 'node:dns'
 import dgram from 'node:dgram'
 import { spawn } from 'node:child_process'
 import { Worker } from 'node:worker_threads'
-import { fixture, activeHost, stagedHost } from './fixtures/runtime-isolation-harness.mjs'
+import { fixture, activeHost, stagedHost, cronTargetHost } from './fixtures/runtime-isolation-harness.mjs'
 
 const boundary = globalThis[Symbol.for('stock-portfolio.test-network-deny')]
 assert.ok(boundary, 'Run with --require ./scripts/fixtures/runtime-isolation-network-deny.cjs; never run unguarded')
@@ -55,7 +55,10 @@ for (const [name, options] of denied) test(`${name}: proxy and factories reject 
   await assert.rejects(server.createClient(), /not isolated/)
   await assert.rejects(server.createServiceClient(), /not isolated/)
   assert.throws(() => f.load('lib/supabase/client.ts').createClient(), /not isolated/)
-  assert.deepEqual(f.calls, { server: 0, browser: 0, service: 0, auth: 0, db: 0, secretReads: 0, providers: 0 })
+  assert.deepEqual(f.calls, {
+    server: 0, browser: 0, service: 0, auth: 0, db: 0, secretReads: 0, providers: 0,
+    identityFetch: ['Staged Production deployment URL', 'Missing deployment URL', 'Forwarded active Host on staged URL'].includes(name) ? 3 : 0,
+  })
   assert.equal(boundary.snapshot().length, before, 'No attempted outbound network in runtime cases')
 })
 
@@ -81,7 +84,78 @@ for (const file of ['app/api/cron/daily-analyze/route.ts', 'app/api/cron/premark
     assert.equal(f.calls.service, 0)
     assert.equal(f.calls.db, 0)
   })
+
+  test(`${file}: registered Cron host is accepted only for the deployment verified behind Production`, async () => {
+    const f = fixture({
+      host: cronTargetHost,
+      identityDeploymentId: 'dpl-synthetic-active',
+      env: {
+        VERCEL_URL: cronTargetHost,
+        VERCEL_DEPLOYMENT_ID: 'dpl-synthetic-active',
+        CRON_SECRET: 'test-cron-secret',
+      },
+    })
+    const proxyResult = await f.load('proxy.ts').proxy(f.request('/api/cron/synthetic'))
+    assert.equal(proxyResult.status, 200, 'Proxy must accept the current deployment when its identity matches the Production alias')
+    const response = await f.load(file).GET(f.request('/api/cron/synthetic', 'Bearer test-cron-secret'))
+    assert.equal(response.status, 200, 'Synthetic non-trading-day control should pass only after Production identity and Cron secret checks')
+    assert.equal(f.calls.identityFetch, 2, 'Proxy and route must each verify the active deployment identity')
+    assert.equal(f.calls.secretReads, 1)
+    assert.equal(f.calls.service, 0)
+    assert.equal(f.calls.db, 0)
+    assert.equal(f.calls.providers, 0)
+  })
+
+  test(`${file}: staged deployment identity mismatch rejects before secret or service client`, async () => {
+    const f = fixture({
+      host: stagedHost,
+      identityDeploymentId: 'dpl-synthetic-active',
+      env: { VERCEL_URL: stagedHost, VERCEL_DEPLOYMENT_ID: 'dpl-synthetic-staged' },
+    })
+    const response = await f.load(file).GET(f.request('/api/cron/synthetic', 'Bearer test-cron-secret'))
+    assert.equal(response.status, 404)
+    assert.equal(f.calls.secretReads, 0)
+    assert.equal(f.calls.service, 0)
+    assert.equal(f.calls.db, 0)
+    assert.equal(f.calls.providers, 0)
+  })
+
+  test(`${file}: unavailable Production identity fails closed before Cron secret`, async () => {
+    const f = fixture({
+      host: cronTargetHost,
+      identityStatus: 503,
+      env: { VERCEL_URL: cronTargetHost, VERCEL_DEPLOYMENT_ID: 'dpl-synthetic-active' },
+    })
+    const response = await f.load(file).GET(f.request('/api/cron/synthetic', 'Bearer test-cron-secret'))
+    assert.equal(response.status, 404)
+    assert.equal(f.calls.secretReads, 0)
+    assert.equal(f.calls.service, 0)
+    assert.equal(f.calls.db, 0)
+    assert.equal(f.calls.providers, 0)
+  })
 }
+
+test('Production identity endpoint returns only the deployment ID with no-store caching', async () => {
+  const f = fixture({ env: { VERCEL_DEPLOYMENT_ID: 'dpl-synthetic-current' } })
+  const response = await f.load('app/api/internal/deployment-identity/route.ts').GET()
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { deploymentId: 'dpl-synthetic-current' })
+  assert.match(response.headers.get('cache-control') ?? '', /no-store/)
+  assert.equal(f.calls.auth, 0)
+  assert.equal(f.calls.db, 0)
+  assert.equal(f.calls.secretReads, 0)
+})
+
+test('Production identity endpoint fails closed when Vercel provides no deployment ID', async () => {
+  const f = fixture({ env: { VERCEL_DEPLOYMENT_ID: '' } })
+  const response = await f.load('app/api/internal/deployment-identity/route.ts').GET()
+  assert.equal(response.status, 503)
+  assert.deepEqual(await response.json(), { error: 'Deployment identity unavailable' })
+  assert.match(response.headers.get('cache-control') ?? '', /no-store/)
+  assert.equal(f.calls.auth, 0)
+  assert.equal(f.calls.db, 0)
+  assert.equal(f.calls.secretReads, 0)
+})
 
 for (const options of [
   { host: activeHost },

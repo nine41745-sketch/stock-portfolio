@@ -9,12 +9,13 @@ import * as safety from '../../lib/supabase/runtime-safety.mjs'
 const root = fileURLToPath(new URL('../../', import.meta.url))
 export const activeHost = 'active-portfolio.example.test'
 export const stagedHost = 'synthetic-deployment.example.test'
+export const cronTargetHost = 'synthetic-cron-target.example.test'
 
-export function fixture({ mode = 'production', host = stagedHost, env: changes = {}, forwardedHost } = {}) {
-  const calls = { server: 0, browser: 0, service: 0, auth: 0, db: 0, secretReads: 0, providers: 0 }
+export function fixture({ mode = 'production', host = stagedHost, env: changes = {}, forwardedHost, identityDeploymentId = 'dpl-synthetic-active', identityStatus = 200, identityError } = {}) {
+  const calls = { server: 0, browser: 0, service: 0, auth: 0, db: 0, secretReads: 0, providers: 0, identityFetch: 0 }
   // A new object, never process.env. No cloud values or credentials are inherited.
   const env = new Proxy({
-    VERCEL: '1', VERCEL_ENV: mode, VERCEL_URL: stagedHost,
+    VERCEL: '1', VERCEL_ENV: mode, VERCEL_URL: stagedHost, VERCEL_DEPLOYMENT_ID: 'dpl-synthetic-staged',
     VERCEL_PROJECT_PRODUCTION_URL: activeHost,
     NEXT_PUBLIC_VERCEL_ENV: mode, NEXT_PUBLIC_VERCEL_URL: stagedHost,
     NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL: activeHost,
@@ -36,12 +37,22 @@ export function fixture({ mode = 'production', host = stagedHost, env: changes =
     redirect: url => ({ status: 307, location: String(url) }),
   }
   const cache = new Map()
+  const identityFetch = async () => {
+    calls.identityFetch++
+    if (identityError) throw identityError
+    return Response.json({ deploymentId: identityDeploymentId }, { status: identityStatus })
+  }
+  const fixtureSafety = {
+    ...safety,
+    assertSupabaseTargetIsSafeForServer: options => safety.assertSupabaseTargetIsSafeForServer({ ...options, fetchImpl: identityFetch }),
+    isProductionCronRequestAllowed: options => safety.isProductionCronRequestAllowed({ ...options, fetchImpl: identityFetch }),
+  }
   const overrides = {
     'next/server': { NextResponse },
     'next/headers': { headers: async () => headers, cookies: async () => cookies },
     '@supabase/ssr': { createServerClient: sdk('server'), createBrowserClient: sdk('browser') },
     '@supabase/supabase-js': { createClient: sdk('service') },
-    '@/lib/supabase/runtime-safety.mjs': safety,
+    '@/lib/supabase/runtime-safety.mjs': fixtureSafety,
     '@/lib/discovery-deadline': { createDeadlineFetch: forbidden('deadline fetch') },
     '@/lib/pin-session': { PIN_SESSION_COOKIE_NAME: 'synthetic-pin', getSupabaseSessionId: forbidden('session'), verifyPinSessionValue: forbidden('pin') },
     '@/lib/market-status': { getUsMarketClock: () => ({ isTradingDay: false, date: '2026-10-25' }), isPremarketCronWindow: () => false, PREMARKET_CRON_WINDOW: {} },
@@ -54,6 +65,7 @@ export function fixture({ mode = 'production', host = stagedHost, env: changes =
   const poison = new Proxy({}, { get: (_target, key) => forbidden(String(key)) })
   function load(relative) {
     assert(['proxy.ts', 'lib/supabase/server.ts', 'lib/supabase/client.ts',
+      'app/api/internal/deployment-identity/route.ts',
       'app/api/cron/daily-analyze/route.ts', 'app/api/cron/premarket-analyze/route.ts'].includes(relative))
     if (cache.has(relative)) return cache.get(relative).exports
     const loadedModule = { exports: {} }

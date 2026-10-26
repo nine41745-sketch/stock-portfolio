@@ -2,16 +2,17 @@ import { createDeadlineFetch, type DiscoveryProviderContext } from '@/lib/discov
 import { createServerClient } from '@supabase/ssr'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies, headers } from 'next/headers'
-import { assertSupabaseTargetIsSafe } from '@/lib/supabase/runtime-safety.mjs'
+import { assertSupabaseTargetIsSafeForServer } from '@/lib/supabase/runtime-safety.mjs'
 
 async function assertCurrentSupabaseTargetIsSafe() {
   const requestHeaders = await headers()
-  assertSupabaseTargetIsSafe({
+  await assertSupabaseTargetIsSafeForServer({
     isVercel: process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined,
     deploymentEnv: process.env.VERCEL_ENV,
     requestHost: requestHeaders.get('host') ?? undefined,
     deploymentUrl: process.env.VERCEL_URL,
     projectProductionUrl: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    deploymentId: process.env.VERCEL_DEPLOYMENT_ID,
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
     previewProjectRef: process.env.NEXT_PUBLIC_SUPABASE_PREVIEW_PROJECT_REF,
     productionProjectRef: process.env.NEXT_PUBLIC_SUPABASE_PRODUCTION_PROJECT_REF,
