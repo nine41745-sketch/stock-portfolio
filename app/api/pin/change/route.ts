@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'PIN ใหม่และ PIN ยืนยันไม่ตรงกัน' }, { status: 400 })
   }
 
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const { data: row, error } = await serviceClient
     .from('user_pin_security')
     .select('pin_hash, pin_salt, locked_until')

@@ -30,7 +30,7 @@ export async function GET() {
   try { context = await requirePhaseAPortfolio() } catch (error) { return phaseAErrorResponse(error) }
   const { supabase, userId, portfolioId, portfolioName } = context
 
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const holdingArgs = { p_user_id: userId, p_portfolio_id: portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
   const planArgs = { p_user_id: userId, p_portfolio_id: portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
 

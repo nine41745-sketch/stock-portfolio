@@ -1,0 +1,208 @@
+import assert from 'node:assert/strict'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  assertSupabaseTargetIsSafe,
+  isProductionCronEnvironment,
+} from '../lib/supabase/runtime-safety.mjs'
+
+const syntheticRef = 'synthetic-project-1234'
+const productionRef = 'production-project-9876'
+const productionHost = 'portfolio.example.test'
+const stagedHost = 'portfolio-preview-123.vercel.app'
+const previewConfig = {
+  isVercel: true,
+  deploymentEnv: 'preview',
+  previewProjectRef: syntheticRef,
+  productionProjectRef: productionRef,
+}
+
+assert.throws(
+  () => assertSupabaseTargetIsSafe({ ...previewConfig, previewProjectRef: undefined }),
+  /not isolated/,
+  'Preview must fail closed until its synthetic project ref is configured'
+)
+assert.throws(
+  () => assertSupabaseTargetIsSafe({ ...previewConfig, supabaseUrl: `https://${productionRef}.supabase.co` }),
+  /not isolated/,
+  'Preview must reject a Production Supabase endpoint'
+)
+assert.throws(
+  () => assertSupabaseTargetIsSafe({ ...previewConfig, previewProjectRef: productionRef, supabaseUrl: `https://${productionRef}.supabase.co` }),
+  /not isolated/,
+  'Preview must reject an allowlist that equals the Production project'
+)
+assert.throws(
+  () => assertSupabaseTargetIsSafe({ ...previewConfig, supabaseUrl: 'https://other-project.supabase.co' }),
+  /not isolated/,
+  'Preview must reject a Supabase endpoint outside its exact synthetic project ref'
+)
+assert.throws(
+  () => assertSupabaseTargetIsSafe({ ...previewConfig, supabaseUrl: 'https://synthetic-project-1234.supabase.co.evil.example' }),
+  /not isolated/,
+  'Preview must reject hostname suffix tricks'
+)
+assert.doesNotThrow(
+  () => assertSupabaseTargetIsSafe({ ...previewConfig, supabaseUrl: `https://${syntheticRef}.supabase.co` }),
+  'Preview may connect only to its separately allowlisted synthetic project'
+)
+assert.doesNotThrow(
+  () => assertSupabaseTargetIsSafe({
+    isVercel: true,
+    deploymentEnv: 'production',
+    requestHost: productionHost,
+    deploymentUrl: 'stock-portfolio-abc123-nine41745.vercel.app',
+    projectProductionUrl: productionHost,
+    supabaseUrl: 'https://production.supabase.co',
+  }),
+  'Active Production requests on the Vercel project Production URL must retain database access'
+)
+assert.doesNotThrow(
+  () => assertSupabaseTargetIsSafe({
+    isVercel: true,
+    deploymentEnv: 'production',
+    requestHost: productionHost,
+    deploymentUrl: 'portfolio-deploy-abc123.vercel.app',
+    projectProductionUrl: 'legacy-project-domain.example.test',
+    activeProductionHosts: [productionHost],
+    supabaseUrl: 'https://production.supabase.co',
+  }),
+  'A separately verified active Production alias must remain available if Vercel selects a different project Production URL'
+)
+assert.throws(
+  () => assertSupabaseTargetIsSafe({
+    isVercel: true,
+    deploymentEnv: 'production',
+    requestHost: stagedHost,
+    deploymentUrl: stagedHost,
+    projectProductionUrl: productionHost,
+    supabaseUrl: 'https://production.supabase.co',
+  }),
+  /not isolated/,
+  'Staged Production deployments must not use Production Supabase, even when VERCEL_ENV is production'
+)
+assert.throws(
+  () => assertSupabaseTargetIsSafe({
+    isVercel: true,
+    deploymentEnv: 'production',
+    requestHost: productionHost,
+    deploymentUrl: stagedHost,
+    projectProductionUrl: undefined,
+    supabaseUrl: 'https://production.supabase.co',
+  }),
+  /not isolated/,
+  'Production must fail closed when Vercel cannot prove the configured project Production URL'
+)
+assert.throws(
+  () => assertSupabaseTargetIsSafe({
+    isVercel: true,
+    deploymentEnv: 'production',
+    requestHost: 'unrelated.example',
+    deploymentUrl: stagedHost,
+    projectProductionUrl: productionHost,
+    supabaseUrl: 'https://production.supabase.co',
+  }),
+  /not isolated/,
+  'Production must reject hosts other than the project Production URL'
+)
+assert.throws(
+  () => assertSupabaseTargetIsSafe({ ...previewConfig, deploymentEnv: 'unknown', supabaseUrl: `https://${syntheticRef}.supabase.co` }),
+  /not isolated/,
+  'Unknown Vercel environments must fail closed'
+)
+assert.doesNotThrow(
+  () => assertSupabaseTargetIsSafe({ isVercel: false, deploymentEnv: 'development', supabaseUrl: 'http://127.0.0.1:54321' }),
+  'Local development behavior must remain available'
+)
+
+assert.equal(isProductionCronEnvironment({
+  deploymentEnv: 'production', requestHost: productionHost,
+  deploymentUrl: 'stock-portfolio-abc123-nine41745.vercel.app', projectProductionUrl: productionHost,
+}), true)
+assert.equal(isProductionCronEnvironment({
+  deploymentEnv: 'production', requestHost: stagedHost,
+  deploymentUrl: stagedHost, projectProductionUrl: productionHost,
+}), false)
+assert.equal(isProductionCronEnvironment({ deploymentEnv: 'production' }), false)
+assert.equal(isProductionCronEnvironment({ deploymentEnv: 'preview' }), false)
+assert.equal(isProductionCronEnvironment({ deploymentEnv: undefined }), false)
+assert.equal(isProductionCronEnvironment({ deploymentEnv: 'unknown' }), false)
+
+function source(path) {
+  return readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+}
+
+function assertGuardBeforeFactory(file, functionMarker, guard, factory) {
+  const text = source(file)
+  const functionIndex = text.indexOf(functionMarker)
+  const guardIndex = text.indexOf(guard, functionIndex)
+  const factoryIndex = text.indexOf(factory, functionIndex)
+  assert.ok(functionIndex >= 0, `${file} must retain the guarded function`)
+  assert.ok(guardIndex >= 0, `${file} must use the shared Supabase safety guard`)
+  assert.ok(factoryIndex >= 0, `${file} must retain the expected client factory`)
+  assert.ok(guardIndex < factoryIndex, `${file} must validate the target before creating a Supabase client`)
+}
+
+assertGuardBeforeFactory('lib/supabase/server.ts', 'export async function createClient', 'assertCurrentSupabaseTargetIsSafe()', 'createServerClient(')
+assertGuardBeforeFactory('lib/supabase/server.ts', 'export async function createServiceClient', 'assertCurrentSupabaseTargetIsSafe()', 'createSupabaseClient(')
+assertGuardBeforeFactory('lib/supabase/client.ts', 'export function createClient', 'assertSupabaseTargetIsSafe', 'createBrowserClient(')
+assertGuardBeforeFactory('proxy.ts', 'export async function proxy', 'assertSupabaseTargetIsSafe', 'createServerClient(')
+
+for (const file of ['lib/supabase/server.ts', 'proxy.ts']) {
+  const text = source(file)
+  assert.match(text, /requestHost:/, `${file} must provide the request host to the Production identity guard`)
+  assert.match(text, /process\.env\.VERCEL_URL/, `${file} must provide Vercel's deployment-specific URL`)
+  assert.match(text, /process\.env\.VERCEL_PROJECT_PRODUCTION_URL/, `${file} must provide Vercel's project Production URL`)
+}
+const browserClient = source('lib/supabase/client.ts')
+assert.match(browserClient, /window\.location\.host/, 'Browser Supabase access must check the current request host')
+assert.match(browserClient, /NEXT_PUBLIC_VERCEL_URL/, 'Browser Supabase access must know the deployment-specific URL')
+assert.match(browserClient, /NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL/, 'Browser Supabase access must know the project Production URL')
+
+for (const [file, factory] of [
+  ['app/api/cron/daily-analyze/route.ts', 'createServiceClient()'],
+  ['app/api/cron/premarket-analyze/route.ts', 'createServiceClient()'],
+]) {
+  const text = source(file)
+  const gateIndex = text.indexOf('isProductionCronEnvironment({')
+  const credentialBoundaryIndex = text.indexOf('process.env.CRON_SECRET')
+  const factoryIndex = text.indexOf(factory)
+  assert.ok(gateIndex >= 0 && gateIndex < credentialBoundaryIndex && gateIndex < factoryIndex, `${file} must reject non-Production invocations before secrets or Supabase access`)
+}
+
+const vercelConfig = JSON.parse(source('vercel.json'))
+for (const cron of vercelConfig.crons ?? []) {
+  const file = `app${cron.path}/route.ts`
+  const text = source(file)
+  const gateIndex = text.indexOf('isProductionCronEnvironment({')
+  const credentialBoundaryIndex = text.indexOf('process.env.CRON_SECRET')
+  const factoryIndex = text.indexOf('createServiceClient()')
+  assert.ok(gateIndex >= 0 && gateIndex < credentialBoundaryIndex && gateIndex < factoryIndex, `${file} registered in vercel.json must deny non-Production requests before any Supabase access`)
+}
+
+const nextConfig = source('next.config.js')
+assert.match(nextConfig, /NEXT_PUBLIC_VERCEL_ENV/)
+assert.match(nextConfig, /process\.env\.VERCEL_ENV/)
+assert.match(nextConfig, /unknown/)
+const safetySource = source('lib/supabase/runtime-safety.mjs')
+assert.match(safetySource, /stock-portfolio-nine41745\.vercel\.app/, 'The currently verified active Production alias must remain allowlisted')
+
+function walk(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const path = join(directory, entry.name)
+    return entry.isDirectory() ? walk(path) : /\.(ts|tsx|js|jsx|mjs)$/.test(entry.name) ? [path] : []
+  })
+}
+
+const sourceRoot = fileURLToPath(new URL('../', import.meta.url))
+const directSupabaseImports = walk(join(sourceRoot, 'app'))
+  .concat(walk(join(sourceRoot, 'lib')), walk(join(sourceRoot, 'components')), [join(sourceRoot, 'proxy.ts')])
+  .filter(file => readFileSync(file, 'utf8').split(/\r?\n/).some(line =>
+    /^\s*import(?!\s+type)\s+.*from\s*['"]@supabase\/(ssr|supabase-js)['"]/.test(line)
+  ))
+  .map(file => file.slice(sourceRoot.length).replaceAll('\\', '/'))
+  .filter(file => !['lib/supabase/server.ts', 'lib/supabase/client.ts', 'proxy.ts'].includes(file))
+assert.deepEqual(directSupabaseImports, [], 'All runtime Supabase clients must flow through the guarded factories')
+
+console.log('Preview isolation regression checks passed.')

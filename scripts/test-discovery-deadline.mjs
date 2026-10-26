@@ -14,7 +14,10 @@ function load(file, cache = new Map(), overrides = {}) {
   const localRequire = name => {
     if (name in overrides) return overrides[name]
     if (name === 'yahoo-finance2') return class { chart() { sdkCalls++; return Promise.resolve({quotes:[]}) } }
-    if (name.startsWith('@/')) return load(name.slice(2) + '.ts', cache, overrides)
+    if (name.startsWith('@/')) {
+      const localPath = name.slice(2)
+      return load(path.extname(localPath) ? localPath : localPath + '.ts', cache, overrides)
+    }
     return require(name)
   }
   new Function('require','module','exports',source)(localRequire,loadedModule,loadedModule.exports)
@@ -179,7 +182,7 @@ for (const stage of ['auth','auth-invalid','portfolio']) test(`Actual Supabase S
  const cookieStore={getAll:()=>jar,get:name=>jar.find(row=>row.name===name),set(){}}
  let active=0,authCalls=0,restCalls=0,pinChecks=0
  const cache=new Map(),overrides={
-  'next/headers':{cookies:async()=>cookieStore},
+  'next/headers':{cookies:async()=>cookieStore,headers:async()=>new Headers({host:'127.0.0.1:54321'})},
   '@/lib/pin-session':{PIN_SESSION_COOKIE_NAME:'pin-session',getSupabaseSessionId:()=> 'synthetic-session',verifyPinSessionValue:async()=>{pinChecks++;return true}},
   '@/lib/portfolio-context':{ACTIVE_PORTFOLIO_COOKIE:'active-portfolio'},
  }

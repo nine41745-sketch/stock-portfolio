@@ -11,7 +11,7 @@ interface HoldingRow { symbol?: unknown }
 export async function GET() {
   let context: Awaited<ReturnType<typeof requirePhaseAPortfolio>>
   try { context = await requirePhaseAPortfolio() } catch (error) { return phaseAErrorResponse(error) }
-  const service = createServiceClient()
+  const service = await createServiceClient()
   const holdings = await service.rpc('get_decrypted_holdings', {
     p_user_id: context.userId,
     p_portfolio_id: context.portfolioId,

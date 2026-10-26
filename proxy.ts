@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { PIN_SESSION_COOKIE_NAME, verifyPinSessionValue, getSupabaseSessionId } from '@/lib/pin-session'
+import { assertSupabaseTargetIsSafe } from '@/lib/supabase/runtime-safety.mjs'
 
 // Network boundary for Auth + PIN defense-in-depth. Next.js 16 renamed middleware.ts to proxy.ts;
 // behavior is intentionally preserved while moving this guard onto the supported Node.js proxy runtime.
@@ -12,6 +13,21 @@ function isPinExemptApi(pathname: string): boolean {
 }
 
 export async function proxy(request: NextRequest) {
+  try {
+    assertSupabaseTargetIsSafe({
+      isVercel: process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined,
+      deploymentEnv: process.env.VERCEL_ENV,
+      requestHost: request.nextUrl.host,
+      deploymentUrl: process.env.VERCEL_URL,
+      projectProductionUrl: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      previewProjectRef: process.env.NEXT_PUBLIC_SUPABASE_PREVIEW_PROJECT_REF,
+      productionProjectRef: process.env.NEXT_PUBLIC_SUPABASE_PRODUCTION_PROJECT_REF,
+    })
+  } catch {
+    return NextResponse.json({ error: 'Backend isolation is not configured' }, { status: 503 })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(

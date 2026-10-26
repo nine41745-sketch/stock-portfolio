@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { isProductionCronEnvironment } from '@/lib/supabase/runtime-safety.mjs'
 import { isPortfolioFoundationMissing } from '@/lib/portfolio-context'
 import { analyzePortfolioBatch, PortfolioBatchHoldingInput } from '@/lib/portfolio-batch'
 import { getTechnicalIndicators } from '@/lib/indicators'
@@ -35,6 +36,15 @@ function uniqueScopes(rows: Array<{ user_id: unknown; portfolio_id?: unknown }>,
 }
 
 export async function GET(request: NextRequest) {
+  if (!isProductionCronEnvironment({
+    deploymentEnv: process.env.VERCEL_ENV,
+    requestHost: request.nextUrl.host,
+    deploymentUrl: process.env.VERCEL_URL,
+    projectProductionUrl: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  })) {
+    return NextResponse.json({ error: 'Cron is unavailable outside Production' }, { status: 404 })
+  }
+
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) {
     console.error('[cron] CRON_SECRET is not configured')
@@ -55,7 +65,7 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  const supabase = createServiceClient()
+  const supabase = await createServiceClient()
   const analysisDate = getThaiDateString()
 
   // Code-first rollout compatibility: before v1.27.0 migration, portfolio_id does not exist.

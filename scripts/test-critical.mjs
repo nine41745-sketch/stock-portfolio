@@ -149,6 +149,7 @@ assert.ok(premarketTrigger.evaluatePremarketTriggers({ price: 100.5, changePct: 
 assert.equal(premarketTrigger.evaluatePremarketTriggers({ price: 105, changePct: 0.5, support: 95, resistance: 115, earningsDaysUntil: 10, newRelevantNewsCount: 0 }).length, 0)
 
 const cronSource = fs.readFileSync('app/api/cron/daily-analyze/route.ts', 'utf8')
+assert.match(cronSource, /isProductionCronEnvironment\(\{[\s\S]*requestHost: request\.nextUrl\.host,[\s\S]*deploymentUrl: process\.env\.VERCEL_URL,[\s\S]*projectProductionUrl: process\.env\.VERCEL_PROJECT_PRODUCTION_URL/, 'Cron must verify the active Production request host before reading secrets or creating a database client')
 assert.match(cronSource, /const cronSecret = process\.env\.CRON_SECRET/, 'Cron must read CRON_SECRET into an explicit guard')
 assert.match(cronSource, /if \(!cronSecret\)/, 'Cron must fail closed when CRON_SECRET is missing')
 assert.match(cronSource, /settingsResponse\.error/, 'Cron must fail instead of treating a settings DB error as zero cash')
@@ -156,6 +157,7 @@ assert.match(cronSource, /getUsMarketClock/, 'Post-close cron must respect US tr
 
 assert.equal(fs.existsSync('app/api/cron/premarket-analyze/route.ts'), true, 'Pre-market trigger cron route is required')
 const premarketCronSource = fs.readFileSync('app/api/cron/premarket-analyze/route.ts', 'utf8')
+assert.match(premarketCronSource, /isProductionCronEnvironment\(\{[\s\S]*requestHost: request\.nextUrl\.host,[\s\S]*deploymentUrl: process\.env\.VERCEL_URL,[\s\S]*projectProductionUrl: process\.env\.VERCEL_PROJECT_PRODUCTION_URL/, 'Pre-market Cron must verify the active Production request host before reading secrets or creating a database client')
 assert.match(premarketCronSource, /getPreMarketSnapshots/, 'Pre-market cron must use explicit pre-market market data')
 assert.match(premarketCronSource, /evaluatePremarketTriggers/, 'Pre-market cron must gate Groq behind deterministic triggers')
 assert.match(premarketCronSource, /save_latest_manual_analysis/, 'Pre-market update must write latest analysis without creating Track Record rows')
@@ -164,6 +166,24 @@ assert.match(premarketCronSource, /isPremarketCronWindow\(marketClock\)/, 'Pre-m
 assert.match(premarketCronSource, /PREMARKET_CRON_WINDOW/, 'Pre-market cron responses must expose the active ET tolerance window')
 assert.doesNotMatch(premarketCronSource, /marketClock\.hour !== 8/, 'Brittle exact-hour gate must not return')
 assert.match(premarketCronSource, /getUpcomingEarningsForSymbols/, 'Pre-market trigger should batch earnings calendar access')
+
+const previewIsolation = await importTsModule('lib/supabase/runtime-safety.mjs')
+assert.equal(previewIsolation.isProductionCronEnvironment({
+  deploymentEnv: 'production', requestHost: 'portfolio.example.test',
+  deploymentUrl: 'portfolio-deploy-abc123.vercel.app',
+  projectProductionUrl: 'portfolio.example.test',
+}), true)
+assert.equal(previewIsolation.isProductionCronEnvironment({
+  deploymentEnv: 'production', requestHost: 'portfolio-preview-123.vercel.app',
+  deploymentUrl: 'portfolio-preview-123.vercel.app',
+  projectProductionUrl: 'portfolio.example.test',
+}), false)
+assert.equal(previewIsolation.isProductionCronEnvironment({ deploymentEnv: 'production' }), false)
+assert.equal(previewIsolation.isProductionCronEnvironment({ deploymentEnv: 'preview' }), false)
+assert.equal(previewIsolation.isProductionCronEnvironment({ deploymentEnv: undefined }), false)
+const previewIsolationSource = fs.readFileSync('scripts/test-preview-isolation.mjs', 'utf8')
+assert.match(previewIsolationSource, /Production Supabase endpoint/)
+assert.match(previewIsolationSource, /outside its exact synthetic project ref/)
 
 const analyzeSource = fs.readFileSync('app/api/analyze/route.ts', 'utf8')
 assert.match(analyzeSource, /if \(settingsErr\)/, 'Manual Analyze must handle user-settings query failure')

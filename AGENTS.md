@@ -97,3 +97,11 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 - Every release or deployment closeout report must include a section titled `ภาพรวมการปล่อย Production` with: (1) the current Production deployment ID and SHA, (2) any staged deployment awaiting Promote with its ID and SHA, (3) Security Gate and release-gate status with reasons, and (4) remaining work before the intended Production release.
 - Never conclude that no further action is needed based only on PR completion. Compare the complete release state with the currently intended version.
 - After any release or deployment work, update `docs/RELEASE_STATUS.md` with the verified current Production deployment, staged deployment, gate status and reasons, and remaining work. Distinguish verified facts from unavailable or unverified evidence.
+
+## Owner-approved self-review policy (2026-10-26)
+
+- This owner-approved policy supersedes earlier instructions requiring independent review, a separate reviewer chat, or external reviewer approval before continuing. Codex must review its own complete Diff and verification evidence and report findings directly in this Codex chat; do not require the owner to forward messages or files to another chat.
+- Identify the exact reviewed commit or local Patch SHA-256, inspect the complete changed-file scope, verify relevant test evidence, and state unresolved findings and unverified behavior. Call this author self-review; never describe it as independent review or claim checks passed without evidence.
+- Keep CI, Security Assertions, guard checks, Rulesets, secret/data protections and existing owner-approval boundaries intact. Self-review does not authorize Commit/Push, Merge, Deploy/Promote, alias/domain or Environment/Secrets changes, Production DB access, or releasing a HOLD Gate outside the owner's explicit task scope.
+- End every final report with exactly one `ขั้นต่อไปที่แนะนำ`: state the next action and who should do it. When owner approval is required, provide a copy-ready approval sentence for this Codex chat naming the exact action, SHA or Deployment ID and prohibited scope. Do not ask the owner to obtain approval from a separate reviewer chat.
+- If no action is needed, explain why the requested work is complete and identify any remaining Production-release work or accepted limitations relevant to the current task.

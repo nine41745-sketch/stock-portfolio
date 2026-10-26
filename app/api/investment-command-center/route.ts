@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Service-role reads are deliberately after Auth, PIN, selected-portfolio and ownership checks.
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const fetchedAt = new Date().toISOString()
   const holdingArgs = { p_user_id: context.userId, p_portfolio_id: context.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
   const planArgs = { p_user_id: context.userId, p_portfolio_id: context.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
