@@ -5,10 +5,13 @@ import { fileURLToPath } from 'node:url'
 import {
   assertSupabaseTargetIsSafe,
   isProductionCronEnvironment,
+  isCurrentProductionDeployment,
+  assertSupabaseTargetIsSafeForServer,
+  isProductionCronRequestAllowed,
 } from '../lib/supabase/runtime-safety.mjs'
 
 const syntheticRef = 'synthetic-project-1234'
-const productionRef = 'production-project-9876'
+const productionRef = 'prodproject123456789'
 const productionHost = 'portfolio.example.test'
 const stagedHost = 'portfolio-preview-123.vercel.app'
 const previewConfig = {
@@ -46,6 +49,46 @@ assert.throws(
 assert.doesNotThrow(
   () => assertSupabaseTargetIsSafe({ ...previewConfig, supabaseUrl: `https://${syntheticRef}.supabase.co` }),
   'Preview may connect only to its separately allowlisted synthetic project'
+)
+const explicitlyApprovedPreviewProductionConfig = {
+  ...previewConfig,
+  requestHost: stagedHost,
+  deploymentUrl: stagedHost,
+  projectProductionUrl: productionHost,
+  supabaseUrl: `https://${productionRef}.supabase.co`,
+  previewProductionAccessBranch: 'codex/active-production-identity',
+  gitCommitRef: 'codex/active-production-identity',
+}
+assert.doesNotThrow(
+  () => assertSupabaseTargetIsSafe(explicitlyApprovedPreviewProductionConfig),
+  'Only the explicitly approved Preview branch may use its exact Production Supabase target'
+)
+for (const [overrides, reason] of [
+  [{ gitCommitRef: 'other-preview-branch' }, 'a different Preview branch must not use Production Supabase'],
+  [{ previewProductionAccessBranch: 'other-preview-branch', gitCommitRef: 'other-preview-branch' }, 'the opt-in cannot authorize a branch outside this owner-approved task'],
+  [{ requestHost: 'attacker.example.test' }, 'a request outside its deployment hostname must not use Production Supabase'],
+  [{ requestHost: productionHost, deploymentUrl: productionHost }, 'the Production hostname must not be treated as an approved Preview'],
+  [{ supabaseUrl: 'https://other-project.supabase.co' }, 'the approved Production access branch must not silently use a different target'],
+  [{ productionProjectRef: undefined }, 'Preview Production access must fail closed without an exact Production project ref'],
+  [{ previewProductionAccessBranch: undefined }, 'Preview Production access must fail closed without a branch-scoped opt-in'],
+]) {
+  assert.throws(
+    () => assertSupabaseTargetIsSafe({ ...explicitlyApprovedPreviewProductionConfig, ...overrides }),
+    /not isolated/,
+    reason
+  )
+}
+await assert.doesNotReject(
+  () => assertSupabaseTargetIsSafeForServer(explicitlyApprovedPreviewProductionConfig),
+  'The server guard must honor only the explicit, exact-target Preview branch opt-in'
+)
+await assert.rejects(
+  () => assertSupabaseTargetIsSafeForServer({
+    ...explicitlyApprovedPreviewProductionConfig,
+    gitCommitRef: 'unapproved-branch',
+  }),
+  /not isolated/,
+  'The server guard must reject Production Supabase from any other Preview branch'
 )
 assert.doesNotThrow(
   () => assertSupabaseTargetIsSafe({
@@ -128,6 +171,87 @@ assert.equal(isProductionCronEnvironment({ deploymentEnv: 'production' }), false
 assert.equal(isProductionCronEnvironment({ deploymentEnv: 'preview' }), false)
 assert.equal(isProductionCronEnvironment({ deploymentEnv: undefined }), false)
 assert.equal(isProductionCronEnvironment({ deploymentEnv: 'unknown' }), false)
+assert.equal(await isProductionCronRequestAllowed({
+  ...explicitlyApprovedPreviewProductionConfig,
+  deploymentEnv: 'preview',
+}), false, 'Preview Cron must stay blocked even when this Preview may use Production Supabase')
+
+const activeDeploymentIdentity = {
+  deploymentEnv: 'production',
+  deploymentId: 'dpl-synthetic-active',
+  projectProductionUrl: productionHost,
+}
+let identityFetchCalls = 0
+const identityFetch = async (url, options) => {
+  identityFetchCalls++
+  assert.equal(String(url), `https://${productionHost}/api/internal/deployment-identity`)
+  assert.equal(options.cache, 'no-store')
+  assert.equal(options.redirect, 'error')
+  return Response.json({ deploymentId: 'dpl-synthetic-active' })
+}
+assert.equal(await isCurrentProductionDeployment({ ...activeDeploymentIdentity, fetchImpl: identityFetch }), true,
+  'Active Production deployment identity must be confirmed from the project Production URL')
+assert.equal(await isCurrentProductionDeployment({
+  ...activeDeploymentIdentity, deploymentId: 'dpl-synthetic-staged', fetchImpl: identityFetch,
+}), false, 'A staged Production-target deployment must fail when its ID differs from the Production alias')
+const callsBeforePreviewIdentity = identityFetchCalls
+assert.equal(await isCurrentProductionDeployment({
+  ...activeDeploymentIdentity, deploymentEnv: 'preview', fetchImpl: identityFetch,
+}), false, 'Preview must not use Production identity as authorization')
+assert.equal(identityFetchCalls, callsBeforePreviewIdentity, 'Preview must fail before requesting Production identity')
+assert.equal(await isCurrentProductionDeployment({
+  ...activeDeploymentIdentity,
+  fetchImpl: async () => new Response('unavailable', { status: 503 }),
+}), false, 'Unavailable Production identity must fail closed')
+assert.equal(await isCurrentProductionDeployment({
+  ...activeDeploymentIdentity,
+  fetchImpl: async () => Response.json({ deploymentId: 'dpl-synthetic-other' }),
+}), false, 'A different active Production deployment must not authorize this deployment')
+assert.equal(await isCurrentProductionDeployment({
+  ...activeDeploymentIdentity,
+  projectProductionUrl: 'https://user:pass@portfolio.example.test/private',
+  fetchImpl: identityFetch,
+}), false, 'Identity lookup must reject credentials or paths in the configured Production URL')
+assert.equal(await isCurrentProductionDeployment({
+  ...activeDeploymentIdentity,
+  fetchImpl: async () => new Response('{"deploymentId":"dpl-synthetic-active"}', {
+    status: 302, headers: { 'content-type': 'application/json' },
+  }),
+}), false, 'Identity lookup must reject redirects')
+
+await assert.doesNotReject(() => assertSupabaseTargetIsSafeForServer({
+  isVercel: true,
+  deploymentEnv: 'production',
+  requestHost: 'cron-target.example.test',
+  deploymentUrl: 'cron-target.example.test',
+  projectProductionUrl: productionHost,
+  deploymentId: 'dpl-synthetic-active',
+  supabaseUrl: 'https://production.supabase.co',
+  fetchImpl: identityFetch,
+}), 'A Cron request addressed to the active deployment URL must pass the identity check')
+await assert.rejects(() => assertSupabaseTargetIsSafeForServer({
+  isVercel: true,
+  deploymentEnv: 'production',
+  requestHost: stagedHost,
+  deploymentUrl: stagedHost,
+  projectProductionUrl: productionHost,
+  deploymentId: 'dpl-synthetic-staged',
+  supabaseUrl: 'https://production.supabase.co',
+  fetchImpl: identityFetch,
+}), /not isolated/, 'A Staged Production deployment must fail before Supabase access')
+assert.equal(await isProductionCronRequestAllowed({
+  ...activeDeploymentIdentity,
+  requestHost: 'cron-target.example.test',
+  deploymentUrl: 'cron-target.example.test',
+  fetchImpl: identityFetch,
+}), true, 'A Cron targeting the deployment currently behind the Production URL must be accepted')
+assert.equal(await isProductionCronRequestAllowed({
+  ...activeDeploymentIdentity,
+  deploymentId: 'dpl-synthetic-staged',
+  requestHost: stagedHost,
+  deploymentUrl: stagedHost,
+  fetchImpl: identityFetch,
+}), false, 'A staged Cron invocation must remain rejected')
 
 function source(path) {
   return readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -154,28 +278,39 @@ for (const file of ['lib/supabase/server.ts', 'proxy.ts']) {
   assert.match(text, /requestHost:/, `${file} must provide the request host to the Production identity guard`)
   assert.match(text, /process\.env\.VERCEL_URL/, `${file} must provide Vercel's deployment-specific URL`)
   assert.match(text, /process\.env\.VERCEL_PROJECT_PRODUCTION_URL/, `${file} must provide Vercel's project Production URL`)
+  assert.match(text, /process\.env\.VERCEL_DEPLOYMENT_ID/, `${file} must provide the current platform deployment identity`)
 }
+assert.match(source('lib/supabase/server.ts'), /gitCommitRef: process\.env\.VERCEL_GIT_COMMIT_REF/)
+assert.match(source('proxy.ts'), /gitCommitRef: process\.env\.VERCEL_GIT_COMMIT_REF/)
 const browserClient = source('lib/supabase/client.ts')
 assert.match(browserClient, /window\.location\.host/, 'Browser Supabase access must check the current request host')
 assert.match(browserClient, /NEXT_PUBLIC_VERCEL_URL/, 'Browser Supabase access must know the deployment-specific URL')
 assert.match(browserClient, /NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL/, 'Browser Supabase access must know the project Production URL')
+assert.match(browserClient, /NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH/, 'Browser Production access must require a branch-scoped opt-in')
+assert.match(browserClient, /NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF/, 'Browser Production access must compare the current Git branch to that opt-in')
 
 for (const [file, factory] of [
   ['app/api/cron/daily-analyze/route.ts', 'createServiceClient()'],
   ['app/api/cron/premarket-analyze/route.ts', 'createServiceClient()'],
 ]) {
   const text = source(file)
-  const gateIndex = text.indexOf('isProductionCronEnvironment({')
+  const gateIndex = text.indexOf('isProductionCronRequestAllowed({')
   const credentialBoundaryIndex = text.indexOf('process.env.CRON_SECRET')
   const factoryIndex = text.indexOf(factory)
   assert.ok(gateIndex >= 0 && gateIndex < credentialBoundaryIndex && gateIndex < factoryIndex, `${file} must reject non-Production invocations before secrets or Supabase access`)
 }
 
+const identityRoute = source('app/api/internal/deployment-identity/route.ts')
+assert.match(identityRoute, /VERCEL_DEPLOYMENT_ID/, 'The identity endpoint must read only the platform deployment identifier')
+assert.match(identityRoute, /cache-control.*no-store/, 'The identity endpoint must disable caching')
+assert.doesNotMatch(identityRoute, /SUPABASE|CRON_SECRET|DATABASE_URL/i, 'The identity endpoint must not access credentials or the database')
+assert.match(source('proxy.ts'), /api\/internal\/deployment-identity/, 'The identity endpoint must bypass the Supabase/Auth proxy to prevent recursion')
+
 const vercelConfig = JSON.parse(source('vercel.json'))
 for (const cron of vercelConfig.crons ?? []) {
   const file = `app${cron.path}/route.ts`
   const text = source(file)
-  const gateIndex = text.indexOf('isProductionCronEnvironment({')
+  const gateIndex = text.indexOf('isProductionCronRequestAllowed({')
   const credentialBoundaryIndex = text.indexOf('process.env.CRON_SECRET')
   const factoryIndex = text.indexOf('createServiceClient()')
   assert.ok(gateIndex >= 0 && gateIndex < credentialBoundaryIndex && gateIndex < factoryIndex, `${file} registered in vercel.json must deny non-Production requests before any Supabase access`)
@@ -185,6 +320,8 @@ const nextConfig = source('next.config.js')
 assert.match(nextConfig, /NEXT_PUBLIC_VERCEL_ENV/)
 assert.match(nextConfig, /process\.env\.VERCEL_ENV/)
 assert.match(nextConfig, /unknown/)
+assert.match(nextConfig, /NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF/)
+assert.match(nextConfig, /NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH/)
 const safetySource = source('lib/supabase/runtime-safety.mjs')
 assert.match(safetySource, /stock-portfolio-nine41745\.vercel\.app/, 'The currently verified active Production alias must remain allowlisted')
 

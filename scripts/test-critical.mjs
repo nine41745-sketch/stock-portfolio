@@ -149,7 +149,7 @@ assert.ok(premarketTrigger.evaluatePremarketTriggers({ price: 100.5, changePct: 
 assert.equal(premarketTrigger.evaluatePremarketTriggers({ price: 105, changePct: 0.5, support: 95, resistance: 115, earningsDaysUntil: 10, newRelevantNewsCount: 0 }).length, 0)
 
 const cronSource = fs.readFileSync('app/api/cron/daily-analyze/route.ts', 'utf8')
-assert.match(cronSource, /isProductionCronEnvironment\(\{[\s\S]*requestHost: request\.nextUrl\.host,[\s\S]*deploymentUrl: process\.env\.VERCEL_URL,[\s\S]*projectProductionUrl: process\.env\.VERCEL_PROJECT_PRODUCTION_URL/, 'Cron must verify the active Production request host before reading secrets or creating a database client')
+assert.match(cronSource, /isProductionCronRequestAllowed\(\{[\s\S]*requestHost: request\.nextUrl\.host,[\s\S]*deploymentUrl: process\.env\.VERCEL_URL,[\s\S]*projectProductionUrl: process\.env\.VERCEL_PROJECT_PRODUCTION_URL,[\s\S]*deploymentId: process\.env\.VERCEL_DEPLOYMENT_ID/, 'Cron must verify the active Production deployment identity before reading secrets or creating a database client')
 assert.match(cronSource, /const cronSecret = process\.env\.CRON_SECRET/, 'Cron must read CRON_SECRET into an explicit guard')
 assert.match(cronSource, /if \(!cronSecret\)/, 'Cron must fail closed when CRON_SECRET is missing')
 assert.match(cronSource, /settingsResponse\.error/, 'Cron must fail instead of treating a settings DB error as zero cash')
@@ -157,7 +157,7 @@ assert.match(cronSource, /getUsMarketClock/, 'Post-close cron must respect US tr
 
 assert.equal(fs.existsSync('app/api/cron/premarket-analyze/route.ts'), true, 'Pre-market trigger cron route is required')
 const premarketCronSource = fs.readFileSync('app/api/cron/premarket-analyze/route.ts', 'utf8')
-assert.match(premarketCronSource, /isProductionCronEnvironment\(\{[\s\S]*requestHost: request\.nextUrl\.host,[\s\S]*deploymentUrl: process\.env\.VERCEL_URL,[\s\S]*projectProductionUrl: process\.env\.VERCEL_PROJECT_PRODUCTION_URL/, 'Pre-market Cron must verify the active Production request host before reading secrets or creating a database client')
+assert.match(premarketCronSource, /isProductionCronRequestAllowed\(\{[\s\S]*requestHost: request\.nextUrl\.host,[\s\S]*deploymentUrl: process\.env\.VERCEL_URL,[\s\S]*projectProductionUrl: process\.env\.VERCEL_PROJECT_PRODUCTION_URL,[\s\S]*deploymentId: process\.env\.VERCEL_DEPLOYMENT_ID/, 'Pre-market Cron must verify the active Production deployment identity before reading secrets or creating a database client')
 assert.match(premarketCronSource, /getPreMarketSnapshots/, 'Pre-market cron must use explicit pre-market market data')
 assert.match(premarketCronSource, /evaluatePremarketTriggers/, 'Pre-market cron must gate Groq behind deterministic triggers')
 assert.match(premarketCronSource, /save_latest_manual_analysis/, 'Pre-market update must write latest analysis without creating Track Record rows')

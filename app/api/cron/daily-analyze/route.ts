@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
-import { isProductionCronEnvironment } from '@/lib/supabase/runtime-safety.mjs'
+import { isProductionCronRequestAllowed } from '@/lib/supabase/runtime-safety.mjs'
 import { isPortfolioFoundationMissing } from '@/lib/portfolio-context'
 import { analyzePortfolioBatch, PortfolioBatchHoldingInput } from '@/lib/portfolio-batch'
 import { getTechnicalIndicators } from '@/lib/indicators'
@@ -36,11 +36,12 @@ function uniqueScopes(rows: Array<{ user_id: unknown; portfolio_id?: unknown }>,
 }
 
 export async function GET(request: NextRequest) {
-  if (!isProductionCronEnvironment({
+  if (!await isProductionCronRequestAllowed({
     deploymentEnv: process.env.VERCEL_ENV,
     requestHost: request.nextUrl.host,
     deploymentUrl: process.env.VERCEL_URL,
     projectProductionUrl: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    deploymentId: process.env.VERCEL_DEPLOYMENT_ID,
   })) {
     return NextResponse.json({ error: 'Cron is unavailable outside Production' }, { status: 404 })
   }
