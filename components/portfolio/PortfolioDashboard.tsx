@@ -371,7 +371,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [showChangelog, setShowChangelog] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
   const holdingSymbolsKey = useMemo(
     () => holdings.map(h => h.symbol.toUpperCase()).sort().join(','),
     [holdings],
@@ -392,6 +391,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       logoutTimer = setTimeout(async () => {
         // PIN Lock: auto-logout จาก inactivity ต้องลบ PIN session ด้วยเหมือนปุ่ม "ออกจากระบบ" ปกติ
         try { await fetch('/api/pin/lock', { method: 'POST' }) } catch { /* best-effort */ }
+        const supabase = createClient()
         await supabase.auth.signOut()
         router.push('/login')
       }, TIMEOUT)

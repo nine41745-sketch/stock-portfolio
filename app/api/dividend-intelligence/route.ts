@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     const to = url.searchParams.get('to') ?? today
     try { parseDividendRange(from, to) } catch (error) { throw new PhaseAError(error instanceof Error ? error.message : 'ช่วงเวลาไม่ถูกต้อง', 400) }
     const { userId, portfolioId, portfolioName } = await requirePhaseAPortfolio(url.searchParams.get('portfolio_id') ?? undefined)
-    const service = createServiceClient()
+    const service = await createServiceClient()
     // One bounded RPC response, not offset pages from independent snapshots.
     // Exact count is mandatory: a Data API row cap must fail closed, not look complete.
     const { data: records, error, count } = await service.rpc('get_decrypted_portfolio_transactions', { p_user_id: userId, p_portfolio_id: portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }, { count: 'exact' })

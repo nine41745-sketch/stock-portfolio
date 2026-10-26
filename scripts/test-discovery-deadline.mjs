@@ -14,7 +14,10 @@ function load(file, cache = new Map(), overrides = {}) {
   const localRequire = name => {
     if (name in overrides) return overrides[name]
     if (name === 'yahoo-finance2') return class { chart() { sdkCalls++; return Promise.resolve({quotes:[]}) } }
-    if (name.startsWith('@/')) return load(name.slice(2) + '.ts', cache, overrides)
+    if (name.startsWith('@/')) {
+      const localPath = name.slice(2)
+      return load(path.extname(localPath) ? localPath : localPath + '.ts', cache, overrides)
+    }
     return require(name)
   }
   new Function('require','module','exports',source)(localRequire,loadedModule,loadedModule.exports)
@@ -169,17 +172,34 @@ test('Budgeted Auth/REST preserves response status, headers and consumed data',a
  try{const result=await createDeadlineFetch(scope)('http://127.0.0.1/auth/v1/user');assert(ownedBody.bodyUsed);assert.equal(result.status,200);assert.equal(result.headers.get('x-test'),'preserved');assert.deepEqual(await result.json(),{id:'synthetic-user'});await scope.close()}finally{globalThis.fetch=original}
 })
 
-for (const stage of ['auth','auth-invalid','portfolio']) test(`Actual Supabase SDK ${stage} status mapping stays fail-closed and drains`,async()=>{
+const syntheticSdkEnvironmentKeys = ['VERCEL','VERCEL_ENV','NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY']
+
+async function withSyntheticLocalSdkEnvironment(run) {
+ const inherited = new Map(syntheticSdkEnvironmentKeys.map(key => [key, process.env[key]]))
+ try {
+  // These SDK timeout/status cases emulate local transport; deployment guards are exercised separately.
+  delete process.env.VERCEL
+  delete process.env.VERCEL_ENV
+  process.env.NEXT_PUBLIC_SUPABASE_URL='http://127.0.0.1:54321'
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY='synthetic-local-key'
+  return await run()
+ } finally {
+  for (const [key, value] of inherited) {
+   if (value === undefined) delete process.env[key]
+   else process.env[key] = value
+  }
+ }
+}
+
+for (const stage of ['auth','auth-invalid','portfolio']) test(`Actual Supabase SDK ${stage} status mapping stays fail-closed and drains`,async()=>withSyntheticLocalSdkEnvironment(async()=>{
  const original=globalThis.fetch
- const savedUrl=process.env.NEXT_PUBLIC_SUPABASE_URL,savedKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
- process.env.NEXT_PUBLIC_SUPABASE_URL='http://127.0.0.1:54321';process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY='synthetic-local-key'
  const jwt=Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url')+'.'+Buffer.from(JSON.stringify({sub:'synthetic-owner',exp:Math.floor(Date.now()/1000)+3600,session_id:'synthetic-session'})).toString('base64url')+'.synthetic'
  const session={access_token:jwt,refresh_token:'synthetic-refresh',token_type:'bearer',expires_at:Math.floor(Date.now()/1000)+3600,expires_in:3600,user:{id:'synthetic-owner'}}
  const jar=[{name:'sb-127-auth-token',value:'base64-'+Buffer.from(JSON.stringify(session)).toString('base64url')}]
  const cookieStore={getAll:()=>jar,get:name=>jar.find(row=>row.name===name),set(){}}
  let active=0,authCalls=0,restCalls=0,pinChecks=0
  const cache=new Map(),overrides={
-  'next/headers':{cookies:async()=>cookieStore},
+  'next/headers':{cookies:async()=>cookieStore,headers:async()=>new Headers({host:'127.0.0.1:54321'})},
   '@/lib/pin-session':{PIN_SESSION_COOKIE_NAME:'pin-session',getSupabaseSessionId:()=> 'synthetic-session',verifyPinSessionValue:async()=>{pinChecks++;return true}},
   '@/lib/portfolio-context':{ACTIVE_PORTFOLIO_COOKIE:'active-portfolio'},
  }
@@ -209,7 +229,41 @@ for (const stage of ['auth','auth-invalid','portfolio']) test(`Actual Supabase S
   assert.equal(mappedStatus,stage==='auth-invalid'?401:503,'The Discovery route delegates PhaseAError HTTP status mapping to this response helper')
   await scope.close()
   assert(performance.now()-startedAt<1000,'SDK retry sleeps must not outlive absolute budget');assert.equal(active,0);assert.equal(authCalls,1);assert.equal(pinChecks,stage==='portfolio'?1:0);assert.equal(restCalls,stage==='portfolio'?1:0)
- }finally{await scope.close();globalThis.fetch=original;if(savedUrl===undefined)delete process.env.NEXT_PUBLIC_SUPABASE_URL;else process.env.NEXT_PUBLIC_SUPABASE_URL=savedUrl;if(savedKey===undefined)delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY=savedKey}
+ }finally{await scope.close();globalThis.fetch=original}
+}))
+
+for (const rejects of [false, true]) test(`Preview guard and environment are restored after synthetic SDK fixture ${rejects ? 'failure' : 'success'}`, async()=>{
+ const inherited = new Map(syntheticSdkEnvironmentKeys.map(key => [key, process.env[key]]))
+ const originalFetch = globalThis.fetch
+ let networkCalls = 0
+ try {
+  process.env.VERCEL='1'
+  process.env.VERCEL_ENV='preview'
+  process.env.NEXT_PUBLIC_SUPABASE_URL='http://127.0.0.1:54321'
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY='synthetic-preview-key'
+  const preview = new Map(syntheticSdkEnvironmentKeys.map(key => [key, process.env[key]]))
+  globalThis.fetch=async()=>{networkCalls++;throw new Error('Unexpected network request in synthetic environment test')}
+  const server=load('lib/supabase/server.ts',new Map(),{
+   'next/headers':{cookies:async()=>({getAll:()=>[],set(){}}),headers:async()=>new Headers({host:'127.0.0.1:54321'})},
+  })
+  await assert.rejects(server.createClient(), /not isolated/)
+  const running=withSyntheticLocalSdkEnvironment(async()=>{
+   const client=await server.createClient()
+   assert.equal(typeof client.auth.getUser,'function')
+   if (rejects) throw new Error('Synthetic fixture rejection')
+  })
+  if (rejects) await assert.rejects(running, /Synthetic fixture rejection/)
+  else await running
+  assert.deepEqual(new Map(syntheticSdkEnvironmentKeys.map(key => [key, process.env[key]])), preview)
+  await assert.rejects(server.createClient(), /not isolated/)
+  assert.equal(networkCalls,0)
+ } finally {
+  globalThis.fetch=originalFetch
+  for (const [key, value] of inherited) {
+   if (value === undefined) delete process.env[key]
+   else process.env[key] = value
+  }
+ }
 })
 
 const yahooChart = load('lib/discovery-yahoo.ts')

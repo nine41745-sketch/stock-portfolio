@@ -89,7 +89,7 @@ export async function GET() {
   const { user, portfolio } = context
   if (!user || !portfolio) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const rpcArgs = portfolio.mode === 'portfolio'
     ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
     : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
@@ -126,7 +126,7 @@ async function saveTradePlan(request: NextRequest, id: string | null) {
     return NextResponse.json({ error: 'ข้อมูล Trade Plan ไม่ถูกต้อง' }, { status: 400 })
   }
 
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const baseArgs = {
     p_user_id: user.id,
     p_id: id,
@@ -194,7 +194,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Trade Plan id ไม่ถูกต้อง' }, { status: 400 })
   }
 
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   let query = serviceClient
     .from('trade_plans')
     .delete()

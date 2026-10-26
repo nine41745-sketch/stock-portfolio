@@ -25,7 +25,7 @@ export default async function DashboardPage() {
   )
 
   // Decrypt holdings ผ่าน service_role และ scope ตาม active portfolio หลัง migration v1.27.0
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const rpcArgs = portfolio.mode === 'portfolio'
     ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
     : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }

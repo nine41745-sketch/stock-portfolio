@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const serviceClient = createServiceClient()
+    const serviceClient = await createServiceClient()
 
     const saveManualLatest = async (analysis: DetailedAnalysisResult) => {
       if (analysis.error || !analysis.technicalSummary || !analysis.summary) return

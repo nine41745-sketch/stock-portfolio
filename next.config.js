@@ -9,6 +9,12 @@ const securityHeaders = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  // Public, non-secret marker lets browser-side Supabase clients fail closed on Preview.
+  env: {
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? (process.env.VERCEL === '1' ? 'unknown' : 'development'),
+    NEXT_PUBLIC_VERCEL_URL: process.env.VERCEL_URL ?? '',
+    NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL ?? '',
+  },
   async headers() {
     return [
       {

@@ -79,7 +79,7 @@ export async function PUT(
       throw error
     }
 
-    const serviceClient = createServiceClient()
+    const serviceClient = await createServiceClient()
     const rpcArgs = portfolio.mode === 'portfolio'
       ? {
           p_user_id: user.id,

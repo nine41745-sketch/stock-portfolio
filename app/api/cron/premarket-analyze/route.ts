@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { isProductionCronEnvironment } from '@/lib/supabase/runtime-safety.mjs'
 import { isPortfolioFoundationMissing } from '@/lib/portfolio-context'
 import { analyzePortfolioBatch, PortfolioBatchHoldingInput } from '@/lib/portfolio-batch'
 import { getMultipleQuotesWithMetrics, getUpcomingEarningsForSymbols } from '@/lib/finnhub'
@@ -54,6 +55,15 @@ async function fetchNewRelevantNews(symbol: string, sinceMs: number): Promise<Ne
 }
 
 export async function GET(request: NextRequest) {
+  if (!isProductionCronEnvironment({
+    deploymentEnv: process.env.VERCEL_ENV,
+    requestHost: request.nextUrl.host,
+    deploymentUrl: process.env.VERCEL_URL,
+    projectProductionUrl: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  })) {
+    return NextResponse.json({ error: 'Cron is unavailable outside Production' }, { status: 404 })
+  }
+
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) return NextResponse.json({ error: 'Cron is not configured' }, { status: 503 })
   if (request.headers.get('authorization') !== `Bearer ${cronSecret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -75,7 +85,7 @@ export async function GET(request: NextRequest) {
   }
   console.info('[premarket-cron] active', { marketDate: marketClock.date, etTime, activeWindow: PREMARKET_CRON_WINDOW })
 
-  const supabase = createServiceClient()
+  const supabase = await createServiceClient()
   let portfolioMode = true
   let holdingRows: Array<{ user_id: unknown; portfolio_id?: unknown }> = []
   const scopedRows = await supabase.from('holdings').select('user_id, portfolio_id').gt('shares', 0)

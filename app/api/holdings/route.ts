@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 
   // v1.27.0: ทุก write ผ่าน server-side RPC เพื่อให้ schema ก่อน/หลัง Multi-Portfolio ใช้เส้นทางเดียวกัน
   // และไม่พึ่ง ON CONFLICT (user_id, symbol) ซึ่งจะเปลี่ยนเป็น user_id+portfolio_id+symbol หลัง migration.
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const rpcArgs = portfolio.mode === 'portfolio'
     ? {
         p_user_id: user.id,
@@ -90,7 +90,7 @@ export async function GET() {
   if ('response' in context) return context.response
   const { user, portfolio } = context
 
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const rpcArgs = portfolio.mode === 'portfolio'
     ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
     : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }

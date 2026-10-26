@@ -103,7 +103,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Target Allocation ไม่ถูกต้อง' }, { status: 400 })
   }
 
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const { data, error } = await serviceClient.rpc('save_portfolio_allocation_targets', {
     p_user_id: user.id,
     p_portfolio_id: portfolio.portfolioId,
