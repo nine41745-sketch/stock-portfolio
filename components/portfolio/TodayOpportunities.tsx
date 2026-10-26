@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { preliminaryRank, selectAutomatic, selectPreliminary } from '@/lib/today-candidates'
 
 type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
 type Decision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAKOUT' | 'WATCH' | 'AVOID'
@@ -52,6 +53,7 @@ type RankedResult = StockCheckResult & {
 
 const UNIVERSES = ['ai', 'semis', 'growth', 'quality'] as const
 const FINALIST_LIMIT = 6
+const PRELIMINARY_LIMIT = 12
 
 function fmtPrice(value: number | null): string {
   return value === null ? '—' : `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -59,43 +61,6 @@ function fmtPrice(value: number | null): string {
 
 function fmtRatio(value: number | null): string {
   return value === null ? '—' : `${value.toFixed(2)}:1`
-}
-
-function pctDistance(price: number | null, reference: number | null): number | null {
-  if (price === null || reference === null || reference <= 0) return null
-  return ((price - reference) / reference) * 100
-}
-
-function isStructuralPullback(item: ScannerItem): boolean {
-  if (item.price === null || item.ema50 === null || item.ema200 === null || item.ema200 <= 0) return false
-  if (item.ema50 <= item.ema200 * 1.01) return false
-  const emaDistance = pctDistance(item.price, item.ema50)
-  const supportDistance = pctDistance(item.price, item.support)
-  return item.trend === 'SIDEWAYS' &&
-    emaDistance !== null && emaDistance >= -3 && emaDistance <= 1 &&
-    supportDistance !== null && supportDistance >= 0 && supportDistance <= 8
-}
-
-function preliminaryRank(item: ScannerItem): number {
-  let rank = item.score
-  if (item.trend === 'UPTREND') rank += 24
-  if (isStructuralPullback(item)) rank += 20
-  if (item.setup === 'PULLBACK' || item.setup === 'NEAR_SUPPORT') rank += 14
-  else if (item.setup === 'BREAKOUT' || item.setup === 'MOMENTUM') rank += 8
-  if ((item.riskReward ?? 0) >= 1.5) rank += 14
-  else if ((item.riskReward ?? 0) >= 1.25) rank += 10
-  else if ((item.riskReward ?? 0) >= 1) rank += 4
-
-  const supportDistance = pctDistance(item.price, item.support)
-  if (supportDistance !== null && supportDistance >= 0 && supportDistance <= 5) rank += 10
-  else if (supportDistance !== null && supportDistance > 5 && supportDistance <= 8) rank += 5
-
-  const emaDistance = pctDistance(item.price, item.ema50)
-  if (emaDistance !== null && emaDistance >= -3 && emaDistance <= 5) rank += 8
-
-  if (item.earnings && item.earnings.daysUntil <= 7) rank -= 60
-  if (item.setup === 'AVOID') rank -= 80
-  return rank
 }
 
 function finalPriority(item: RankedResult): number {
@@ -134,14 +99,27 @@ async function responseError(response: Response, fallback: string): Promise<stri
 export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols: string[] }) {
   const heldSet = useMemo(() => new Set(holdingSymbols.map(symbol => symbol.toUpperCase())), [holdingSymbols])
   const [results, setResults] = useState<RankedResult[]>([])
+  const [preliminary, setPreliminary] = useState<ScannerItem[]>([])
+  const [manualSymbol, setManualSymbol] = useState<string | null>(null)
+  const [validationWarnings, setValidationWarnings] = useState<string[]>([])
+  const pending = useRef<AbortController | null>(null)
+  const inFlight = useRef(false)
+  useEffect(() => () => pending.current?.abort(), [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [scannedCount, setScannedCount] = useState(0)
   const [checkedAt, setCheckedAt] = useState<string | null>(null)
 
   async function scanToday() {
+    if (inFlight.current) return
+    inFlight.current = true
+    pending.current?.abort()
+    const controller = new AbortController()
+    pending.current = controller
     setLoading(true)
     setError(null)
+    setPreliminary([])
+    setValidationWarnings([])
     setResults([])
     setScannedCount(0)
 
@@ -150,7 +128,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
 
       // Run the existing deterministic universes sequentially to avoid a Finnhub earnings burst.
       for (const universe of UNIVERSES) {
-        const response = await fetch(`/api/scanner?universe=${universe}`, { cache: 'no-store' })
+        const response = await fetch(`/api/scanner?universe=${universe}`, { cache: 'no-store', signal: controller.signal })
         if (!response.ok) throw new Error(await responseError(response, `สแกนกลุ่ม ${universe} ไม่สำเร็จ`))
         const payload = await response.json() as { items?: ScannerItem[] }
         for (const item of Array.isArray(payload.items) ? payload.items : []) {
@@ -162,15 +140,9 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
       const universeItems = [...bySymbol.values()]
       setScannedCount(universeItems.length)
 
-      const finalists = universeItems
-        .filter(item => {
-          if (item.setup === 'AVOID') return false
-          if (item.earnings && item.earnings.daysUntil <= 7) return false
-          if (item.trend === 'UPTREND') return item.score >= 58
-          return isStructuralPullback(item) && item.score >= 58
-        })
-        .sort((a, b) => preliminaryRank(b) - preliminaryRank(a) || b.score - a.score || a.symbol.localeCompare(b.symbol))
-        .slice(0, FINALIST_LIMIT)
+      const finalists = selectPreliminary(universeItems)
+      setPreliminary(finalists)
+      const automaticFinalists = selectAutomatic(finalists)
 
       if (!finalists.length) {
         setCheckedAt(new Date().toISOString())
@@ -178,18 +150,19 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
       }
 
       const validated: RankedResult[] = []
-      for (let index = 0; index < finalists.length; index += 2) {
-        const chunk = finalists.slice(index, index + 2)
+      for (let index = 0; index < automaticFinalists.length; index += 2) {
+        const chunk = automaticFinalists.slice(index, index + 2)
         const settled = await Promise.allSettled(chunk.map(async candidate => {
-          const response = await fetch(`/api/stock-check?symbol=${encodeURIComponent(candidate.symbol)}`, { cache: 'no-store' })
+          const response = await fetch(`/api/stock-check?symbol=${encodeURIComponent(candidate.symbol)}`, { cache: 'no-store', signal: controller.signal })
           if (!response.ok) throw new Error(await responseError(response, `ยืนยัน ${candidate.symbol} ไม่สำเร็จ`))
           const result = await response.json() as StockCheckResult
           return { ...result, preliminaryRank: preliminaryRank(candidate) }
         }))
         for (const item of settled) {
           if (item.status === 'fulfilled') validated.push(item.value)
+          else if (!controller.signal.aborted) setValidationWarnings(previous => [...previous, 'ยืนยันบางรายการไม่สำเร็จ สามารถกดตรวจอีกครั้งได้'])
         }
-        if (index + 2 < finalists.length) await new Promise(resolve => window.setTimeout(resolve, 350))
+        if (index + 2 < automaticFinalists.length) await new Promise(resolve => window.setTimeout(resolve, 350))
       }
 
       validated.sort((a, b) =>
@@ -199,12 +172,34 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
         b.preliminaryRank - a.preliminaryRank
       )
 
+      if (controller.signal.aborted) return
       setResults(validated)
       setCheckedAt(new Date().toISOString())
     } catch (scanError) {
-      setError(scanError instanceof Error ? scanError.message : 'สแกนโอกาสซื้อวันนี้ไม่สำเร็จ')
+      if (!controller.signal.aborted) setError(scanError instanceof Error ? scanError.message : 'สแกนโอกาสซื้อวันนี้ไม่สำเร็จ')
     } finally {
-      setLoading(false)
+      inFlight.current = false
+      if (!controller.signal.aborted) setLoading(false)
+    }
+  }
+
+  async function validateOnDemand(candidate: ScannerItem) {
+    if (inFlight.current || results.some(result => result.symbol === candidate.symbol)) return
+    inFlight.current = true
+    const controller = new AbortController()
+    pending.current = controller
+    setManualSymbol(candidate.symbol)
+    setError(null)
+    try {
+      const response = await fetch(`/api/stock-check?symbol=${encodeURIComponent(candidate.symbol)}`, { cache: 'no-store', signal: controller.signal })
+      if (!response.ok) throw new Error(await responseError(response, `ยืนยัน ${candidate.symbol} ไม่สำเร็จ`))
+      const result = await response.json() as StockCheckResult
+      if (!controller.signal.aborted) setResults(previous => [...previous, { ...result, preliminaryRank: preliminaryRank(candidate) }].sort((a, b) => finalPriority(a) - finalPriority(b) || (b.plan.riskRewardNow ?? -1) - (a.plan.riskRewardNow ?? -1) || b.score - a.score || b.preliminaryRank - a.preliminaryRank))
+    } catch (cause) {
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'ตรวจหุ้นไม่สำเร็จ')
+    } finally {
+      inFlight.current = false
+      if (!controller.signal.aborted) setManualSymbol(null)
     }
   }
 
@@ -223,7 +218,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
         <button
           type="button"
           onClick={() => void scanToday()}
-          disabled={loading}
+          disabled={loading || manualSymbol !== null}
           className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
         >{loading ? 'กำลังค้นหาโอกาส...' : 'สแกนโอกาสวันนี้'}</button>
       </div>
@@ -237,7 +232,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
       {!loading && checkedAt && (
         <div className="mt-4 flex flex-wrap gap-3 text-xs text-gray-500">
           <span>สแกน {scannedCount} หุ้น</span>
-          <span>ยืนยันสูงสุด {FINALIST_LIMIT} ตัว</span>
+          <span>คัดเบื้องต้นสูงสุด {PRELIMINARY_LIMIT} ตัว · ยืนยันอัตโนมัติสูงสุด {FINALIST_LIMIT} ตัว</span>
           <span>BUY NOW {buyNowCount} ตัว</span>
           <span>ล่าสุด {new Date(checkedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })} ICT</span>
         </div>
@@ -249,12 +244,25 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
         </div>
       )}
 
-      {!loading && checkedAt && !results.length && !error && (
+      {!loading && checkedAt && !preliminary.length && !error && (
         <div className="mt-5 rounded-xl border border-gray-800 bg-gray-950/40 p-5 text-sm text-gray-400">
           รอบนี้ยังไม่มีตัวที่ผ่าน shortlist สำหรับการยืนยัน — ระบบจะไม่สร้าง BUY NOW ขึ้นมาเองเมื่อเงื่อนไขไม่พอ
         </div>
       )}
 
+      {!loading && preliminary.length > 0 && <section className="mt-5 space-y-2" aria-label="หุ้นผ่านเกณฑ์เบื้องต้น">
+        <h2 className="font-semibold text-white">ผ่านเกณฑ์เบื้องต้น (Preliminary) · {preliminary.length} ตัว</h2>
+        <p className="text-xs text-gray-400">ยังไม่ใช่ผล Stock Check · 6 อันดับแรกตรวจอัตโนมัติ ที่เหลือเลือกตรวจเพิ่มเติมได้ครั้งละ 1 ตัว</p>
+        {validationWarnings.length > 0 && <p role="status" className="text-xs text-yellow-300">{validationWarnings[0]}</p>}
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{preliminary.map(item => {
+          const validated = results.some(result => result.symbol === item.symbol)
+          return <div key={item.symbol} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-700 p-3 text-sm text-gray-200">
+            <span>{item.symbol} · Score {item.score}/100 · {item.trend}</span>
+            {validated ? <span className="text-green-300">ตรวจยืนยันแล้ว</span> : <button type="button" disabled={loading || manualSymbol !== null} onClick={() => void validateOnDemand(item)} className="rounded border border-blue-500 px-3 py-1 text-blue-300 disabled:opacity-50">{manualSymbol === item.symbol ? 'กำลังตรวจ...' : 'ตรวจ Stock Check'}</button>}
+          </div>
+        })}</div>
+      </section>}
+      {!loading && results.length > 0 && <h2 className="mt-5 font-semibold text-white">ผลยืนยัน Stock Check (Validated)</h2>}
       {!loading && results.length > 0 && (
         <div className="mt-5 grid gap-3 lg:grid-cols-2">
           {results.map((item, index) => (

@@ -42,7 +42,7 @@ const STATUS_LABELS: Record<ProviderStatus, string> = {
 function formatTimestamp(value: string | null): string {
   if (!value) return 'ไม่ทราบเวลาอัปเดตจากผู้ให้บริการ'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? 'ไม่ทราบเวลาอัปเดตจากผู้ให้บริการ' : date.toLocaleString('th-TH')
+  return Number.isNaN(date.getTime()) ? 'ไม่ทราบเวลาอัปเดตจากผู้ให้บริการ' : date.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) + ' ICT'
 }
 
 function formatValue(observation: FundamentalObservation): string {
@@ -166,7 +166,8 @@ export default function FundamentalsPanel() {
                   <th scope="row" className="p-3 font-medium">{METRIC_LABELS[id]}<span className="block text-xs font-normal text-gray-500 dark:text-gray-400">{PERIOD_LABELS[period]}</span></th>
                   {observations.map((item, index) => <td key={results[index].symbol} className="p-3">
                     <span>{item ? formatValue(item) : '—'}</span>
-                    {!item || item.value === null ? <span className="block text-xs text-gray-500 dark:text-gray-400">ไม่มีข้อมูล</span> : null}
+                    {item?.sourceField && item.value !== null ? <span className="block text-xs text-gray-500 dark:text-gray-400">Finnhub · {item.sourceField}</span> : null}
+                    {!item || item.value === null ? <span className="block text-xs text-gray-500 dark:text-gray-400">{STATUS_LABELS[results[index].providerStatus === 'available' ? 'missing' : results[index].providerStatus]}</span> : null}
                     {issue && observations.length > 1 ? <span className="block text-xs text-amber-800 dark:text-amber-200">{issue}</span> : null}
                   </td>)}
                 </tr>

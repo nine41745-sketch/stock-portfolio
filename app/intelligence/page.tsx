@@ -12,7 +12,7 @@ export default async function IntelligencePage() {
   const { data: { user } } = await db.auth.getUser()
   if (!user) redirect('/login')
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+    <div className="min-h-screen bg-gray-50 p-4 text-gray-900 dark:bg-gray-950 dark:text-gray-100 md:p-8">
       <InactivityPinLock />
       <InvestingSinceBadge />
       <AppTabs />
