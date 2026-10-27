@@ -329,12 +329,16 @@ assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native
 
 // Release metadata must match the verified deployment and the owner's scoped gate approval.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.41.2', 'Package version must match the v1.41.2 candidate')
+assert.equal(packageJson.version, '1.41.3', 'Package version must match the v1.41.3 candidate')
 const releasePackageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
 assert.equal(releasePackageLock.version, packageJson.version, 'Lockfile version must match package.json')
 assert.equal(releasePackageLock.packages?.['']?.version, packageJson.version, 'Lockfile root package version must match package.json')
 const releaseTsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1412'], 'Version badge must resolve to the v1.41.2 changelog')
+assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1413'], 'Version badge must resolve to the v1.41.3 changelog')
+const latestChangelog = fs.readFileSync('config/changelog-v1413.ts', 'utf8')
+assert.match(latestChangelog, /version: 'v1\.41\.3'/)
+assert.match(latestChangelog, /from '\.\/changelog-v1412'/)
+assert.match(latestChangelog, /Development History/)
 const currentChangelog = fs.readFileSync('config/changelog-v1412.ts', 'utf8')
 assert.match(currentChangelog, /version: 'v1\.41\.2'/)
 assert.match(currentChangelog, /from '\.\/changelog-v1411'/)
@@ -546,7 +550,7 @@ for (const [file, expectedTime] of changelogReleaseTimes) {
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1412'], 'Current release must use the v1.41.2 version badge')
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v1413'], 'Current release must use the v1.41.3 version badge')
 assert.match(releaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.34.0 changelog must contain a timestamp in the repository format')
 assert.match(latestReleaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.35.0 changelog must contain a timestamp in the repository format')
 
