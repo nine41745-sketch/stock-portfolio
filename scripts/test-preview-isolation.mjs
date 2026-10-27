@@ -219,6 +219,14 @@ assert.equal(await isCurrentProductionDeployment({
   }),
 }), false, 'Identity lookup must reject redirects')
 
+// Both fixed Production aliases must still require the active deployment identity.
+for (const requestHost of ['stock-portfolio-nine41745.vercel.app', 'stock-portfolio-seven-inky.vercel.app']) {
+  const config = { isVercel: true, ...activeDeploymentIdentity, requestHost, deploymentUrl: stagedHost, fetchImpl: identityFetch }
+  await assert.doesNotReject(() => assertSupabaseTargetIsSafeForServer(config), `${requestHost} must permit active deployment`)
+  await assert.rejects(() => assertSupabaseTargetIsSafeForServer({ ...config, deploymentId: 'dpl-synthetic-staged' }), /not isolated/, `${requestHost} must reject staged identity`)
+  assert.equal(await isProductionCronRequestAllowed({ ...config, deploymentId: 'dpl-synthetic-staged' }), false, `${requestHost} must reject staged Cron`)
+}
+
 await assert.doesNotReject(() => assertSupabaseTargetIsSafeForServer({
   isVercel: true,
   deploymentEnv: 'production',
