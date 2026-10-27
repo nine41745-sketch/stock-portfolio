@@ -1,6 +1,19 @@
 # Production Release Status
 
-## Current primary-alias rollout — 2026-10-27 Asia/Bangkok
+## Current Production and Staged status — verified 2026-10-28
+
+This snapshot supersedes the older rollout snapshots below. It records evidence, not a new release approval.
+
+- Both `stock-portfolio-nine41745.vercel.app` and `stock-portfolio-seven-inky.vercel.app` resolve through Vercel alias lookup to Production deployment `dpl_9Y4DPaykEAgAF63b9XtDcyHSp9YX` (READY). The deployment is available at `stock-portfolio-5a1p4go53-nine41745.vercel.app`.
+- The raw Vercel deployment API and Activity Event `uev_0pnvxsVqJNHNdgcNzrTawphw` report `sourceGitSha` and `gitCommitSha` as `f92566fa9143a15e43937921a0d12cb0b8ee4871`. These metadata labels and events do not prove every uploaded file byte-for-byte. The Vercel Connector's deployment summary returned `meta: {}` and `alias: []`; direct alias lookup and the deployment alias list identify the two domains above.
+- Vercel Activity Event `uev_9Vx7OqO1Y1bWfNHj1OBg9bAC` records the Production promotion at `2026-10-27T05:40:38.715Z` (`2026-10-27T12:40:38.715+07:00`). Alias lookup records the secondary domain updated at `2026-10-27T05:40:40.389Z` (`2026-10-27T12:40:40.389+07:00`) and the primary domain at `2026-10-27T06:08:39.950Z` (`2026-10-27T13:08:39.950+07:00`).
+- Staged deployment `dpl_4SpT689aBiTa4XCy5pkVizFhLjsb` is READY at `https://stock-portfolio-3nf9irelw-nine41745.vercel.app`, with `sourceGitSha` and `githubCommitSha` `438e6e286dfcc47a3327e3dbe4745e489df955de` in the raw Vercel API. It is a Production-targeted deployment created with `--skip-domain`; its deployment alias list is empty and it has not been promoted.
+- The Staged URL returned `Backend isolation is not configured`. The guard blocks access before Supabase authentication when it cannot establish the required Production identity. An identity mismatch is consistent with the observed configuration, but the exact failing condition is not verified. Staged authenticated functional QA was not performed; Cron registration/invocation and runtime database isolation on this Staged deployment remain unverified.
+- Security Gate: HOLD. Production Release Gate: HOLD for the Staged SHA and deployment. Existing approval for an earlier release does not extend to this Staged deployment; READY and CI success do not release either gate.
+- Before considering Promotion, resolve the Staged guard and Cron/DB isolation limitations, verify the intended Production domains and current rollback target, and obtain the owner's specific approval for the deployment and domains. Current Production `dpl_9Y4DPaykEAgAF63b9XtDcyHSp9YX` is READY and Vercel's deployment list reported `isRollbackCandidate: true` at the time of review; its eligibility after a future Promotion and actual rollback behavior have not been tested.
+- The older documented rollback target `dpl_7WxvLDtm21ZrVnveckfCTj6L36nQ` remains READY, but the deployment list reported `isRollbackCandidate: false` at the time of review. Do not infer that it is available for a future rollback without rechecking.
+
+## Historical primary-alias rollout — 2026-10-27 Asia/Bangkok
 
 This post-alias state supersedes the pre-alias staging and historical snapshots below.
 
