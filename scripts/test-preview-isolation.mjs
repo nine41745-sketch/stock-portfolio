@@ -239,12 +239,36 @@ await assert.rejects(() => assertSupabaseTargetIsSafeForServer({
   supabaseUrl: 'https://production.supabase.co',
   fetchImpl: identityFetch,
 }), /not isolated/, 'A Staged Production deployment must fail before Supabase access')
+await assert.rejects(() => assertSupabaseTargetIsSafeForServer({
+  isVercel: true,
+  deploymentEnv: 'production',
+  requestHost: productionHost,
+  deploymentUrl: stagedHost,
+  projectProductionUrl: productionHost,
+  deploymentId: 'dpl-synthetic-staged',
+  supabaseUrl: 'https://production.supabase.co',
+  fetchImpl: identityFetch,
+}), /not isolated/, 'A Staged deployment must not access Production Supabase by presenting the Production Host header')
 assert.equal(await isProductionCronRequestAllowed({
   ...activeDeploymentIdentity,
   requestHost: 'cron-target.example.test',
   deploymentUrl: 'cron-target.example.test',
   fetchImpl: identityFetch,
 }), true, 'A Cron targeting the deployment currently behind the Production URL must be accepted')
+assert.equal(await isProductionCronRequestAllowed({
+  ...activeDeploymentIdentity,
+  requestHost: productionHost,
+  deploymentUrl: stagedHost,
+  deploymentId: 'dpl-synthetic-staged',
+  fetchImpl: identityFetch,
+}), false, 'A Staged deployment must not be authorized for Cron by presenting the Production Host header')
+assert.equal(await isProductionCronRequestAllowed({
+  ...activeDeploymentIdentity,
+  requestHost: productionHost,
+  deploymentUrl: stagedHost,
+  deploymentId: undefined,
+  fetchImpl: identityFetch,
+}), false, 'A Production Host must not authorize Cron when deployment identity is unavailable')
 assert.equal(await isProductionCronRequestAllowed({
   ...activeDeploymentIdentity,
   deploymentId: 'dpl-synthetic-staged',

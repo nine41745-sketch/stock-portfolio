@@ -44,6 +44,7 @@ const denied = [
   ['Unknown environment', { mode: 'unknown' }],
   ['Missing deployment URL', { host: activeHost, env: { VERCEL_URL: '', NEXT_PUBLIC_VERCEL_URL: '' } }],
   ['Forwarded active Host on staged URL', { forwardedHost: activeHost }],
+  ['Production Host spoofed on staged deployment', { host: activeHost, browserHost: stagedHost }],
 ]
 for (const [name, options] of denied) test(`${name}: proxy and factories reject before SDK/Auth/DB`, async () => {
   const before = boundary.snapshot().length
@@ -57,7 +58,7 @@ for (const [name, options] of denied) test(`${name}: proxy and factories reject 
   assert.throws(() => f.load('lib/supabase/client.ts').createClient(), /not isolated/)
   assert.deepEqual(f.calls, {
     server: 0, browser: 0, service: 0, auth: 0, db: 0, secretReads: 0, providers: 0,
-    identityFetch: ['Staged Production deployment URL', 'Missing deployment URL', 'Forwarded active Host on staged URL'].includes(name) ? 3 : 0,
+    identityFetch: ['Staged Production deployment URL', 'Missing deployment URL', 'Forwarded active Host on staged URL', 'Production Host spoofed on staged deployment'].includes(name) ? 3 : 0,
   })
   assert.equal(boundary.snapshot().length, before, 'No attempted outbound network in runtime cases')
 })
@@ -76,7 +77,11 @@ for (const file of ['app/api/cron/daily-analyze/route.ts', 'app/api/cron/premark
     assert.equal(boundary.snapshot().length, before)
   })
   for (const secret of [undefined, 'wrong-secret', 'synthetic-cron-secret']) test(`${file}: active-host mock retains Cron auth (${secret ?? 'missing'})`, async () => {
-    const f = fixture({ host: activeHost, env: { CRON_SECRET: secret } })
+    const f = fixture({ host: activeHost, env: {
+      VERCEL_URL: cronTargetHost,
+      VERCEL_DEPLOYMENT_ID: 'dpl-synthetic-active',
+      CRON_SECRET: secret,
+    } })
     const authorization = secret === 'synthetic-cron-secret' ? `Bearer ${secret}` : 'Bearer wrong'
     const response = await f.load(file).GET(f.request('/api/cron/synthetic', authorization))
     // Valid mock credentials stop at a synthetic non-trading-day branch, never a real query.
@@ -182,7 +187,7 @@ test('Production identity endpoint fails closed when Vercel provides no deployme
 })
 
 for (const options of [
-  { host: activeHost },
+  { host: activeHost, env: { VERCEL_URL: cronTargetHost, VERCEL_DEPLOYMENT_ID: 'dpl-synthetic-active' } },
   { mode: 'preview', env: { NEXT_PUBLIC_SUPABASE_URL: 'https://synthetic-preview.supabase.co', NEXT_PUBLIC_SUPABASE_PREVIEW_PROJECT_REF: 'synthetic-preview', NEXT_PUBLIC_SUPABASE_PRODUCTION_PROJECT_REF: 'synthetic-prod' } },
 ]) test(`${options.mode ?? 'production'} allowed mock control exercises actual factories and proxy`, async () => {
   const before = boundary.snapshot().length
@@ -202,8 +207,8 @@ for (const options of [
   assert.equal(boundary.snapshot().length, before)
 })
 
-test('An allowlisted synthetic Host permits factories; this does not attest deployed identity', async () => {
-  const f = fixture({ host: activeHost })
+test('An active Production Host and matching deployment identity permit server factories', async () => {
+  const f = fixture({ host: activeHost, env: { VERCEL_URL: cronTargetHost, VERCEL_DEPLOYMENT_ID: 'dpl-synthetic-active' } })
   await f.load('lib/supabase/server.ts').createServiceClient()
   assert.equal(f.calls.service, 1)
   assert.equal(f.calls.db, 0)

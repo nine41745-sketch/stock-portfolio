@@ -11,7 +11,7 @@ export const activeHost = 'active-portfolio.example.test'
 export const stagedHost = 'synthetic-deployment.example.test'
 export const cronTargetHost = 'synthetic-cron-target.example.test'
 
-export function fixture({ mode = 'production', host = stagedHost, env: changes = {}, forwardedHost, identityDeploymentId = 'dpl-synthetic-active', identityStatus = 200, identityError } = {}) {
+export function fixture({ mode = 'production', host = stagedHost, browserHost = host, env: changes = {}, forwardedHost, identityDeploymentId = 'dpl-synthetic-active', identityStatus = 200, identityError } = {}) {
   const calls = { server: 0, browser: 0, service: 0, auth: 0, db: 0, secretReads: 0, providers: 0, identityFetch: 0 }
   // A new object, never process.env. No cloud values or credentials are inherited.
   const env = new Proxy({
@@ -77,7 +77,7 @@ export function fixture({ mode = 'production', host = stagedHost, env: changes =
     const context = vm.createContext({
       module: loadedModule, exports: loadedModule.exports, process: Object.freeze({ env }), URL, Headers, Response,
       console: Object.freeze({ info() {}, error() {}, warn() {} }),
-      window: Object.freeze({ location: Object.freeze({ host }) }),
+      window: Object.freeze({ location: Object.freeze({ host: browserHost }) }),
       require(name) {
         if (Object.hasOwn(overrides, name)) return overrides[name]
         if (name === '@/lib/supabase/server') return load('lib/supabase/server.ts')
