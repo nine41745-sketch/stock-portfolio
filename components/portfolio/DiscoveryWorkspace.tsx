@@ -7,7 +7,7 @@ import { DISCOVERY_THEMES, type DiscoveryTheme } from '@/lib/discovery-contract'
 
 type Item = {
   symbol: string; score: number | null; status: 'available' | 'unavailable'
-  label: string | null; setup: string | null; price: number | null; reasons: string[]
+  label: string | null; setup: string | null; trend: string | null; price: number | null; reasons: string[]
   dataSource: string; lastBarAt: string | null; freshness: string
   relativeStrength20: number | null; inHoldings: boolean; inWatchlist: boolean; warning: string | null
 }
@@ -30,12 +30,14 @@ function Results({ data }: { data: Item[] }) {
     {data.map(item => <article key={item.symbol} className="space-y-2 rounded-xl border border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
       <div className="flex flex-wrap justify-between gap-2"><h3 className="font-bold">{item.symbol}</h3><b>{item.score === null ? 'คะแนนไม่พร้อม' : item.score + '/100'}</b></div>
       <p className="text-sm">{item.status === 'unavailable' ? 'ข้อมูลไม่เพียงพอ' : (item.label ?? '') + ' · ' + (item.setup ?? '')}</p>
+      <p className="text-sm">แนวโน้ม (Trend): {item.trend ?? 'ไม่มีข้อมูล'} · คะแนน (Score) ตามเกณฑ์ระบบ</p>
       <p className="text-sm">ราคาจากข้อมูลย้อนหลัง: {item.price === null ? 'ไม่ทราบ' : '$' + item.price.toFixed(2)}</p>
       <p className="text-xs text-gray-600 dark:text-gray-400">{item.dataSource} · {dateLabel(item.lastBarAt)} · {item.freshness === 'fresh' ? 'ข้อมูลภายใน 5 วันปฏิทิน' : item.freshness === 'stale' ? 'ข้อมูลเก่า' : 'เวลาไม่ยืนยัน'}</p>
-      <p className="text-xs">Relative Strength เทียบ SPY 20 วัน: {item.relativeStrength20 === null ? 'ไม่พร้อม' : item.relativeStrength20.toFixed(2) + '%'}</p>
+      <p className="text-xs">Relative Strength (ผลตอบแทนเทียบ SPY ย้อนหลัง 20 วัน): {item.relativeStrength20 === null ? 'ไม่พร้อม' : item.relativeStrength20.toFixed(2) + '%'}</p>
       {(item.inHoldings || item.inWatchlist) && <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">{[item.inHoldings && 'ถือในพอร์ต',item.inWatchlist && 'อยู่ใน Watchlist พอร์ตนี้'].filter(Boolean).join(' · ')}</p>}
+      {item.reasons.length > 0 && <p className="text-xs font-semibold">เหตุผลจากเกณฑ์ที่ตรวจ</p>}
       {item.reasons.length > 0 && <ul className="list-inside list-disc text-xs text-gray-700 dark:text-gray-300">{item.reasons.map((reason,i) => <li key={i}>{reason}</li>)}</ul>}
-      {item.warning && <p className="text-xs text-amber-700 dark:text-amber-300">{item.warning}</p>}
+      {item.warning && <p className="text-xs text-amber-700 dark:text-amber-300">ข้อควรระวัง: {item.warning}</p>}
       <Link href="/scanner" className="inline-block rounded-lg border border-blue-500 px-3 py-2 text-xs font-semibold text-blue-700 dark:text-blue-300">ไป Scanner / Stock Check</Link>
     </article>)}
   </div>
@@ -94,18 +96,18 @@ export default function DiscoveryWorkspace({ activePortfolioId }: { activePortfo
     } finally { if (!controller.signal.aborted) setLoading(false) }
   }
   return <main className="mx-auto max-w-7xl space-y-5 py-6 text-gray-950 dark:text-gray-100">
-    <header><h1 className="text-2xl font-bold">Investment Discovery · {CURRENT_VERSION}</h1><p className="mt-1 text-sm text-gray-700 dark:text-gray-400">กลุ่มหุ้นคัดสรร ไม่ใช่ข้อมูลทั้งตลาดหรือคำแนะนำซื้อขาย</p></header>
+    <header><h1 className="text-2xl font-bold">ค้นหาโอกาสลงทุน (Investment Discovery) · {CURRENT_VERSION}</h1><p className="mt-1 text-sm text-gray-700 dark:text-gray-400">กลุ่มหุ้นคัดสรร ไม่ใช่ข้อมูลทั้งตลาดหรือคำแนะนำซื้อขาย</p></header>
     {!ready ? <section role={current && gate?.error ? 'alert' : 'status'} className="rounded-xl border border-gray-300 p-4 dark:border-gray-700">
       <p className="text-sm">{activePortfolioId===null ? 'Multi-Portfolio ไม่พร้อม' : current && gate?.error ? gate.error : 'กำลังยืนยันพอร์ตที่เลือก...'}</p>
       {current && gate?.error && <button type="button" onClick={()=>setAttempt(n=>n+1)} className="mt-3 rounded border border-gray-400 px-3 py-2">ลองยืนยันพอร์ตอีกครั้ง</button>}
     </section> : <>
       <section aria-label="ตั้งค่า Discovery" className="space-y-3 rounded-xl border border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <div className="flex flex-wrap gap-2">
-          <button type="button" aria-pressed={view==='theme'} className={'rounded-lg px-4 py-2 text-sm font-semibold '+(view==='theme'?'bg-blue-600 text-white':'border border-gray-400 dark:border-gray-600')} onClick={()=>{setView('theme');setData(null)}}>Investment Themes</button>
-          <button type="button" aria-pressed={view==='radar'} className={'rounded-lg px-4 py-2 text-sm font-semibold '+(view==='radar'?'bg-blue-600 text-white':'border border-gray-400 dark:border-gray-600')} onClick={()=>{setView('radar');setData(null)}}>Expanded Market Radar</button>
+          <button type="button" aria-pressed={view==='theme'} className={'rounded-lg px-4 py-2 text-sm font-semibold '+(view==='theme'?'bg-blue-600 text-white':'border border-gray-400 dark:border-gray-600')} onClick={()=>{setView('theme');setData(null)}}>ค้นหาตามกลุ่มลงทุน (Investment Themes)</button>
+          <button type="button" aria-pressed={view==='radar'} className={'rounded-lg px-4 py-2 text-sm font-semibold '+(view==='radar'?'bg-blue-600 text-white':'border border-gray-400 dark:border-gray-600')} onClick={()=>{setView('radar');setData(null)}}>ค้นหาจากกลุ่มหุ้นคัดสรร (Expanded Market Radar)</button>
         </div>
         {view==='theme' && <div role="group" aria-label="ธีมการลงทุน" className="flex flex-wrap gap-2">{DISCOVERY_THEMES.map(key=><button key={key} type="button" aria-pressed={theme===key} className={'rounded border px-3 py-2 text-sm '+(theme===key?'border-blue-600 bg-blue-600 text-white':'border-gray-400 dark:border-gray-600')} onClick={()=>{setTheme(key);setData(null)}}>{THEME_NAMES[key]}</button>)}</div>}
-        <button type="button" disabled={loading} onClick={()=>void scan()} className="rounded-lg bg-blue-600 px-5 py-3 font-bold text-white disabled:opacity-50">{loading?'กำลังสแกน...':'🔎 สแกนหุ้นที่เลือก'}</button>
+        <button type="button" disabled={loading} onClick={()=>void scan()} className="rounded-lg bg-blue-600 px-5 py-3 font-bold text-white disabled:opacity-50">{loading ? 'กำลังค้นหา...' : view === 'theme' ? 'ค้นหาโอกาสในกลุ่มนี้' : 'ค้นหาโอกาสจากทุกกลุ่ม'}</button>
         <p className="text-xs text-gray-700 dark:text-gray-400">กดเพื่อสแกนเท่านั้น · 12 หุ้นสูงสุด/ครั้ง · พร้อมกันไม่เกิน 2 หุ้น · ไม่มี Polling หรือ AI อัตโนมัติ</p>
       </section>
       {loading && <p role="status">กำลังโหลดข้อมูลผู้ให้บริการ...</p>}
@@ -113,12 +115,12 @@ export default function DiscoveryWorkspace({ activePortfolioId }: { activePortfo
       {visible && <section aria-label="ผลการสำรวจ" className="space-y-5">
         <div className="rounded-xl border border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
           <p className="font-semibold">สแกน {visible.coverage.attempted}/{visible.coverage.totalUnique} หุ้นไม่ซ้ำ · ข้อมูลพร้อม {visible.coverage.available} · ไม่พร้อม {visible.coverage.unavailable}</p>
-          <p className="mt-1 text-xs text-gray-700 dark:text-gray-400">ข้อมูลประมวลผล {dateLabel(visible.completedAt)} · {visible.methodologyVersion} · กลุ่มกำหนดในโค้ด ไม่ทราบวันที่ทบทวนล่าสุด</p>
+          <p className="mt-1 text-xs text-gray-700 dark:text-gray-400">เวลาประเมินล่าสุด {dateLabel(visible.completedAt)} · {visible.methodologyVersion} · กลุ่มกำหนดในโค้ด ไม่ทราบวันที่ทบทวนล่าสุด</p>
           <div className="mt-3 flex flex-wrap gap-2">{visible.coverage.byTheme.map(row=><span className="rounded border border-gray-400 px-2 py-1 text-xs dark:border-gray-600" key={row.theme}>{THEME_NAMES[row.theme]} {row.attempted}/{row.total}</span>)}</div>
           <ul className="mt-3 list-inside list-disc text-xs text-amber-700 dark:text-amber-300">{visible.warnings.map((warning,i)=><li key={i}>{warning}</li>)}</ul>
         </div>
-        <div className="space-y-2"><h2 className="text-lg font-bold">Trending Opportunities <span className="text-sm font-normal">(เฉพาะผลสแกนครั้งนี้)</span></h2><p className="text-sm">Scanner Score ≥58 · ขาขึ้น · Relative Strength 20 วันเหนือ SPY · ไม่ AVOID · ไม่มี Earnings Risk 7 วันตามข้อมูลที่ทราบ</p><Results data={visible.trending}/></div>
-        <div className="space-y-2"><h2 className="text-lg font-bold">Expanded Market Radar</h2><p className="text-sm">น่าสนใจ {visible.coverage.interesting} · เฝ้าดู {visible.coverage.watch} · AVOID {visible.coverage.avoid} · ไม่พร้อม {visible.coverage.unavailable}</p><Results data={visible.items}/></div>
+        <div className="space-y-2"><h2 className="text-lg font-bold">โอกาสที่มีแนวโน้มเด่น <span className="text-sm font-normal">(เฉพาะผลสแกนครั้งนี้)</span></h2><p className="text-sm">Scanner Score ≥58 · ขาขึ้น · Relative Strength 20 วันเหนือ SPY · ไม่ AVOID · ไม่มี Earnings Risk 7 วันตามข้อมูลที่ทราบ</p><Results data={visible.trending}/></div>
+        <div className="space-y-2"><h2 className="text-lg font-bold">ผลสำรวจหุ้นกลุ่มคัดสรร</h2><p className="text-sm">น่าสนใจ {visible.coverage.interesting} · เฝ้าดู {visible.coverage.watch} · AVOID {visible.coverage.avoid} · ไม่พร้อม {visible.coverage.unavailable}</p><Results data={visible.items}/></div>
       </section>}
     </>}
   </main>

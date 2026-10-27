@@ -230,7 +230,7 @@ assert.match(today, /const UNIVERSES = \['ai', 'semis', 'growth', 'quality'\]/, 
 assert.match(today, /FINALIST_LIMIT = 6/, 'Today radar must cap live Stock Check validation to six finalists')
 assert.match(today, /\/api\/scanner\?universe=/, 'Today radar must reuse deterministic scanner data')
 assert.match(today, /\/api\/stock-check\?symbol=/, 'Today radar finalists must be revalidated with live Stock Check')
-assert.match(today, /isStructuralPullback/, 'Today radar must surface controlled EMA50 pullback candidates')
+assert.match(fs.readFileSync('lib/today-candidates.ts', 'utf8'), /isStructuralPullback/, 'Today radar must surface controlled EMA50 pullback candidates')
 
 const scannerPage = fs.readFileSync('app/scanner/page.tsx', 'utf8')
 assert.match(scannerPage, /ScannerWorkspace/, 'Dedicated scanner page must render the combined workspace')

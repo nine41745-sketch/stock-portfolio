@@ -1,7 +1,7 @@
-const stages = new Set(['scanner-after-setup', 'lock-transition', 'watchlist-missing-migration-ui', 'watchlist-portfolio-isolation', 'account-switch-b-unlocked'])
+const stages = new Set(['scanner-after-setup', 'lock-transition', 'watchlist-missing-migration-ui', 'watchlist-portfolio-isolation', 'account-switch-b-unlocked', 'ui-ux-four-areas-synthetic-browser'])
 const rules = {
-  '/api/portfolios': { documentPath: '/scanner', stages },
-  '/api/smart-dca': { documentPath: '/risk', stages: new Set(['risk-dashboard']) },
+  '/api/portfolios': { documentPaths: new Set(['/scanner', '/discovery', '/intelligence', '/alerts']), stages },
+  '/api/smart-dca': { documentPaths: new Set(['/risk']), stages: new Set(['risk-dashboard']) },
 }
 const header = 'x-stock-qa-request-id'
 const validId = id => typeof id === 'string' && /^[a-f0-9-]{36}:\d{1,5}$/.test(id)
@@ -19,7 +19,7 @@ export function createRequestCancellationEvidence() {
   const notify = () => { for (const resolve of waiters) resolve() }
   const add = row => { if (events.length >= 2000) invalid = true; else events.push(row); notify() }
   const validScope = scope => !!scope && Object.hasOwn(rules, scope.pathname) && rules[scope.pathname].stages.has(scope.stage) &&
-    scope.documentPath === rules[scope.pathname].documentPath && scope.epoch && typeof scope.portfolioId === 'string' && scope.portfolioId.length > 0 &&
+    rules[scope.pathname].documentPaths.has(scope.documentPath) && scope.epoch && typeof scope.portfolioId === 'string' && scope.portfolioId.length > 0 &&
     scope.expectedFrame && Number.isInteger(scope.afterSequence) && Number.isInteger(scope.afterNavigation)
   const matchesScope = (record, scope) => record.pathname === scope.pathname && record.stage === scope.stage && record.epoch === scope.epoch &&
     record.portfolioId === scope.portfolioId && record.documentPath === scope.documentPath && record.frame === scope.expectedFrame &&
@@ -77,7 +77,7 @@ export function createRequestCancellationEvidence() {
       if (requests.has(id) || requests.size >= 1000) { invalid = true; return }
       const url = new URL(request.url()), rule = Object.hasOwn(rules, url.pathname) ? rules[url.pathname] : null
       const record = { id, frame, stage, epoch, portfolioId, documentPath, pathname: rule ? url.pathname : '/[redacted]', navigation, sequence: ++sequence, started: performance.now(),
-        eligible: !!rule && rule.stages.has(stage) && documentPath === rule.documentPath && frame === expectedFrame && !!epoch && typeof portfolioId === 'string' && request.method() === 'GET' &&
+        eligible: !!rule && rule.stages.has(stage) && rule.documentPaths.has(documentPath) && frame === expectedFrame && !!epoch && typeof portfolioId === 'string' && request.method() === 'GET' &&
           url.search === '', responseReceived: false, ownedSuccess: false }
       records.set(request, record)
       requests.set(id, record)
@@ -173,7 +173,7 @@ export async function waitForOwnedRequestLifecycle({ evidence, flush, drain, sco
 
 function validBarrierScope(scope) {
   return !!scope && Object.hasOwn(rules, scope.pathname) && rules[scope.pathname].stages.has(scope.stage) &&
-    scope.documentPath === rules[scope.pathname].documentPath && scope.epoch && typeof scope.portfolioId === 'string' && scope.portfolioId.length > 0 &&
+    rules[scope.pathname].documentPaths.has(scope.documentPath) && scope.epoch && typeof scope.portfolioId === 'string' && scope.portfolioId.length > 0 &&
     scope.expectedFrame && Number.isInteger(scope.afterSequence) && Number.isInteger(scope.afterNavigation)
 }
 
@@ -195,7 +195,7 @@ export async function installRequestCancellationObserver(context, evidence) {
       const url = new URL(input instanceof Request ? input.url : input, globalThis.location.origin)
       const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
       const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
-      const scopedRead = (globalThis.location.pathname === '/scanner' && url.pathname === '/api/portfolios') ||
+      const scopedRead = (['/scanner', '/discovery', '/intelligence', '/alerts'].includes(globalThis.location.pathname) && url.pathname === '/api/portfolios') ||
         (globalThis.location.pathname === '/risk' && url.pathname === '/api/smart-dca')
       if (!scopedRead || url.search !== '' || url.origin !== globalThis.location.origin || url.protocol !== 'http:' ||
         !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || method !== 'GET' || !signal) return nativeFetch.call(this, input, init)

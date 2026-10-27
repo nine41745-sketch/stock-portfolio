@@ -106,7 +106,7 @@ export default function ScannerWorkspace({ holdingSymbols, activePortfolioId }: 
       ) : view === 'opportunities'
         ? <OpportunityHub key={activePortfolioId ?? 'legacy'} holdingSymbols={holdingSymbols} />
         : view === 'today'
-          ? <TodayOpportunities holdingSymbols={holdingSymbols} />
+          ? <TodayOpportunities key={activePortfolioId ?? 'legacy'} holdingSymbols={holdingSymbols} />
           : view === 'check'
             ? <StockCheckPanel heldSymbols={holdingSymbols} />
             : <FundamentalsPanel />}

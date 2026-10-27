@@ -167,7 +167,7 @@ const created=await fetch(new URL('/auth/v1/admin/users',sb),{
 assert.equal(created.status,200)
 const qaUser=await created.json()
 pass('Synthetic user created by local Auth Admin')
-let outside=0, mode='synthetic', watchlistMode='normal', scannerMode='mock', riskMode='synthetic', secRiskMode='synthetic'
+let outside=0, mode='synthetic', watchlistMode='normal', scannerMode='mock', riskMode='synthetic', secRiskMode='synthetic', uiUxMode=false, uiUxPortfolioId=null, uiUxStockChecks=0
 setStage('BROWSER_STARTING')
 browser=await chromium.launch({headless:true})
 try {
@@ -291,10 +291,21 @@ try {
   const u=new URL(route.request().url())
   if(!local(u.hostname)||(u.port!==process.env.QA_APP_PORT&&u.origin!==process.env.NEXT_PUBLIC_SUPABASE_URL)){outside++;await route.abort('blockedbyclient');return}
   if(u.pathname==='/api/fundamentals'){
+   if(uiUxMode) return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(fundamentalsUiFixture())})
    if(mode==='loading') await new Promise(resolve=>setTimeout(resolve,1000))
    if(mode==='error') await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic provider error'})})
    else await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(fixture())})
    return
+  }
+  if(uiUxMode&&u.pathname==='/api/discovery') return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(discoveryFixture(uiUxPortfolioId,u.searchParams.get('view'),u.searchParams.get('theme')))})
+  if(uiUxMode&&u.pathname==='/api/market-intelligence') return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(marketFixture())})
+  if(uiUxMode&&u.pathname==='/api/news') return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({news:[{symbol:'SYN1',headline:'Synthetic headline',headlineTh:'ข่าวจำลอง',source:'Fixture',datetime:1793059200,url:'https://example.com/news',impact:'NEUTRAL'}]})})
+  if(uiUxMode&&u.pathname==='/api/alerts') return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(alertsFixture())})
+  if(uiUxMode&&u.pathname==='/api/scanner') return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:scannerFixture()})})
+  if(uiUxMode&&u.pathname==='/api/stock-check'){
+   uiUxStockChecks++
+   const symbol=u.searchParams.get('symbol')??'SYN1'
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(stockCheckFixture(symbol))})
   }
   if(u.pathname==='/api/risk'){
    if(riskMode==='loading') await new Promise(resolve=>setTimeout(resolve,400))
@@ -506,6 +517,96 @@ try {
  const portfolioList=await portfoliosResponse.json()
  const portfolioA=portfolioList.portfolios.find(portfolio=>portfolio.id===portfolioList.active_portfolio_id)
  assert(portfolioA,'Synthetic user must have an active default portfolio')
+ setStage('ui-ux-four-areas-synthetic-browser')
+ const uiPortfolioResponse=await requestGet(page.request,new URL('/api/portfolios',base).href)
+ assert.equal(uiPortfolioResponse.status(),200)
+ uiUxPortfolioId=(await uiPortfolioResponse.json()).active_portfolio_id
+ assert(uiUxPortfolioId,'Synthetic active portfolio required for discovery fixture')
+ uiUxMode=true
+ await navigate(new URL('/scanner',base).href)
+ await page.getByRole('button',{name:/เช็กหุ้น/}).click()
+ await page.getByPlaceholder('Ticker เช่น AMD').fill('SYNQA')
+ await page.getByRole('button',{name:'วิเคราะห์หุ้น'}).click()
+ await page.getByRole('heading',{name:'SYNQA'}).waitFor()
+ await page.getByText('เฝ้าดู',{exact:true}).waitFor()
+ await page.getByText('วิธีอ่านตัวชี้วัดและความเสี่ยง').click()
+ await page.getByText(/Score คือคะแนนตามเกณฑ์ระบบ/).waitFor()
+ assert(await page.getByText(/Volume คือปริมาณซื้อขาย · ATR วัดความผันผวน/).count()>0)
+ assert.equal(await page.getByText('BUY NOW',{exact:true}).count(),0,'Synthetic WATCH result must never be presented as BUY NOW')
+ pass('Stock Check synthetic result explains Score, Trend, momentum, RSI/MACD, entry/stop/target, R:R, Volume and ATR without inventing BUY NOW')
+ await page.getByRole('button',{name:/พื้นฐาน \/ มูลค่า/}).click()
+ await page.getByRole('heading',{name:'วิเคราะห์พื้นฐานและมูลค่า'}).waitFor()
+ const fundamentalsSymbols=page.getByLabel('สัญลักษณ์หุ้น คั่นด้วยจุลภาค')
+ await fundamentalsSymbols.fill('AAPL,MSFT,NVDA,TSLA')
+ await page.getByRole('button',{name:'โหลดข้อมูล'}).click()
+ await page.getByRole('heading',{name:'SEC EDGAR · Annual GAAP EPS จาก 10-K'}).waitFor()
+ for(const status of ['ไม่มีข้อมูลในแหล่งนี้','เกินโควตาผู้ให้บริการ','ไม่พร้อมใช้งาน / สิทธิ์ไม่รองรับ','ข้อมูลเก่า']) await page.getByText(status,{exact:true}).first().waitFor()
+ assert(await page.getByText(/Finnhub · synthetic/).count()>0,'Source field must be visible for a synthetic value')
+ assert(await page.getByText(/ผลที่ระบบรับเมื่อ .* ICT/).count()>0,'Response time must use Asia/Bangkok')
+ pass('Fundamentals synthetic partial data distinguishes missing, rate-limited, unavailable and stale with source/time provenance')
+ uiUxStockChecks=0
+ async function assertResponsive(pageName){
+  for(const width of [375,768,1440]){
+   await page.setViewportSize({width,height:1000})
+   const dimensions=await page.evaluate(()=>({innerWidth,scrollWidth:document.documentElement.scrollWidth}))
+   assert(dimensions.scrollWidth<=dimensions.innerWidth+1,`${pageName} horizontal overflow at ${width}px`)
+   pass(`${pageName} responsive ${width}px`)
+  }
+ }
+ const themeToggle=page.locator('button[title^="โหมดปัจจุบัน:"]')
+ await navigate(new URL('/discovery',base).href)
+ await page.getByRole('heading',{name:/ค้นหาโอกาสลงทุน/}).waitFor()
+ await page.getByRole('button',{name:'ค้นหาโอกาสในกลุ่มนี้'}).click()
+ await page.getByText('เวลาประเมินล่าสุด').waitFor()
+ assert(await page.getByText(/แนวโน้ม \(Trend\): UPTREND/).count()>0)
+ assert(await page.getByText(/เหตุผลจากเกณฑ์ที่ตรวจ/).count()>0)
+ assert(await page.getByText(/ข้อมูลภายใน 5 วันปฏิทิน/).count()>0)
+ await page.getByRole('button',{name:/กลุ่มหุ้นคัดสรร \(Expanded Market Radar\)/}).click()
+ await page.getByRole('button',{name:'ค้นหาโอกาสจากทุกกลุ่ม'}).click()
+ pass('Discovery Thai labels, mode-specific actions, score/trend/reasons, freshness, coverage and warnings render from synthetic response')
+ await assertResponsive('Discovery')
+ await drainEvidence()
+ await navigate(new URL('/intelligence',base).href)
+ await page.getByRole('heading',{name:'🧠 วิเคราะห์ตลาดและข่าวพอร์ต'}).waitFor()
+ await page.getByRole('heading',{name:/ภาพรวมตลาด/}).waitFor()
+ await page.getByRole('heading',{name:'📰 ข่าวของหุ้นในพอร์ต'}).waitFor()
+ await page.getByRole('heading',{name:/Sentiment จากข่าว/}).waitFor()
+ assert(await page.getByText('ข่าวจำลอง').count()>0)
+ if(await page.locator('html').getAttribute('data-theme')!=='light') await themeToggle.click()
+ await assertResponsive('Market Intelligence light')
+ if(await page.locator('html').getAttribute('data-theme')!=='dark') await themeToggle.click()
+ await assertResponsive('Market Intelligence dark')
+ pass('Market Intelligence separates brief, news and sentiment with light/dark theme')
+ await drainEvidence()
+ await navigate(new URL('/alerts',base).href)
+ await page.getByRole('heading',{name:'🔔 แจ้งเตือน'}).waitFor()
+ await page.getByText(/ประเมินล่าสุด .*07:00 ICT/).waitFor()
+ assert(await page.getByText('เวลาประเมิน ไม่ใช่เวลาเกิดเหตุการณ์ครั้งแรก').count()>0)
+ assert(await page.getByText('ระยะห่าง 1.25%').count()>0)
+ await assertResponsive('Alerts')
+ pass('Alerts show synthetic Asia/Bangkok evaluation time, reference levels, distance and observation wording')
+ await drainEvidence()
+ await navigate(new URL('/scanner',base).href)
+ await page.getByRole('button',{name:'🔥 โอกาสวันนี้'}).click()
+ await page.getByRole('button',{name:'สแกนโอกาสวันนี้'}).click()
+ await page.getByRole('heading',{name:/ผ่านเกณฑ์เบื้องต้น/}).waitFor()
+ await page.getByRole('heading',{name:'ผลยืนยัน Stock Check (Validated)'}).waitFor()
+ assert.equal(uiUxStockChecks,6,'Automatic Stock Check must not exceed six candidates')
+ assert.equal(await page.getByRole('button',{name:'ตรวจ Stock Check'}).count(),6,'Six remaining preliminary candidates must be available on demand')
+ const preliminaryCandidates=page.locator('section[aria-label="หุ้นผ่านเกณฑ์เบื้องต้น"]')
+ const onDemandButton=preliminaryCandidates.getByRole('button',{name:'ตรวจ Stock Check'}).first()
+ const onDemandCandidateLabel=(await onDemandButton.locator('..').locator('span').first().innerText()).trim()
+ const onDemandCandidate=preliminaryCandidates.locator('div.grid > div').filter({hasText:onDemandCandidateLabel}).first()
+ const onDemandResponse=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/stock-check')
+ await onDemandButton.click()
+ assert.equal((await onDemandResponse).status(),200,'On-demand Stock Check must receive the synthetic successful response')
+ await onDemandCandidate.getByText('ตรวจยืนยันแล้ว',{exact:true}).waitFor()
+ assert.equal(uiUxStockChecks,7,'On-demand must validate only the explicitly selected candidate')
+ await assertResponsive('Today Opportunities')
+ pass('Today Opportunities keeps 12 preliminary, six automatic validations and one-at-a-time on-demand validation')
+ await drainEvidence()
+ uiUxMode=false
+
  const collectionResponse=await requestPost(page.request,new URL('/api/watchlist/collections',base).href,{data:{name:'QA Collection A'}})
  assert.equal(collectionResponse.status(),201)
  const collectionA=(await collectionResponse.json()).collection
@@ -1013,6 +1114,26 @@ async function assertRiskAxe(page,label,evidenceDir){
  assert.equal(relevant.length,0,`Risk UI axe violations ${label}: `+JSON.stringify(relevant.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)}))))
 }
 
+function discoveryFixture(portfolioId,view,theme){
+ const now=new Date().toISOString()
+ const item={symbol:'SYN1',status:'available',score:72,label:'น่าสนใจ',setup:'PULLBACK',trend:'UPTREND',reasons:['แนวโน้มจำลองเป็นขาขึ้น'],categoryScores:null,price:100,relativeStrength20:2.5,relativeStrength60:null,lastBarAt:now,dataSource:'Finnhub',freshness:'fresh',earningsDays:null,allTimeHigh:null,inHoldings:false,inWatchlist:false,warning:'ข้อมูลสังเคราะห์สำหรับ QA'}
+ const unavailable={...item,symbol:'SYN2',status:'unavailable',score:null,trend:null,price:null,reasons:[],dataSource:'unavailable',freshness:'unknown',warning:'ไม่มีข้อมูลจำลอง'}
+ return {portfolioId,view,theme:view==='theme'?theme:null,methodologyVersion:'synthetic-qa',completedAt:now,coverage:{attempted:2,totalUnique:2,available:1,unavailable:1,interesting:1,watch:0,avoid:0,byTheme:[{theme:theme??'ai',attempted:2,total:2}]},items:[item,unavailable],trending:[item],warnings:['ข้อมูลสังเคราะห์เท่านั้น'],truncated:false}
+}
+function marketFixture(){
+ const emptyCount={score:null,sample:0,positive:0,neutral:0,negative:0,unknown:0}
+ return {asOf:'2026-10-27',portfolioName:'Synthetic Portfolio',heldSymbols:['SYN1'],newsSymbols:['SYN1'],benchmarks:[{symbol:'SPY',price:500,changePct:0.5,quotedAt:'2026-10-27T00:00:00.000Z'},{symbol:'QQQ',price:null,changePct:null,quotedAt:null}],overview:['ข้อมูลจำลอง'],insights:[],sentiment:{methodology:'Synthetic only',week:emptyCount,month:emptyCount,days:[],uniqueHeadlines:0},warnings:['Synthetic fixture only']}
+}
+function alertsFixture(){
+ return {generatedAt:'2026-10-27T00:00:00.000Z',trackedSymbols:['SYN1'],alerts:[{id:'synthetic-alert',symbol:'SYN1',kind:'NEAR_SUPPORT',severity:'WARNING',title:'ใกล้แนวรับจำลอง',detail:'ข้อมูลจำลองสำหรับการตรวจ UI',price:100,level:98.77,distancePct:1.25,eventDate:null}],summary:{total:1,critical:0,warning:1,info:0},warnings:[],methodology:{source:'synthetic'}}
+}
+function scannerFixture(){
+ return Array.from({length:12},(_,index)=>({symbol:`SYN${String(index+1).padStart(2,'0')}`,score:80-index,setup:'PULLBACK',price:100,trend:'UPTREND',ema50:98,ema200:90,support:97,resistance:110,riskReward:1.5,earnings:null}))
+}
+function stockCheckFixture(symbol){
+ return {symbol,checkedAt:new Date().toISOString(),price:100,priceSource:'historical',dayChangePct:null,score:70,label:'เฝ้าดู',setup:'PULLBACK',scannerReasons:['Synthetic only'],trend:'UPTREND',ema50:98,ema200:90,atr14:null,rsi14:null,weeklyRsi14:null,macdHistogram:null,volumeRatio:null,support:97,resistance:110,week52High:null,week52Low:null,return20dPct:null,return60dPct:null,relativeStrength20:null,relativeStrength60:null,pe:null,earnings:null,plan:{decision:'WATCH',decisionLabel:'เฝ้าดู',buyMode:null,summary:'ผลจำลอง ยังไม่มีคำสั่งซื้อ',entryZone:{low:98,high:100},stopLoss:95,target1:110,target2:null,breakoutTrigger:null,riskRewardAtEntry:1.5,riskRewardNow:1.2,reasons:['Synthetic only'],warnings:[]}}
+}
+
 function fixture(){
  const now=new Date().toISOString()
  const metrics=[['eps','currency/share'],['pe','x'],['ps','x'],['pb','x'],['ev_ebitda','x']]
@@ -1027,6 +1148,18 @@ function fixture(){
   make('AAPL','Apple Inc.','Apple Inc.','exact','0000320193'),
   make('MSFT','Microsoft Corp.','Microsoft Corporation','different','0000789019')
  ]}
+}
+
+function fundamentalsUiFixture(){
+ const base=fixture()
+ const clone=(symbol,providerStatus)=>{
+  const original=structuredClone(base.results[1])
+  return {...original,symbol,companyName:`Synthetic ${symbol}`,providerStatus,profileStatus:providerStatus,fetchedAt:new Date().toISOString(),
+   observations:original.observations.map(item=>({...item,value:null,status:providerStatus==='available'?'missing':'unavailable',source:null,sourceField:null,
+    freshness:providerStatus==='stale'?'stale':'unknown',fetchedAt:new Date().toISOString(),sourceUpdatedAt:null})),
+   sec:{...original.sec,identity:{...original.sec.identity,ticker:symbol,cik:'0000000000',entityName:`Synthetic ${symbol}`},companyFactsEntityName:`Synthetic ${symbol}`}}
+ }
+ return {...base,results:[base.results[0],clone('MSFT','rate_limited'),clone('NVDA','unavailable'),clone('TSLA','stale')]}
 }
 
 function riskFixture(){
