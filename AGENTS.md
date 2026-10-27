@@ -113,3 +113,11 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 - Production Cron endpoints must remain blocked on every Preview, including this branch. Do not invoke Cron endpoints during QA.
 - This exception does not authorize direct database tooling, migrations, schema changes, manual data changes, Secrets access, Preview environment changes outside branch-scoped public identifiers, Merge, Promote or Production deployment.
 - Do not extend this exception to another PR, branch, Preview deployment or future task without fresh owner approval.
+
+## Version and changelog for every change
+
+- Starting with the next task, every distinct delivered change must receive a new version, including features, UI/UX changes, fixes, security or dependency updates, documentation, tests and maintenance. Treat the files and commits belonging to one coherent change as one versioned delivery, not as separate releases for each save or commit.
+- Choose the version according to the change: normally increment patch for fixes and maintenance, minor for added functionality, and major for breaking changes. Honor an explicitly requested version and check the current version first.
+- Update the authoritative version values consistently, including `package.json`, the root package version in `package-lock.json`, the application's displayed version and the changelog. Summarize what changed in language the owner can understand, and update relevant assertions when required.
+- Mark a version as unreleased until its Production release is verified. Record an actual Production date and time only from verified release evidence; never invent a release timestamp or imply that a HOLD gate has passed.
+- Include the new version and changelog in the scoped change before requesting review, Commit/Push or release. If a version change cannot be completed, report the blocker and do not claim that the version was updated.
