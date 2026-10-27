@@ -12,21 +12,23 @@
 - Inspect the system and keep a short internal plan before acting. Resolve routine questions with read-only evidence and proceed without asking the owner to choose among options.
 - Work only in a dedicated branch based on the verified remote `main`; preserve existing user changes. Never push directly to `main`.
 - Do not weaken security gates or assertions to make CI pass.
-- A staged Vercel deployment created with `vercel deploy --prod --skip-domain` does not assign a domain or switch live traffic. It may be used when the current task requires deployment verification and the exact commit, project and target are verified first.
-- Never merge into `main`, promote a deployment, assign/change an alias or domain, or otherwise route live traffic without separate explicit owner authorization naming the intended PR or deployment and SHA.
+- `vercel deploy --prod --skip-domain` creates a Production-targeted deployment and skips automatic domain assignment; it is not a Preview or an isolated test environment. Treat it as using Production environment settings and account for possible Cron registration. Do not use it for synthetic or authenticated QA unless the required database and Cron isolation is proven. Promotion applies the existing deployment; it does not rebuild it.
+- Keep `main:false` and automatic Production-domain assignment disabled unless the owner separately authorizes the exact settings change. Never assign a domain or route live traffic outside the exact approved Promotion.
 
 ## Autonomous execution
 
-- For an active owner request, work autonomously through read-only investigation, scoped code/document changes on a task branch, tests, lint, typecheck and build, then commit/push the branch and open or update a PR when those steps are needed to complete the request.
+- For an active owner request, work autonomously on a dedicated task branch, make scoped changes, run focused local checks, commit/push, open or update a Draft PR, and let required CI and any automatic Preview run. Do not ask for separate Commit/Push or Draft-PR approval when these are needed for the authorized task. Do not create a second/manual Preview or Deployment just to repeat an automatic run.
+- Use two owner approval points for a routine release: (1) merge the exact PR head SHA after required CI is green and the Diff is reviewed; (2) promote the exact Staged Deployment ID and source SHA after build, provenance and safe read-only checks are reported. The first approval permits the merge and the single staged build from the resulting merge commit as the workflow's intermediate step; it does not permit Promotion. Never merge if the approved head SHA changed.
+- After the approved merge, create at most one Staged Production-targeted deployment from the resulting merge commit, record and verify its full source SHA, Build status/logs and aliases, then perform only the authorized read-only checks. If Cron behavior, database target/isolation, deployment identity or scope cannot be verified safely, stop and report BLOCKED instead of assuming `--skip-domain` isolates the deployment.
+- Keep required CI as the primary full validation gate. Run focused local checks for the changed behavior; avoid repeating a full suite, audit or build already proven for the same exact SHA unless a changed commit, failure or concrete evidence gap requires it.
 - Do not pause for routine choices or ask the owner to repeat authorization already given in the active task. A task authorizes only the scope it explicitly requests.
-- When needed to verify an exact commit on Vercel, a staged `--prod --skip-domain` deployment is allowed within the task scope. Do not promote it or assign a domain; report its URL, ID, SHA evidence, logs and checks.
 - Do not send progress reports during autonomous work unless the owner asks. Give one complete final report when finished or when a stop condition is reached.
 - If the same fix fails to make progress after more than three attempts, stop and report the evidence, likely cause, next action, risk and required owner decision.
 
 ## Boundaries requiring separate owner authorization
 
-- Stop before merging into `main`, deploying or promoting traffic to a real domain, or changing an alias/domain.
-- Stop before accessing or modifying Production database data/schema/migrations, Supabase or cloud environment settings, environment variables/secrets, GitHub/Vercel security settings, or another system.
+- Stop before merging unless the owner has approved the exact PR head SHA, and stop before Promotion unless the owner has approved the exact Deployment ID and source SHA. Approval to Promote covers only the explicitly named Production domain(s) shown in the approval summary.
+- Stop before changing aliases/domains outside that exact Promotion, accessing or modifying Production database data/schema/migrations, changing Supabase or cloud settings, environment variables/secrets, GitHub/Vercel security settings, or another system. These actions require their own explicit, scoped approval; merge or Promotion approval does not imply them.
 - Stop before force-pushing, deleting/cancelling an existing deployment, or taking an action that incurs a charge or reaches a known Vercel Hobby limit.
 - If a required credential or permission is unavailable, stop without requesting passwords, tokens or secrets in chat; report the official sign-in/permission step needed.
 - Do not infer approval for actions outside the active task.
@@ -38,21 +40,22 @@
 - Use Supabase for schema/RPC/RLS/database inspection only when that access is specifically approved and the target environment is verified. Tool availability is not proof of access or environment isolation.
 - Before a required login, new connection or expanded permission, inform the owner of the system, purpose, minimum access, Production/security/quota risks and official approval steps. Use the provided permission flow and wait for approval; never request passwords, tokens, secrets or credentials in chat.
 - Connecting a Plugin does not authorize modifying the system. Keep all existing scoped approvals and safety rules in this file.
-- Commit/push require approval within the current task. Merge, Production access/changes, deployments outside approved scope, Database/schema/data/migrations, Environment/Secrets/Cloud settings, GitHub/Vercel security settings, tags/releases and deletion require explicit scoped approval before acting.
+- Commit/push to the task branch, Draft PR creation/update and the one staged build described in the approved two-point release workflow do not need separate approval. Exact-head Merge and exact-deployment Promotion each require their own owner approval. Production data/schema/migrations, Environment/Secrets/Cloud settings, GitHub/Vercel security settings, tags/releases, deletion, force-push and any unapproved domain/alias change still require explicit scoped approval.
 - Use the least resources needed; avoid unnecessary GitHub Actions runs and Vercel Hobby builds/Previews. Do not weaken security checks or change deployment policy to save quota.
 - Report unavailable tools or insufficient permissions and propose a safe alternative. Claim connection, execution or success only with inspected evidence.
 
 ## Independent review for security and enforcement changes
 
-- PRs that add or modify CI workflows, required-check or Ruleset enforcement, security gates/checkers, or tests/assertions that determine whether a security gate passes must receive independent review before being marked Ready or merged.
-- The reviewer must be someone other than the PR author and must review the exact current PR head SHA. A review of an earlier SHA is stale; request a new review after the head changes. Preserve the reviewer decision and SHA with the PR or task record. CI and author self-review do not replace independent review.
-- Keep these PRs Draft until the reviewer explicitly approves the current head SHA. If an owner-directed merge occurs without pre-merge review, report that fact plainly and keep the Security Gate on HOLD until independent post-merge review and required validation are complete. Never describe a post-merge review as pre-merge review.
+- Routine UI, copy and documentation work uses one Codex self-review of the full Diff and relevant evidence; no separate reviewer chat is required.
+- Runtime, security, database, Cron or Environment changes, and changes to CI workflows, required-check/Ruleset enforcement, security gates/checkers or security-test assertions, require one independent review of the exact current PR head before merge. The reviewer must not be the PR author; any changed head makes the review stale. Keep the PR Draft until that review is recorded. This is a review checkpoint, not an additional owner approval.
+- If an owner explicitly directs a merge without the required pre-merge review, report that fact and keep the affected Security Gate on HOLD until required post-merge review and validation are complete. Never describe post-merge review as pre-merge review.
 
 ## Security and setup
 
 - Never read, disclose or copy Production Secrets; never connect Production Database for development tests.
 - Use Node.js 22.x and committed `package-lock.json`.
 - Onboarding must preserve source, tests, manifests and lockfile.
+- Use a separately isolated synthetic Preview backend for authenticated QA. A branch-specific Preview variable name alone does not prove its value points to a non-Production database. Never run synthetic tests against Production. If a Staged Production-targeted deployment would use Production services, restrict checks to explicitly authorized read-only smoke tests and stop when Cron or database behavior is not safely verified.
 - Build-only validation uses non-secret placeholders from `.github/workflows/ci.yml`; real credentials are not prerequisites for test/build. Do not deploy placeholder-built artifacts.
 - Authenticated integration testing requires separately approved non-Production targets/data/access.
 - Preserve Auth/PIN, user/portfolio isolation, RLS, atomic accounting and deterministic SELL_ALL safeguards.
@@ -73,7 +76,7 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 
 ## Vercel Hobby
 
-- Inspect the current deployment trigger and likely build impact before branch pushes or PR creation. Use the fewest builds needed to validate the requested fix.
+- Inspect the current deployment trigger and likely build impact before branch pushes or PR creation. Use the fewest builds needed to validate the requested fix. Treat one automatic Preview build as part of the PR workflow when configured; do not issue another deployment to duplicate it.
 - Treat `vercel.json` branch rules as deployment controls: `main: false` deliberately prevents Git-triggered Production deployments and preserves staged release control; unspecified branches default to enabled.
 - Keep the regression check aligned with `main: false` and every branch intentionally excluded from deployments. Do not enable `main` without scoped owner approval after checking Vercel's current custom Production domain auto-assignment behavior and accepting the automatic Production impact.
 - Do not bypass CI or security checks. If a needed build would incur a charge or hit a known Hobby limit, stop and report before triggering it.
@@ -81,6 +84,7 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 ## Architecture, documentation and releases
 
 - Resolve `tsconfig.json` aliases before editing implementations; baseline `@/config/changelog` resolves to `config/changelog-v1320.ts`.
+- For runtime/security/database/Cron/Environment work, write a concise risk and rollback plan before coding. Keep database migrations separate; before any Production DB change, require a separate explicit approval plus a verified backup and rollback plan. Make approved Environment changes before building Staged because deployments do not pick up later variable edits. After Promotion, inspect Cron registration and available invocation evidence read-only; never press Run or call a Cron endpoint without explicit approval.
 - Changelog records completed releases; ROADMAP records direction/priorities/acceptance; Issues hold tasks; PRs hold implementation/review evidence; governance/runbooks hold procedures.
 - Do not invent an approved roadmap, release or Production result. SemVer follows actual release behavior; docs/maintenance/tests are not automatically minor releases.
 - v1.33.0 is a completed release at commit `ea76e7bf4a68b62b3649c2f8f9bfa063d7796411`; GitHub Release v1.33.0 is published. Verify the current release tag and production evidence before making further release claims.
@@ -100,9 +104,9 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 
 ## Owner-approved self-review policy (2026-10-26)
 
-- This owner-approved policy supersedes earlier instructions requiring independent review, a separate reviewer chat, or external reviewer approval before continuing. Codex must review its own complete Diff and verification evidence and report findings directly in this Codex chat; do not require the owner to forward messages or files to another chat.
+- For routine UI, copy and documentation changes, Codex reviews its own complete Diff and verification evidence in this Codex chat; do not require the owner to forward messages to another chat. High-risk work listed under `Independent review for security and enforcement changes` still requires one independent review of the exact PR head before merge.
 - Identify the exact reviewed commit or local Patch SHA-256, inspect the complete changed-file scope, verify relevant test evidence, and state unresolved findings and unverified behavior. Call this author self-review; never describe it as independent review or claim checks passed without evidence.
-- Keep CI, Security Assertions, guard checks, Rulesets, secret/data protections and existing owner-approval boundaries intact. Self-review does not authorize Commit/Push, Merge, Deploy/Promote, alias/domain or Environment/Secrets changes, Production DB access, or releasing a HOLD Gate outside the owner's explicit task scope.
+- Keep CI, Security Assertions, guard checks, Rulesets, secret/data protections and existing owner-approval boundaries intact. Self-review does not authorize unapproved Production changes. The exact-head Merge and exact-deployment Promotion approvals remain mandatory; DB/schema/migration and Environment/Secrets changes remain separately scoped.
 - End every final report with exactly one `ขั้นต่อไปที่แนะนำ`: state the next action and who should do it. When owner approval is required, provide a copy-ready approval sentence for this Codex chat naming the exact action, SHA or Deployment ID and prohibited scope. Do not ask the owner to obtain approval from a separate reviewer chat.
 - If no action is needed, explain why the requested work is complete and identify any remaining Production-release work or accepted limitations relevant to the current task.
 
@@ -119,5 +123,6 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 - Starting with the next task, every distinct delivered change must receive a new version, including features, UI/UX changes, fixes, security or dependency updates, documentation, tests and maintenance. Treat the files and commits belonging to one coherent change as one versioned delivery, not as separate releases for each save or commit.
 - Choose the version according to the change: normally increment patch for fixes and maintenance, minor for added functionality, and major for breaking changes. Honor an explicitly requested version and check the current version first.
 - Update the authoritative version values consistently, including `package.json`, the root package version in `package-lock.json`, the application's displayed version and the changelog. Summarize what changed in language the owner can understand, and update relevant assertions when required.
-- Mark a version as unreleased until its Production release is verified. Record an actual Production date and time only from verified release evidence; never invent a release timestamp or imply that a HOLD gate has passed.
+- Before Production, every user-facing feature or other versioned delivery must show its version and a verified Development/Feature History date and time in the Changelog, with timezone (Asia/Bangkok). Use the verified feature/merge event time and label it as development history, not as a Production release time.
+- Mark a version as unreleased until its Production release is verified. After Promotion, add the actual Production date and time only from verified Vercel Promotion/Alias event evidence, with timezone; never infer Production time from a feature commit, merge, build or Staged deployment. If the exact release time cannot be verified, say so rather than inventing one.
 - Include the new version and changelog in the scoped change before requesting review, Commit/Push or release. If a version change cannot be completed, report the blocker and do not claim that the version was updated.
