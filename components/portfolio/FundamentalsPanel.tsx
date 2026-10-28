@@ -252,6 +252,15 @@ export default function FundamentalsPanel() {
                   <p className="mt-2 text-gray-600 dark:text-gray-400">การจับคู่ด้วย CIK และ Symbol ระบุข้อมูลระดับบริษัทเท่านั้น ไม่ได้ยืนยันประเภทหลักทรัพย์หรือ Share Class</p>
                 </section>
               })()}
+              {result.sec.issuerEps && <section aria-label={`EPS ระดับบริษัท ${result.symbol}`} className="mt-3 rounded border border-amber-300 p-2 dark:border-amber-700">
+                <p className="font-semibold">Annual EPS ระดับบริษัท · ยังไม่ยืนยันกับหลักทรัพย์ที่เลือก</p>
+                <p>ไม่ใช่หลักฐาน Share Class หรือราคาหุ้น และไม่ใช้คำนวณ Scenario</p>
+                {(['basic', 'diluted'] as EpsDefinition[]).map(definition => {
+                  const item = result.sec.issuerEps![definition]
+                  const fact = item.fact
+                  return <div key={definition}><p>{definition === 'basic' ? 'Basic' : 'Diluted'}: {fact ? `${fact.value.toLocaleString('en-US')} ${fact.unit}` : item.status}</p>{fact ? <><p>FY {fact.fiscalYear} · {fact.periodStart} ถึง {fact.periodEnd} · {fact.form} · ยื่น {fact.filed} · {fact.accession} · {fact.freshness}</p><a href={fact.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">SEC filing directory</a></> : <p>{item.reason}</p>}</div>
+                })}
+              </section>}
               {(['basic', 'diluted'] as EpsDefinition[]).map(definition => {
                 const selection = result.sec[definition]
                 const fact = selection.fact

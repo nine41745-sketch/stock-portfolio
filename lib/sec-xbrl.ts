@@ -9,6 +9,7 @@ export interface SecIdentity {
   exchange: string
   mappingUrl: string
   status: 'verified' | 'unverified' | 'unsupported'
+  multipleTickerIssuer?: boolean
   reason: string
 }
 
@@ -47,6 +48,7 @@ export interface SecFinancialResult {
   diluted: SecEpsSelection
   fetchedAt: string | null
   source: 'SEC EDGAR'
+  issuerEps?: { basic: SecEpsSelection; diluted: SecEpsSelection }
 }
 
 const MAPPING_URL = 'https://www.sec.gov/files/company_tickers_exchange.json'
@@ -181,7 +183,7 @@ export function resolveSecIdentity(symbol: string, raw: unknown): SecIdentity | 
   const multipleTickers = issuerTickers.length !== 1
   const usExchange = /^(Nasdaq|NYSE|NYSE American)$/i.test(exchange.trim())
   return {
-    ticker: normalized, cik, entityName: name.trim(), exchange: exchange.trim(), mappingUrl: MAPPING_URL,
+    ticker: normalized, cik, entityName: name.trim(), exchange: exchange.trim(), mappingUrl: MAPPING_URL, multipleTickerIssuer: multipleTickers,
     status: multipleTickers || !usExchange ? 'unsupported' : 'unverified',
     reason: multipleTickers
       ? 'CIK เดียวมีหลาย Ticker; ไม่สามารถยืนยัน Share Class ของ EPS ระดับบริษัท'
@@ -281,6 +283,16 @@ export function normalizeSecCompanyFacts(symbol: string, identity: SecIdentity, 
     ? 'CIK ตรงกับ SEC mapping; Entity Name มีความต่างของการเขียน จึงคงชื่อทั้งสองไว้โดยไม่ใช้ fuzzy match; Security Type/Share Class ยังไม่ยืนยัน'
     : identity.reason
   return { status, reason, identity, issuerIdentityStatus: 'matched', companyFactsEntityName, issuerNameMatch, basic, diluted, fetchedAt, source: 'SEC EDGAR' }
+}
+
+/** Separate issuer-level observations cannot establish a security class or unlock valuation. */
+export function issuerOnlySecEps(symbol: string, identity: SecIdentity, raw: unknown, fetchedAt: string): { basic: SecEpsSelection; diluted: SecEpsSelection } | null {
+  if (identity.status !== 'unsupported' || identity.multipleTickerIssuer !== true || !/^(Nasdaq|NYSE|NYSE American)$/i.test(identity.exchange)) return null
+  const normalized = normalizeSecCompanyFacts(symbol, identity, raw, fetchedAt)
+  if (normalized.issuerIdentityStatus !== 'matched' || normalized.issuerNameMatch !== 'exact') return null
+  const safe = (selection: SecEpsSelection): SecEpsSelection => selection.status === 'available' && selection.fact?.freshness === 'fresh'
+    ? selection : { status: selection.fact?.freshness === 'stale' ? 'unverified' : selection.status, reason: selection.fact?.freshness === 'stale' ? 'Fact เก่า ยังไม่แสดงตัวเลข' : selection.reason, fact: null }
+  return { basic: safe(normalized.basic), diluted: safe(normalized.diluted) }
 }
 
 export function issuerIdentityPresentation(result: SecFinancialResult) {
