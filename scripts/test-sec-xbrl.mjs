@@ -62,6 +62,25 @@ for (const ticker of ['EOSE', 'EOSEW']) {
 }
 
 const fetchedAt = '2026-10-14T00:00:00.000Z'
+const issuerIdentity = { ticker: 'SYN', cik: '0000001234', entityName: 'SYNTHETIC CORP', exchange: 'Nasdaq', mappingUrl: 'synthetic', status: 'unsupported', reason: 'multiple tickers', multipleTickerIssuer: true }
+const issuerEps = sec.issuerOnlySecEps('SYN', issuerIdentity, facts(), fetchedAt)
+assert.equal(issuerEps.basic.fact.value, 4.5)
+assert.equal(issuerEps.diluted.fact.value, 4.1)
+assert.equal(sec.issuerOnlySecEps('OTHER', issuerIdentity, facts(), fetchedAt), null)
+assert.equal(sec.issuerOnlySecEps('SYN', issuerIdentity, { ...facts(), cik: 9876 }, fetchedAt), null)
+assert.equal(sec.issuerOnlySecEps('SYN', issuerIdentity, { ...facts(), entityName: 'OTHER' }, fetchedAt), null)
+assert.equal(sec.issuerOnlySecEps('SYN', { ...issuerIdentity, multipleTickerIssuer: false }, facts(), fetchedAt), null)
+assert.equal(sec.issuerOnlySecEps('SYN', { ...issuerIdentity, exchange: 'OTC' }, facts(), fetchedAt), null)
+const conflictedIssuer = sec.issuerOnlySecEps('SYN', issuerIdentity, facts([current, current]), fetchedAt)
+assert.equal(conflictedIssuer.basic.status, 'unverified')
+assert.equal(conflictedIssuer.basic.fact, null)
+const staleIssuer = sec.issuerOnlySecEps('SYN', issuerIdentity, facts(), '2030-10-14T00:00:00.000Z')
+assert.equal(staleIssuer.basic.status, 'unverified')
+assert.equal(staleIssuer.basic.fact, null)
+const blockedSelection = sec.emptySecResult('unsupported', 'multiple tickers')
+assert.equal(blockedSelection.diluted.fact, null)
+assert.equal(sec.secValuationGuard(blockedSelection.diluted, { priceCurrency: 'USD', listingIdentityVerified: true, shareClassVerified: true, splitBasisVerified: true }).allowed, false)
+
 const result = sec.normalizeSecCompanyFacts('SYN', identity, facts(), fetchedAt)
 assert.equal(result.status, 'available')
 assert.equal(result.basic.fact.value, 4.5, 'Comparative prior year must not replace latest fiscal year')
@@ -235,6 +254,28 @@ assert.match(provider, /REQUEST_GAP_MS = 1100/)
 assert.match(provider, /process\.env\.SEC_USER_AGENT/)
 assert.match(provider, /if \(!validSecUserAgent\(userAgent\)\)/, 'Do not call SEC without real contact')
 assert.doesNotMatch(provider, /portfolio_id|service_role|console\.(log|error).*userAgent/)
+// Exercise the real provider with synthetic mapping/facts and mocked network only.
+const providerJs = ts.transpileModule(provider, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+const providerModule = { exports: {} }
+const testMapping = { fields: ['cik', 'name', 'ticker', 'exchange'], data: [[1234, 'SYNTHETIC CORP', 'SYN', 'Nasdaq'], [1234, 'SYNTHETIC CORP', 'SYNW', 'Nasdaq']] }
+const mockCalls = []
+const mockFetch = async url => { mockCalls.push(String(url)); return new Response(JSON.stringify(String(url).includes('company_tickers_exchange') ? testMapping : facts()), { status: 200 }) }
+const fakeRequire = name => name === 'server-only' ? {} : name === '@/lib/sec-xbrl' ? sec : (() => { throw new Error('Unexpected import') })()
+// Freeze provider observation time; retain the real deadline clock used by fetchSecJson.
+class ProviderFixtureDate extends Date {
+  constructor(...args) { super(...(args.length ? args : [fetchedAt])) }
+}
+new Function('require', 'module', 'exports', 'process', 'fetch', 'setTimeout', 'Date', providerJs)(fakeRequire, providerModule, providerModule.exports, { env: { SEC_USER_AGENT: 'Synthetic Research qa@private.invalid' } }, mockFetch, fn => { fn(); return 0 }, ProviderFixtureDate)
+const providerResult = await providerModule.exports.loadSecAnnualEps(['SYN', 'SYNW'])
+for (const ticker of ['SYN', 'SYNW']) {
+  assert.equal(providerResult[ticker].status, 'unsupported')
+  assert.equal(providerResult[ticker].basic.fact, null)
+  assert.equal(providerResult[ticker].diluted.fact, null)
+  assert.equal(providerResult[ticker].issuerEps.basic.fact.value, 4.5)
+  assert.equal(sec.secValuationGuard(providerResult[ticker].diluted, { priceCurrency: 'USD', listingIdentityVerified: true, shareClassVerified: true, splitBasisVerified: true }).allowed, false)
+}
+assert.equal(mockCalls.length, 3, 'Mock mapping plus one CompanyFacts per synthetic symbol only')
+
 const route = fs.readFileSync('app/api/fundamentals/route.ts', 'utf8')
 assert.match(route, /supabase\.auth\.getUser\(\)/)
 assert.match(route, /sources: \{ fundamentals: 'Finnhub', earnings: 'Finnhub', annualEps: 'SEC EDGAR' \}/)
