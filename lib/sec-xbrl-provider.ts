@@ -57,8 +57,17 @@ export async function loadSecAnnualEps(symbols: string[]): Promise<Record<string
       continue
     }
     if (identity.status === 'unsupported') {
-      const issuerEps = issuerOnlySecEps(symbol, identity, facts.body, new Date().toISOString())
-      results[symbol] = { ...emptySecResult('unsupported', identity.reason), identity, ...(issuerEps ? { issuerEps } : {}) }
+      const fetchedAt = new Date().toISOString()
+      const normalized = normalizeSecCompanyFacts(symbol, identity, facts.body, fetchedAt)
+      const issuerEps = issuerOnlySecEps(symbol, identity, facts.body, fetchedAt)
+      results[symbol] = {
+        ...emptySecResult('unsupported', identity.reason), identity,
+        issuerIdentityStatus: normalized.issuerIdentityStatus,
+        companyFactsEntityName: normalized.companyFactsEntityName,
+        issuerNameMatch: normalized.issuerNameMatch,
+        fetchedAt: normalized.fetchedAt,
+        ...(issuerEps ? { issuerEps } : {}),
+      }
       continue
     }
     results[symbol] = normalizeSecCompanyFacts(symbol, identity, facts.body, new Date().toISOString())

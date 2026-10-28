@@ -272,9 +272,30 @@ for (const ticker of ['SYN', 'SYNW']) {
   assert.equal(providerResult[ticker].basic.fact, null)
   assert.equal(providerResult[ticker].diluted.fact, null)
   assert.equal(providerResult[ticker].issuerEps.basic.fact.value, 4.5)
+  assert.equal(providerResult[ticker].issuerIdentityStatus, 'matched')
+  assert.equal(providerResult[ticker].companyFactsEntityName, 'SYNTHETIC CORP')
+  assert.equal(providerResult[ticker].issuerNameMatch, 'exact')
+  assert.equal(sec.issuerIdentityPresentation(providerResult[ticker]).issuerStatusLabel, 'จับคู่ด้วย CIK และ Symbol ตาม Mapping')
   assert.equal(sec.secValuationGuard(providerResult[ticker].diluted, { priceCurrency: 'USD', listingIdentityVerified: true, shareClassVerified: true, splitBasisVerified: true }).allowed, false)
 }
 assert.equal(mockCalls.length, 3, 'Mock mapping plus one CompanyFacts per synthetic symbol only')
+
+for (const [body, expectedStatus, expectedNameMatch] of [
+  [{ ...facts(), entityName: 'OTHER' }, 'matched', 'different'],
+  [{ ...facts(), entityName: undefined }, 'unverified', 'unavailable'],
+  [{ ...facts(), cik: 9876 }, 'unverified', 'exact'],
+]) {
+  const mismatchModule = { exports: {} }
+  const mismatchFetch = async url => new Response(JSON.stringify(String(url).includes('company_tickers_exchange') ? testMapping : body), { status: 200 })
+  new Function('require', 'module', 'exports', 'process', 'fetch', 'setTimeout', 'Date', providerJs)(fakeRequire, mismatchModule, mismatchModule.exports, { env: { SEC_USER_AGENT: 'Synthetic Research qa@private.invalid' } }, mismatchFetch, fn => { fn(); return 0 }, ProviderFixtureDate)
+  const mismatch = (await mismatchModule.exports.loadSecAnnualEps(['SYN'])).SYN
+  assert.equal(mismatch.issuerIdentityStatus, expectedStatus)
+  assert.equal(mismatch.issuerNameMatch, expectedNameMatch)
+  assert.equal(mismatch.status, 'unsupported')
+  assert.equal(mismatch.issuerEps, undefined)
+  assert.equal(mismatch.diluted.fact, null)
+  assert.equal(sec.secValuationGuard(mismatch.diluted, { priceCurrency: 'USD', listingIdentityVerified: true, shareClassVerified: true, splitBasisVerified: true }).allowed, false)
+}
 
 const route = fs.readFileSync('app/api/fundamentals/route.ts', 'utf8')
 assert.match(route, /supabase\.auth\.getUser\(\)/)
