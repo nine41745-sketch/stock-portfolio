@@ -66,6 +66,17 @@ export function additionalMetricLabel(field: string): string {
     : 'ข้อมูลเพิ่มเติมจากผู้ให้บริการ'
 }
 
+// Only classify fields whose meaning is explicitly known; unknown fields remain unclassified.
+export function additionalMetricGroup(field: string): string {
+  const groups: Record<string, string[]> = {
+    'กำไรและรายได้': ['grossMarginTTM', 'grossMarginAnnual', 'operatingMarginTTM', 'operatingMarginAnnual', 'netProfitMarginTTM', 'netProfitMarginAnnual', 'revenueGrowthTTMYoy', 'revenueGrowthQuarterlyYoy', 'epsGrowthTTMYoy'],
+    'หนี้และส่วนผู้ถือหุ้น': ['totalDebt/totalEquityAnnual', 'totalDebt/totalEquityQuarterly'],
+    'มูลค่า': ['marketCapitalization', 'enterpriseValue'],
+    'ราคาและความผันผวน': ['beta', '52WeekHigh', '52WeekLow'],
+  }
+  return Object.entries(groups).find(([, fields]) => fields.includes(field))?.[0] ?? 'อื่น ๆ'
+}
+
 // Keep provider field names and raw numeric values: unit, period and freshness are not inferred.
 export function normalizeAdditionalMetrics(raw: unknown): AdditionalMetric[] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []

@@ -16,6 +16,18 @@ async function importTsModule(filePath) {
 
 const fundamentals = await importTsModule('lib/fundamentals.ts')
 const validation = await importTsModule('lib/portfolio-validation.ts')
+assert.equal(fundamentals.additionalMetricGroup('grossMarginTTM'), 'กำไรและรายได้')
+assert.equal(fundamentals.additionalMetricGroup('totalDebt/totalEquityAnnual'), 'หนี้และส่วนผู้ถือหุ้น')
+assert.equal(fundamentals.additionalMetricGroup('marketCapitalization'), 'มูลค่า')
+assert.equal(fundamentals.additionalMetricGroup('52WeekHigh'), 'ราคาและความผันผวน')
+assert.equal(fundamentals.additionalMetricGroup('unknownMetric'), 'อื่น ๆ')
+const groupFixture = [
+  { field: 'grossMarginTTM', value: 0 }, { field: '52WeekHigh', value: 4 },
+  { field: 'unknownMetric', value: -7 },
+]
+const groupedFixture = ['กำไรและรายได้', 'หนี้และส่วนผู้ถือหุ้น', 'มูลค่า', 'ราคาและความผันผวน', 'อื่น ๆ']
+  .flatMap(group => groupFixture.filter(metric => fundamentals.additionalMetricGroup(metric.field) === group))
+assert.deepEqual(groupedFixture.map(item => item.field).sort(), groupFixture.map(item => item.field).sort(), 'Grouping must keep each source field exactly once')
 assert.equal(fundamentals.additionalMetricLabel('grossMarginTTM'), 'อัตรากำไรขั้นต้น · TTM')
 assert.equal(fundamentals.additionalMetricLabel('revenueGrowthTTMYoy'), 'การเติบโตรายได้ TTM เทียบปีก่อน')
 assert.equal(fundamentals.additionalMetricLabel('unknownMetric'), 'ข้อมูลเพิ่มเติมจากผู้ให้บริการ', 'Unknown field names must not acquire an invented meaning')

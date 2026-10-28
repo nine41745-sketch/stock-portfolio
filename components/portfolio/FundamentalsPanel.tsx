@@ -5,6 +5,7 @@ import {
   calculatePEScenarios,
   checkComparisonCompatibility,
   additionalMetricLabel,
+  additionalMetricGroup,
   normalizeSymbols,
   type FundamentalObservation,
   type ProviderStatus,
@@ -163,7 +164,7 @@ export default function FundamentalsPanel() {
       {loading && <p role="status" className="text-sm text-blue-800 dark:text-blue-200">กำลังขอข้อมูลสาธารณะจากผู้ให้บริการ</p>}
 
       {results.length > 0 && <>
-        <p className="text-xs text-gray-500 dark:text-gray-400">ผลที่ระบบรับเมื่อ {formatTimestamp(requestedAt)} · Metrics อาจไม่มี period-end timestamp จากผู้ให้บริการ จึงแสดง period ตามชื่อ metric และไม่อ้างวันรายงานที่ไม่มี</p>
+        <p className="text-sm text-gray-700 dark:text-gray-300">เวลาที่ระบบรับข้อมูล: {formatTimestamp(requestedAt)} · เวลาอัปเดตต้นทางของ Metrics: ไม่ทราบ · วันสิ้นงวดแสดงเฉพาะเมื่อมีหลักฐานจากผู้ให้บริการ</p>
         <section aria-labelledby="fundamentals-overview" className="space-y-2">
           <h3 id="fundamentals-overview" className="font-bold">ภาพรวมข้อมูลที่ได้รับ</h3>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -171,6 +172,12 @@ export default function FundamentalsPanel() {
               <h4 className="font-semibold">{result.symbol}{result.companyName ? ` · ${result.companyName}` : ''}</h4>
               <p className="mt-1">ตัวชี้วัดหลัก: {result.observations.filter(item => item.value !== null).length}/{METRIC_ROWS.length} รายการ</p>
               <p>Finnhub: {STATUS_LABELS[result.providerStatus]} · SEC: {SEC_STATUS_LABELS[result.sec.status]}</p>
+              <dl className="mt-3 grid grid-cols-2 gap-2">
+                {(['eps', 'pe', 'ps', 'pb'] as const).map(id => {
+                  const item = result.observations.find(observation => observation.id === id && observation.period === 'TTM')
+                  return <div key={id} className="rounded-lg bg-white p-2 dark:bg-gray-950"><dt className="text-xs text-gray-600 dark:text-gray-300">{METRIC_LABELS[id]} · TTM</dt><dd className="break-words font-medium">{item ? formatValue(item) : '—'}</dd><span className="text-xs text-gray-600 dark:text-gray-300">{item?.value != null ? 'Finnhub' : STATUS_LABELS[result.providerStatus === 'available' ? 'missing' : result.providerStatus]}</span></div>
+                })}
+              </dl>
               <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">ตัวเลขที่ไม่พบจะแสดงเป็นขีด ไม่ใช่ศูนย์ · เวลาต้นทางของ Metrics ยังไม่ทราบ</p>
             </article>)}
           </div>
@@ -187,7 +194,7 @@ export default function FundamentalsPanel() {
               {METRIC_ROWS.map(({ id, period }) => {
                 const observations = results.map(result => result.observations.find(item => item.id === id && item.period === period))
                 const issue = comparisonIssue(observations)
-                return <tr key={`${id}-${period}`} className="border-t border-gray-200 align-top dark:border-gray-800">
+                return <tr key={`${id}-${period}`} className="border-t border-gray-200 align-top even:bg-gray-50 dark:border-gray-800 dark:even:bg-gray-900/50">
                   <th scope="row" className="sticky left-0 z-10 min-w-[9rem] bg-white p-3 font-medium dark:bg-gray-950">{METRIC_LABELS[id]}<span className="block text-xs font-normal text-gray-500 dark:text-gray-400">{METRIC_DESCRIPTIONS[id]} · {PERIOD_LABELS[period]}</span></th>
                   {observations.map((item, index) => <td key={results[index].symbol} className="min-w-[9rem] p-3">
                     <span>{item ? formatValue(item) : '—'}</span>
@@ -206,12 +213,18 @@ export default function FundamentalsPanel() {
           <p className="text-xs text-gray-700 dark:text-gray-300">แสดงชื่อช่องและตัวเลขตามที่ผู้ให้บริการส่งมา สูงสุด 60 รายการต่อหุ้น ไม่สรุปหน่วย สกุลเงิน งวด หรือความสดที่ยังไม่มีหลักฐาน และไม่ใช้ข้อมูลส่วนนี้คำนวณราคาเป้าหมาย</p>
           {results.map(result => <details key={`${result.symbol}-additional`} className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950">
             <summary className="cursor-pointer font-medium">{result.symbol} · ข้อมูลเพิ่มเติม {(result.additionalMetrics ?? []).length} รายการ</summary>
-            {(result.additionalMetrics ?? []).length ? <dl className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {(result.additionalMetrics ?? []).map(metric => <div key={metric.field} className="min-w-0 rounded border border-gray-200 p-2 dark:border-gray-700">
+            {(result.additionalMetrics ?? []).length ? <div className="mt-3 space-y-4">
+              {['กำไรและรายได้', 'หนี้และส่วนผู้ถือหุ้น', 'มูลค่า', 'ราคาและความผันผวน', 'อื่น ๆ'].map(group => {
+                const metrics = (result.additionalMetrics ?? []).filter(metric => additionalMetricGroup(metric.field) === group)
+                if (!metrics.length) return null
+                return <section key={group} aria-label={`${result.symbol} ${group}`}><h5 className="mb-2 text-sm font-semibold">{group}</h5><dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {metrics.map(metric => <div key={metric.field} className="min-w-0 rounded border border-gray-200 p-2 dark:border-gray-700">
                 <dt className="text-xs text-gray-600 dark:text-gray-300">{additionalMetricLabel(metric.field)}<span className="block break-all">ชื่อจาก Finnhub: {metric.field}</span></dt>
                 <dd className="font-medium">{String(metric.value)}</dd>
               </div>)}
-            </dl> : <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">ไม่มีตัวเลขเพิ่มเติมที่แสดงได้ · สถานะผู้ให้บริการ: {STATUS_LABELS[result.providerStatus]}</p>}
+                </dl></section>
+              })}
+            </div> : <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">ไม่มีตัวเลขเพิ่มเติมที่แสดงได้ · สถานะผู้ให้บริการ: {STATUS_LABELS[result.providerStatus]}</p>}
           </details>)}
         </section>
 
@@ -228,7 +241,7 @@ export default function FundamentalsPanel() {
             </p>
           })}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {results.map(result => <article key={`${result.symbol}-sec`} className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 text-xs dark:border-gray-700 dark:bg-gray-950">
+            {results.map(result => <article key={`${result.symbol}-sec`} className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 text-sm dark:border-gray-700 dark:bg-gray-950">
               <h4 className="text-sm font-semibold">{result.symbol} · SEC {SEC_STATUS_LABELS[result.sec.status]}</h4>
               <p className="mt-1 text-amber-900 dark:text-amber-200">{result.sec.reason}</p>
               {(() => {
@@ -296,12 +309,6 @@ export default function FundamentalsPanel() {
             <h3 id="valuation-title" className="font-bold">P/E Scenario Range</h3>
             <p className="text-xs text-gray-700 dark:text-gray-300">ราคาสมมติ = SEC Annual GAAP Diluted EPS × P/E ที่ผู้ใช้กำหนด · ค่าเริ่มต้น Bear/Base/Bull 10/15/20x เป็นเพียงสมมติฐานตัวอย่าง ไม่ใช่ Fair Value หรือ Target Price ที่ยืนยันแล้ว · ต้องยืนยันสกุลเงินราคา, Listing, Share Class และ Split Basis ก่อนแสดงผลราคา</p>
           </div>
-          <div className="grid grid-cols-3 gap-2 sm:max-w-lg">
-            {(['bear', 'base', 'bull'] as const).map(key => <label key={key} className="text-xs font-medium capitalize">
-              {key} P/E (x) · สมมติฐาน
-              <input type="number" min="0.1" max="100" step="0.5" value={multiples[key]} onChange={event => setMultiples(previous => ({ ...previous, [key]: event.target.value }))} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
-            </label>)}
-          </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {results.map(result => {
               const calculated = scenarios(result)
@@ -318,6 +325,15 @@ export default function FundamentalsPanel() {
               </article>
             })}
           </div>
+          <details className="rounded-lg border border-blue-200 p-3 dark:border-blue-900">
+            <summary className="cursor-pointer text-sm font-medium">สมมติฐาน P/E — ปรับเมื่อมีหลักฐานเพียงพอ</summary>
+          <div className="grid grid-cols-3 gap-2 sm:max-w-lg">
+            {(['bear', 'base', 'bull'] as const).map(key => <label key={key} className="text-xs font-medium capitalize">
+              {key} P/E (x) · สมมติฐาน
+              <input type="number" min="0.1" max="100" step="0.5" value={multiples[key]} onChange={event => setMultiples(previous => ({ ...previous, [key]: event.target.value }))} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
+            </label>)}
+          </div>
+          </details>
         </section>
       </>}
     </section>
