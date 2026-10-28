@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v1415: ChangelogEntry = {
   version: 'v1.41.5',
-  date: 'Development History — เวลา commit รอยืนยัน (ไม่ใช่ Production)',
+  date: 'Development History — Feature commit 2026-10-29 00:21:41 +07:00 (ไม่ใช่ Production)',
   changes: [
     'แสดง SEC Annual EPS ระดับบริษัทแยกจากหุ้นที่ยังยืนยัน Share Class ไม่ได้ พร้อมที่มาและข้อจำกัด',
     'คง guard การใช้ EPS กับราคาหุ้นและ P/E Scenario เมื่อหลักฐานไม่ครบ',
