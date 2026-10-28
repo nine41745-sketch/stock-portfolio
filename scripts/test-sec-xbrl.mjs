@@ -25,6 +25,26 @@ assert.equal(sec.resolveSecIdentity('MISS', mapping), null)
 assert.equal(sec.resolveSecIdentity('SYN', { ...mapping, data: [...mapping.data, mapping.data[0]] }), null)
 assert.equal(sec.resolveSecIdentity('SYN', { fields: [], data: mapping.data }), null)
 
+const eoseIdentity = { ticker: 'EOSE', cik: '0001805077', exchange: 'Nasdaq', entityName: 'SYNTHETIC', mappingUrl: 'synthetic', status: 'unsupported', reason: 'multiple tickers' }
+assert.equal(sec.historicalSecurityTypeEvidence(eoseIdentity).label, 'หุ้นสามัญ')
+assert.equal(sec.historicalSecurityTypeEvidence(eoseIdentity).filed, '2026-09-14')
+assert.equal(sec.historicalSecurityTypeEvidence(eoseIdentity).reportDate, '2026-09-10')
+assert.match(sec.historicalSecurityTypeEvidence(eoseIdentity).limitation, /ไม่ปลด guard/)
+assert.equal(sec.historicalSecurityTypeEvidence({ ...eoseIdentity, ticker: 'EOSEW' }).label, 'Warrant สำหรับซื้อหุ้นสามัญ')
+assert.equal(sec.historicalSecurityTypeEvidence({ ...eoseIdentity, ticker: 'OTHER' }), null)
+assert.equal(sec.historicalSecurityTypeEvidence({ ...eoseIdentity, cik: '0000000001' }), null)
+assert.equal(sec.historicalSecurityTypeEvidence({ ...eoseIdentity, exchange: 'NYSE' }), null)
+assert.equal(sec.historicalSecurityTypeEvidence(null), null)
+assert.equal(eoseIdentity.status, 'unsupported', 'Historical display evidence must not loosen identity guard')
+
+const eoseMapping = { fields: ['cik', 'name', 'ticker', 'exchange'], data: [[1805077, 'SYNTHETIC', 'EOSE', 'Nasdaq'], [1805077, 'SYNTHETIC', 'EOSEW', 'Nasdaq']] }
+for (const ticker of ['EOSE', 'EOSEW']) {
+  const mapped = sec.resolveSecIdentity(ticker, eoseMapping)
+  assert.equal(mapped.status, 'unsupported', 'Historical type evidence must not bypass the multiple-ticker guard')
+  assert.ok(sec.historicalSecurityTypeEvidence(mapped))
+  assert.equal(sec.secValuationGuard({ status: 'unsupported', reason: 'unverified class', fact: null }, { priceCurrency: 'USD', listingIdentityVerified: true, shareClassVerified: true, splitBasisVerified: true }).allowed, false)
+}
+
 const current = { start: '2025-01-01', end: '2025-12-31', val: 4.5, accn: '0000001234-26-000001', fy: 2025, fp: 'FY', form: '10-K', filed: '2026-02-01' }
 const prior = { ...current, start: '2024-01-01', end: '2024-12-31', val: 3.8, accn: '0000001234-25-000001', fy: 2024, filed: '2025-02-01' }
 const facts = (basic = [prior, current], diluted = [{ ...current, val: 4.1 }], unit = 'USD/shares') => ({
@@ -33,6 +53,14 @@ const facts = (basic = [prior, current], diluted = [{ ...current, val: 4.1 }], u
     EarningsPerShareDiluted: { units: { [unit]: diluted } },
   } },
 })
+for (const ticker of ['EOSE', 'EOSEW']) {
+  const mapped = sec.resolveSecIdentity(ticker, eoseMapping)
+  const guarded = { ...sec.emptySecResult('unsupported', mapped.reason), identity: mapped }
+  assert.equal(guarded.basic.fact, null)
+  assert.equal(guarded.diluted.fact, null)
+  assert.equal(sec.secValuationGuard(guarded.diluted, { priceCurrency: 'USD', listingIdentityVerified: true, shareClassVerified: true, splitBasisVerified: true }).allowed, false)
+}
+
 const fetchedAt = '2026-10-14T00:00:00.000Z'
 const result = sec.normalizeSecCompanyFacts('SYN', identity, facts(), fetchedAt)
 assert.equal(result.status, 'available')
