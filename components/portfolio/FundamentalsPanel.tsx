@@ -4,12 +4,13 @@ import { useState } from 'react'
 import {
   calculatePEScenarios,
   checkComparisonCompatibility,
+  additionalMetricLabel,
   normalizeSymbols,
   type FundamentalObservation,
   type ProviderStatus,
 } from '@/lib/fundamentals'
 import type { FundamentalSymbolResult } from '@/lib/fundamentals-provider'
-import { compareSecEps, issuerIdentityPresentation, secValuationGuard, type EpsDefinition } from '@/lib/sec-xbrl'
+import { compareSecEps, issuerIdentityPresentation, secValuationGuard, type EpsDefinition, type SecStatus } from '@/lib/sec-xbrl'
 
 interface FundamentalsResponse {
   requestedAt: string
@@ -22,6 +23,13 @@ const METRIC_LABELS: Record<FundamentalObservation['id'], string> = {
   ps: 'P/S',
   pb: 'P/B',
   ev_ebitda: 'EV/EBITDA',
+}
+const METRIC_DESCRIPTIONS: Record<FundamentalObservation['id'], string> = {
+  eps: 'กำไรหรือขาดทุนต่อหุ้น',
+  pe: 'ราคาต่อกำไร',
+  ps: 'ราคาต่อรายได้',
+  pb: 'ราคาต่อมูลค่าทางบัญชี',
+  ev_ebitda: 'มูลค่ากิจการเทียบ EBITDA',
 }
 const PERIOD_LABELS = { TTM: 'TTM', ANNUAL: 'รายปี', QUARTERLY: 'รายไตรมาส' } as const
 const METRIC_ROWS: Array<{ id: FundamentalObservation['id']; period: FundamentalObservation['period'] }> = [
@@ -37,6 +45,11 @@ const STATUS_LABELS: Record<ProviderStatus, string> = {
   unavailable: 'ไม่พร้อมใช้งาน / สิทธิ์ไม่รองรับ',
   rate_limited: 'เกินโควตาผู้ให้บริการ',
   provider_error: 'ผู้ให้บริการขัดข้อง',
+}
+const SEC_STATUS_LABELS: Record<SecStatus, string> = {
+  available: 'มีข้อมูล', missing: 'ไม่พบข้อมูล', unverified: 'ยังยืนยันไม่ได้',
+  unsupported: 'ยังไม่รองรับหลักทรัพย์นี้', unavailable: 'ไม่พร้อมใช้งาน',
+  rate_limited: 'ถูกจำกัดการเรียก', provider_error: 'ผู้ให้บริการขัดข้อง',
 }
 
 function formatTimestamp(value: string | null): string {
@@ -151,20 +164,32 @@ export default function FundamentalsPanel() {
 
       {results.length > 0 && <>
         <p className="text-xs text-gray-500 dark:text-gray-400">ผลที่ระบบรับเมื่อ {formatTimestamp(requestedAt)} · Metrics อาจไม่มี period-end timestamp จากผู้ให้บริการ จึงแสดง period ตามชื่อ metric และไม่อ้างวันรายงานที่ไม่มี</p>
+        <section aria-labelledby="fundamentals-overview" className="space-y-2">
+          <h3 id="fundamentals-overview" className="font-bold">ภาพรวมข้อมูลที่ได้รับ</h3>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {results.map(result => <article key={`${result.symbol}-overview`} className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm dark:border-gray-700 dark:bg-gray-900">
+              <h4 className="font-semibold">{result.symbol}{result.companyName ? ` · ${result.companyName}` : ''}</h4>
+              <p className="mt-1">ตัวชี้วัดหลัก: {result.observations.filter(item => item.value !== null).length}/{METRIC_ROWS.length} รายการ</p>
+              <p>Finnhub: {STATUS_LABELS[result.providerStatus]} · SEC: {SEC_STATUS_LABELS[result.sec.status]}</p>
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">ตัวเลขที่ไม่พบจะแสดงเป็นขีด ไม่ใช่ศูนย์ · เวลาต้นทางของ Metrics ยังไม่ทราบ</p>
+            </article>)}
+          </div>
+        </section>
         {results.length > 1 && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">การจัดแนวงวดเป็น Unverified: Finnhub Metrics ที่ได้รับไม่มี Fiscal Period End จึงยังยืนยันไม่ได้ว่าตัวเลขของหุ้นแต่ละตัวเป็นงวดสิ้นสุดวันเดียวกัน</p>}
-        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-          <table className="min-w-[720px] w-full border-collapse text-left text-sm">
+        {results.length > 1 && <p className="text-xs text-gray-600 dark:text-gray-300">บนมือถือเลื่อนตารางซ้าย–ขวาเพื่อดูหุ้นแต่ละตัว โดยชื่อตัวชี้วัดจะอยู่ด้านซ้าย</p>}
+        <div role="region" aria-label="ตารางตัวชี้วัดพื้นฐาน เลื่อนซ้ายขวาได้" tabIndex={0} className="overflow-x-auto rounded-xl border border-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-gray-800">
+          <table style={{ minWidth: `${144 + results.length * 144}px` }} className="w-full border-separate border-spacing-0 text-left text-sm">
             <caption className="sr-only">ตารางเปรียบเทียบตัวชี้วัดพื้นฐานของหุ้นที่เลือก</caption>
             <thead className="bg-gray-100 text-xs uppercase text-gray-700 dark:bg-gray-900 dark:text-gray-300">
-              <tr><th scope="col" className="p-3">ตัวชี้วัด / งวด</th>{results.map(result => <th scope="col" key={result.symbol} className="p-3">{result.symbol}</th>)}</tr>
+              <tr><th scope="col" className="sticky left-0 z-10 min-w-[9rem] bg-gray-100 p-3 dark:bg-gray-900">ตัวชี้วัด / งวด</th>{results.map(result => <th scope="col" key={result.symbol} className="min-w-[9rem] p-3">{result.symbol}</th>)}</tr>
             </thead>
             <tbody>
               {METRIC_ROWS.map(({ id, period }) => {
                 const observations = results.map(result => result.observations.find(item => item.id === id && item.period === period))
                 const issue = comparisonIssue(observations)
                 return <tr key={`${id}-${period}`} className="border-t border-gray-200 align-top dark:border-gray-800">
-                  <th scope="row" className="p-3 font-medium">{METRIC_LABELS[id]}<span className="block text-xs font-normal text-gray-500 dark:text-gray-400">{PERIOD_LABELS[period]}</span></th>
-                  {observations.map((item, index) => <td key={results[index].symbol} className="p-3">
+                  <th scope="row" className="sticky left-0 z-10 min-w-[9rem] bg-white p-3 font-medium dark:bg-gray-950">{METRIC_LABELS[id]}<span className="block text-xs font-normal text-gray-500 dark:text-gray-400">{METRIC_DESCRIPTIONS[id]} · {PERIOD_LABELS[period]}</span></th>
+                  {observations.map((item, index) => <td key={results[index].symbol} className="min-w-[9rem] p-3">
                     <span>{item ? formatValue(item) : '—'}</span>
                     {item?.sourceField && item.value !== null ? <span className="block text-xs text-gray-500 dark:text-gray-400">Finnhub · {item.sourceField}</span> : null}
                     {!item || item.value === null ? <span className="block text-xs text-gray-500 dark:text-gray-400">{STATUS_LABELS[results[index].providerStatus === 'available' ? 'missing' : results[index].providerStatus]}</span> : null}
@@ -175,6 +200,20 @@ export default function FundamentalsPanel() {
             </tbody>
           </table>
         </div>
+
+        <section aria-labelledby="additional-metrics-title" className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/70">
+          <h3 id="additional-metrics-title" className="font-semibold">ข้อมูลเพิ่มเติมจาก Finnhub</h3>
+          <p className="text-xs text-gray-700 dark:text-gray-300">แสดงชื่อช่องและตัวเลขตามที่ผู้ให้บริการส่งมา สูงสุด 60 รายการต่อหุ้น ไม่สรุปหน่วย สกุลเงิน งวด หรือความสดที่ยังไม่มีหลักฐาน และไม่ใช้ข้อมูลส่วนนี้คำนวณราคาเป้าหมาย</p>
+          {results.map(result => <details key={`${result.symbol}-additional`} className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950">
+            <summary className="cursor-pointer font-medium">{result.symbol} · ข้อมูลเพิ่มเติม {(result.additionalMetrics ?? []).length} รายการ</summary>
+            {(result.additionalMetrics ?? []).length ? <dl className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {(result.additionalMetrics ?? []).map(metric => <div key={metric.field} className="min-w-0 rounded border border-gray-200 p-2 dark:border-gray-700">
+                <dt className="text-xs text-gray-600 dark:text-gray-300">{additionalMetricLabel(metric.field)}<span className="block break-all">ชื่อจาก Finnhub: {metric.field}</span></dt>
+                <dd className="font-medium">{String(metric.value)}</dd>
+              </div>)}
+            </dl> : <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">ไม่มีตัวเลขเพิ่มเติมที่แสดงได้ · สถานะผู้ให้บริการ: {STATUS_LABELS[result.providerStatus]}</p>}
+          </details>)}
+        </section>
 
         <section className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/70" aria-labelledby="sec-eps-title">
           <div>
@@ -190,7 +229,7 @@ export default function FundamentalsPanel() {
           })}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {results.map(result => <article key={`${result.symbol}-sec`} className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 text-xs dark:border-gray-700 dark:bg-gray-950">
-              <h4 className="text-sm font-semibold">{result.symbol} · SEC {result.sec.status}</h4>
+              <h4 className="text-sm font-semibold">{result.symbol} · SEC {SEC_STATUS_LABELS[result.sec.status]}</h4>
               <p className="mt-1 text-amber-900 dark:text-amber-200">{result.sec.reason}</p>
               {(() => {
                 const issuer = issuerIdentityPresentation(result.sec)

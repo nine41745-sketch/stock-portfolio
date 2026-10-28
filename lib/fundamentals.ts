@@ -36,6 +36,50 @@ const METRICS: MetricDefinition[] = [
 
 const PERIODS: FundamentalPeriod[] = ['TTM', 'ANNUAL', 'QUARTERLY']
 
+export interface AdditionalMetric {
+  field: string
+  value: number
+}
+
+const ADDITIONAL_METRIC_LABELS: Record<string, string> = {
+  grossMarginTTM: 'อัตรากำไรขั้นต้น · TTM',
+  grossMarginAnnual: 'อัตรากำไรขั้นต้น · รายปี',
+  operatingMarginTTM: 'อัตรากำไรจากการดำเนินงาน · TTM',
+  operatingMarginAnnual: 'อัตรากำไรจากการดำเนินงาน · รายปี',
+  netProfitMarginTTM: 'อัตรากำไรสุทธิ · TTM',
+  netProfitMarginAnnual: 'อัตรากำไรสุทธิ · รายปี',
+  revenueGrowthTTMYoy: 'การเติบโตรายได้ TTM เทียบปีก่อน',
+  revenueGrowthQuarterlyYoy: 'การเติบโตรายได้รายไตรมาสเทียบปีก่อน',
+  epsGrowthTTMYoy: 'การเติบโต EPS TTM เทียบปีก่อน',
+  marketCapitalization: 'มูลค่าหลักทรัพย์ตามราคาตลาด',
+  enterpriseValue: 'มูลค่ากิจการ',
+  beta: 'เบตา · ความผันผวนเทียบตลาด',
+  '52WeekHigh': 'ราคาสูงสุดในรอบ 52 สัปดาห์',
+  '52WeekLow': 'ราคาต่ำสุดในรอบ 52 สัปดาห์',
+  'totalDebt/totalEquityAnnual': 'หนี้สินรวมต่อส่วนของผู้ถือหุ้น · รายปี',
+  'totalDebt/totalEquityQuarterly': 'หนี้สินรวมต่อส่วนของผู้ถือหุ้น · รายไตรมาส',
+}
+
+export function additionalMetricLabel(field: string): string {
+  return Object.hasOwn(ADDITIONAL_METRIC_LABELS, field)
+    ? ADDITIONAL_METRIC_LABELS[field]
+    : 'ข้อมูลเพิ่มเติมจากผู้ให้บริการ'
+}
+
+// Keep provider field names and raw numeric values: unit, period and freshness are not inferred.
+export function normalizeAdditionalMetrics(raw: unknown): AdditionalMetric[] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
+  const alreadyShown = new Set(METRICS.flatMap(metric => Object.values(metric.fields).flat()))
+  return Object.entries(raw as Record<string, unknown>)
+    .filter(([field, value]) => /^[a-z0-9][a-z0-9_/]{0,79}$/i.test(field)
+      && !/token|secret|password|credential|key/i.test(field)
+      && !alreadyShown.has(field)
+      && typeof value === 'number' && Number.isFinite(value))
+    .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+    .slice(0, 60)
+    .map(([field, value]) => ({ field, value: value as number }))
+}
+
 export function normalizeSymbols(input: string[]): string[] {
   return [...new Set(input.map(value => value.trim().toUpperCase()).filter(Boolean))]
 }
