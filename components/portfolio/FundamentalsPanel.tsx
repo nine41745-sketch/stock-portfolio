@@ -10,7 +10,7 @@ import {
   type ProviderStatus,
 } from '@/lib/fundamentals'
 import type { FundamentalSymbolResult } from '@/lib/fundamentals-provider'
-import { compareSecEps, issuerIdentityPresentation, secValuationGuard, type EpsDefinition, type SecStatus } from '@/lib/sec-xbrl'
+import { compareSecEps, issuerIdentityPresentation, historicalSecurityTypeEvidence, secValuationGuard, type EpsDefinition, type SecStatus } from '@/lib/sec-xbrl'
 
 interface FundamentalsResponse {
   requestedAt: string
@@ -233,6 +233,7 @@ export default function FundamentalsPanel() {
               <p className="mt-1 text-amber-900 dark:text-amber-200">{result.sec.reason}</p>
               {(() => {
                 const issuer = issuerIdentityPresentation(result.sec)
+                const securityEvidence = historicalSecurityTypeEvidence(result.sec.identity)
                 return <section aria-label={`ข้อมูลผู้ออกหลักทรัพย์ SEC ${result.symbol}`} className="mt-2 rounded-md border border-gray-200 bg-gray-50 p-2 text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
                   <h5 className="font-semibold">Issuer Identity · การจับคู่ผู้ออกหลักทรัพย์</h5>
                   <dl className="mt-1 grid min-w-0 gap-2 sm:grid-cols-2">
@@ -242,6 +243,7 @@ export default function FundamentalsPanel() {
                     <div><dt className="text-gray-600 dark:text-gray-400">CIK / Exchange</dt><dd className="break-words">{result.sec.identity ? `${result.sec.identity.cik} / ${result.sec.identity.exchange}` : 'ไม่มีข้อมูล'}</dd></div>
                     <div className="sm:col-span-2"><dt className="text-gray-600 dark:text-gray-400">การจับคู่ issuer</dt><dd>{issuer.issuerStatusLabel}</dd></div>
                   </dl>
+                  {securityEvidence && <p className="mt-2 text-xs">ประเภทตามหลักฐานย้อนหลัง: {securityEvidence.label} · ยื่น {securityEvidence.filed} · วันที่รายงาน {securityEvidence.reportDate} · <a href={securityEvidence.sourceUrl} target="_blank" rel="noreferrer" className="underline">เอกสาร SEC 8-K</a><br />{securityEvidence.limitation}</p>}
                   {issuer.warning && <p role="status" className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">คำเตือน: {issuer.warning}</p>}
                   <dl className="mt-2 grid gap-2 border-t border-gray-200 pt-2 dark:border-gray-700 sm:grid-cols-2">
                     <div><dt className="text-gray-600 dark:text-gray-400">Security Type</dt><dd>{issuer.securityTypeLabel}</dd></div>

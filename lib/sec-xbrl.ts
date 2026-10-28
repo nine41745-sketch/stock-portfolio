@@ -189,6 +189,14 @@ export function resolveSecIdentity(symbol: string, raw: unknown): SecIdentity | 
   }
 }
 
+/** Historical filing evidence only. This does not verify current listing, share class, EPS or valuation. */
+export function historicalSecurityTypeEvidence(identity: SecIdentity | null): { label: string; filed: string; reportDate: string; sourceUrl: string; limitation: string } | null {
+  if (!identity || identity.cik !== '0001805077' || identity.exchange.toLowerCase() !== 'nasdaq') return null
+  const label = identity.ticker === 'EOSE' ? 'หุ้นสามัญ' : identity.ticker === 'EOSEW' ? 'Warrant สำหรับซื้อหุ้นสามัญ' : null
+  if (!label) return null
+  return { label, filed: '2026-09-14', reportDate: '2026-09-10', sourceUrl: 'https://www.sec.gov/Archives/edgar/data/1805077/000162828026061689/eose-20260910.htm', limitation: 'หลักฐานย้อนหลังจากแบบ 8-K ไม่ยืนยันสถานะปัจจุบัน, Share Class, ADR หรือ Split Basis และไม่ปลด guard EPS/Scenario' }
+}
+
 interface Candidate {
   value: number
   unit: string
