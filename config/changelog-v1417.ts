@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v1417: ChangelogEntry = {
   version: 'v1.41.7',
-  date: 'Development History — รอบันทึกเวลาจาก commit จริง',
+  date: 'Development History — Feature commit 2026-10-29 03:19:34 +07:00 (ไม่ใช่ Production)',
   changes: [
     'ปรับหน้าพื้นฐานและมูลค่าให้แสดงข้อมูลสำคัญและจัดกลุ่มข้อมูลเพิ่มเติมอ่านง่ายขึ้น',
     'แสดงข้อจำกัด SEC และ P/E Scenario ให้ชัดเจนโดยคงเงื่อนไขการป้องกันเดิม',
