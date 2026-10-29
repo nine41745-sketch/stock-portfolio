@@ -1,13 +1,22 @@
 # Production Release Status
 
-## Development candidate — v1.41.9
+## Previous Production status — v1.41.9
 
-- Status: Draft PR #131 on branch `codex/stock-check-detail-v1418`, based on main SHA `bdd48525e8a0f7d77e8efcecbdb629c0df306dff`. The candidate has been committed and pushed; it has not been deployed or promoted to Production.
-- Scope: clarify Stock Check quote freshness, scoring reasons, Target 2 reference and AI parse fallback. Scoring, target and security-guard logic remain unchanged.
-- Development History time: 2026-10-29 16:16:06 +07:00, from implementing Git commit `ab82f93acef3b15c5403092800fbdb4be4bb478a`; this is not a Production release time.
-- Security Gate: HOLD. Production Release Gate: HOLD. No Production DB or real portfolio data was used for this change.
+- Previous Production deployment: [`dpl_8XPNygW7YbPB1sd8UitoG9oyiWjb`](https://vercel.com/nine41745/stock-portfolio/8XPNygW7YbPB1sd8UitoG9oyiWjb), source SHA `b13d977e1304ad4075398edb30b795f802f51a82` (previously verified). Before the v1.41.10 promotion, both Production domains mapped to this deployment.
+- The earlier v1.41.8 gate approval remains scoped only to that release; current v1.41.10 gate decisions are recorded below.
 
-## Current Production status — v1.41.8, 2026-10-29 Asia/Bangkok
+## Current Production status — v1.41.10
+
+- Source/main SHA: `2eb275f27f8b724548ba7421ad26af1254e33325`; package version `1.41.10`. The deployment command ran in a clean checkout at this exact Git SHA. The build log also contained `f4c2867`, which does not match this source SHA and must not be treated as its short commit.
+- Production deployment: [`dpl_9HDmqhAr9bLeeKdYTRePtqLmNCGg`](https://vercel.com/nine41745/stock-portfolio/9HDmqhAr9bLeeKdYTRePtqLmNCGg), URL [stock-portfolio-2efgnsaba-nine41745.vercel.app](https://stock-portfolio-2efgnsaba-nine41745.vercel.app), READY, source SHA `2eb275f27f8b724548ba7421ad26af1254e33325`. Created once with `vercel deploy --prod --skip-domain --meta sourceGitSha=2eb275f27f8b724548ba7421ad26af1254e33325`.
+- Vercel Activity Event `uev_rRwuvBiBYM7PasiOa0zKKGsh` records assignment of two aliases and carries both `sourceGitSha` and `gitCommitSha` equal to the exact SHA. Direct deployment lookup returns `meta: {}`; the Activity Event is the full-SHA provenance evidence. The alias assignment/Production time is `2026-10-29T16:39:26.094Z` (`2026-10-29T23:39:26.094+07:00`).
+- Build: PASS. Vercel reported READY and `Build Completed in /vercel/output [59s]`; install completed, the configured critical regression suite passed, and the project used Node.js `22.x` for build/runtime. Exact-main CI run 40909626381 had already passed; CI was not rerun for this staging task.
+- The Vercel alias assignment event records 2 aliases. Post-promotion direct lookups and the deployment alias list confirm both `stock-portfolio-nine41745.vercel.app` and `stock-portfolio-seven-inky.vercel.app` map to this deployment. The deployment summary's `alias: []` field conflicts with those results; direct alias lookups plus the alias list and assignment event provide the mapping evidence. The previous Production deployment `dpl_8XPNygW7YbPB1sd8UitoG9oyiWjb` is the recorded rollback target; no rollback was performed.
+- Cron/Production DB isolation and the `unrs-resolver` fallback behavior remain UNVERIFIED. Staged functional QA was not performed. Cron schedules were left unchanged and no Cron was invoked.
+- Production authenticated read-only UI checks used an owner-unlocked browser session: Dashboard displayed v1.41.10; Transactions rendered its ledger table; Performance rendered its portfolio performance section; and `/imports` redirected to `/dashboard`. No trade, edit or save action was used. The browser reported zero captured console errors and warnings in the earlier four-route check. These checks do not validate portfolio amounts, trading, every API response, or all runtime errors. The application accessed Production data through the approved pages.
+- Security Gate: APPROVED. Production Release Gate: APPROVED. The owner explicitly approved lifting both gates for v1.41.10 source SHA `2eb275f27f8b724548ba7421ad26af1254e33325` and deployment `dpl_9HDmqhAr9bLeeKdYTRePtqLmNCGg`, accepting the stated limitations; this approval does not extend to other SHAs or deployments. Authenticated Staged QA, Cron/Production DB isolation and `unrs-resolver` fallback behavior remain unverified. The owner-provided Instant Rollback dialog showed a Previous deployment URL prefix matching `stock-portfolio-q6742t450-nine41745.vercel.app`, which Vercel deployment details associate with `dpl_8XPNygW7YbPB1sd8UitoG9oyiWjb` (READY); the dialog did not show the full ID and no rollback was performed. No Cron endpoint was called.
+
+## Previous Production status — v1.41.8, 2026-10-29 Asia/Bangkok
 
 - Production deployment [`dpl_8wfgnXeLPhLbpH8cEMJPHNnzkyCv`](https://vercel.com/nine41745/stock-portfolio/8wfgnXeLPhLbpH8cEMJPHNnzkyCv) is READY. Vercel deployment metadata reports source SHA `f4c286700706086a3e2fb722341b1f9f14aed09d`; the clean source checkout and metadata support provenance, but do not prove every deployed byte independently.
 - Vercel alias lookups after the owner's authorized promotion mapped both `stock-portfolio-nine41745.vercel.app` and `stock-portfolio-seven-inky.vercel.app` to that deployment. The promotion alias list reported both completed. The Connector deployment summary returned `alias: []`; direct alias lookups supply the mapping evidence.
