@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const current: ChangelogEntry = {
   version: 'v1.41.11',
-  date: 'Development History — รอเวลา Git commit จริง (ไม่ใช่ Production)',
+  date: 'Development History — Feature commit 2026-10-30 02:13:49 +07:00 (ไม่ใช่ Production)',
   changes: [
     'ปรับป้ายเวลาเดิมในประวัติรุ่น v1.30.0–v1.34.0 ให้บอกว่าเป็นข้อมูลจาก Changelog เดิม และยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production',
     'คงวันที่และเวลาเดิมไว้ โดยไม่แต่งเวลาเผยแพร่ย้อนหลัง',
