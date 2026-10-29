@@ -2,9 +2,9 @@
 
 ## Development candidate — v1.41.9
 
-- Status: in development on branch `codex/stock-check-detail-v1418`, based on main SHA `bdd48525e8a0f7d77e8efcecbdb629c0df306dff`. This candidate has not been committed, pushed, deployed or promoted.
+- Status: Draft PR #131 on branch `codex/stock-check-detail-v1418`, based on main SHA `bdd48525e8a0f7d77e8efcecbdb629c0df306dff`. The candidate has been committed and pushed; it has not been deployed or promoted to Production.
 - Scope: clarify Stock Check quote freshness, scoring reasons, Target 2 reference and AI parse fallback. Scoring, target and security-guard logic remain unchanged.
-- Development History time: pending the implementing Git commit event; it is intentionally not inferred from the local clock. The Changelog entry is marked accordingly until that evidence exists.
+- Development History time: 2026-10-29 16:16:06 +07:00, from implementing Git commit `ab82f93acef3b15c5403092800fbdb4be4bb478a`; this is not a Production release time.
 - Security Gate: HOLD. Production Release Gate: HOLD. No Production DB or real portfolio data was used for this change.
 
 ## Current Production status — v1.41.8, 2026-10-29 Asia/Bangkok
