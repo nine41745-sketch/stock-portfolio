@@ -5,7 +5,7 @@ const v1416: ChangelogEntry = {
   version: 'v1.41.6',
   date: 'Development History — Feature commit 2026-10-29 00:41:06 +07:00 (ไม่ใช่ Production)',
   changes: [
-    'แก้การแสดงข้อมูลบริษัทจาก SEC ให้สอดคล้องกับข้อมูล CompanyFacts โดยยังคงการป้องกัน Share Class และ P/E Scenario',
+    'แก้ข้อมูลระบุบริษัทให้ตรงกับข้อมูลที่ SEC ส่งมา และยังไม่ใช้ข้อมูลคำนวณราคาหากยืนยันชนิดหุ้นไม่ได้',
   ],
 }
 export const changelog: ChangelogEntry[] = [v1416, ...previousChangelog]

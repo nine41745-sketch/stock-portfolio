@@ -1,5 +1,7 @@
 'use client'
 
+import { formatChangelogDate } from '@/lib/changelog-date'
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { HoldingWithPrice, DetailedAnalysisResult, HoldingFormData, NewsItem } from '@/types'
 import { createClient } from '@/lib/supabase/client'
@@ -1410,7 +1412,7 @@ function ChangelogModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             <div key={entry.version} className="border-l-2 border-purple-600/40 pl-3">
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-sm font-bold text-purple-300">{entry.version}</span>
-                <span className="text-xs text-gray-600">{entry.date}</span>
+                <span className="text-xs text-gray-600">{formatChangelogDate(entry.date)}</span>
               </div>
               <ul className="space-y-1">
                 {entry.changes.map((c, i) => (
