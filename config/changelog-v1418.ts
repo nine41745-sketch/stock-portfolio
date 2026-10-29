@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v1418: ChangelogEntry = {
   version: 'v1.41.8',
-  date: 'Development History — รอหลักฐานเวลา Git commit',
+  date: 'Development History — Feature commit 2026-10-29 13:07:20 +07:00 (ไม่ใช่ Production)',
   changes: [
     'เพิ่มรหัสวินิจฉัยการตรวจ identity โดยไม่บันทึกข้อมูลลับหรือข้อมูลพอร์ต',
     'คงการป้องกัน Staged และ Preview เมื่อยืนยัน Production ไม่ได้',
