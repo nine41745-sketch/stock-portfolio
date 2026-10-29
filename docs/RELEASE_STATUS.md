@@ -7,7 +7,7 @@
 
 ## Current Production status — v1.41.10
 
-- Source/main SHA: `2eb275f27f8b724548ba7421ad26af1254e33325`; package version `1.41.10`. The deployment command ran in a clean checkout at this exact Git SHA. The build log also contained `f4c2867`, which does not match this source SHA and must not be treated as its short commit.
+- Production source SHA (main at the time of promotion): `2eb275f27f8b724548ba7421ad26af1254e33325`; package version `1.41.10`. The deployment command ran in a clean checkout at this exact Git SHA. The build log also contained `f4c2867`, which does not match this source SHA and must not be treated as its short commit.
 - Production deployment: [`dpl_9HDmqhAr9bLeeKdYTRePtqLmNCGg`](https://vercel.com/nine41745/stock-portfolio/9HDmqhAr9bLeeKdYTRePtqLmNCGg), URL [stock-portfolio-2efgnsaba-nine41745.vercel.app](https://stock-portfolio-2efgnsaba-nine41745.vercel.app), READY, source SHA `2eb275f27f8b724548ba7421ad26af1254e33325`. Created once with `vercel deploy --prod --skip-domain --meta sourceGitSha=2eb275f27f8b724548ba7421ad26af1254e33325`.
 - Vercel Activity Event `uev_rRwuvBiBYM7PasiOa0zKKGsh` records assignment of two aliases and carries both `sourceGitSha` and `gitCommitSha` equal to the exact SHA. Direct deployment lookup returns `meta: {}`; the Activity Event is the full-SHA provenance evidence. The alias assignment/Production time is `2026-10-29T16:39:26.094Z` (`2026-10-29T23:39:26.094+07:00`).
 - Build: PASS. Vercel reported READY and `Build Completed in /vercel/output [59s]`; install completed, the configured critical regression suite passed, and the project used Node.js `22.x` for build/runtime. Exact-main CI run 40909626381 had already passed; CI was not rerun for this staging task.
