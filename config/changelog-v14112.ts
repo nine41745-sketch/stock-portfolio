@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const current: ChangelogEntry = {
   version: 'v1.41.12',
-  date: 'Development History — Feature commit pending (ไม่ใช่ Production)',
+  date: 'Development History — Feature commit 2026-10-30 02:53:26 +07:00 (ไม่ใช่ Production)',
   changes: [
     'ปรับ “โอกาสวันนี้” ให้แยกผลซื้อได้ตอนนี้ รอย่อ รอราคาทะลุแนวต้าน เฝ้าดู และข้ามตามความเสี่ยงที่คำนวณได้',
     'แสดงคะแนน 6 หมวด เวลาและแหล่งที่มาของราคาต่อหุ้น พร้อมเตือนเมื่อยืนยันวันประกาศงบไม่ได้',
