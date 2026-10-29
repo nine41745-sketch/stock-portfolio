@@ -22,6 +22,62 @@ async function importTsModule(filePath) {
 const stockCheck = await importTsModule('lib/stock-check.ts')
 const stockScanner = await importTsModule('lib/stock-scanner.ts')
 const stockCheckPresentation = await importTsModule('lib/stock-check-presentation.ts')
+const todayCandidates = await importTsModule('lib/today-candidates.ts')
+const earningsStatus = await importTsModule('lib/earnings-status.ts')
+const scoreInput = {
+  trend: 'UPTREND', rsi14: 55, weeklyRsi14: 57, macdHistogram: 0.4,
+  lastClose: 100, ema50: 98, support: 95, resistance: 110, volumeRatio: 1.2,
+  week52High: 120, week52Low: 70, relativeStrength20: 3, relativeStrength60: 5,
+}
+
+assert.equal(stockScanner.EARNINGS_UNKNOWN_SCORE_PENALTY, 8, 'Unknown earnings penalty must be a named, explicit constant')
+const scoreWithEarnings = stockScanner.scoreScannerCandidate({ ...scoreInput, earningsStatus: 'found', earningsDays: 30 })
+const scoreWithoutEarnings = stockScanner.scoreScannerCandidate({ ...scoreInput, earningsStatus: 'none', earningsDays: null })
+const scoreUnknownEarnings = stockScanner.scoreScannerCandidate({ ...scoreInput, earningsStatus: 'unknown', earningsDays: null })
+assert.equal(scoreWithEarnings.score, scoreWithoutEarnings.score, 'A confirmed empty calendar and a distant known event should not incur the unknown-data penalty')
+assert.equal(scoreUnknownEarnings.score, Math.max(0, Object.values(scoreUnknownEarnings.categoryScores).reduce((sum, value) => sum + value, 0) - stockScanner.EARNINGS_UNKNOWN_SCORE_PENALTY), 'Unknown earnings must reduce the six-category total by the named penalty')
+assert.match(scoreUnknownEarnings.reasons.join(' '), /วันประกาศงบยังไม่ทราบ/, 'Unknown earnings must be disclosed in score reasons')
+
+const missingCategoryScore = stockScanner.scoreScannerCandidate({
+  ...scoreInput, trend: 'UNKNOWN', rsi14: null, weeklyRsi14: null, macdHistogram: null,
+  volumeRatio: null, support: null, resistance: null, week52High: null, week52Low: null,
+  relativeStrength20: null, relativeStrength60: null, ema50: null, earningsStatus: 'unknown', earningsDays: null,
+})
+assert.deepEqual(missingCategoryScore.categoryScores, {
+  trend: 0, momentum: 0, volume: 0, priceLocation: 0, relativeStrength: 0, riskCatalyst: 0,
+}, 'A score category with missing required inputs must contribute zero rather than a baseline')
+
+const earningsNone = earningsStatus.resolveUpcomingEarningsStatus({ ok: true, earningsCalendar: [] }, new Date('2026-10-01T00:00:00.000Z'))
+const earningsFound = earningsStatus.resolveUpcomingEarningsStatus({ ok: true, earningsCalendar: [{ date: '2026-10-12', hour: 'bmo' }] }, new Date('2026-10-01T00:00:00.000Z'))
+const earningsUnknown = earningsStatus.resolveUpcomingEarningsStatus({ ok: false, earningsCalendar: [] }, new Date('2026-10-01T00:00:00.000Z'))
+assert.equal(earningsNone.status, 'none', 'A successful empty earnings calendar must mean none')
+assert.deepEqual(earningsFound, { status: 'found', earnings: { date: '2026-10-12', daysUntil: 11, hour: 'bmo' } })
+assert.equal(earningsUnknown.status, 'unknown', 'A failed provider response must remain unknown, not none')
+
+const duplicateSymbols = stockScanner.dedupeScannerSymbols([['NVDA', 'MSFT', 'AAA'], ['NVDA', 'AVGO'], ['MSFT', 'JPM']])
+assert.deepEqual(duplicateSymbols, ['NVDA', 'MSFT', 'AAA', 'AVGO', 'JPM'], 'Scanner symbols must be deduplicated before provider calls while retaining stable order')
+
+for (const fixture of [
+  { symbol: 'COST', rr: 0.9 },
+  { symbol: 'V', rr: 0.96 },
+  { symbol: 'JPM', rr: 0.17 },
+]) {
+  const decision = stockCheck.normalizeDecisionForRiskReward('BUY_ON_PULLBACK', fixture.rr)
+  assert.equal(decision, 'SKIP_POOR_RR', `${fixture.symbol} with screenshot R:R @ Entry must be skipped`)
+  assert.equal(todayCandidates.isTodayOpportunityEligible(decision, fixture.rr), false, `${fixture.symbol} must not remain in opportunity results`)
+  assert.equal(todayCandidates.opportunityLabel({ decision, buyMode: null, price: 100, entryZone: { low: 90, high: 95 }, rrAtEntry: fixture.rr }), 'ข้าม · ไม่คุ้มเสี่ยง')
+}
+for (const fixture of [
+  { symbol: 'MSFT', rr: 3.25 },
+  { symbol: 'CRWD', rr: 1.51 },
+]) {
+  const decision = stockCheck.normalizeDecisionForRiskReward('BUY_ON_PULLBACK', fixture.rr)
+  assert.equal(decision, 'BUY_ON_PULLBACK', `${fixture.symbol} must keep the pullback decision at or above 1.5`)
+  assert.equal(todayCandidates.isTodayOpportunityEligible(decision, fixture.rr), true)
+  assert.match(todayCandidates.opportunityLabel({ decision, buyMode: null, price: 100, entryZone: { low: 90, high: 95 }, rrAtEntry: fixture.rr }), /รอย่อ · ราคาต้องลดลง 5\.00% ถึงขอบบนช่วงราคาเข้าซื้อ/)
+}
+assert.equal(todayCandidates.trendLabel('UPTREND'), 'แนวโน้มขาขึ้น')
+assert.equal(todayCandidates.setupLabel('BREAKOUT'), 'ราคาทะลุแนวต้าน')
 assert.equal(stockCheckPresentation.providerQuoteTimestamp(1793289600), '2026-10-29T16:00:00.000Z', 'Provider epoch seconds should be preserved as an ISO timestamp')
 assert.equal(stockCheckPresentation.providerQuoteTimestamp(null), null, 'Missing provider timestamp must remain unavailable')
 assert.equal(stockCheckPresentation.providerQuoteTimestamp(Number.NaN), null, 'Invalid provider timestamp must fail closed')
@@ -86,6 +142,12 @@ assert.equal(buyNow.buyMode, 'STANDARD', 'Classic in-zone BUY_NOW must remain th
 assert.ok((buyNow.riskRewardAtEntry ?? 0) >= 1.5, 'Standard BUY_NOW plan must have acceptable R:R')
 assert.ok((buyNow.stopLoss ?? 999) < (buyNow.entryZone?.low ?? 0), 'Stop must stay below planned entry')
 assert.equal(buyNow.target2Basis, 'historical-52w-high', 'Target 2 should identify the historical high when that value supplies the final level')
+const buyNowPlannedEntry = (buyNow.entryZone.low + buyNow.entryZone.high) / 2
+const buyNowRisk = buyNowPlannedEntry - buyNow.stopLoss
+assert.ok(buyNow.target1 >= buyNowPlannedEntry + 1.5 * buyNowRisk - 0.01, 'Target 1 must be at least planned entry plus 1.5 times the final stop risk')
+assert.ok(buyNow.stopLoss < buyNow.entryZone.low, 'Stop must remain below the entire Entry Zone')
+assert.equal(buyNow.riskRewardAtEntry, Number(((buyNow.target1 - buyNowPlannedEntry) / buyNowRisk).toFixed(2)), 'Entry R:R must use the exact planned entry, stop and Target 1 displayed')
+assert.equal(buyNow.riskRewardNow, Number(((buyNow.target1 - 100.5) / (100.5 - buyNow.stopLoss)).toFixed(2)), 'Current-price R:R must use the same stop and Target 1')
 
 const firstTranche = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'PULLBACK', score: 80,
@@ -125,7 +187,7 @@ assert.notEqual(brokenSupportDip.decision, 'BUY_NOW', 'A dip below support must 
 
 const insideButPoorRr = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 77,
-  price: 100, ema50: 99.5, ema200: 90, atr14: 2,
+  price: 100.25, ema50: 99.5, ema200: 90, atr14: 2,
   support: 99, resistance: 103, rsi14: 54, weeklyRsi14: 57,
   macdHistogram: 0.4, volumeRatio: 1.1, relativeStrength20: 3,
   relativeStrength60: 7, week52High: 104, week52Low: 75,
@@ -280,11 +342,16 @@ assert.match(workspace, /🔥 โอกาสวันนี้/, 'Scanner works
 assert.match(workspace, /TodayOpportunities/, 'Today Opportunity Radar must be wired into Scanner workspace')
 
 const today = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'utf8')
-assert.match(today, /const UNIVERSES = \['ai', 'semis', 'growth', 'quality'\]/, 'Today radar must scan all four built-in universes')
+assert.match(today, /\/api\/scanner\?universe=all/, 'Today radar must request the combined deduplicated universe once')
+assert.doesNotMatch(today, /ใกล้ซื้อ/, 'Today radar must not collapse decisions into the old near-buy label')
+assert.match(today, /earningsUnknownPenalty/, 'Today radar must disclose the penalty when the earnings provider is unknown')
+assert.match(today, /priceAsOf/, 'Today radar must show per-ticker price time separately from scan completion')
+assert.match(today, /categoryScores\.relativeStrength/, 'Today radar must show all six score categories')
 assert.match(today, /FINALIST_LIMIT = 6/, 'Today radar must cap live Stock Check validation to six finalists')
-assert.match(today, /\/api\/scanner\?universe=/, 'Today radar must reuse deterministic scanner data')
 assert.match(today, /\/api\/stock-check\?symbol=/, 'Today radar finalists must be revalidated with live Stock Check')
 assert.match(fs.readFileSync('lib/today-candidates.ts', 'utf8'), /isStructuralPullback/, 'Today radar must surface controlled EMA50 pullback candidates')
+const scannerRoute = fs.readFileSync('app/api/scanner/route.ts', 'utf8')
+assert.match(scannerRoute, /dedupeScannerSymbols\(Object\.values\(SCANNER_UNIVERSES\)\)/, 'Combined scanner route must deduplicate symbols before scanOne provider calls')
 
 const scannerPage = fs.readFileSync('app/scanner/page.tsx', 'utf8')
 assert.match(scannerPage, /ScannerWorkspace/, 'Dedicated scanner page must render the combined workspace')

@@ -114,7 +114,7 @@ globalThis.__scannerIsolationMocks = {
   requirePhaseAPortfolio: async () => ({ supabase: mockDb, userId: owner, portfolioId: activePortfolio }),
   isPortfolioFoundationMissing: () => false,
   selectPortfolioMineSymbols,
-  getUpcomingEarnings: async () => null,
+  getUpcomingEarningsStatus: async () => ({ status: 'none', earnings: null }),
   getTechnicalIndicators: async () => ({ macd: { histogram: null }, lastClose: null }),
   SCANNER_UNIVERSES: {},
   scoreScannerCandidate: () => ({ score: 0 }),

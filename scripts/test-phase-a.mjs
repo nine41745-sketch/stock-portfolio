@@ -306,7 +306,7 @@ function scannerApiHarness({
     },
     '@/lib/portfolio-context': { isPortfolioFoundationMissing: error => ['42P01', '42703', 'PGRST204', 'PGRST205'].includes(String(error?.code ?? '')) },
     '@/lib/scanner-universe': load('lib/scanner-universe.ts'),
-    '@/lib/finnhub': { getUpcomingEarnings: async symbol => { marketCalls.push(['earnings', symbol]); return null } },
+    '@/lib/finnhub': { getUpcomingEarningsStatus: async symbol => { marketCalls.push(['earnings', symbol]); return { status: 'none', earnings: null } } },
     '@/lib/indicators': { getTechnicalIndicators: async symbol => { marketCalls.push(['technical', symbol]); return technical } },
     '@/lib/stock-scanner': {
       SCANNER_UNIVERSES: { ai: ['NVDA'], semis: ['AMD'], growth: ['SHOP'], quality: ['COST'], mine: [] },

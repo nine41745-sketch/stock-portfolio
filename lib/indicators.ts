@@ -44,6 +44,7 @@ export interface TechnicalIndicators {
   volumeRatio: number | null
   // Scanner-only values deliberately exclude today's bar from support/resistance and average volume.
   scannerSupport: number | null
+  scannerSwingLow: number | null
   scannerResistance: number | null
   scannerVolumeRatio: number | null
   importantSupport: number | null
@@ -69,6 +70,7 @@ const EMPTY_INDICATORS: TechnicalIndicators = {
   resistance: null,
   volumeRatio: null,
   scannerSupport: null,
+  scannerSwingLow: null,
   scannerResistance: null,
   scannerVolumeRatio: null,
   importantSupport: null,
@@ -247,6 +249,17 @@ function calcScannerSupportResistance(bars: Bar[], window = 20): { support: numb
   }
 }
 
+function calcLatestScannerSwingLow(bars: Bar[], window = 20): number | null {
+  const recent = bars.slice(0, -1).slice(-window)
+  if (recent.length < 5) return null
+  for (let index = recent.length - 3; index >= 2; index--) {
+    const low = recent[index].low
+    if (low <= recent[index - 1].low && low <= recent[index - 2].low &&
+      low <= recent[index + 1].low && low <= recent[index + 2].low) return round2(low)
+  }
+  return round2(Math.min(...recent.map(bar => bar.low)))
+}
+
 // Existing AI-facing ratio stays unchanged for backward compatibility.
 function calcVolumeRatio(bars: Bar[], window = 20): number | null {
   if (bars.length < window + 1) return null
@@ -340,6 +353,7 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
   const bbLast = last(bbArr)
   const { support, resistance } = calcSupportResistance(bars)
   const scannerLevels = calcScannerSupportResistance(bars)
+  const scannerSwingLow = calcLatestScannerSwingLow(bars)
   const importantSupport = calculateImportantSupport(
     bars.slice(0, -1).map(bar => bar.low),
     lastClose,
@@ -371,6 +385,7 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
     resistance,
     volumeRatio: calcVolumeRatio(bars),
     scannerSupport: scannerLevels.support,
+    scannerSwingLow,
     scannerResistance: scannerLevels.resistance,
     scannerVolumeRatio: calcScannerVolumeRatio(bars),
     importantSupport: importantSupport.level,

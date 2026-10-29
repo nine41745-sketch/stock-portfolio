@@ -1,6 +1,6 @@
 import type { StockCheckTarget2Basis } from './stock-check-presentation'
 
-export type StockCheckDecision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAKOUT' | 'WATCH' | 'AVOID'
+export type StockCheckDecision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAKOUT' | 'WATCH' | 'AVOID' | 'SKIP_POOR_RR'
 export type StockCheckSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
 export type StockCheckBuyMode = 'STANDARD' | 'FIRST_TRANCHE'
 
@@ -13,6 +13,7 @@ export interface StockCheckInput {
   ema200: number | null
   atr14: number | null
   support: number | null
+  swingLow?: number | null
   resistance: number | null
   rsi14: number | null
   weeklyRsi14: number | null
@@ -112,7 +113,14 @@ function decisionLabel(decision: StockCheckDecision, buyMode: StockCheckBuyMode 
   if (decision === 'BUY_ON_PULLBACK') return 'รอย่อแล้วค่อยซื้อ'
   if (decision === 'WAIT_FOR_BREAKOUT') return 'รอ Breakout ยืนยัน'
   if (decision === 'AVOID') return 'หลีกเลี่ยงตอนนี้'
+  if (decision === 'SKIP_POOR_RR') return 'ข้าม · ไม่คุ้มเสี่ยง'
   return 'ยังไม่ใช่จุดซื้อ'
+}
+
+export function normalizeDecisionForRiskReward(decision: StockCheckDecision, riskRewardAtEntry: number | null): StockCheckDecision {
+  if (riskRewardAtEntry === null || !Number.isFinite(riskRewardAtEntry) || riskRewardAtEntry < 1) return 'SKIP_POOR_RR'
+  if (decision === 'BUY_ON_PULLBACK' && riskRewardAtEntry < 1.5) return 'SKIP_POOR_RR'
+  return decision
 }
 
 export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
@@ -161,21 +169,18 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   const entryZone = { low: round2(entryLow)!, high: round2(entryHigh)! }
   const plannedEntry = (entryLow + entryHigh) / 2
 
-  const volatilityBuffer = Math.max(atr * 0.75, price * 0.015)
-  const stopAnchor = support !== null ? Math.min(support, entryLow) : entryLow
-  let stopLoss = stopAnchor - volatilityBuffer
-  if (stopLoss >= entryLow) stopLoss = entryLow - Math.max(atr, price * 0.02)
-  stopLoss = Math.max(0.01, stopLoss)
-
-  const plannedRisk = Math.max(0.01, plannedEntry - stopLoss)
-  let target1: number
-  if (resistance !== null && resistance > plannedEntry * 1.005) {
-    target1 = resistance
-  } else if (validPositive(input.week52High) && input.week52High > plannedEntry * 1.01) {
-    target1 = input.week52High
-  } else {
-    target1 = plannedEntry + plannedRisk * 2
-  }
+  const swingLow = validPositive(input.swingLow ?? null) ? input.swingLow! : support
+  const swingLowStop = swingLow !== null ? swingLow - atr * 0.1 : entryLow - atr * 1.5
+  const atrStop = plannedEntry - atr * 1.5
+  const stopLoss = round2(Math.max(0.01, Math.min(swingLowStop, atrStop, entryLow - 0.01)))!
+  const roundedEntryLow = round2(entryZone.low)!
+  const roundedEntryHigh = round2(entryZone.high)!
+  const displayedPlannedEntry = (roundedEntryLow + roundedEntryHigh) / 2
+  const plannedRisk = Math.max(0.01, displayedPlannedEntry - stopLoss)
+  const structuralTarget = resistance !== null && resistance > displayedPlannedEntry
+    ? resistance
+    : validPositive(input.week52High) && input.week52High > displayedPlannedEntry ? input.week52High : 0
+  const target1 = round2(Math.max(structuralTarget, displayedPlannedEntry + 1.5 * plannedRisk))!
 
   const technicalTarget2 = validPositive(input.week52High) && input.week52High > target1 * 1.005
     ? input.week52High
@@ -189,7 +194,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
     ? 'historical-52w-high'
     : 'plan-extension'
 
-  const rrAtEntry = ratio(plannedEntry, stopLoss, target1)
+  const rrAtEntry = ratio(displayedPlannedEntry, stopLoss, target1)
   const rrNow = target1 > price && stopLoss < price ? ratio(price, stopLoss, target1) : null
   const ema50Distance = pctDistance(price, ema50)
   const supportDistance = pctDistance(price, support)
@@ -273,6 +278,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
     input.trend === 'UPTREND' &&
     input.score >= 72 &&
     goodRiskReward &&
+    firstTrancheRiskReward &&
     !overextended &&
     insideEntry &&
     supportedBuySetup
@@ -297,7 +303,8 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   } else if (
     input.trend === 'UPTREND' &&
     input.score >= 68 &&
-    (aboveEntry || overextended)
+    (aboveEntry || overextended) &&
+    rrAtEntry !== null && rrAtEntry >= 1.5
   ) {
     decision = 'BUY_ON_PULLBACK'
   } else if (
@@ -307,6 +314,9 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   ) {
     decision = 'WAIT_FOR_BREAKOUT'
   }
+
+  decision = normalizeDecisionForRiskReward(decision, rrAtEntry)
+  if (decision === 'SKIP_POOR_RR') buyMode = null
 
   let summary: string
   if (decision === 'BUY_NOW' && buyMode === 'FIRST_TRANCHE' && belowEntryDipOk) {
@@ -321,6 +331,8 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
     summary = 'ยังไม่ควรไล่ราคา รอทะลุแนวต้านพร้อม Volume ยืนยันก่อน'
   } else if (decision === 'AVOID') {
     summary = 'มีหลักฐานโครงสร้างราคาเสียหรือความอ่อนแอหลายด้านพร้อมกัน จึงควรหลีกเลี่ยงการเปิดสถานะใหม่ตอนนี้'
+  } else if (decision === 'SKIP_POOR_RR') {
+    summary = 'ผลตอบแทนที่คาดหวังเมื่อเทียบกับความเสี่ยงที่จุดเข้าไม่ถึงเกณฑ์ จึงข้ามรายการนี้'
   } else if (insideEntry && !firstTrancheRiskReward) {
     summary = `ราคาอยู่ใน Entry Zone แล้ว แต่ R:R จากราคาปัจจุบัน${rrNow === null ? 'ยังคำนวณไม่เป็นบวก' : `เพียง ${rrNow.toFixed(2)}:1`} ยังไม่คุ้มสำหรับการเปิดสถานะ`
   } else if (price < entryLow) {
@@ -336,7 +348,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
     summary,
     entryZone,
     stopLoss: round2(stopLoss),
-    target1: round2(target1),
+    target1,
     target2: round2(target2),
     target2Basis,
     breakoutTrigger: round2(resistance),

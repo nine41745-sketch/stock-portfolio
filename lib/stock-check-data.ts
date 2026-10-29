@@ -1,4 +1,4 @@
-import { getQuote, getStockMetrics, getUpcomingEarnings } from '@/lib/finnhub'
+import { getQuote, getStockMetrics, getUpcomingEarningsStatus } from '@/lib/finnhub'
 import { getTechnicalIndicators } from '@/lib/indicators'
 import { getAtr14 } from '@/lib/atr'
 import { scoreScannerCandidate } from '@/lib/stock-scanner'
@@ -16,6 +16,8 @@ export interface StockCheckSnapshot {
   quoteTimestamp: string | null
   price: number | null
   priceSource: 'finnhub' | 'historical'
+  priceAsOf: string | null
+  priceSourceLabel: 'Finnhub' | 'Yahoo' | 'Stooq' | 'ไม่ทราบแหล่งข้อมูล'
   dayChangePct: number | null
   score: number
   label: 'น่าสนใจ' | 'เฝ้าดู' | 'ยังไม่เด่น'
@@ -39,18 +41,22 @@ export interface StockCheckSnapshot {
   relativeStrength60: number | null
   pe: number | null
   earnings: { date: string; daysUntil: number; hour: string | null } | null
+  earningsStatus: 'found' | 'none' | 'unknown'
+  categoryScores: ReturnType<typeof scoreScannerCandidate>['categoryScores']
+  earningsUnknownPenalty: number
   plan: StockCheckPlan
 }
 
 export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot> {
-  const [technical, spy, quote, metrics, earnings, atr14] = await Promise.all([
+  const [technical, spy, quote, metrics, earningsResult, atr14] = await Promise.all([
     getTechnicalIndicators(symbol),
     getTechnicalIndicators('SPY'),
     getQuote(symbol),
     getStockMetrics(symbol),
-    getUpcomingEarnings(symbol),
+    getUpcomingEarningsStatus(symbol),
     getAtr14(symbol),
   ])
+  const earnings = earningsResult.status === 'found' ? earningsResult.earnings : null
 
   const price = quote?.c ?? technical.lastClose
   const dayChangePct = quote?.dp ?? technical.return1dPct
@@ -85,6 +91,7 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     relativeStrength20,
     relativeStrength60,
     earningsDays: earnings?.daysUntil ?? null,
+    earningsStatus: earningsResult.status,
   })
 
   const plan = buildStockCheck({
@@ -96,6 +103,7 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     ema200: technical.ema200,
     atr14,
     support: technical.scannerSupport,
+    swingLow: technical.scannerSwingLow,
     resistance: technical.scannerResistance,
     rsi14: technical.rsi14,
     weeklyRsi14: technical.weeklyRsi14,
@@ -115,6 +123,8 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     quoteTimestamp: providerQuoteTimestamp(quote?.t),
     price,
     priceSource: quote?.c ? 'finnhub' : 'historical',
+    priceAsOf: quote?.c ? providerQuoteTimestamp(quote.t) : technical.lastBarAt ?? null,
+    priceSourceLabel: quote?.c ? 'Finnhub' : technical.dataSource === 'Yahoo Finance' ? 'Yahoo' : technical.dataSource === 'Stooq' ? 'Stooq' : 'ไม่ทราบแหล่งข้อมูล',
     dayChangePct,
     score: scored.score,
     label: scored.label,
@@ -138,6 +148,9 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     relativeStrength60,
     pe: metrics.pe,
     earnings,
+    earningsStatus: earningsResult.status,
+    categoryScores: scored.categoryScores,
+    earningsUnknownPenalty: scored.earningsUnknownPenalty,
     plan,
   }
 }
