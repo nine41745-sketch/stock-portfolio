@@ -3,6 +3,7 @@ import { getTechnicalIndicators } from '@/lib/indicators'
 import { getAtr14 } from '@/lib/atr'
 import { scoreScannerCandidate } from '@/lib/stock-scanner'
 import { buildStockCheck, sanitizeWeek52Range, StockCheckPlan, StockCheckSetup } from '@/lib/stock-check'
+import { providerQuoteTimestamp } from '@/lib/stock-check-presentation'
 
 function diffOrNull(a: number | null, b: number | null): number | null {
   if (a === null || b === null) return null
@@ -12,6 +13,7 @@ function diffOrNull(a: number | null, b: number | null): number | null {
 export interface StockCheckSnapshot {
   symbol: string
   checkedAt: string
+  quoteTimestamp: string | null
   price: number | null
   priceSource: 'finnhub' | 'historical'
   dayChangePct: number | null
@@ -110,6 +112,7 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
   return {
     symbol,
     checkedAt: new Date().toISOString(),
+    quoteTimestamp: providerQuoteTimestamp(quote?.t),
     price,
     priceSource: quote?.c ? 'finnhub' : 'historical',
     dayChangePct,

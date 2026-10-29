@@ -1,3 +1,5 @@
+import type { StockCheckTarget2Basis } from './stock-check-presentation'
+
 export type StockCheckDecision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAKOUT' | 'WATCH' | 'AVOID'
 export type StockCheckSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
 export type StockCheckBuyMode = 'STANDARD' | 'FIRST_TRANCHE'
@@ -43,6 +45,7 @@ export interface StockCheckPlan {
   stopLoss: number | null
   target1: number | null
   target2: number | null
+  target2Basis: StockCheckTarget2Basis
   breakoutTrigger: number | null
   riskRewardAtEntry: number | null
   riskRewardNow: number | null
@@ -124,6 +127,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
       stopLoss: null,
       target1: null,
       target2: null,
+      target2Basis: null,
       breakoutTrigger: round2(input.resistance),
       riskRewardAtEntry: null,
       riskRewardNow: null,
@@ -181,6 +185,9 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
     target1 + plannedRisk,
     plannedEntry + plannedRisk * 2.5,
   )
+  const target2Basis: StockCheckTarget2Basis = technicalTarget2 !== null && target2 === technicalTarget2
+    ? 'historical-52w-high'
+    : 'plan-extension'
 
   const rrAtEntry = ratio(plannedEntry, stopLoss, target1)
   const rrNow = target1 > price && stopLoss < price ? ratio(price, stopLoss, target1) : null
@@ -331,6 +338,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
     stopLoss: round2(stopLoss),
     target1: round2(target1),
     target2: round2(target2),
+    target2Basis,
     breakoutTrigger: round2(resistance),
     riskRewardAtEntry: rrAtEntry,
     riskRewardNow: rrNow,
