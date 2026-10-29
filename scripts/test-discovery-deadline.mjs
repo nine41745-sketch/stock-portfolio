@@ -214,10 +214,11 @@ for (const stage of ['auth','auth-invalid','portfolio']) test(`Actual Supabase S
   if(url.pathname.includes('/auth/'))return stage==='auth-invalid'?Response.json({code:'invalid_jwt',msg:'synthetic invalid session'},{status:401}):Response.json({id:'synthetic-owner'})
   return Response.json([{id:'synthetic-portfolio',name:'Synthetic',is_default:true}])
  }
- const startedAt=performance.now();const scope=new DiscoveryDeadline(undefined,1000,30)
+ let scope
  try{
   const server=load('lib/supabase/server.ts',cache,overrides)
   const helper=load('lib/phase-a-context.ts',cache,overrides)
+  const startedAt=performance.now();scope=new DiscoveryDeadline(undefined,1000,30)
   const client=await server.createClient(scope)
   let mappedStatus
   await assert.rejects(helper.requirePhaseAPortfolio(undefined,client),error=>{
