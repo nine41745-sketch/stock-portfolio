@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v1331: ChangelogEntry = {
   version: 'v1.33.1',
-  date: '2026-10-13 18:01 ICT',
+  date: 'เวลาเดิมใน Changelog — 2026-10-13 18:01 ICT (ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production)',
   changes: [
     'Scanner mine: ใช้ Holdings ของพอร์ตที่เลือกเท่านั้น',
     'Security: ตรวจ Auth/PIN และ Portfolio Ownership ฝั่ง Server ก่อนอ่าน Holdings',

@@ -1,5 +1,13 @@
 # Production Release Status
 
+## Version under preparation — v1.41.11
+
+- Scope: ปรับป้ายเวลาเดิมใน Changelog v1.30.0–v1.34.0 ให้ระบุว่าเก็บค่าตามบันทึกเดิมและยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production.
+- Development timestamp: รอ Git/GitHub commit event ของการเปลี่ยนแปลงนี้; ยังไม่กำหนดเวลาใน Local Diff.
+- Release state: ยังไม่มี Commit/Push หรือ Production Deployment; Security Gate และ Production Release Gate ของ v1.41.11 คง HOLD.
+- Current Production remains v1.41.10 at SHA `2eb275f27f8b724548ba7421ad26af1254e33325` / Deployment `dpl_9HDmqhAr9bLeeKdYTRePtqLmNCGg`.
+
+
 ## Previous Production status — v1.41.9
 
 - Previous Production deployment: [`dpl_8XPNygW7YbPB1sd8UitoG9oyiWjb`](https://vercel.com/nine41745/stock-portfolio/8XPNygW7YbPB1sd8UitoG9oyiWjb), source SHA `b13d977e1304ad4075398edb30b795f802f51a82` (previously verified). Before the v1.41.10 promotion, both Production domains mapped to this deployment.

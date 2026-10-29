@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v1320: ChangelogEntry = {
   version: 'v1.32.0',
-  date: '2026-10-11 03:54 ICT',
+  date: 'เวลาเดิมใน Changelog — 2026-10-11 03:54 ICT (ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production)',
   changes: [
     'Market Intelligence: เพิ่มหน้าใหม่สำหรับสรุปตลาด SPY/QQQ และ AI Market Brief แบบผู้ใช้กดสร้างเอง ด้วย Groq ที่ตั้งค่าอยู่แล้ว',
     'Portfolio News Impact: ใช้ Finnhub/Groq จาก News API เดิม แสดงข่าวเกี่ยวกับหุ้นที่ถือในพอร์ตปัจจุบัน พร้อมแหล่งข่าวและการตีความบวก/ลบ/กลาง',

@@ -329,12 +329,12 @@ assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native
 
 // Release metadata must match the verified deployment and the owner's scoped gate approval.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.41.10', 'Package version must match the v1.41.10 candidate')
+assert.equal(packageJson.version, '1.41.11', 'Package version must match the v1.41.11 candidate')
 const releasePackageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
 assert.equal(releasePackageLock.version, packageJson.version, 'Lockfile version must match package.json')
 assert.equal(releasePackageLock.packages?.['']?.version, packageJson.version, 'Lockfile root package version must match package.json')
 const releaseTsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14110'], 'Version badge must resolve to the v1.41.10 changelog')
+assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14111'], 'Version badge must resolve to the v1.41.11 changelog')
 const newestChangelog = fs.readFileSync('config/changelog-v1419.ts', 'utf8')
 assert.match(newestChangelog, /version: 'v1\.41\.9'/)
 assert.match(newestChangelog, /from '\.\/changelog-v1418'/)
@@ -550,21 +550,21 @@ const changelogReleaseTimes = [
   ['config/changelog-v1291.ts', '2026-09-30 04:18 ICT'],
   ['config/changelog-v1292.ts', '2026-10-04 15:16 ICT'],
   ['config/changelog-v1293.ts', '2026-10-05 23:19 ICT'],
-  ['config/changelog-v1300.ts', '2026-10-06 19:59 ICT'],
-  ['config/changelog-v1310.ts', '2026-10-06 22:25 ICT'],
-  ['config/changelog-v1311.ts', '2026-10-07 01:40 ICT'],
-  ['config/changelog-v1312.ts', '2026-10-07 02:20 ICT'],
-  ['config/changelog-v1320.ts', '2026-10-11 03:54 ICT'],
-  ['config/changelog-v1330.ts', '2026-10-13 02:20 ICT'],
-  ['config/changelog-v1331.ts', '2026-10-13 18:01 ICT'],
+  ['config/changelog-v1300.ts', 'เวลาเดิมใน Changelog — 2026-10-06 19:59 ICT (ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production)'],
+  ['config/changelog-v1310.ts', 'เวลาเดิมใน Changelog — 2026-10-06 22:25 ICT (ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production)'],
+  ['config/changelog-v1311.ts', 'เวลาเดิมใน Changelog — 2026-10-07 01:40 ICT (ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production)'],
+  ['config/changelog-v1312.ts', 'เวลาเดิมใน Changelog — 2026-10-07 02:20 ICT (ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production)'],
+  ['config/changelog-v1320.ts', 'เวลาเดิมใน Changelog — 2026-10-11 03:54 ICT (ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production)'],
+  ['config/changelog-v1330.ts', 'เวลาเดิมใน Changelog — 2026-10-13 02:20 ICT (ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production)'],
+  ['config/changelog-v1331.ts', 'เวลาเดิมใน Changelog — 2026-10-13 18:01 ICT (ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production)'],
 ]
 for (const [file, expectedTime] of changelogReleaseTimes) {
   const source = fs.readFileSync(file, 'utf8')
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14110'], 'Current candidate must use the v1.41.10 version badge')
-assert.match(releaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.34.0 changelog must contain a timestamp in the repository format')
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14111'], 'Current candidate must use the v1.41.11 version badge')
+assert.match(releaseChangelog, /date: 'เวลาเดิมใน Changelog — 2026-10-14 03:05 ICT \(ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production\)'/, 'v1.34.0 must preserve its stored timestamp and disclose that Production timing is unverified')
 assert.match(latestReleaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.35.0 changelog must contain a timestamp in the repository format')
 
 await import('./test-quick-notes.mjs')
