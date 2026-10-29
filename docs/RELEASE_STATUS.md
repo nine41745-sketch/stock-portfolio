@@ -1,5 +1,12 @@
 # Production Release Status
 
+## Development candidate — v1.41.9
+
+- Status: Draft PR #131 on branch `codex/stock-check-detail-v1418`, based on main SHA `bdd48525e8a0f7d77e8efcecbdb629c0df306dff`. The candidate has been committed and pushed; it has not been deployed or promoted to Production.
+- Scope: clarify Stock Check quote freshness, scoring reasons, Target 2 reference and AI parse fallback. Scoring, target and security-guard logic remain unchanged.
+- Development History time: 2026-10-29 16:16:06 +07:00, from implementing Git commit `ab82f93acef3b15c5403092800fbdb4be4bb478a`; this is not a Production release time.
+- Security Gate: HOLD. Production Release Gate: HOLD. No Production DB or real portfolio data was used for this change.
+
 ## Current Production status — v1.41.8, 2026-10-29 Asia/Bangkok
 
 - Production deployment [`dpl_8wfgnXeLPhLbpH8cEMJPHNnzkyCv`](https://vercel.com/nine41745/stock-portfolio/8wfgnXeLPhLbpH8cEMJPHNnzkyCv) is READY. Vercel deployment metadata reports source SHA `f4c286700706086a3e2fb722341b1f9f14aed09d`; the clean source checkout and metadata support provenance, but do not prove every deployed byte independently.

@@ -21,6 +21,57 @@ async function importTsModule(filePath) {
 
 const stockCheck = await importTsModule('lib/stock-check.ts')
 const stockScanner = await importTsModule('lib/stock-scanner.ts')
+const stockCheckPresentation = await importTsModule('lib/stock-check-presentation.ts')
+assert.equal(stockCheckPresentation.providerQuoteTimestamp(1793289600), '2026-10-29T16:00:00.000Z', 'Provider epoch seconds should be preserved as an ISO timestamp')
+assert.equal(stockCheckPresentation.providerQuoteTimestamp(null), null, 'Missing provider timestamp must remain unavailable')
+assert.equal(stockCheckPresentation.providerQuoteTimestamp(Number.NaN), null, 'Invalid provider timestamp must fail closed')
+
+const malformedAi = stockCheckPresentation.parseStockCheckAiResponse(
+  '{"summary": "synthetic unfinished JSON',
+  'สรุปจาก Stock Check แบบสังเคราะห์',
+)
+assert.equal(malformedAi.summary, 'สรุปจาก Stock Check แบบสังเคราะห์', 'Malformed model output must fall back to deterministic summary, not show raw JSON')
+assert.deepEqual(malformedAi.reasons, [], 'Malformed model output must not create synthetic reasons')
+
+const validAi = stockCheckPresentation.parseStockCheckAiResponse(
+  '{"summary":"สรุปสังเคราะห์","reasons":["เหตุผลสังเคราะห์"],"risks":["ความเสี่ยงสังเคราะห์"],"action":"การกระทำตามแผนเดิม"}',
+  'fallback',
+)
+assert.equal(validAi.summary, 'สรุปสังเคราะห์', 'Valid structured model response should preserve its summary')
+assert.deepEqual(validAi.reasons, ['เหตุผลสังเคราะห์'], 'Valid structured model response should preserve reason strings')
+const matchingAiSummary = stockCheckPresentation.parseStockCheckAiResponse(
+  '{"summary":"same text","reasons":[],"risks":[],"action":"same text"}',
+  'same text',
+)
+assert.equal(matchingAiSummary.usedFallbackSummary, false, 'A valid AI summary equal to the deterministic summary must not be mislabeled as fallback')
+
+const freshQuoteText = stockCheckPresentation.formatStockCheckFreshness({
+  checkedAt: '2026-10-29T16:02:00.000Z',
+  priceSource: 'finnhub',
+  quoteTimestamp: '2026-10-29T16:00:00.000Z',
+})
+assert.match(freshQuoteText, /2026-10-29 23:00:00 ICT/, 'Provider quote time must be shown in Asia/Bangkok')
+assert.match(freshQuoteText, /อายุ 2 นาที/, 'Quote age must be measured against checkedAt, not the machine clock')
+
+const missingQuoteTimeText = stockCheckPresentation.formatStockCheckFreshness({
+  checkedAt: '2026-10-29T16:02:00.000Z',
+  priceSource: 'finnhub',
+  quoteTimestamp: null,
+})
+assert.match(missingQuoteTimeText, /ไม่ได้รับเวลาราคาจากผู้ให้บริการ/, 'Missing provider timestamp must be explicit')
+assert.match(missingQuoteTimeText, /2026-10-29 23:02:00 ICT/, 'Request/check time may be displayed only as a separately labeled time')
+
+const historicalPriceText = stockCheckPresentation.formatStockCheckFreshness({
+  checkedAt: '2026-10-29T16:02:00.000Z',
+  priceSource: 'historical',
+  quoteTimestamp: null,
+})
+assert.match(historicalPriceText, /ข้อมูลย้อนหลัง/, 'Historical fallback must be identified as historical')
+assert.match(historicalPriceText, /ไม่ใช่ราคาเรียลไทม์/, 'Historical fallback must not imply live pricing')
+
+assert.match(stockCheckPresentation.formatTarget2Context('historical-52w-high'), /จุดสูงสุดย้อนหลัง 52 สัปดาห์/)
+assert.match(stockCheckPresentation.formatTarget2Context('historical-52w-high'), /ไม่ใช่ราคาเป้าหมายคาดการณ์/)
+assert.match(stockCheckPresentation.formatTarget2Context('plan-extension'), /ระดับอ้างอิงจากแผน/)
 
 const buyNow = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 82,
@@ -34,6 +85,7 @@ assert.equal(buyNow.decision, 'BUY_NOW', 'Strong near-support setup should permi
 assert.equal(buyNow.buyMode, 'STANDARD', 'Classic in-zone BUY_NOW must remain the standard buy mode')
 assert.ok((buyNow.riskRewardAtEntry ?? 0) >= 1.5, 'Standard BUY_NOW plan must have acceptable R:R')
 assert.ok((buyNow.stopLoss ?? 999) < (buyNow.entryZone?.low ?? 0), 'Stop must stay below planned entry')
+assert.equal(buyNow.target2Basis, 'historical-52w-high', 'Target 2 should identify the historical high when that value supplies the final level')
 
 const firstTranche = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'PULLBACK', score: 80,
@@ -76,11 +128,12 @@ const insideButPoorRr = stockCheck.buildStockCheck({
   price: 100, ema50: 99.5, ema200: 90, atr14: 2,
   support: 99, resistance: 103, rsi14: 54, weeklyRsi14: 57,
   macdHistogram: 0.4, volumeRatio: 1.1, relativeStrength20: 3,
-  relativeStrength60: 7, week52High: 110, week52Low: 75,
+  relativeStrength60: 7, week52High: 104, week52Low: 75,
   earningsDays: 20, pe: 24,
 })
 assert.equal(insideButPoorRr.decision, 'WATCH', 'Being inside Entry Zone with poor live R:R must not say wait for a pullback')
 assert.match(insideButPoorRr.summary, /Entry Zone/, 'In-zone WATCH should explain that price is already in the Entry Zone')
+assert.equal(insideButPoorRr.target2Basis, 'plan-extension', 'Target 2 should identify a plan extension when the 52-week high is below its modeled floor')
 
 const chasedTarget = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'MOMENTUM', score: 82,
@@ -208,6 +261,7 @@ assert.match(data, /scannerSupport/, 'Stock Check must use scanner-safe support'
 assert.match(data, /scannerVolumeRatio/, 'Stock Check must use scanner-safe volume ratio')
 assert.match(data, /getAtr14/, 'Stock Check must use ATR14 for volatility-aware planning')
 assert.match(data, /sanitizeWeek52Range/, 'Stock Check must sanitize 52W range before scoring or target planning')
+assert.match(data, /providerQuoteTimestamp\(quote\?\.t\)/, 'Stock Check must carry the provider quote timestamp without substituting request time')
 
 const atr = fs.readFileSync('lib/atr.ts', 'utf8')
 assert.match(atr, /ATR\.calculate/, 'ATR14 must use the technical indicator implementation')
@@ -247,4 +301,12 @@ assert.match(ai, /model === PRIMARY_MODEL \? 'high' : 'medium'/, 'Deep Stock Che
 assert.match(ai, /const PRIMARY_MODEL = 'openai\/gpt-oss-120b'/, 'Deep Stock Check primary model must remain GPT-OSS 120B')
 assert.match(ai, /temperature: 0\.2/, 'Deep Stock Check should keep analysis temperature conservative')
 
-console.log('✓ Stock Check v1.26.0 regression tests passed')
+const stockCheckUi = fs.readFileSync('components/portfolio/StockCheckPanel.tsx', 'utf8')
+assert.match(stockCheckUi, /formatStockCheckFreshness\(/, 'Stock Check must label provider quote time separately from check time')
+assert.match(stockCheckUi, /result\.scannerReasons/, 'Stock Check must expose the existing scanner scoring reasons')
+assert.match(stockCheckUi, /เหตุผล\/ข้อสังเกตจาก Stock Scanner/, 'Scanner reasons and warnings must be visually distinguished from plan reasons')
+assert.match(stockCheckUi, /formatTarget2Context\(/, 'Target 2 must explain its reference basis')
+assert.match(stockCheckUi, /R:R คำนวณถึง Target 1/, 'R:R display must say it is measured to Target 1')
+assert.match(stockCheckUi, /AI ส่งรูปแบบที่อ่านไม่ได้ จึงใช้สรุปจาก Stock Check แทน/, 'AI parse fallback must be disclosed to the user')
+
+console.log('✓ Stock Check synthetic regression tests passed')

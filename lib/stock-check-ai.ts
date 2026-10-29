@@ -1,5 +1,6 @@
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { StockCheckSnapshot } from '@/lib/stock-check-data'
+import { parseStockCheckAiResponse } from '@/lib/stock-check-presentation'
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const PRIMARY_MODEL = 'openai/gpt-oss-120b'
@@ -18,6 +19,7 @@ export interface StockCheckAiResult {
   action: string
   news: RawNews[]
   usedModel: string | null
+  usedFallbackSummary: boolean
 }
 
 async function fetchRelevantNews(symbol: string): Promise<RawNews[]> {
@@ -76,22 +78,6 @@ async function callModel(model: string, prompt: string): Promise<string> {
   return data.choices?.[0]?.message?.content ?? ''
 }
 
-function parseJson(text: string): { summary?: unknown; reasons?: unknown; risks?: unknown; action?: unknown } | null {
-  try {
-    const start = text.indexOf('{')
-    const end = text.lastIndexOf('}')
-    if (start < 0 || end <= start) return null
-    return JSON.parse(text.slice(start, end + 1))
-  } catch {
-    return null
-  }
-}
-
-function stringArray(value: unknown, max = 4): string[] {
-  if (!Array.isArray(value)) return []
-  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, max)
-}
-
 export async function analyzeStockCheckWithAi(snapshot: StockCheckSnapshot): Promise<StockCheckAiResult> {
   if (!process.env.GROQ_API_KEY) throw new Error('AI_NOT_CONFIGURED')
 
@@ -145,24 +131,15 @@ ${newsText}
   }
   if (!text) throw new Error('AI_UNAVAILABLE')
 
-  const parsed = parseJson(text)
-  if (!parsed) {
-    return {
-      summary: text.slice(0, 700),
-      reasons: [],
-      risks: [],
-      action: p.summary,
-      news,
-      usedModel,
-    }
-  }
+  const parsed = parseStockCheckAiResponse(text, p.summary)
 
   return {
-    summary: typeof parsed.summary === 'string' ? parsed.summary : p.summary,
-    reasons: stringArray(parsed.reasons),
-    risks: stringArray(parsed.risks),
-    action: typeof parsed.action === 'string' ? parsed.action : p.summary,
+    summary: parsed.summary,
+    reasons: parsed.reasons,
+    risks: parsed.risks,
+    action: parsed.action,
     news,
     usedModel,
+    usedFallbackSummary: parsed.usedFallbackSummary,
   }
 }
