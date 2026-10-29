@@ -338,7 +338,7 @@ assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'],
 const newestChangelog = fs.readFileSync('config/changelog-v1419.ts', 'utf8')
 assert.match(newestChangelog, /version: 'v1\.41\.9'/)
 assert.match(newestChangelog, /from '\.\/changelog-v1418'/)
-assert.match(newestChangelog, /Development History — pending implementing commit timestamp \(ไม่ใช่ Production\)/)
+assert.ok(newestChangelog.includes("date: 'Development History — Feature commit 2026-10-29 16:16:06 +07:00 (ไม่ใช่ Production)'"))
 assert.match(newestChangelog, /เวลาราคาจากผู้ให้บริการ/)
 const changelogV1415 = fs.readFileSync('config/changelog-v1415.ts', 'utf8')
 assert.match(changelogV1415, /version: 'v1\.41\.5'/)

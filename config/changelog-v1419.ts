@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v1419: ChangelogEntry = {
   version: 'v1.41.9',
-  date: 'Development History — pending implementing commit timestamp (ไม่ใช่ Production)',
+  date: 'Development History — Feature commit 2026-10-29 16:16:06 +07:00 (ไม่ใช่ Production)',
   changes: [
     'แสดงเวลาราคาจากผู้ให้บริการแยกจากเวลาที่ระบบตรวจข้อมูล และระบุชัดเมื่อใช้ราคาเก่าหรือไม่มีเวลา quote',
     'แสดงเหตุผลจากคะแนน Stock Scanner พร้อมอธิบายที่มาของ Target 2 และย้ำว่า R:R คำนวณถึง Target 1',
