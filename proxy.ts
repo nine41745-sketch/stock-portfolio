@@ -26,6 +26,7 @@ export async function proxy(request: NextRequest) {
       productionProjectRef: process.env.NEXT_PUBLIC_SUPABASE_PRODUCTION_PROJECT_REF,
       previewProductionAccessBranch: process.env.NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH,
       gitCommitRef: process.env.VERCEL_GIT_COMMIT_REF,
+      onDiagnostic: (code: string) => console.warn('[backend-isolation]', code),
     })
   } catch {
     return NextResponse.json({ error: 'Backend isolation is not configured' }, { status: 503 })

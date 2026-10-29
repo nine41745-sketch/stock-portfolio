@@ -374,4 +374,35 @@ const directSupabaseImports = walk(join(sourceRoot, 'app'))
   .filter(file => !['lib/supabase/server.ts', 'lib/supabase/client.ts', 'proxy.ts'].includes(file))
 assert.deepEqual(directSupabaseImports, [], 'All runtime Supabase clients must flow through the guarded factories')
 
+// Diagnostics carry fixed reason codes only, even when responses or errors contain sensitive text.
+for (const [fetchImpl, expected] of [
+  [async () => new Response('sensitive-response', { status: 503 }), 'identity_response_invalid'],
+  [async () => Response.json({ deploymentId: 'synthetic-other' }), 'identity_mismatch'],
+  [async () => { throw new Error('sensitive-error') }, 'identity_request_failed'],
+]) {
+  const codes = []
+  await assert.rejects(() => assertSupabaseTargetIsSafeForServer({
+    isVercel: true, ...activeDeploymentIdentity, requestHost: productionHost,
+    deploymentUrl: stagedHost, fetchImpl, onDiagnostic: code => codes.push(code),
+  }), /not isolated/)
+  assert.deepEqual(codes, [expected])
+}
+const missingCodes = []
+await assert.rejects(() => assertSupabaseTargetIsSafeForServer({
+  isVercel: true, ...activeDeploymentIdentity, deploymentId: undefined,
+  requestHost: productionHost, deploymentUrl: stagedHost,
+  onDiagnostic: code => missingCodes.push(code),
+}), /not isolated/)
+assert.deepEqual(missingCodes, ['identity_config_missing'])
+const hostCodes = []
+await assert.rejects(() => assertSupabaseTargetIsSafeForServer({
+  isVercel: true, ...activeDeploymentIdentity, requestHost: 'unapproved.example.test',
+  deploymentUrl: stagedHost, onDiagnostic: code => hostCodes.push(code),
+}), /not isolated/)
+assert.deepEqual(hostCodes, ['request_host_invalid'])
+await assert.rejects(() => assertSupabaseTargetIsSafeForServer({
+  isVercel: true, ...activeDeploymentIdentity, requestHost: productionHost,
+  deploymentUrl: stagedHost, fetchImpl: async () => { throw new Error('synthetic-sensitive') },
+  onDiagnostic: () => { throw new Error('logging failed') },
+}), /not isolated/, 'Failure to log must not weaken the guard')
 console.log('Preview isolation regression checks passed.')
