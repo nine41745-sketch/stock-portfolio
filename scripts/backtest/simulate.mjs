@@ -52,7 +52,7 @@ function simulateExit(symbol,entryIndex,entryRaw,stop,target,maxDays=20){
     if(exitPrice!==null){
       const netEntry=entryRaw*(1+slippage),netExit=exitPrice*(1-slippage)
       return {entryDate:bars[entryIndex].date,exitDate:bar.date,entryRaw,exitPrice,reason,
-        r:(netExit-netEntry)/risk,win:reason==='target'||reason==='target-gap'}
+        r:(netExit-netEntry)/risk,netReturnPct:(netExit-netEntry)/entryRaw,win:reason==='target'||reason==='target-gap'}
     }
   }
   return null
@@ -140,11 +140,15 @@ function stats(group,episodes,mult=1.5,excludeEarningsWeek=false,period=null,sup
   const fills=eligible.filter(a=>a.filled).length
   const pending=eligible.filter(a=>a.pending).length
   const rs=trades.map(t=>t.r)
+  const returnsPct=trades.map(t=>t.netReturnPct)
+  const percentCI=bootstrapCI(returnsPct,`${group}:${period??'all'}:${exitModel}:${mult}:pct`)
   const signalCount=signals.filter(s=>groupFor(s)===group&&(!period||periodName(s.date)===period)).length
   const suppressed=suppressedEpisodes.filter(e=>e.group===group&&(!period||periodName(e.firstDate)===period)).length
   return {group,exitModel,signals:signalCount,episodes:eligible.length,suppressed:suppressed+selected.length-eligible.length,
     fills, pending, fillRate:eligible.length?fills/eligible.length:null,winRate:trades.length?trades.filter(t=>t.win).length/trades.length:null,
     avgR:rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:null,medianR:median(rs),expectancy:rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:null,
+    avgNetReturnPct:returnsPct.length?returnsPct.reduce((a,b)=>a+b,0)/returnsPct.length:null,medianNetReturnPct:median(returnsPct),
+    ci95LowPct:percentCI.ci95Low,ci95HighPct:percentCI.ci95High,
     worstR:rs.length?Math.min(...rs):null,...bootstrapCI(rs,`${group}:${period??'all'}:${exitModel}:${mult}`),
     sampleStatus:eligible.length<30?'ตัวอย่างไม่พอสรุป':'จำนวน episode ถึงเกณฑ์เบื้องต้น',trades}
 }
@@ -239,9 +243,9 @@ function csv(rows,columns){
   return [columns.join(','),...rows.map(row=>columns.map(key=>escape(row[key])).join(','))].join('\r\n')+'\r\n'
 }
 await fs.mkdir(resultDir,{recursive:true})
-await fs.writeFile(path.join(resultDir,'trades.csv'),csv(allTrades,['symbol','group','signalDate','entryDate','exitDate','entryRaw','exitPrice','stop','target','reason','r','win','stopMultiplier','signalRrNow','signalRrAtEntry']))
+await fs.writeFile(path.join(resultDir,'trades.csv'),csv(allTrades,['symbol','group','signalDate','entryDate','exitDate','entryRaw','exitPrice','stop','target','reason','r','netReturnPct','win','stopMultiplier','signalRrNow','signalRrAtEntry']))
 const planTradeRows=planMetrics.filter(row=>row.period===undefined).flatMap(row=>row.trades)
-await fs.writeFile(path.join(resultDir,'plan-exit-trades.csv'),csv(planTradeRows,['symbol','group','signalDate','entryDate','exitDate','entryRaw','exitPrice','stop','target','reason','r','win','stopMultiplier','signalRrNow','signalRrAtEntry']))
+await fs.writeFile(path.join(resultDir,'plan-exit-trades.csv'),csv(planTradeRows,['symbol','group','signalDate','entryDate','exitDate','entryRaw','exitPrice','stop','target','reason','r','netReturnPct','win','stopMultiplier','signalRrNow','signalRrAtEntry']))
 const selectionDiagnostics=JSON.parse(await fs.readFile(path.join(resultDir,'selection-diagnostics.json'),'utf8'))
 selectionDiagnostics.signalToEpisodeByLabel=Object.fromEntries(allGroups.map(group=>[group,{validatedSignals:signals.filter(s=>groupFor(s)===group).length,
   episodesBeforeActiveTradeSuppression:active.preSuppression.filter(e=>e.group===group).length,suppressedDuringOpenTrade:active.suppressed.filter(e=>e.group===group).length,
@@ -259,7 +263,7 @@ await fs.writeFile(path.join(resultDir,'summary.json'),JSON.stringify({signalsBy
     'Plan-vs-generic comparisons reuse the same episodes and suppression set to isolate exit-plan effect.',
     'ATR sensitivity changes stop distance during trade simulation only; signal membership/decision stays fixed at default app logic.',
     'Repeated same ticker/group signals within an episode are consolidated; subsequent same-ticker episodes during open trades are suppressed.']},null,2))
-const summaryColumns=['group','period','exitModel','signals','episodes','suppressed','fills','pending','fillRate','winRate','avgR','medianR','expectancy','ci95Low','ci95High','worstR','sampleStatus']
+const summaryColumns=['group','period','exitModel','signals','episodes','suppressed','fills','pending','fillRate','winRate','avgR','medianR','expectancy','ci95Low','ci95High','worstR','avgNetReturnPct','medianNetReturnPct','ci95LowPct','ci95HighPct','sampleStatus']
 await fs.writeFile(path.join(resultDir,'summary.csv'),csv(primary.map(({trades,...rest})=>rest),summaryColumns))
 await fs.writeFile(path.join(resultDir,'plan-exit-summary.csv'),csv(planMetrics.map(({trades,...rest})=>rest),summaryColumns))
 await fs.writeFile(path.join(resultDir,'exit-mode-comparison.csv'),csv([...primary,...planMetrics].map(({trades,...rest})=>rest),summaryColumns))
