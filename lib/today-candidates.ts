@@ -6,6 +6,7 @@ export interface OpportunityLabelInput {
   price: number | null
   entryZone: { low: number; high: number } | null
   rrAtEntry: number | null
+  riskRewardNow?: number | null
 }
 
 export function normalizeOpportunityDecision(input: OpportunityLabelInput): TodayDecision {
@@ -18,9 +19,22 @@ export function isTodayOpportunityEligible(decision: TodayDecision, rrAtEntry: n
   return rrAtEntry !== null && Number.isFinite(rrAtEntry) && rrAtEntry >= 1 && decision !== 'SKIP_POOR_RR' && decision !== 'AVOID'
 }
 
+export function firstTrancheLabelReason(input: OpportunityLabelInput): string | null {
+  if (input.buyMode !== 'FIRST_TRANCHE') return null
+  const reasons: string[] = []
+  if (input.price !== null && input.entryZone) {
+    if (input.price > input.entryZone.high) reasons.push('ราคาเหนือ Entry Zone')
+    else if (input.price < input.entryZone.low) reasons.push('ราคาต่ำกว่า Entry Zone')
+  }
+  if (input.riskRewardNow !== null && input.riskRewardNow !== undefined && Number.isFinite(input.riskRewardNow) && input.riskRewardNow < 1.5) {
+    reasons.push('R:R NOW ต่ำกว่า 1.5')
+  }
+  return reasons.length ? reasons.join(' · ') : null
+}
+
 export function opportunityLabel(input: OpportunityLabelInput): string {
   const decision = normalizeOpportunityDecision(input)
-  if (decision === 'BUY_NOW') return input.buyMode === 'FIRST_TRANCHE' ? 'ซื้อได้ตอนนี้ · ไม้แรก' : 'ซื้อได้ตอนนี้'
+  if (decision === 'BUY_NOW') return input.buyMode === 'FIRST_TRANCHE' && firstTrancheLabelReason(input) ? 'ซื้อไม้แรก' : 'ซื้อได้ตอนนี้'
   if (decision === 'BUY_ON_PULLBACK') {
     const distancePct = input.price !== null && input.entryZone && input.price > 0 && input.price > input.entryZone.high
       ? ((input.price - input.entryZone.high) / input.price) * 100

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel } from '@/lib/today-candidates'
+import { firstTrancheLabelReason, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel } from '@/lib/today-candidates'
 import { chunkScannerSymbols, dedupeScannerSymbols, SCANNER_UNIVERSES, type ScannerCategoryScores } from '@/lib/stock-scanner'
 
 type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
@@ -95,7 +95,11 @@ function statusStyle(item: RankedResult): string {
 }
 
 function opportunityLabel(item: RankedResult): string {
-  return formatOpportunityLabel({ decision: item.plan.decision, buyMode: item.plan.buyMode, price: item.price, entryZone: item.plan.entryZone, rrAtEntry: item.plan.riskRewardAtEntry })
+  return formatOpportunityLabel({ decision: item.plan.decision, buyMode: item.plan.buyMode, price: item.price, entryZone: item.plan.entryZone, rrAtEntry: item.plan.riskRewardAtEntry, riskRewardNow: item.plan.riskRewardNow })
+}
+
+function opportunityLabelReason(item: RankedResult): string | null {
+  return firstTrancheLabelReason({ decision: item.plan.decision, buyMode: item.plan.buyMode, price: item.price, entryZone: item.plan.entryZone, rrAtEntry: item.plan.riskRewardAtEntry, riskRewardNow: item.plan.riskRewardNow })
 }
 
 async function responseError(response: Response, fallback: string): Promise<string> {
@@ -291,6 +295,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-lg font-bold text-white">#{index + 1} {item.symbol}</span>
                     <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusStyle(item)}`}>{opportunityLabel(item)}</span>
+                    {opportunityLabelReason(item) && <span className="w-full text-xs text-yellow-300">{opportunityLabelReason(item)}</span>}
                     {heldSet.has(item.symbol) && <span className="rounded-full border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-xs text-purple-300">มีในพอร์ต</span>}
                   </div>
                   <p className="mt-2 text-sm leading-relaxed text-gray-300">{item.plan.summary}</p>

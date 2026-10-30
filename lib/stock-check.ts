@@ -6,6 +6,7 @@ export type StockCheckBuyMode = 'STANDARD' | 'FIRST_TRANCHE'
 
 export const ATR_STOP_MIN_MULT = 1.0
 export const MIN_RISK_PCT = 0.02
+export const BREAKOUT_MAX_DISTANCE_PCT = 3
 
 export interface StockCheckInput {
   trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS' | 'UNKNOWN'
@@ -226,6 +227,9 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
 
   const rrAtEntry = ratio(displayedPlannedEntry, stopLoss, target1)
   const rrNow = target1 > price && stopLoss < price ? ratio(price, stopLoss, target1) : null
+  const resistanceDistancePct = resistance !== null && price < resistance
+    ? ((resistance - price) / price) * 100
+    : null
   const ema50Distance = pctDistance(price, ema50)
   const supportDistance = pctDistance(price, support)
   const insideEntry = price >= entryLow && price <= entryHigh
@@ -273,6 +277,10 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   const supportedFirstTrancheSetup =
     ['BREAKOUT', 'PULLBACK', 'NEAR_SUPPORT', 'MOMENTUM'].includes(input.setup) ||
     (structuralUptrendPullback && input.setup === 'WAIT')
+  const distantBreakout =
+    resistanceDistancePct !== null &&
+    resistanceDistancePct > BREAKOUT_MAX_DISTANCE_PCT &&
+    ['WAIT', 'MOMENTUM'].includes(input.setup)
 
   const reasons: string[] = []
   const warnings: string[] = []
@@ -297,6 +305,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   if (ema50Distance !== null && ema50Distance > 10) warnings.push(`ราคายืดจาก EMA50 +${ema50Distance.toFixed(1)}%`)
   if (supportDistance !== null && supportDistance > 10) warnings.push(`ราคาอยู่ห่างแนวรับ ${supportDistance.toFixed(1)}%`)
   if (rrAtEntry !== null && rrAtEntry < 1.5) warnings.push(`R:R ที่จุดเข้าเพียง ${rrAtEntry.toFixed(2)}:1`)
+  if (distantBreakout) warnings.push(`ห่างแนวต้าน ${resistanceDistancePct!.toFixed(1)}% เกินระยะรอ Breakout ${BREAKOUT_MAX_DISTANCE_PCT.toFixed(1)}%`)
 
   let decision: StockCheckDecision = 'WATCH'
   let buyMode: StockCheckBuyMode | null = null
@@ -339,6 +348,8 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   } else if (
     resistance !== null &&
     price < resistance &&
+    resistanceDistancePct !== null &&
+    resistanceDistancePct <= BREAKOUT_MAX_DISTANCE_PCT &&
     ['WAIT', 'MOMENTUM'].includes(input.setup)
   ) {
     decision = 'WAIT_FOR_BREAKOUT'
@@ -362,6 +373,8 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
     summary = 'มีหลักฐานโครงสร้างราคาเสียหรือความอ่อนแอหลายด้านพร้อมกัน จึงควรหลีกเลี่ยงการเปิดสถานะใหม่ตอนนี้'
   } else if (decision === 'SKIP_POOR_RR') {
     summary = 'ผลตอบแทนที่คาดหวังเมื่อเทียบกับความเสี่ยงที่จุดเข้าไม่ถึงเกณฑ์ จึงข้ามรายการนี้'
+  } else if (distantBreakout && decision === 'WATCH') {
+    summary = `ห่างแนวต้าน ${resistanceDistancePct!.toFixed(1)}% เกินระยะรอ Breakout ${BREAKOUT_MAX_DISTANCE_PCT.toFixed(1)}% จึงเฝ้าดูและรอให้ราคาเข้าใกล้แนวต้านก่อน`
   } else if (insideEntry && !firstTrancheRiskReward) {
     summary = `ราคาอยู่ใน Entry Zone แล้ว แต่ R:R จากราคาปัจจุบัน${rrNow === null ? 'ยังคำนวณไม่เป็นบวก' : `เพียง ${rrNow.toFixed(2)}:1`} ยังไม่คุ้มสำหรับการเปิดสถานะ`
   } else if (price < entryLow) {

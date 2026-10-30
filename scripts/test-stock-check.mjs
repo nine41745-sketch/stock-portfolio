@@ -84,6 +84,29 @@ for (const fixture of [
   assert.equal(todayCandidates.isTodayOpportunityEligible(decision, fixture.rr), true)
   assert.match(todayCandidates.opportunityLabel({ decision, buyMode: null, price: 100, entryZone: { low: 90, high: 95 }, rrAtEntry: fixture.rr }), /รอย่อ · ราคาต้องลดลง 5\.00% ถึงขอบบนช่วงราคาเข้าซื้อ/)
 }
+assert.equal(stockCheck.BREAKOUT_MAX_DISTANCE_PCT, 3, 'Breakout waiting distance must be a named 3% constant')
+const breakoutDistancePlan = resistance => stockCheck.buildStockCheck({
+  trend: 'DOWNTREND', setup: 'WAIT', score: 60,
+  price: 100, ema50: 90, ema200: 110, atr14: 2,
+  support: 80, resistance, rsi14: 50, weeklyRsi14: 52,
+  macdHistogram: 0.2, volumeRatio: 1, relativeStrength20: 1,
+  relativeStrength60: 2, week52High: 160, week52Low: 70,
+  earningsDays: 20, pe: 20,
+})
+for (const fixture of [
+  { distancePct: 0.9, resistance: 100.9 },
+  { distancePct: 3, resistance: 103 },
+]) {
+  assert.equal(breakoutDistancePlan(fixture.resistance).decision, 'WAIT_FOR_BREAKOUT', `${fixture.distancePct}% resistance distance should remain a breakout wait`)
+}
+for (const fixture of [
+  { name: '3.1%', resistance: 103.1, expectedDistance: '3.1%' },
+  { name: 'ARM-like 39%', resistance: 139, expectedDistance: '39.0%' },
+]) {
+  const plan = breakoutDistancePlan(fixture.resistance)
+  assert.equal(plan.decision, 'WATCH', `${fixture.name} resistance distance should be watch-only`)
+  assert.match(plan.summary, new RegExp(`ห่างแนวต้าน ${fixture.expectedDistance}`), `${fixture.name} watch summary must explain the resistance distance`)
+}
 assert.equal(todayCandidates.trendLabel('UPTREND'), 'แนวโน้มขาขึ้น')
 assert.equal(todayCandidates.setupLabel('BREAKOUT'), 'ราคาทะลุแนวต้าน')
 assert.equal(todayCandidates.shouldShowEarningsUnknownBanner([]), false, 'No validated stocks must not show an earnings warning banner')
@@ -226,6 +249,20 @@ assert.equal(firstTranche.decision, 'BUY_NOW', 'Strong uptrend slightly above en
 assert.equal(firstTranche.buyMode, 'FIRST_TRANCHE', 'First-tranche BUY_NOW must be explicitly labeled')
 assert.match(firstTranche.decisionLabel, /ไม้แรก/, 'First-tranche label must be visible to the user')
 assert.ok((firstTranche.riskRewardNow ?? 0) >= 1.25, 'First tranche must use acceptable R:R from the live price')
+const firstTrancheLabelInput = (overrides = {}) => ({
+  decision: 'BUY_NOW', buyMode: 'FIRST_TRANCHE', price: 100,
+  entryZone: { low: 98, high: 99.3 }, rrAtEntry: 2, riskRewardNow: 1.8,
+  ...overrides,
+})
+const ddogLikeLabelInput = firstTrancheLabelInput({ price: 100.7, entryZone: { low: 98, high: 100 } })
+assert.equal(todayCandidates.opportunityLabel(ddogLikeLabelInput), 'ซื้อไม้แรก', 'First tranche above Entry Zone must use the separate first-buy label')
+assert.equal(todayCandidates.firstTrancheLabelReason(ddogLikeLabelInput), 'ราคาเหนือ Entry Zone', 'Out-of-zone first tranche must explain the price location')
+const maLikeLabelInput = firstTrancheLabelInput({ price: 99, entryZone: { low: 98, high: 100 }, riskRewardNow: 1.44 })
+assert.equal(todayCandidates.opportunityLabel(maLikeLabelInput), 'ซื้อไม้แรก', 'First tranche with live R:R below 1.5 must use the separate first-buy label')
+assert.equal(todayCandidates.firstTrancheLabelReason(maLikeLabelInput), 'R:R NOW ต่ำกว่า 1.5', 'Low live R:R first tranche must explain the label')
+const standardFirstTrancheLabelInput = firstTrancheLabelInput({ price: 99, entryZone: { low: 98, high: 100 }, riskRewardNow: 1.5 })
+assert.equal(todayCandidates.opportunityLabel(standardFirstTrancheLabelInput), 'ซื้อได้ตอนนี้', 'In-zone first tranche with live R:R >= 1.5 may use the standard buy-now label')
+assert.equal(todayCandidates.firstTrancheLabelReason(standardFirstTrancheLabelInput), null, 'In-zone first tranche with live R:R >= 1.5 needs no qualification')
 
 const structuralDipFirstTranche = stockCheck.buildStockCheck({
   trend: 'SIDEWAYS', setup: 'NEAR_SUPPORT', score: 64,
@@ -291,7 +328,8 @@ const ordinaryDowntrend = stockCheck.buildStockCheck({
   earningsDays: 20, pe: 23,
 })
 assert.notEqual(ordinaryDowntrend.decision, 'AVOID', 'A normal downtrend without breakdown/severe weakness must not be auto-AVOID')
-assert.equal(ordinaryDowntrend.decision, 'WAIT_FOR_BREAKOUT', 'Downtrend with intact support should wait for confirmation')
+assert.equal(ordinaryDowntrend.decision, 'WATCH', 'Downtrend with resistance more than 3% away should be watch-only')
+assert.match(ordinaryDowntrend.summary, /ห่างแนวต้าน 8\.0%/, 'Distant-breakout WATCH must include the exact distance')
 
 const slightSupportDip = stockCheck.buildStockCheck({
   trend: 'DOWNTREND', setup: 'WAIT', score: 50,
@@ -410,6 +448,7 @@ const today = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'ut
 assert.match(today, /chunkScannerSymbols\(uniqueSymbols\)/, 'Today radar must chunk the combined deduplicated universe')
 assert.match(today, /shouldShowEarningsUnknownBanner\(results\)/, 'Today radar must decide the banner from validated results only')
 assert.match(today, /ข้อมูล Earnings ใช้ไม่ได้ ผลถูกลดคะแนน/, 'Today radar must show the Thai unknown-earnings warning banner')
+assert.match(today, /firstTrancheLabelReason\(/, 'Today radar must show a reason beneath qualified first-tranche labels')
 assert.match(today, /new URLSearchParams\(\{ universe: 'all', symbols: batch\.join\(','\) \}\)/, 'Each Today radar scanner request must contain only one bounded symbol batch')
 assert.match(today, /for \(const batch of batches\)/, 'Today radar batches must be requested sequentially to preserve provider concurrency')
 assert.doesNotMatch(today, /ใกล้ซื้อ/, 'Today radar must not collapse decisions into the old near-buy label')
