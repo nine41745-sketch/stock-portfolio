@@ -4,11 +4,11 @@ import { getTechnicalIndicators } from '@/lib/indicators'
 import { scoreScannerCandidate, SCANNER_UNIVERSES, dedupeScannerSymbols } from '@/lib/stock-scanner'
 import { buildStockCheck, calculateStockCheckStopLoss } from '@/lib/stock-check'
 import { selectPreliminary, selectAutomatic } from '@/lib/today-candidates'
+import { SNAPSHOT_DIR, RESULTS_DIR } from './paths.mjs'
 
-const cacheDir = process.argv[2]
-const outDir = process.argv[3]
+const cacheDir = process.argv[2] ?? SNAPSHOT_DIR
+const outDir = process.argv[3] ?? RESULTS_DIR
 const weekLimit = Number(process.env.BACKTEST_WEEK_LIMIT ?? 0)
-if (!cacheDir || !outDir) throw new Error('Usage: run-backtest.mjs <snapshot-dir> <outside-git-output-dir>')
 const manifest = JSON.parse(await fs.readFile(path.join(cacheDir, 'manifest.json'), 'utf8'))
 const NativeDate = Date
 const snapshots = new Map()

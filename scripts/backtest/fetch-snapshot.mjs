@@ -1,10 +1,10 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { SNAPSHOT_DIR } from './paths.mjs'
 import ts from 'typescript'
 import YahooFinance from 'yahoo-finance2'
 
-const OUTPUT = process.argv[2]
-if (!OUTPUT) throw new Error('Usage: node scripts/backtest/fetch-snapshot.mjs <outside-git-output-dir>')
+const OUTPUT = process.argv[2] ?? SNAPSHOT_DIR
 
 async function importTsModule(filePath) {
   const source = await fs.readFile(filePath, 'utf8')

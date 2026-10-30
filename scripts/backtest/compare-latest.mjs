@@ -1,12 +1,12 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { SNAPSHOT_DIR, RESULTS_DIR } from './paths.mjs'
 import { getTechnicalIndicators } from '@/lib/indicators'
 import { scoreScannerCandidate } from '@/lib/stock-scanner'
 import { buildStockCheck } from '@/lib/stock-check'
 import { selectPreliminary } from '@/lib/today-candidates'
 
-const cacheDir = process.argv[2]
-if (!cacheDir) throw new Error('Usage: compare-latest.mjs <snapshot-dir>')
+const cacheDir = process.argv[2] ?? SNAPSHOT_DIR
 const manifest = JSON.parse(await fs.readFile(path.join(cacheDir, 'manifest.json'), 'utf8'))
 const snapshots = new Map()
 for (const symbol of manifest.symbols) snapshots.set(symbol, JSON.parse(await fs.readFile(path.join(cacheDir, `${symbol}.json`), 'utf8')))

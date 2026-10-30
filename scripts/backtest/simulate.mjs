@@ -1,9 +1,9 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { calculateStockCheckStopLoss } from '@/lib/stock-check'
+import { SNAPSHOT_DIR, RESULTS_DIR } from './paths.mjs'
 
-const cacheDir=process.argv[2],resultDir=process.argv[3]
-if(!cacheDir||!resultDir)throw new Error('Usage: simulate.mjs <snapshot-dir> <results-dir>')
+const cacheDir=process.argv[2]??SNAPSHOT_DIR,resultDir=process.argv[3]??RESULTS_DIR
 const symbols=JSON.parse(await fs.readFile(path.join(cacheDir,'manifest.json'),'utf8')).symbols.filter(s=>s!=='SPY')
 const signals=JSON.parse(await fs.readFile(path.join(resultDir,'signals.json'),'utf8'))
 const market=JSON.parse(await fs.readFile(path.join(resultDir,'market-snapshots.json'),'utf8'))
