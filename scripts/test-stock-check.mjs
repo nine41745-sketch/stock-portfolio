@@ -121,7 +121,25 @@ assert.equal(todayCandidates.setupLabel('BREAKOUT'), 'ราคาทะลุ�
 assert.deepEqual(todayCandidates.breakoutCardDetails(100, 100.9), { triggerPrice: 100.9, distancePct: 0.9 }, 'Breakout card details must preserve the trigger and percent distance from current price')
 assert.deepEqual(todayCandidates.breakoutCardDetails(100, 103), { triggerPrice: 103, distancePct: 3 }, 'Breakout card details must show the full distance at the configured limit')
 assert.equal(todayCandidates.breakoutCardDetails(100, null), null, 'Missing breakout resistance must not invent a trigger price')
+assert.deepEqual(todayCandidates.pullbackPlanDetails(110, { low: 100.01, high: 104 }, 95), {
+  upper: 104, midpoint: 102.005, distancePct: (110 - 104) / 110 * 100, position: 'above', atOrBelowStop: false,
+}, 'Pullback display must distinguish upper edge and the exact midpoint used for entry R:R')
+assert.equal(todayCandidates.pullbackPlanDetails(102, { low: 100, high: 104 }, 95)?.position, 'inside')
+assert.equal(todayCandidates.pullbackPlanDetails(98, { low: 100, high: 104 }, 98)?.atOrBelowStop, true)
+assert.equal(todayCandidates.pullbackPlanDetails(null, { low: 100, high: 104 }, 95)?.position, 'unknown')
+assert.equal(todayCandidates.pullbackPlanDetails(100, null, 95), null)
+assert.equal(todayCandidates.pullbackPlanDetails(100, { low: 104, high: 100 }, 95), null)
+assert.equal(todayCandidates.pullbackPlanDetails(100, { low: 100, high: Infinity }, 95), null)
+assert.equal(todayCandidates.formatBangkokTimestamp(null), 'ไม่ทราบเวลา')
+assert.equal(todayCandidates.formatBangkokTimestamp('not-a-date'), 'ไม่ทราบเวลา')
+assert.match(todayCandidates.formatBangkokTimestamp('2026-10-30T00:00:00.000Z'), /07:00:00.*เวลาไทย/, 'A UTC timestamp must be rendered in Asia/Bangkok')
 const todayOpportunitySource = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'utf8')
+assert.match(todayOpportunitySource, /ขอบบนของช่วงเข้าซื้อ/, 'Pullback card must name its upper zone edge')
+assert.match(todayOpportunitySource, /ราคากลางที่ใช้คำนวณ R:R/, 'Pullback card must identify the midpoint used for R:R')
+assert.match(todayOpportunitySource, /แตะช่วงราคาไม่ได้ยืนยันว่าจะซื้อได้ที่ราคากลาง/, 'Touching the zone must not promise a midpoint fill')
+assert.match(todayOpportunitySource, /ค่าธรรมเนียม.*slippage.*gap/, 'R:R limitations must disclose fees, slippage and gap')
+assert.match(todayOpportunitySource, /ราคา ณ เวลา.*priceAsOf/, 'Source price time must remain visible')
+assert.match(todayOpportunitySource, /ตรวจแผนเมื่อ.*checkedAt/, 'Assessment time must remain separate from price time')
 const todayOpportunityAst = ts.createSourceFile('TodayOpportunities.tsx', todayOpportunitySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 const breakoutCardBranches = (() => {
   const matches = []

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { breakoutCardDetails, firstTrancheLabelReason, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel } from '@/lib/today-candidates'
+import { breakoutCardDetails, firstTrancheLabelReason, formatBangkokTimestamp, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, pullbackPlanDetails, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel } from '@/lib/today-candidates'
 import { chunkScannerSymbols, dedupeScannerSymbols, SCANNER_UNIVERSES, type ScannerCategoryScores } from '@/lib/stock-scanner'
 
 type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
@@ -75,6 +75,10 @@ function fmtPrice(value: number | null): string {
 
 function fmtRatio(value: number | null): string {
   return value === null ? '—' : `${value.toFixed(2)}:1`
+}
+
+function fmtMidpoint(value: number): string {
+  return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`
 }
 
 function finalPriority(item: RankedResult): number {
@@ -299,7 +303,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
                     {opportunityLabelReason(item) && <span className="w-full text-xs text-yellow-300">{opportunityLabelReason(item)}</span>}
                     {heldSet.has(item.symbol) && <span className="rounded-full border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-xs text-purple-300">มีในพอร์ต</span>}
                   </div>
-                  <p className="mt-2 text-sm leading-relaxed text-gray-300">{item.plan.summary}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-gray-300">{item.plan.decision === 'BUY_ON_PULLBACK' ? 'ตรวจช่วงราคาที่วางแผนไว้และความเสี่ยงก่อนตัดสินใจ' : item.plan.summary}</p>
                 </div>
                 <div className="text-right">
                   <div className="text-lg font-bold text-white">{fmtPrice(item.price)}</div>
@@ -335,6 +339,18 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
                     <div className="mt-1 font-semibold text-green-400">{fmtPrice(item.plan.target1)}</div>
                   </div>
                 </div>
+                {item.plan.decision === 'BUY_ON_PULLBACK' && (() => {
+                  const details = pullbackPlanDetails(item.price, item.plan.entryZone, item.plan.stopLoss)
+                  if (!details) return <p className="mt-3 text-xs text-yellow-300">ข้อมูลช่วงเข้าซื้อไม่ครบ จึงยังระบุราคากลางไม่ได้</p>
+                  return <div className="mt-3 rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-xs leading-relaxed text-gray-200">
+                    <p>ขอบบนของช่วงเข้าซื้อ {fmtPrice(details.upper)}{details.distancePct !== null ? ` · ต่ำกว่าราคาที่ใช้ประเมิน ${details.distancePct.toFixed(2)}%` : ''}</p>
+                    <p className="mt-1">ราคากลางที่ใช้คำนวณ R:R {fmtMidpoint(details.midpoint)}</p>
+                    <p className="mt-1">{details.position === 'above' ? 'ราคาที่ใช้ประเมินอยู่เหนือช่วงเข้าซื้อ' : details.position === 'inside' ? 'ราคาที่ใช้ประเมินอยู่ในช่วงเข้าซื้อ' : details.position === 'below' ? 'ราคาที่ใช้ประเมินอยู่ต่ำกว่าช่วงเข้าซื้อ' : 'ไม่มีราคาที่ใช้ระบุตำแหน่งเทียบช่วงเข้าซื้อ'}</p>
+                    <p className="mt-1">แตะช่วงราคาไม่ได้ยืนยันว่าจะซื้อได้ที่ราคากลาง</p>
+                    <p className="mt-1 text-gray-300">R:R เป็นค่าอ้างอิงตามแผน ยังไม่รวมค่าธรรมเนียม, slippage หรือ gap และราคาเข้าจริงอาจต่างจากแผน</p>
+                    {details.atOrBelowStop && <p role="status" className="mt-1 text-yellow-300">ราคาที่ใช้ประเมินอยู่ที่หรือต่ำกว่าจุดตัดขาดทุน ควรตรวจแผนใหม่</p>}
+                  </div>
+                })()}
               </>}
 
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
@@ -342,8 +358,8 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
                 <span>• {setupLabel(item.setup)}</span>
                 {item.plan.decision === 'WAIT_FOR_BREAKOUT' ? null : <span>• อัตราผลตอบแทนต่อความเสี่ยง ณ จุดเข้า {fmtRatio(item.plan.riskRewardAtEntry)}</span>}
                 {item.earnings && <span>• คาดประกาศงบใน {item.earnings.daysUntil} วัน</span>}
-                <span>• ราคา ณ เวลา {item.priceAsOf ? new Date(item.priceAsOf).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) + ' เวลาไทย' : 'ไม่ทราบเวลา'} · แหล่งข้อมูล {item.priceSourceLabel}</span>
-                <span>• ตรวจแผนเมื่อ {new Date(item.checkedAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })} เวลาไทย</span>
+                <span>• ราคา ณ เวลา {formatBangkokTimestamp(item.priceAsOf)} · แหล่งข้อมูล {item.priceSourceLabel}</span>
+                <span>• ตรวจแผนเมื่อ {formatBangkokTimestamp(item.checkedAt)}</span>
               </div>
 
               {item.earningsStatus === 'unknown' && <p className="mt-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-2 text-xs text-yellow-300">ตรวจ Earnings ไม่สำเร็จ</p>}
