@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, selectAutomatic, selectPreliminary, setupLabel, trendLabel } from '@/lib/today-candidates'
-import type { ScannerCategoryScores } from '@/lib/stock-scanner'
+import { chunkScannerSymbols, dedupeScannerSymbols, SCANNER_UNIVERSES, type ScannerCategoryScores } from '@/lib/stock-scanner'
 
 type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
 type Decision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAKOUT' | 'WATCH' | 'AVOID' | 'SKIP_POOR_RR'
@@ -136,10 +136,16 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
     setScannedCount(0)
 
     try {
-      const response = await fetch('/api/scanner?universe=all', { cache: 'no-store', signal: controller.signal })
-      if (!response.ok) throw new Error(await responseError(response, 'สแกนหุ้นไม่สำเร็จ'))
-      const payload = await response.json() as { items?: ScannerItem[] }
-      const universeItems = Array.isArray(payload.items) ? payload.items : []
+      const uniqueSymbols = dedupeScannerSymbols(Object.values(SCANNER_UNIVERSES))
+      const batches = chunkScannerSymbols(uniqueSymbols)
+      const universeItems: ScannerItem[] = []
+      for (const batch of batches) {
+        const query = new URLSearchParams({ universe: 'all', symbols: batch.join(',') })
+        const response = await fetch(`/api/scanner?${query.toString()}`, { cache: 'no-store', signal: controller.signal })
+        if (!response.ok) throw new Error(await responseError(response, 'สแกนหุ้นไม่สำเร็จ'))
+        const payload = await response.json() as { items?: ScannerItem[] }
+        if (Array.isArray(payload.items)) universeItems.push(...payload.items)
+      }
       setScannedCount(universeItems.length)
 
       const finalists = selectPreliminary(universeItems)

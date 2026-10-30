@@ -24,8 +24,13 @@ const stockScanner = await importTsModule('lib/stock-scanner.ts')
 const stockCheckPresentation = await importTsModule('lib/stock-check-presentation.ts')
 const todayCandidates = await importTsModule('lib/today-candidates.ts')
 const earningsStatus = await importTsModule('lib/earnings-status.ts')
-assert.equal(stockScanner.MAX_SCAN_SYMBOLS, 29, 'Scanner request limit must match the 29-symbol combined universe')
-assert.ok(stockScanner.dedupeScannerSymbols(Object.values(stockScanner.SCANNER_UNIVERSES)).length <= stockScanner.MAX_SCAN_SYMBOLS, 'The combined universe must fit within one request limit')
+assert.equal(stockScanner.MAX_SCAN_SYMBOLS, 12, 'Scanner requests must be capped at 12 unique symbols')
+const allScannerSymbols = stockScanner.dedupeScannerSymbols(Object.values(stockScanner.SCANNER_UNIVERSES))
+assert.equal(allScannerSymbols.length, 29, 'All scanner groups should still expose 29 unique symbols')
+const scannerBatches = stockScanner.chunkScannerSymbols(allScannerSymbols)
+assert.deepEqual(scannerBatches.map(batch => batch.length), [12, 12, 5], 'The client must split 29 unique symbols into batches of at most 12')
+assert.deepEqual(scannerBatches.flat(), allScannerSymbols, 'Batching must retain each unique scanner ticker in stable order')
+assert.ok(scannerBatches.every(batch => batch.length <= stockScanner.MAX_SCAN_SYMBOLS), 'No scanner batch may exceed the request cap')
 const scoreInput = {
   trend: 'UPTREND', rsi14: 55, weeklyRsi14: 57, macdHistogram: 0.4,
   lastClose: 100, ema50: 98, support: 95, resistance: 110, volumeRatio: 1.2,
@@ -146,7 +151,7 @@ assert.ok((buyNow.stopLoss ?? 999) < (buyNow.entryZone?.low ?? 0), 'Stop must st
 assert.equal(buyNow.target2Basis, 'historical-52w-high', 'Target 2 should identify the historical high when that value supplies the final level')
 const buyNowPlannedEntry = (buyNow.entryZone.low + buyNow.entryZone.high) / 2
 const buyNowRisk = buyNowPlannedEntry - buyNow.stopLoss
-assert.ok(buyNow.target1 >= buyNowPlannedEntry + 1.5 * buyNowRisk - 0.01, 'Target 1 must be at least planned entry plus 1.5 times the final stop risk')
+assert.equal(buyNow.target1, 115, 'Target 1 should use the eligible structural resistance without a stop-risk floor')
 assert.ok(buyNow.stopLoss < buyNow.entryZone.low, 'Stop must remain below the entire Entry Zone')
 assert.equal(buyNow.riskRewardAtEntry, Number(((buyNow.target1 - buyNowPlannedEntry) / buyNowRisk).toFixed(2)), 'Entry R:R must use the exact planned entry, stop and Target 1 displayed')
 assert.equal(buyNow.riskRewardNow, Number(((buyNow.target1 - 100.5) / (100.5 - buyNow.stopLoss)).toFixed(2)), 'Current-price R:R must use the same stop and Target 1')
@@ -161,18 +166,48 @@ const stopPlan = overrides => stockCheck.buildStockCheck({
 })
 const closestStop = stopPlan({ swingLow: 97 })
 assert.deepEqual(closestStop.entryZone, { low: 100, high: 104 })
-assert.equal(closestStop.stopLoss, 96.6, 'Stop should select the closer swing-low stop while remaining below Entry Zone')
+assert.equal(closestStop.stopLoss, 94, 'Stop must preserve max(1 ATR, 2% of price) planned-entry risk')
 assert.ok(closestStop.stopLoss < closestStop.entryZone.low)
+assert.ok(102 - closestStop.stopLoss >= Math.max(4 * stockCheck.ATR_STOP_MIN_MULT, 400 * stockCheck.MIN_RISK_PCT), 'Stop must never be closer than the configured minimum risk')
 assert.equal(closestStop.riskRewardAtEntry, Number(((closestStop.target1 - 102) / (102 - closestStop.stopLoss)).toFixed(2)), 'Entry R:R must use the selected stop')
 assert.equal(closestStop.riskRewardNow, Number(((closestStop.target1 - 400) / (400 - closestStop.stopLoss)).toFixed(2)), 'NOW R:R must use the same selected stop')
+const targetWithWiderStop = stopPlan({ swingLow: 90 })
+assert.equal(targetWithWiderStop.target1, closestStop.target1, 'Target 1 must not change when only Stop risk changes')
 
 const cappedStop = stopPlan({ swingLow: 102 })
-assert.equal(cappedStop.stopLoss, 99.99, 'A stop above entryLow - 0.01 must be capped below the Entry Zone')
+assert.equal(cappedStop.stopLoss, 94, 'The minimum-risk floor must take precedence when it is below the Entry Zone cap')
 assert.ok(cappedStop.stopLoss < cappedStop.entryZone.low)
 
 const noSwingLowStop = stopPlan({ swingLow: null })
-assert.equal(noSwingLowStop.stopLoss, 96, 'Missing swing low should fall back to the ATR-based stop')
+assert.equal(noSwingLowStop.stopLoss, 94, 'Missing swing low should fall back while preserving minimum risk')
 assert.ok(noSwingLowStop.stopLoss < noSwingLowStop.entryZone.low)
+
+const strictEntryCap = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'BREAKOUT', score: 80,
+  price: 120, ema50: null, ema200: null, atr14: 1,
+  support: null, resistance: 100, rsi14: 55, weeklyRsi14: 58,
+  macdHistogram: 1, volumeRatio: 1.2, relativeStrength20: 3,
+  relativeStrength60: 5, week52High: 500, week52Low: 70,
+  earningsDays: null, pe: null, swingLow: 110,
+})
+const strictEntryCapPlannedEntry = (strictEntryCap.entryZone.low + strictEntryCap.entryZone.high) / 2
+assert.equal(strictEntryCap.stopLoss, Number((strictEntryCapPlannedEntry - Math.max(1 * stockCheck.ATR_STOP_MIN_MULT, 120 * stockCheck.MIN_RISK_PCT)).toFixed(2)), 'Stop must preserve minRisk when swing and ATR candidates sit above the Entry Zone cap')
+assert.ok(strictEntryCap.stopLoss <= strictEntryCap.entryZone.low - 0.01, 'Stop must remain at least one cent below Entry Zone')
+assert.ok(Number((strictEntryCapPlannedEntry - strictEntryCap.stopLoss).toFixed(2)) >= Math.max(1 * stockCheck.ATR_STOP_MIN_MULT, 120 * stockCheck.MIN_RISK_PCT), 'Stop must never be closer than minRisk')
+assert.equal(stockCheck.calculateStockCheckStopLoss({
+  swingLowStop: 105, atrStop: 106, entryLow: 100, plannedEntry: 102, minRisk: 1,
+}), 99.99, 'When swing and ATR stops exceed the cap and minRisk permits it, Stop must cap at entryLow - 0.01')
+
+const poorRrPullback = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 80,
+  price: 120, ema50: 100, ema200: 80, atr14: 10,
+  support: 100, resistance: 107, rsi14: 55, weeklyRsi14: 58,
+  macdHistogram: 1, volumeRatio: 1.2, relativeStrength20: 3,
+  relativeStrength60: 5, week52High: 108, week52Low: 70,
+  earningsDays: null, pe: null,
+})
+assert.ok((poorRrPullback.riskRewardAtEntry ?? Infinity) < 1.5, 'A close structural target must be able to produce R:R below 1.5')
+assert.equal(poorRrPullback.decision, 'SKIP_POOR_RR', 'A pullback with R:R below 1.5 must be skipped')
 
 const firstTranche = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'PULLBACK', score: 80,
@@ -367,7 +402,9 @@ assert.match(workspace, /🔥 โอกาสวันนี้/, 'Scanner works
 assert.match(workspace, /TodayOpportunities/, 'Today Opportunity Radar must be wired into Scanner workspace')
 
 const today = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'utf8')
-assert.match(today, /\/api\/scanner\?universe=all/, 'Today radar must request the combined deduplicated universe once')
+assert.match(today, /chunkScannerSymbols\(uniqueSymbols\)/, 'Today radar must chunk the combined deduplicated universe')
+assert.match(today, /new URLSearchParams\(\{ universe: 'all', symbols: batch\.join\(','\) \}\)/, 'Each Today radar scanner request must contain only one bounded symbol batch')
+assert.match(today, /for \(const batch of batches\)/, 'Today radar batches must be requested sequentially to preserve provider concurrency')
 assert.doesNotMatch(today, /ใกล้ซื้อ/, 'Today radar must not collapse decisions into the old near-buy label')
 assert.match(today, /earningsUnknownPenalty/, 'Today radar must disclose the penalty when the earnings provider is unknown')
 assert.match(today, /priceAsOf/, 'Today radar must show per-ticker price time separately from scan completion')

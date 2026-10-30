@@ -241,6 +241,7 @@ function scannerApiHarness({
   watchlistRows = [],
   watchlistError = null,
   portfolioQueryError = null,
+  staticUniverse = { ai: ['NVDA'], semis: ['AMD'], growth: ['SHOP'], quality: ['COST'], mine: [] },
 } = {}) {
   const queryCalls = []
   const portfolioCalls = []
@@ -309,7 +310,9 @@ function scannerApiHarness({
     '@/lib/finnhub': { getUpcomingEarningsStatus: async symbol => { marketCalls.push(['earnings', symbol]); return { status: 'none', earnings: null } } },
     '@/lib/indicators': { getTechnicalIndicators: async symbol => { marketCalls.push(['technical', symbol]); return technical } },
     '@/lib/stock-scanner': {
-      SCANNER_UNIVERSES: { ai: ['NVDA'], semis: ['AMD'], growth: ['SHOP'], quality: ['COST'], mine: [] },
+      SCANNER_UNIVERSES: staticUniverse,
+      MAX_SCAN_SYMBOLS: 12,
+      dedupeScannerSymbols: groups => [...new Set(groups.flat().map(symbol => symbol.trim().toUpperCase()).filter(Boolean))],
       scoreScannerCandidate: () => ({ score: 1, label: 'watch', setup: 'HOLD', reasons: [], categoryScores: {} }),
     },
     '@/lib/all-time-high': { getAllTimeHigh: async symbol => { marketCalls.push(['ath', symbol]); return { allTimeHigh: 120 } } },
@@ -319,7 +322,11 @@ function scannerApiHarness({
     queryCalls,
     portfolioCalls,
     marketCalls,
-    get: (universe = 'mine') => route.GET({ nextUrl: new URL(`https://example.test/api/scanner?universe=${universe}`) }),
+    get: (universe = 'mine', symbols = null) => {
+      const url = new URL(`https://example.test/api/scanner?universe=${universe}`)
+      if (symbols) url.searchParams.set('symbols', symbols.join(','))
+      return route.GET({ nextUrl: url })
+    },
     select: id => { selected = id },
   }
 }
@@ -395,6 +402,17 @@ test('Scanner static universes do not require portfolio context or query holding
   assert.deepEqual((await response.json()).items.map(row => row.symbol), ['AMD'])
   assert.equal(h.queryCalls.length, 0)
   assert.ok(h.marketCalls.some(([, symbol]) => symbol === 'AMD'))
+})
+
+test('Scanner rejects more than 12 allowed symbols with HTTP 413 before any market provider request', async () => {
+  const symbols = Array.from({ length: 13 }, (_, index) => `SYN${index + 1}`)
+  const h = scannerApiHarness({
+    staticUniverse: { ai: symbols, semis: [], growth: [], quality: [], mine: [] },
+  })
+  const response = await h.get('all', symbols)
+  assert.equal(response.status, 413)
+  assert.match((await response.json()).error, /ไม่เกิน 12 หุ้น/)
+  assert.equal(h.marketCalls.length, 0, 'Over-cap requests must be rejected before SPY or ticker provider calls')
 })
 
 test('Read-only context rejects Auth/PIN before portfolio reads', async () => {

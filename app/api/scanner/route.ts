@@ -154,6 +154,10 @@ export async function GET(request: NextRequest) {
   if (!VALID_UNIVERSES.has(requested)) {
     return NextResponse.json({ error: 'กลุ่มสแกนไม่ถูกต้อง' }, { status: 400 })
   }
+  const symbolsParam = request.nextUrl.searchParams.get('symbols')
+  if (symbolsParam !== null && requested !== 'all') {
+    return NextResponse.json({ error: 'ส่งรายชื่อหุ้นได้เฉพาะการสแกนทุกกลุ่ม' }, { status: 400 })
+  }
 
   try {
     let symbols: string[]
@@ -162,7 +166,17 @@ export async function GET(request: NextRequest) {
       if (portfolio.userId !== user.id) throw new PhaseAError('Unauthorized', 401)
       symbols = await getMineSymbols(portfolio.supabase, portfolio.userId, portfolio.portfolioId)
     } else if (requested === 'all') {
-      symbols = dedupeScannerSymbols(Object.values(SCANNER_UNIVERSES))
+      const allSymbols = dedupeScannerSymbols(Object.values(SCANNER_UNIVERSES))
+      if (symbolsParam === null) {
+        symbols = allSymbols
+      } else {
+        const requestedSymbols = symbolsParam.split(',').map(symbol => symbol.trim().toUpperCase()).filter(Boolean)
+        const allowedSymbols = new Set(allSymbols)
+        if (requestedSymbols.some(symbol => !allowedSymbols.has(symbol))) {
+          return NextResponse.json({ error: 'มีหุ้นที่ไม่ได้อยู่ในกลุ่มสแกน' }, { status: 400 })
+        }
+        symbols = dedupeScannerSymbols([requestedSymbols])
+      }
     } else {
       symbols = [...SCANNER_UNIVERSES[requested]]
     }

@@ -7,7 +7,7 @@ export const SCANNER_UNIVERSES = {
   quality: ['AAPL', 'MSFT', 'COST', 'V', 'MA', 'JPM', 'LLY', 'WMT'],
 } as const
 
-export const MAX_SCAN_SYMBOLS = 29
+export const MAX_SCAN_SYMBOLS = 12
 
 export type ScannerUniverseKey = keyof typeof SCANNER_UNIVERSES | 'mine'
 export type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
@@ -63,6 +63,15 @@ export function dedupeScannerSymbols(groups: readonly (readonly string[])[]): st
     }
   }
   return result
+}
+
+export function chunkScannerSymbols(symbols: readonly string[]): string[][] {
+  const uniqueSymbols = dedupeScannerSymbols([symbols])
+  const batches: string[][] = []
+  for (let index = 0; index < uniqueSymbols.length; index += MAX_SCAN_SYMBOLS) {
+    batches.push(uniqueSymbols.slice(index, index + MAX_SCAN_SYMBOLS))
+  }
+  return batches
 }
 
 function clamp(n: number, min: number, max: number): number {

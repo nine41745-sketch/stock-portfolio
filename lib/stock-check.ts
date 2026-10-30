@@ -4,6 +4,9 @@ export type StockCheckDecision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAK
 export type StockCheckSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
 export type StockCheckBuyMode = 'STANDARD' | 'FIRST_TRANCHE'
 
+export const ATR_STOP_MIN_MULT = 1.0
+export const MIN_RISK_PCT = 0.02
+
 export interface StockCheckInput {
   trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS' | 'UNKNOWN'
   setup: StockCheckSetup
@@ -56,6 +59,24 @@ export interface StockCheckPlan {
 
 function round2(value: number | null): number | null {
   return value === null || !Number.isFinite(value) ? null : Math.round(value * 100) / 100
+}
+
+function roundDown2(value: number): number {
+  return Math.floor(value * 100 + 1e-8) / 100
+}
+
+export function calculateStockCheckStopLoss(input: {
+  swingLowStop: number
+  atrStop: number
+  entryLow: number
+  plannedEntry: number
+  minRisk: number
+}): number {
+  return roundDown2(Math.min(
+    Math.max(input.swingLowStop, input.atrStop),
+    input.entryLow - 0.01,
+    input.plannedEntry - input.minRisk,
+  ))
 }
 
 function pctDistance(price: number | null, reference: number | null): number | null {
@@ -172,15 +193,24 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   const swingLow = validPositive(input.swingLow ?? null) ? input.swingLow! : support
   const swingLowStop = swingLow !== null ? swingLow - atr * 0.1 : entryLow - atr * 1.5
   const atrStop = plannedEntry - atr * 1.5
-  const stopLoss = round2(Math.min(Math.max(swingLowStop, atrStop), entryLow - 0.01))!
   const roundedEntryLow = round2(entryZone.low)!
   const roundedEntryHigh = round2(entryZone.high)!
   const displayedPlannedEntry = (roundedEntryLow + roundedEntryHigh) / 2
+  const minRisk = Math.max(ATR_STOP_MIN_MULT * atr, MIN_RISK_PCT * price)
+  const stopLoss = calculateStockCheckStopLoss({
+    swingLowStop,
+    atrStop,
+    entryLow: roundedEntryLow,
+    plannedEntry: displayedPlannedEntry,
+    minRisk,
+  })
   const plannedRisk = Math.max(0.01, displayedPlannedEntry - stopLoss)
-  const structuralTarget = resistance !== null && resistance > displayedPlannedEntry
+  const structuralTarget = resistance !== null && resistance >= displayedPlannedEntry * 1.005
     ? resistance
-    : validPositive(input.week52High) && input.week52High > displayedPlannedEntry ? input.week52High : 0
-  const target1 = round2(Math.max(structuralTarget, displayedPlannedEntry + 1.5 * plannedRisk))!
+    : validPositive(input.week52High) && input.week52High >= displayedPlannedEntry * 1.01
+      ? input.week52High
+      : displayedPlannedEntry + 2 * atr
+  const target1 = round2(structuralTarget)!
 
   const technicalTarget2 = validPositive(input.week52High) && input.week52High > target1 * 1.005
     ? input.week52High
@@ -303,8 +333,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   } else if (
     input.trend === 'UPTREND' &&
     input.score >= 68 &&
-    (aboveEntry || overextended) &&
-    rrAtEntry !== null && rrAtEntry >= 1.5
+    (aboveEntry || overextended)
   ) {
     decision = 'BUY_ON_PULLBACK'
   } else if (
