@@ -91,3 +91,5 @@
 - Random baseline is now comparable by episode count and signal dates for each exit model. It remains a generic random-entry strategy (not a synthetic strategy reproducing each signal's specific label logic), which is recorded as a limitation.
 - Latest random expectancy means / empirical 5–95% round ranges, generic then plan: pullback `0.206R [0.118,0.310]` / `0.208R [0.120,0.299]`; buy-now `0.114R [-0.103,0.308]` / `0.111R [-0.106,0.310]`; first-tranche low-R:R `0.126R [-0.167,0.394]` / `0.094R [-0.199,0.374]`; first-tranche high-R:R `0.022R [-0.163,0.213]` / `0.030R [-0.150,0.192]`. Bootstrap CIs over the 200 round means are retained in `baselines.csv`.
 - `node --check scripts/backtest/simulate.mjs` and `git diff --check` passed. The only source changes for this step are within `scripts/backtest/`.
+- Follow-up D checkpoint commit: `ab30d39db3a346057a9c168ed853fe1f141002de`.
+- Follow-up E implementation and output checkpoint commit: `a0ce2f412d40a024b65f9a1ccdc9f55b35ab0ffb`.
