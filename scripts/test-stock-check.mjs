@@ -51,6 +51,9 @@ for (const category of ['trend', 'momentum', 'volume', 'priceLocation', 'relativ
   assert.equal(scoreUnknownEarnings.categoryScores[category], scoreWithoutEarnings.categoryScores[category], `${category} must not change with earnings status`)
 }
 assert.equal(scoreWithoutEarnings.score - scoreUnknownEarnings.score, 5)
+const scoreMissingStatus = stockScanner.scoreScannerCandidate({ ...scoreInput, earningsDays: 30 })
+assert.equal(scoreMissingStatus.score, scoreUnknownEarnings.score, 'Missing status must be scored as unknown even when a date is supplied')
+assert.deepEqual(scoreMissingStatus.categoryScores, scoreUnknownEarnings.categoryScores)
 
 const missingCategoryScore = stockScanner.scoreScannerCandidate({
   ...scoreInput, trend: 'UNKNOWN', rsi14: null, weeklyRsi14: null, macdHistogram: null,
@@ -202,7 +205,7 @@ const buyNow = stockCheck.buildStockCheck({
   support: 100, resistance: 115, rsi14: 55, weeklyRsi14: 58,
   macdHistogram: 1, volumeRatio: 1.3, relativeStrength20: 5,
   relativeStrength60: 12, week52High: 120, week52Low: 70,
-  earningsDays: 20, pe: 25,
+  earningsDays: 20, earningsStatus: 'found', pe: 25,
 })
 assert.equal(buyNow.decision, 'BUY_NOW', 'Strong near-support setup should permit BUY_NOW')
 assert.equal(buyNow.buyMode, 'STANDARD', 'Classic in-zone BUY_NOW must remain the standard buy mode')
@@ -214,6 +217,13 @@ const unknownStandard = stockCheck.buildStockCheck({
 assert.equal(unknownStandard.decision, 'WATCH')
 assert.equal(unknownStandard.buyMode, null)
 assert.equal(unknownStandard.summary, 'รอตรวจ Earnings ก่อนซื้อ')
+const missingStatusStandard = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 82, price: 100.5, ema50: 99.5, ema200: 90, atr14: 2,
+  support: 100, resistance: 115, rsi14: 55, weeklyRsi14: 58, macdHistogram: 1, volumeRatio: 1.3,
+  relativeStrength20: 5, relativeStrength60: 12, week52High: 120, week52Low: 70, earningsDays: 20, pe: 25,
+})
+assert.equal(missingStatusStandard.decision, 'WATCH', 'Missing status must be unknown even when earningsDays is provided')
+assert.equal(missingStatusStandard.summary, 'รอตรวจ Earnings ก่อนซื้อ')
 assert.ok((buyNow.riskRewardAtEntry ?? 0) >= 1.5, 'Standard BUY_NOW plan must have acceptable R:R')
 assert.ok((buyNow.stopLoss ?? 999) < (buyNow.entryZone?.low ?? 0), 'Stop must stay below planned entry')
 assert.equal(buyNow.target2Basis, 'historical-52w-high', 'Target 2 should identify the historical high when that value supplies the final level')
@@ -283,7 +293,7 @@ const firstTranche = stockCheck.buildStockCheck({
   support: 98, resistance: 120, rsi14: 56, weeklyRsi14: 59,
   macdHistogram: 0.8, volumeRatio: 1.1, relativeStrength20: 4,
   relativeStrength60: 9, week52High: 125, week52Low: 72,
-  earningsDays: 20, pe: 26,
+  earningsDays: 20, earningsStatus: 'found', pe: 26,
 })
 assert.equal(firstTranche.decision, 'BUY_NOW', 'Strong uptrend slightly above entry may permit a first tranche')
 assert.equal(firstTranche.buyMode, 'FIRST_TRANCHE', 'First-tranche BUY_NOW must be explicitly labeled')
@@ -318,7 +328,7 @@ const structuralDipFirstTranche = stockCheck.buildStockCheck({
   support: 95, resistance: 115, rsi14: 52, weeklyRsi14: 55,
   macdHistogram: -0.1, volumeRatio: 0.9, relativeStrength20: 1,
   relativeStrength60: 8, week52High: 120, week52Low: 70,
-  earningsDays: 20, pe: 24,
+  earningsDays: 20, earningsStatus: 'found', pe: 24,
 })
 assert.equal(structuralDipFirstTranche.decision, 'BUY_NOW', 'Controlled dip under EMA50 with intact support should permit a first tranche')
 assert.equal(structuralDipFirstTranche.buyMode, 'FIRST_TRANCHE', 'Controlled structural dip must be labeled as first tranche, never standard BUY_NOW')

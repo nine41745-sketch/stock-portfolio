@@ -81,6 +81,7 @@ async function scanSymbol(
     support: t.scannerSupport, resistance: t.scannerResistance,
     volumeRatio: t.scannerVolumeRatio, week52High: t.week52High, week52Low: t.week52Low,
     relativeStrength20, relativeStrength60, earningsDays,
+    earningsStatus: earningsDays === null ? 'unknown' : 'found',
   })
   return {
     symbol, status: 'available', score: scored.score, label: scored.label, setup: scored.setup,

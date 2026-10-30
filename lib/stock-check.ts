@@ -358,7 +358,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
 
   decision = normalizeDecisionForRiskReward(decision, rrAtEntry)
   if (decision === 'SKIP_POOR_RR') buyMode = null
-  const awaitingEarnings = input.earningsStatus === 'unknown' && decision === 'BUY_NOW'
+  const awaitingEarnings = (input.earningsStatus ?? 'unknown') === 'unknown' && decision === 'BUY_NOW'
   if (awaitingEarnings) {
     decision = 'WATCH'
     buyMode = null

@@ -249,7 +249,7 @@ export function scoreScannerCandidate(input: ScannerTechnicalInput): ScannerScor
   // Risk / catalyst — 10 points
   let riskCatalystScore = 0
   const ema50Distance = distancePct(input.lastClose, input.ema50)
-  const earningsStatus = input.earningsStatus ?? (input.earningsDays == null ? 'unknown' : 'found')
+  const earningsStatus = input.earningsStatus ?? 'unknown'
   const earningsKnown = earningsStatus === 'none' || (earningsStatus === 'found' && input.earningsDays != null && Number.isFinite(input.earningsDays))
   if (earningsKnown) {
     if (earningsStatus === 'none') {
