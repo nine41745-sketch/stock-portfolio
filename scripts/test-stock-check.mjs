@@ -28,9 +28,10 @@ assert.equal(stockScanner.MAX_SCAN_SYMBOLS, 12, 'Scanner requests must be capped
 const allScannerSymbols = stockScanner.dedupeScannerSymbols(Object.values(stockScanner.SCANNER_UNIVERSES))
 assert.equal(allScannerSymbols.length, 29, 'All scanner groups should still expose 29 unique symbols')
 const scannerBatches = stockScanner.chunkScannerSymbols(allScannerSymbols)
-assert.deepEqual(scannerBatches.map(batch => batch.length), [12, 12, 5], 'The client must split 29 unique symbols into batches of at most 12')
+assert.deepEqual(scannerBatches.map(batch => batch.length), [8, 8, 8, 5], 'Today Opportunity must split 29 unique symbols into batches of at most 8')
 assert.deepEqual(scannerBatches.flat(), allScannerSymbols, 'Batching must retain each unique scanner ticker in stable order')
-assert.ok(scannerBatches.every(batch => batch.length <= stockScanner.MAX_SCAN_SYMBOLS), 'No scanner batch may exceed the request cap')
+assert.ok(scannerBatches.every(batch => batch.length <= 8), 'No Today Opportunity client batch may exceed 8 symbols')
+assert.equal(stockScanner.MAX_SCAN_SYMBOLS, 12, 'The server route request cap must remain 12')
 const scoreInput = {
   trend: 'UPTREND', rsi14: 55, weeklyRsi14: 57, macdHistogram: 0.4,
   lastClose: 100, ema50: 98, support: 95, resistance: 110, volumeRatio: 1.2,
@@ -85,6 +86,10 @@ for (const fixture of [
 }
 assert.equal(todayCandidates.trendLabel('UPTREND'), 'แนวโน้มขาขึ้น')
 assert.equal(todayCandidates.setupLabel('BREAKOUT'), 'ราคาทะลุแนวต้าน')
+assert.equal(todayCandidates.shouldShowEarningsUnknownBanner([]), false, 'No validated stocks must not show an earnings warning banner')
+assert.equal(todayCandidates.shouldShowEarningsUnknownBanner([{ earningsStatus: 'unknown' }, { earningsStatus: 'found' }]), true, 'Exactly half unknown must show the earnings warning banner')
+assert.equal(todayCandidates.shouldShowEarningsUnknownBanner([{ earningsStatus: 'unknown' }, { earningsStatus: 'none' }, { earningsStatus: 'found' }]), false, 'Less than half unknown must not show the earnings warning banner')
+assert.equal(todayCandidates.shouldShowEarningsUnknownBanner([{ earningsStatus: 'unknown' }, { earningsStatus: 'unknown' }, { earningsStatus: 'none' }, { earningsStatus: 'found' }]), true, 'At least half unknown must show the earnings warning banner')
 assert.equal(stockCheckPresentation.providerQuoteTimestamp(1793289600), '2026-10-29T16:00:00.000Z', 'Provider epoch seconds should be preserved as an ISO timestamp')
 assert.equal(stockCheckPresentation.providerQuoteTimestamp(null), null, 'Missing provider timestamp must remain unavailable')
 assert.equal(stockCheckPresentation.providerQuoteTimestamp(Number.NaN), null, 'Invalid provider timestamp must fail closed')
@@ -403,6 +408,8 @@ assert.match(workspace, /TodayOpportunities/, 'Today Opportunity Radar must be w
 
 const today = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'utf8')
 assert.match(today, /chunkScannerSymbols\(uniqueSymbols\)/, 'Today radar must chunk the combined deduplicated universe')
+assert.match(today, /shouldShowEarningsUnknownBanner\(results\)/, 'Today radar must decide the banner from validated results only')
+assert.match(today, /ข้อมูล Earnings ใช้ไม่ได้ ผลถูกลดคะแนน/, 'Today radar must show the Thai unknown-earnings warning banner')
 assert.match(today, /new URLSearchParams\(\{ universe: 'all', symbols: batch\.join\(','\) \}\)/, 'Each Today radar scanner request must contain only one bounded symbol batch')
 assert.match(today, /for \(const batch of batches\)/, 'Today radar batches must be requested sequentially to preserve provider concurrency')
 assert.doesNotMatch(today, /ใกล้ซื้อ/, 'Today radar must not collapse decisions into the old near-buy label')

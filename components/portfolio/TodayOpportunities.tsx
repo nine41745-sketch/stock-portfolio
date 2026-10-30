@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, selectAutomatic, selectPreliminary, setupLabel, trendLabel } from '@/lib/today-candidates'
+import { isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel } from '@/lib/today-candidates'
 import { chunkScannerSymbols, dedupeScannerSymbols, SCANNER_UNIVERSES, type ScannerCategoryScores } from '@/lib/stock-scanner'
 
 type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
@@ -220,6 +220,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
     item.plan.riskRewardAtEntry,
   ))
   const buyNowCount = opportunityResults.filter(item => item.plan.decision === 'BUY_NOW').length
+  const showEarningsUnknownBanner = shouldShowEarningsUnknownBanner(results)
 
   return (
     <section className="rounded-2xl border border-gray-800 bg-gray-900/40 p-4 shadow-sm md:p-5">
@@ -277,6 +278,9 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
           </div>
         })}</div>
       </section>}
+      {!loading && showEarningsUnknownBanner && <div role="status" className="mt-5 rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm font-semibold text-yellow-200">
+        ข้อมูล Earnings ใช้ไม่ได้ ผลถูกลดคะแนน
+      </div>}
       {!loading && opportunityResults.length > 0 && <h2 className="mt-5 font-semibold text-white">ผลยืนยันที่ผ่านเกณฑ์โอกาส</h2>}
       {!loading && opportunityResults.length > 0 && (
         <div className="mt-5 grid gap-3 lg:grid-cols-2">

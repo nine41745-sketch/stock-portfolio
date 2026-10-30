@@ -94,3 +94,8 @@ export function selectPreliminary<T extends Candidate>(items: T[]): T[] {
   }).sort((a, b) => preliminaryRank(b) - preliminaryRank(a) || b.score - a.score || a.symbol.localeCompare(b.symbol)).slice(0, 12)
 }
 export function selectAutomatic<T extends Candidate>(items: T[]): T[] { return items.slice(0, 6) }
+
+export function shouldShowEarningsUnknownBanner(items: readonly { earningsStatus: 'found' | 'none' | 'unknown' }[]): boolean {
+  if (items.length === 0) return false
+  return items.filter(item => item.earningsStatus === 'unknown').length * 2 >= items.length
+}
