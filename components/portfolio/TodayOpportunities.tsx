@@ -52,6 +52,7 @@ type StockCheckResult = {
     buyMode: BuyMode
     summary: string
     entryZone: { low: number; high: number } | null
+    breakoutTrigger: number | null
     stopLoss: number | null
     target1: number | null
     riskRewardAtEntry: number | null
