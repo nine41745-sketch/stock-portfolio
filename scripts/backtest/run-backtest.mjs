@@ -62,6 +62,7 @@ const dates=weekLimit>0?signalDates.slice(0,weekLimit):signalDates
 const dailyIndex=new Map([...daily].map(([symbol,bars])=>[symbol,new Map(bars.map((bar,index)=>[bar.date,index]))]))
 const rawSignals=[]
 const marketSnapshots=[]
+const universeScores=[]
 let unavailableFridayTicker=0
 
 function withClock(date, operation) {
@@ -111,6 +112,17 @@ for(let di=0;di<dates.length;di++){
   }
   const preliminary=selectPreliminary(candidates)
   const validated=selectAutomatic(preliminary)
+  const preliminarySymbols=new Set(preliminary.map(candidate=>candidate.symbol))
+  const validatedSymbols=new Set(validated.map(candidate=>candidate.symbol))
+  for(const candidate of candidates){
+    const p=candidate.plan
+    universeScores.push({date,symbol:candidate.symbol,price:candidate.price,technicalDate:candidate.technical.lastBarAt?.slice(0,10)??null,
+      trend:candidate.trend,score:candidate.score,categoryScores:candidate.scored.categoryScores,setup:candidate.setup,decision:p.decision,
+      group:displayGroup(p),preliminary:preliminarySymbols.has(candidate.symbol),validated:validatedSymbols.has(candidate.symbol),
+      entryZone:p.entryZone,plannedEntry:p.entryZone?(p.entryZone.low+p.entryZone.high)/2:null,stop:p.stopLoss,target:p.target1,
+      rrNow:p.riskRewardNow,rrAtEntry:p.riskRewardAtEntry,breakoutTrigger:p.breakoutTrigger,atr:candidate.technical.atr14,
+      resistance:candidate.technical.scannerResistance,scannerVolumeRatio:candidate.technical.scannerVolumeRatio})
+  }
   for(const candidate of validated){
     const group=displayGroup(candidate.plan)
     const p=candidate.plan
@@ -128,9 +140,10 @@ globalThis.Date=NativeDate
 await fs.mkdir(outDir,{recursive:true})
 await fs.writeFile(path.join(outDir,'signals.json'),JSON.stringify(rawSignals))
 await fs.writeFile(path.join(outDir,'market-snapshots.json'),JSON.stringify(marketSnapshots))
+await fs.writeFile(path.join(outDir,'universe-scores.json'),JSON.stringify(universeScores))
 await fs.writeFile(path.join(outDir,'engine-manifest.json'),JSON.stringify({baseSha:'d13f9b52f4a97fdc4c3a7957eb2489d644d46141',snapshotRequestedAt:manifest.requestedAt,
   sourceEnd:lastDate,signalStart:dates[0]??null,signalEnd:dates.at(-1)??null,fridays:dates.length,tickerCount:symbols.length,validatedSignals:rawSignals.length,
   earnings:'none',signalWeekLimit:weekLimit||null,unavailableFridayTicker,selectionNote:'Candidate.riskReward uses buildStockCheck-derived RR rather than the API route private price/support/resistance ratio; API route itself cannot be imported without Supabase/Next dependencies.',
   weeklyNote:'Native Yahoo weekly OHLCV is reconstructed from cached daily bars using calendar weeks; the production provider uses 1wk Yahoo bars.',
   functions:['getTechnicalIndicators','scoreScannerCandidate (which invokes private classifySetup)','buildStockCheck','selectPreliminary','selectAutomatic']} ,null,2))
-console.log(JSON.stringify({fridays:dates.length,rawSignals:rawSignals.length,signalStart:dates[0],signalEnd:dates.at(-1),unavailableFridayTicker,outDir}))
+console.log(JSON.stringify({fridays:dates.length,rawSignals:rawSignals.length,universeScores:universeScores.length,signalStart:dates[0],signalEnd:dates.at(-1),unavailableFridayTicker,outDir}))

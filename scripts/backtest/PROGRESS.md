@@ -53,3 +53,9 @@
 - Added `paths.mjs` as the single durable data-path definition and made fetch, compare, backtest and simulation scripts default to that root; explicit CLI path overrides remain available.
 - Prior simulation behavior (from `simulate.mjs:66-80`): immediate and first-tranche entries use next trading day open, the `buildStockCheck` signal's `target1`, and the signal's `stopLoss` only when no valid Entry Zone/ATR is available; otherwise the simulator recalculates Stop with the library `calculateStockCheckStopLoss` at the configured sensitivity multiple while retaining the signal's `target1`. Pullbacks enter at the planned Entry on first zone touch, then use that same recalculated Stop and signal `target1`. Thus most non-breakout rows did not use fixed 1.5 ATR / 2R exits. Breakouts (`simulate.mjs:81-94`) use entry at trigger, Stop `1.5 * ATR * multiplier` below trigger and Target 2R above entry.
 - Verified script syntax before commit; follow-up implementation commit SHA recorded after creation.
+
+## Follow-up B: point-in-time score records
+- Updated `run-backtest.mjs` to persist one record per available (Friday, ticker), including total/category scores, trend, setup, decision and plan fields, plus pre/post preliminary and automatic validation flags.
+- Added `score-validity.mjs` to calculate forward 5/10/20-session returns, same-date universe excess returns, score-bucket summaries and per-Friday cross-sectional Spearman IC / naive t-stat for total and six category scores across all, Trend, period and Trend-period cohorts.
+- `node --check` initially found a malformed array closure in the new CSV mapping; fixed that exact syntax issue and reran syntax checks successfully for the score runner and both data-generation scripts. No data analysis has been run for this step yet.
+- Follow-up B implementation checkpoint SHA recorded after commit.
