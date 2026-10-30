@@ -76,7 +76,9 @@ assert.equal(ath.getAthState(null, 100).status, 'UNKNOWN')
 const scanner = await importTsModule('lib/stock-scanner.ts')
 const strongScan = scanner.scoreScannerCandidate({
   trend: 'UPTREND', rsi14: 55, weeklyRsi14: 58, macdHistogram: 1,
-  lastClose: 100, support: 97, resistance: 110, volumeRatio: 1.1,
+  lastClose: 100, ema50: 98, support: 97, resistance: 110, volumeRatio: 1.1,
+  week52High: 120, week52Low: 70, relativeStrength20: 5, relativeStrength60: 10,
+  earningsStatus: 'none', earningsDays: null,
 })
 assert.equal(strongScan.label, 'น่าสนใจ', 'healthy uptrend scanner candidate should rank as interesting')
 assert.ok(strongScan.score >= 72, 'strong scanner candidate should score >= 72')
@@ -270,9 +272,28 @@ const watchlistMigration = fs.readFileSync('supabase/migration_watchlist_v1.18.0
 assert.match(watchlistMigration, /ENABLE ROW LEVEL SECURITY/, 'Watchlist must enable RLS')
 assert.match(watchlistMigration, /auth\.uid\(\) = user_id/, 'Watchlist RLS must scope rows to the authenticated user')
 const scannerRouteSource = fs.readFileSync('app/api/scanner/route.ts', 'utf8')
-assert.match(scannerRouteSource, /MAX_SCAN_SYMBOLS/, 'Scanner must cap provider fan-out')
+assert.match(scannerRouteSource, /i \+= 2/, 'Scanner must cap concurrent ticker provider fan-out at two')
+assert.match(scannerRouteSource, /dedupeScannerSymbols\(Object\.values\(SCANNER_UNIVERSES\)\)/, 'All-group scanner must deduplicate symbols before provider calls')
+assert.match(scannerRouteSource, /symbols\.length > MAX_SCAN_SYMBOLS/, 'Scanner request must reject universes above its explicit symbol cap')
+assert.match(scannerRouteSource, /status: 413/, 'An oversized scanner request must be rejected before provider calls')
+assert.match(scannerRouteSource, /symbolsParam\.split\(','\)/, 'Scanner must accept a bounded client-provided batch for all groups')
+assert.match(scannerRouteSource, /requestedSymbols\.some\(symbol => !allowedSymbols\.has\(symbol\)\)/, 'Scanner symbol batches must stay inside the configured group universe')
+const scannerRequestCapIndex = scannerRouteSource.indexOf('if (symbols.length > MAX_SCAN_SYMBOLS)')
+const scannerProviderCallIndex = scannerRouteSource.indexOf("const spy = await getTechnicalIndicators('SPY')")
+assert.ok(scannerRequestCapIndex >= 0 && scannerRequestCapIndex < scannerProviderCallIndex, 'Per-request symbol cap must be enforced before any market provider call')
+assert.equal(scanner.MAX_SCAN_SYMBOLS, 12, 'The scanner must enforce the approved 12-symbol per-request limit')
+const allScannerSymbols = scanner.dedupeScannerSymbols(Object.values(scanner.SCANNER_UNIVERSES))
+assert.equal(allScannerSymbols.length, 29, 'The combined scanner universe must retain all 29 unique symbols')
+const allScannerBatches = scanner.chunkScannerSymbols(allScannerSymbols)
+assert.equal(scanner.TODAY_OPPORTUNITY_BATCH_SIZE, 8, 'Today Opportunity client batches must be capped at eight symbols')
+assert.deepEqual(allScannerBatches.map(batch => batch.length), [8, 8, 8, 5], 'The client must divide 29 symbols into 8/8/8/5 requests')
+assert.deepEqual(allScannerBatches.flat(), allScannerSymbols, 'Client batching must preserve all unique symbols')
+assert.ok(allScannerBatches.every(batch => batch.length <= scanner.TODAY_OPPORTUNITY_BATCH_SIZE), 'No client request may exceed its eight-symbol batch size')
+assert.equal(scanner.MAX_SCAN_SYMBOLS, 12, 'Client batching must not change the server request cap')
+const todayOpportunitySource = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'utf8')
+assert.match(todayOpportunitySource, /for \(const batch of batches\)/, 'The client must execute scanner batches without adding per-request provider concurrency')
 assert.match(scannerRouteSource, /getTechnicalIndicators\('SPY'\)/, 'Scanner must benchmark Relative Strength against SPY')
-assert.match(scannerRouteSource, /getUpcomingEarnings/, 'Scanner must surface earnings catalyst risk')
+assert.match(scannerRouteSource, /getUpcomingEarningsStatus/, 'Scanner must distinguish found, none and unknown earnings states')
 assert.match(scannerRouteSource, /scannerSupport/, 'Scanner must use completed-bar support levels')
 assert.match(scannerRouteSource, /scannerVolumeRatio/, 'Scanner must use scanner-safe volume ratio')
 assert.match(scannerRouteSource, /getAllTimeHigh/, 'Scanner must load true all-time high separately from 52W data')
@@ -329,12 +350,12 @@ assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native
 
 // Release metadata must match the verified deployment and the owner's scoped gate approval.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.41.11', 'Package version must match the v1.41.11 candidate')
+assert.equal(packageJson.version, '1.41.13', 'Package version must match the v1.41.13 candidate')
 const releasePackageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
 assert.equal(releasePackageLock.version, packageJson.version, 'Lockfile version must match package.json')
 assert.equal(releasePackageLock.packages?.['']?.version, packageJson.version, 'Lockfile root package version must match package.json')
 const releaseTsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14111'], 'Version badge must resolve to the v1.41.11 changelog')
+assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14113'], 'Version badge must resolve to the v1.41.13 changelog')
 const newestChangelog = fs.readFileSync('config/changelog-v1419.ts', 'utf8')
 assert.match(newestChangelog, /version: 'v1\.41\.9'/)
 assert.match(newestChangelog, /from '\.\/changelog-v1418'/)
@@ -563,7 +584,7 @@ for (const [file, expectedTime] of changelogReleaseTimes) {
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14111'], 'Current candidate must use the v1.41.11 version badge')
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14113'], 'Current candidate must use the v1.41.13 version badge')
 assert.match(releaseChangelog, /date: 'เวลาเดิมใน Changelog — 2026-10-14 03:05 ICT \(ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production\)'/, 'v1.34.0 must preserve its stored timestamp and disclose that Production timing is unverified')
 assert.match(latestReleaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.35.0 changelog must contain a timestamp in the repository format')
 

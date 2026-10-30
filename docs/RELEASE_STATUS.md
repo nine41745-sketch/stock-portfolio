@@ -1,5 +1,12 @@
 # Production Release Status
 
+## Version under preparation — v1.41.13
+
+- Scope: ปรับการ์ดรอ Breakout ให้แสดงจุดทะลุและเงื่อนไขยืนยัน โดยซ่อน Entry/Stop/Target/R:R ซึ่งยังไม่ใช่แผนซื้อ.
+- Development/Feature History: `2026-10-30T05:40:32Z` (`2026-10-30T12:40:32+07:00`), from local Git commit `18e7256c6f153899c2b06bc58409ffd8172fdfa3`.
+- Release state: local branch only; no push, deployment or promotion. Security Gate and Production Release Gate remain HOLD for v1.41.13.
+- Current Production status remains the v1.41.10 deployment recorded below.
+
 ## Version under preparation — v1.41.11
 
 - Scope: ปรับป้ายเวลาเดิมใน Changelog v1.30.0–v1.34.0 ให้ระบุว่าเก็บค่าตามบันทึกเดิมและยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production.
