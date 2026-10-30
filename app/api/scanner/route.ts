@@ -5,7 +5,7 @@ import { isPortfolioFoundationMissing } from '@/lib/portfolio-context'
 import { selectPortfolioMineSymbols } from '@/lib/scanner-universe'
 import { getUpcomingEarningsStatus } from '@/lib/finnhub'
 import { getTechnicalIndicators, TechnicalIndicators } from '@/lib/indicators'
-import { dedupeScannerSymbols, SCANNER_UNIVERSES, ScannerUniverseKey, scoreScannerCandidate } from '@/lib/stock-scanner'
+import { dedupeScannerSymbols, MAX_SCAN_SYMBOLS, SCANNER_UNIVERSES, ScannerUniverseKey, scoreScannerCandidate } from '@/lib/stock-scanner'
 import { getAllTimeHigh } from '@/lib/all-time-high'
 import { getAthState } from '@/lib/ath'
 
@@ -167,6 +167,11 @@ export async function GET(request: NextRequest) {
       symbols = [...SCANNER_UNIVERSES[requested]]
     }
     symbols = [...new Set(symbols.map(symbol => symbol.trim().toUpperCase()).filter(Boolean))]
+
+    // จำกัดจำนวนหุ้นต่อคำขอเพื่อลดความเสี่ยง timeout และ rate limit ของผู้ให้บริการ
+    if (symbols.length > MAX_SCAN_SYMBOLS) {
+      return NextResponse.json({ error: `คำขอสแกนได้ไม่เกิน ${MAX_SCAN_SYMBOLS} หุ้น` }, { status: 413 })
+    }
 
     if (!symbols.length) {
       return NextResponse.json({ universe: requested, items: [], scannedAt: new Date().toISOString() })

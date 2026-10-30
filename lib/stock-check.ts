@@ -172,7 +172,7 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
   const swingLow = validPositive(input.swingLow ?? null) ? input.swingLow! : support
   const swingLowStop = swingLow !== null ? swingLow - atr * 0.1 : entryLow - atr * 1.5
   const atrStop = plannedEntry - atr * 1.5
-  const stopLoss = round2(Math.max(0.01, Math.min(swingLowStop, atrStop, entryLow - 0.01)))!
+  const stopLoss = round2(Math.min(Math.max(swingLowStop, atrStop), entryLow - 0.01))!
   const roundedEntryLow = round2(entryZone.low)!
   const roundedEntryHigh = round2(entryZone.high)!
   const displayedPlannedEntry = (roundedEntryLow + roundedEntryHigh) / 2

@@ -116,6 +116,7 @@ globalThis.__scannerIsolationMocks = {
   selectPortfolioMineSymbols,
   getUpcomingEarningsStatus: async () => ({ status: 'none', earnings: null }),
   getTechnicalIndicators: async () => ({ macd: { histogram: null }, lastClose: null }),
+  MAX_SCAN_SYMBOLS: 29,
   SCANNER_UNIVERSES: {},
   scoreScannerCandidate: () => ({ score: 0 }),
   getAllTimeHigh: async () => ({ allTimeHigh: null }),

@@ -7,6 +7,8 @@ export const SCANNER_UNIVERSES = {
   quality: ['AAPL', 'MSFT', 'COST', 'V', 'MA', 'JPM', 'LLY', 'WMT'],
 } as const
 
+export const MAX_SCAN_SYMBOLS = 29
+
 export type ScannerUniverseKey = keyof typeof SCANNER_UNIVERSES | 'mine'
 export type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
 

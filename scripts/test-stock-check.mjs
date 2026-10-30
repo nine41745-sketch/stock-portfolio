@@ -24,6 +24,8 @@ const stockScanner = await importTsModule('lib/stock-scanner.ts')
 const stockCheckPresentation = await importTsModule('lib/stock-check-presentation.ts')
 const todayCandidates = await importTsModule('lib/today-candidates.ts')
 const earningsStatus = await importTsModule('lib/earnings-status.ts')
+assert.equal(stockScanner.MAX_SCAN_SYMBOLS, 29, 'Scanner request limit must match the 29-symbol combined universe')
+assert.ok(stockScanner.dedupeScannerSymbols(Object.values(stockScanner.SCANNER_UNIVERSES)).length <= stockScanner.MAX_SCAN_SYMBOLS, 'The combined universe must fit within one request limit')
 const scoreInput = {
   trend: 'UPTREND', rsi14: 55, weeklyRsi14: 57, macdHistogram: 0.4,
   lastClose: 100, ema50: 98, support: 95, resistance: 110, volumeRatio: 1.2,
@@ -149,6 +151,29 @@ assert.ok(buyNow.stopLoss < buyNow.entryZone.low, 'Stop must remain below the en
 assert.equal(buyNow.riskRewardAtEntry, Number(((buyNow.target1 - buyNowPlannedEntry) / buyNowRisk).toFixed(2)), 'Entry R:R must use the exact planned entry, stop and Target 1 displayed')
 assert.equal(buyNow.riskRewardNow, Number(((buyNow.target1 - 100.5) / (100.5 - buyNow.stopLoss)).toFixed(2)), 'Current-price R:R must use the same stop and Target 1')
 
+const stopPlan = overrides => stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'BREAKOUT', score: 80,
+  price: 400, ema50: null, ema200: null, atr14: 4,
+  support: null, resistance: 100, rsi14: 55, weeklyRsi14: 58,
+  macdHistogram: 1, volumeRatio: 1.2, relativeStrength20: 3,
+  relativeStrength60: 5, week52High: 500, week52Low: 70,
+  earningsDays: null, pe: null, ...overrides,
+})
+const closestStop = stopPlan({ swingLow: 97 })
+assert.deepEqual(closestStop.entryZone, { low: 100, high: 104 })
+assert.equal(closestStop.stopLoss, 96.6, 'Stop should select the closer swing-low stop while remaining below Entry Zone')
+assert.ok(closestStop.stopLoss < closestStop.entryZone.low)
+assert.equal(closestStop.riskRewardAtEntry, Number(((closestStop.target1 - 102) / (102 - closestStop.stopLoss)).toFixed(2)), 'Entry R:R must use the selected stop')
+assert.equal(closestStop.riskRewardNow, Number(((closestStop.target1 - 400) / (400 - closestStop.stopLoss)).toFixed(2)), 'NOW R:R must use the same selected stop')
+
+const cappedStop = stopPlan({ swingLow: 102 })
+assert.equal(cappedStop.stopLoss, 99.99, 'A stop above entryLow - 0.01 must be capped below the Entry Zone')
+assert.ok(cappedStop.stopLoss < cappedStop.entryZone.low)
+
+const noSwingLowStop = stopPlan({ swingLow: null })
+assert.equal(noSwingLowStop.stopLoss, 96, 'Missing swing low should fall back to the ATR-based stop')
+assert.ok(noSwingLowStop.stopLoss < noSwingLowStop.entryZone.low)
+
 const firstTranche = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'PULLBACK', score: 80,
   price: 103, ema50: 100, ema200: 90, atr14: 2,
@@ -188,9 +213,9 @@ assert.notEqual(brokenSupportDip.decision, 'BUY_NOW', 'A dip below support must 
 const insideButPoorRr = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 77,
   price: 100.25, ema50: 99.5, ema200: 90, atr14: 2,
-  support: 99, resistance: 103, rsi14: 54, weeklyRsi14: 57,
+  support: 99, resistance: 102, rsi14: 54, weeklyRsi14: 57,
   macdHistogram: 0.4, volumeRatio: 1.1, relativeStrength20: 3,
-  relativeStrength60: 7, week52High: 104, week52Low: 75,
+  relativeStrength60: 7, week52High: 102, week52Low: 75,
   earningsDays: 20, pe: 24,
 })
 assert.equal(insideButPoorRr.decision, 'WATCH', 'Being inside Entry Zone with poor live R:R must not say wait for a pullback')
