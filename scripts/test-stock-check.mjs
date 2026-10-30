@@ -38,7 +38,7 @@ const scoreInput = {
   week52High: 120, week52Low: 70, relativeStrength20: 3, relativeStrength60: 5,
 }
 
-assert.equal(stockScanner.EARNINGS_UNKNOWN_SCORE_PENALTY, 8, 'Unknown earnings penalty must be a named, explicit constant')
+assert.equal(stockScanner.EARNINGS_UNKNOWN_SCORE_PENALTY, 0, 'Unknown earnings penalty must be a named, explicit constant')
 const scoreWithEarnings = stockScanner.scoreScannerCandidate({ ...scoreInput, earningsStatus: 'found', earningsDays: 30 })
 const scoreWithoutEarnings = stockScanner.scoreScannerCandidate({ ...scoreInput, earningsStatus: 'none', earningsDays: null })
 const scoreUnknownEarnings = stockScanner.scoreScannerCandidate({ ...scoreInput, earningsStatus: 'unknown', earningsDays: null })

@@ -49,7 +49,7 @@ export interface ScannerScore {
   categoryScores: ScannerCategoryScores
 }
 
-export const EARNINGS_UNKNOWN_SCORE_PENALTY = 8
+export const EARNINGS_UNKNOWN_SCORE_PENALTY = 0
 
 export function dedupeScannerSymbols(groups: readonly (readonly string[])[]): string[] {
   const seen = new Set<string>()
@@ -251,10 +251,7 @@ export function scoreScannerCandidate(input: ScannerTechnicalInput): ScannerScor
   const ema50Distance = distancePct(input.lastClose, input.ema50)
   const earningsStatus = input.earningsStatus ?? (input.earningsDays == null ? 'unknown' : 'found')
   const earningsKnown = earningsStatus === 'none' || (earningsStatus === 'found' && input.earningsDays != null && Number.isFinite(input.earningsDays))
-  const riskCatalystInputsPresent = earningsKnown && ema50Distance !== null
-  if (!riskCatalystInputsPresent) {
-    warnings.push('ข้อมูลความเสี่ยงหรือวันประกาศงบไม่ครบ คะแนนหมวดนี้เป็น 0')
-  } else {
+  if (earningsKnown) {
     if (earningsStatus === 'none') {
       riskCatalystScore += 5
     } else if (input.earningsDays! <= 3) {
@@ -268,12 +265,16 @@ export function scoreScannerCandidate(input: ScannerTechnicalInput): ScannerScor
       riskCatalystScore += 5
     }
 
-    if (ema50Distance! >= -2 && ema50Distance! <= 8) {
+  }
+  if (ema50Distance === null) {
+    warnings.push('ไม่มีข้อมูลระยะจาก EMA50 จึงไม่ได้คะแนนส่วนนี้')
+  } else {
+    if (ema50Distance >= -2 && ema50Distance <= 8) {
       riskCatalystScore += 5
-    } else if (ema50Distance! > 8 && ema50Distance! <= 12) {
+    } else if (ema50Distance > 8 && ema50Distance <= 12) {
       riskCatalystScore += 3
-    } else if (ema50Distance! > 12) {
-      warnings.push(`ราคายืดจาก EMA50 +${ema50Distance!.toFixed(1)}%`)
+    } else if (ema50Distance > 12) {
+      warnings.push(`ราคายืดจาก EMA50 +${ema50Distance.toFixed(1)}%`)
     } else {
       riskCatalystScore += 2
     }
@@ -283,7 +284,7 @@ export function scoreScannerCandidate(input: ScannerTechnicalInput): ScannerScor
   if (earningsUnknownPenalty) {
     warnings.push(`วันประกาศงบยังไม่ทราบ — ลดคะแนน ${earningsUnknownPenalty} คะแนน`)
   } else {
-    if (!earningsKnown) warnings.push('สถานะวันประกาศงบยังไม่ยืนยัน')
+    if (!earningsKnown) warnings.push('วันประกาศงบยังไม่ทราบ')
   }
   riskCatalystScore = clamp(riskCatalystScore, 0, 10)
 
