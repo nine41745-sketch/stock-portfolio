@@ -55,6 +55,21 @@ const scoreMissingStatus = stockScanner.scoreScannerCandidate({ ...scoreInput, e
 assert.equal(scoreMissingStatus.score, scoreUnknownEarnings.score, 'Missing status must be scored as unknown even when a date is supplied')
 assert.deepEqual(scoreMissingStatus.categoryScores, scoreUnknownEarnings.categoryScores)
 
+assert.equal(todayCandidates.trendStrengthLabel('น่าสนใจ'), 'แนวโน้มแข็ง')
+assert.equal(todayCandidates.trendStrengthLabel('เฝ้าดู'), 'แนวโน้มกลางๆ')
+assert.equal(todayCandidates.trendStrengthLabel('ยังไม่เด่น'), 'แนวโน้มอ่อน')
+assert.deepEqual(todayCandidates.countBuyLabels([
+  { decision: 'BUY_NOW', buyMode: 'STANDARD', price: 100, entryZone: { low: 98, high: 102 }, rrAtEntry: 2, riskRewardNow: 2 },
+  { decision: 'BUY_NOW', buyMode: 'FIRST_TRANCHE', price: 103, entryZone: { low: 98, high: 102 }, rrAtEntry: 2, riskRewardNow: 2 },
+  { decision: 'BUY_NOW', buyMode: 'FIRST_TRANCHE', price: 100, entryZone: { low: 98, high: 102 }, rrAtEntry: 2, riskRewardNow: 2 },
+  { decision: 'BUY_ON_PULLBACK', buyMode: null, price: 100, entryZone: { low: 98, high: 102 }, rrAtEntry: 2, riskRewardNow: 2 },
+]), { buyNowCount: 2, firstTrancheCount: 1 }, 'Headline counts must match the two distinct buy labels')
+assert.equal(todayCandidates.hasPurchasePlan('BUY_NOW'), true)
+assert.equal(todayCandidates.hasPurchasePlan('BUY_ON_PULLBACK'), true)
+assert.equal(todayCandidates.hasPurchasePlan('WAIT_FOR_BREAKOUT'), false)
+assert.equal(todayCandidates.hasPurchasePlan('WATCH'), false)
+assert.equal(todayCandidates.hasPurchasePlan('SKIP_POOR_RR'), false)
+
 const missingCategoryScore = stockScanner.scoreScannerCandidate({
   ...scoreInput, trend: 'UNKNOWN', rsi14: null, weeklyRsi14: null, macdHistogram: null,
   volumeRatio: null, support: null, resistance: null, week52High: null, week52Low: null,
@@ -524,7 +539,7 @@ const today = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'ut
 assert.match(today, /item\.earningsStatus === 'unknown'[^\n]*ตรวจ Earnings ไม่สำเร็จ/, 'Each card must disclose unknown earnings')
 assert.match(today, /chunkScannerSymbols\(uniqueSymbols\)/, 'Today radar must chunk the combined deduplicated universe')
 assert.match(today, /shouldShowEarningsUnknownBanner\(results\)/, 'Today radar must decide the banner from validated results only')
-assert.match(today, /ข้อมูล Earnings ใช้ไม่ได้ ผลถูกลดคะแนน/, 'Today radar must show the Thai unknown-earnings warning banner')
+assert.match(today, /ข้อมูล Earnings ใช้ไม่ได้ ผลต่อคะแนนแนวโน้มลดลง/, 'Today radar must show the Thai unknown-earnings warning banner')
 assert.match(today, /firstTrancheLabelReason\(/, 'Today radar must show a reason beneath qualified first-tranche labels')
 assert.match(today, /new URLSearchParams\(\{ universe: 'all', symbols: batch\.join\(','\) \}\)/, 'Each Today radar scanner request must contain only one bounded symbol batch')
 assert.match(today, /for \(const batch of batches\)/, 'Today radar batches must be requested sequentially to preserve provider concurrency')
@@ -532,6 +547,17 @@ assert.doesNotMatch(today, /ใกล้ซื้อ/, 'Today radar must not col
 assert.match(today, /earningsUnknownPenalty/, 'Today radar must disclose the penalty when the earnings provider is unknown')
 assert.match(today, /priceAsOf/, 'Today radar must show per-ticker price time separately from scan completion')
 assert.match(today, /categoryScores\.relativeStrength/, 'Today radar must show all six score categories')
+assert.match(today, /คะแนนแนวโน้ม/, 'Today radar must label visible scores as trend strength')
+assert.match(today, /trendStrengthLabel\(item\.label\)/, 'Today radar must render the neutral trend-strength label')
+const todayCandidatesSource = fs.readFileSync('lib/today-candidates.ts', 'utf8')
+assert.match(todayCandidatesSource, /แนวโน้มแข็ง/)
+assert.match(todayCandidatesSource, /แนวโน้มกลางๆ/)
+assert.match(todayCandidatesSource, /แนวโน้มอ่อน/)
+assert.match(today, /คะแนนวัดความแข็งของแนวโน้มตามกฎ ยังไม่มีหลักฐานจาก backtest ว่าคะแนนสูงให้ผลตอบแทนดีกว่า ใช้เป็นตัวกรองและวางแผนความเสี่ยงเท่านั้น/, 'Today radar must disclose that score performance is not validated by backtest')
+assert.match(today, /ถ้าราคาเปิด gap ต่ำกว่า Stop ขาดทุนจริงอาจเกินที่วางแผนไว้/, 'Buy plan cards must warn about gap risk')
+assert.match(today, /ซื้อได้ตอนนี้ \{buyNowCount\} ตัว/)
+assert.match(today, /ซื้อไม้แรก \{firstTrancheCount\} ตัว/)
+assert.doesNotMatch(today, /คะแนน \{item\.score\}|Score \{item\.score\}/, 'Today radar must not expose the old score label')
 assert.match(today, /FINALIST_LIMIT = 6/, 'Today radar must cap live Stock Check validation to six finalists')
 assert.match(today, /\/api\/stock-check\?symbol=/, 'Today radar finalists must be revalidated with live Stock Check')
 assert.match(fs.readFileSync('lib/today-candidates.ts', 'utf8'), /isStructuralPullback/, 'Today radar must surface controlled EMA50 pullback candidates')

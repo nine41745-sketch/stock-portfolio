@@ -1,5 +1,17 @@
 export type Candidate = { symbol: string; score: number; setup: string; trend: string; price: number | null; ema50: number | null; ema200: number | null; support: number | null; riskReward: number | null; earnings: { daysUntil: number } | null }
 export type TodayDecision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAKOUT' | 'WATCH' | 'AVOID' | 'SKIP_POOR_RR'
+export type ScannerScoreLabel = 'น่าสนใจ' | 'เฝ้าดู' | 'ยังไม่เด่น'
+
+export function trendStrengthLabel(label: ScannerScoreLabel): string {
+  if (label === 'น่าสนใจ') return 'แนวโน้มแข็ง'
+  if (label === 'เฝ้าดู') return 'แนวโน้มกลางๆ'
+  return 'แนวโน้มอ่อน'
+}
+
+export function hasPurchasePlan(decision: TodayDecision): boolean {
+  return decision === 'BUY_NOW' || decision === 'BUY_ON_PULLBACK'
+}
+
 export interface OpportunityLabelInput {
   decision: TodayDecision
   buyMode: 'STANDARD' | 'FIRST_TRANCHE' | null
@@ -45,6 +57,13 @@ export function opportunityLabel(input: OpportunityLabelInput): string {
   if (decision === 'SKIP_POOR_RR') return 'ข้าม · ไม่คุ้มเสี่ยง'
   if (decision === 'AVOID') return 'ข้าม'
   return 'เฝ้าดู'
+}
+
+export function countBuyLabels(items: OpportunityLabelInput[]): { buyNowCount: number; firstTrancheCount: number } {
+  return {
+    buyNowCount: items.filter(item => opportunityLabel(item) === 'ซื้อได้ตอนนี้').length,
+    firstTrancheCount: items.filter(item => opportunityLabel(item) === 'ซื้อไม้แรก').length,
+  }
 }
 
 export function breakoutCardDetails(price: number | null, triggerPrice: number | null): { triggerPrice: number; distancePct: number } | null {
