@@ -109,6 +109,32 @@ for (const fixture of [
 }
 assert.equal(todayCandidates.trendLabel('UPTREND'), 'แนวโน้มขาขึ้น')
 assert.equal(todayCandidates.setupLabel('BREAKOUT'), 'ราคาทะลุแนวต้าน')
+assert.deepEqual(todayCandidates.breakoutCardDetails(100, 100.9), { triggerPrice: 100.9, distancePct: 0.9 }, 'Breakout card details must preserve the trigger and percent distance from current price')
+assert.deepEqual(todayCandidates.breakoutCardDetails(100, 103), { triggerPrice: 103, distancePct: 3 }, 'Breakout card details must show the full distance at the configured limit')
+assert.equal(todayCandidates.breakoutCardDetails(100, null), null, 'Missing breakout resistance must not invent a trigger price')
+const todayOpportunitySource = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'utf8')
+const todayOpportunityAst = ts.createSourceFile('TodayOpportunities.tsx', todayOpportunitySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+const breakoutCardBranches = (() => {
+  const matches = []
+  const visit = node => {
+    if (ts.isConditionalExpression(node) && node.condition.getText(todayOpportunityAst).includes("item.plan.decision === 'WAIT_FOR_BREAKOUT'")) matches.push(node)
+    ts.forEachChild(node, visit)
+  }
+  visit(todayOpportunityAst)
+  return matches
+})()
+assert.ok(breakoutCardBranches.length >= 2, 'Opportunity card must have dedicated WAIT_FOR_BREAKOUT render branches for plan and metadata rows')
+const breakoutCardSource = breakoutCardBranches.map(branch => branch.whenTrue.getText(todayOpportunityAst)).join('\n')
+const nonBreakoutCardSource = breakoutCardBranches.map(branch => branch.whenFalse.getText(todayOpportunityAst)).join('\n')
+assert.match(breakoutCardSource, /breakoutCardDetails/, 'Breakout card must render trigger details')
+assert.match(breakoutCardSource, /fmtPrice\(breakout\.triggerPrice\)/, 'Breakout card must format the trigger price')
+assert.match(breakoutCardSource, /breakout\.distancePct\.toFixed\(1\)/, 'Breakout card must render the percent distance to the trigger')
+assert.match(breakoutCardSource, /ยืนยันเมื่อราคาปิดเหนือจุดทะลุ พร้อม volume ≥ 1\.2 เท่าของค่าเฉลี่ย 20 วัน/, 'Breakout card must show the close and volume confirmation rule')
+assert.match(breakoutCardSource, /ยังไม่มีแผนซื้อ จะคำนวณเมื่อทะลุ/, 'Breakout card must explain that no buy plan exists until breakout')
+for (const field of ['entryZone', 'stopLoss', 'target1', 'riskRewardNow', 'riskRewardAtEntry']) {
+  assert.doesNotMatch(breakoutCardSource, new RegExp(`plan\\.${field}`), `Breakout card must not render purchase-plan field ${field}`)
+  assert.match(nonBreakoutCardSource, new RegExp(`plan\\.${field}`), `Other opportunity cards must retain purchase-plan field ${field}`)
+}
 assert.equal(todayCandidates.shouldShowEarningsUnknownBanner([]), false, 'No validated stocks must not show an earnings warning banner')
 assert.equal(todayCandidates.shouldShowEarningsUnknownBanner([{ earningsStatus: 'unknown' }, { earningsStatus: 'found' }]), true, 'Exactly half unknown must show the earnings warning banner')
 assert.equal(todayCandidates.shouldShowEarningsUnknownBanner([{ earningsStatus: 'unknown' }, { earningsStatus: 'none' }, { earningsStatus: 'found' }]), false, 'Less than half unknown must not show the earnings warning banner')

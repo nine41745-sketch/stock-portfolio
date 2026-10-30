@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { firstTrancheLabelReason, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel } from '@/lib/today-candidates'
+import { breakoutCardDetails, firstTrancheLabelReason, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel } from '@/lib/today-candidates'
 import { chunkScannerSymbols, dedupeScannerSymbols, SCANNER_UNIVERSES, type ScannerCategoryScores } from '@/lib/stock-scanner'
 
 type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
@@ -306,29 +306,40 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
-                <div className="rounded-lg border border-gray-800 p-2">
-                <div className="text-gray-600">อัตราผลตอบแทนต่อความเสี่ยง ณ ราคาปัจจุบัน</div>
-                  <div className="mt-1 font-semibold text-white">{fmtRatio(item.plan.riskRewardNow)}</div>
+              {item.plan.decision === 'WAIT_FOR_BREAKOUT' ? (() => {
+                const breakout = breakoutCardDetails(item.price, item.plan.breakoutTrigger)
+                return <div className="mt-4 rounded-lg border border-purple-500/30 bg-purple-500/5 p-3 text-sm">
+                  {breakout
+                    ? <p className="font-semibold text-purple-200">จุดทะลุ {fmtPrice(breakout.triggerPrice)} (+{breakout.distancePct.toFixed(1)}% จากราคา)</p>
+                    : <p className="font-semibold text-purple-200">ยังระบุจุดทะลุไม่ได้ เพราะข้อมูลแนวต้านไม่ครบ</p>}
+                  <p className="mt-1 text-xs text-gray-300">ยืนยันเมื่อราคาปิดเหนือจุดทะลุ พร้อม volume ≥ 1.2 เท่าของค่าเฉลี่ย 20 วัน</p>
+                  <p className="mt-1 text-xs text-gray-400">ยังไม่มีแผนซื้อ จะคำนวณเมื่อทะลุ</p>
                 </div>
-                <div className="rounded-lg border border-gray-800 p-2">
-                  <div className="text-gray-600">ช่วงราคาเข้าซื้อ</div>
-                  <div className="mt-1 font-semibold text-blue-400">{item.plan.entryZone ? `${fmtPrice(item.plan.entryZone.low)}–${fmtPrice(item.plan.entryZone.high)}` : '—'}</div>
+              })() : <>
+                <div className="mt-4 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+                  <div className="rounded-lg border border-gray-800 p-2">
+                    <div className="text-gray-600">อัตราผลตอบแทนต่อความเสี่ยง ณ ราคาปัจจุบัน</div>
+                    <div className="mt-1 font-semibold text-white">{fmtRatio(item.plan.riskRewardNow)}</div>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 p-2">
+                    <div className="text-gray-600">ช่วงราคาเข้าซื้อ</div>
+                    <div className="mt-1 font-semibold text-blue-400">{item.plan.entryZone ? `${fmtPrice(item.plan.entryZone.low)}–${fmtPrice(item.plan.entryZone.high)}` : '—'}</div>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 p-2">
+                    <div className="text-gray-600">จุดตัดขาดทุน</div>
+                    <div className="mt-1 font-semibold text-red-400">{fmtPrice(item.plan.stopLoss)}</div>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 p-2">
+                    <div className="text-gray-600">เป้าหมาย 1</div>
+                    <div className="mt-1 font-semibold text-green-400">{fmtPrice(item.plan.target1)}</div>
+                  </div>
                 </div>
-                <div className="rounded-lg border border-gray-800 p-2">
-                  <div className="text-gray-600">จุดตัดขาดทุน</div>
-                  <div className="mt-1 font-semibold text-red-400">{fmtPrice(item.plan.stopLoss)}</div>
-                </div>
-                <div className="rounded-lg border border-gray-800 p-2">
-                  <div className="text-gray-600">เป้าหมาย 1</div>
-                  <div className="mt-1 font-semibold text-green-400">{fmtPrice(item.plan.target1)}</div>
-                </div>
-              </div>
+              </>}
 
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
                 <span>{trendLabel(item.trend)}</span>
                 <span>• {setupLabel(item.setup)}</span>
-                <span>• อัตราผลตอบแทนต่อความเสี่ยง ณ จุดเข้า {fmtRatio(item.plan.riskRewardAtEntry)}</span>
+                {item.plan.decision === 'WAIT_FOR_BREAKOUT' ? null : <span>• อัตราผลตอบแทนต่อความเสี่ยง ณ จุดเข้า {fmtRatio(item.plan.riskRewardAtEntry)}</span>}
                 {item.earnings && <span>• คาดประกาศงบใน {item.earnings.daysUntil} วัน</span>}
                 <span>• ราคา ณ เวลา {item.priceAsOf ? new Date(item.priceAsOf).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) + ' เวลาไทย' : 'ไม่ทราบเวลา'} · แหล่งข้อมูล {item.priceSourceLabel}</span>
                 <span>• ตรวจแผนเมื่อ {new Date(item.checkedAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })} เวลาไทย</span>

@@ -47,6 +47,16 @@ export function opportunityLabel(input: OpportunityLabelInput): string {
   return 'เฝ้าดู'
 }
 
+export function breakoutCardDetails(price: number | null, triggerPrice: number | null): { triggerPrice: number; distancePct: number } | null {
+  if (
+    price === null || triggerPrice === null ||
+    !Number.isFinite(price) || !Number.isFinite(triggerPrice) ||
+    price <= 0 || triggerPrice <= price
+  ) return null
+
+  return { triggerPrice, distancePct: Math.round(((triggerPrice - price) / price) * 10000) / 100 }
+}
+
 export function trendLabel(trend: string): string {
   if (trend === 'UPTREND') return 'แนวโน้มขาขึ้น'
   if (trend === 'DOWNTREND') return 'แนวโน้มขาลง'
