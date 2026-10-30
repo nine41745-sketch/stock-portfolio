@@ -10,7 +10,7 @@
 - [x] Step 0: inspect release diff and prior commits; record findings below.
 - [x] Step 1: inspect pure pipeline and provider fallback, acquire Yahoo daily bars for the 29 unique scanner symbols plus SPY (6 years), Stooq fallback below 200 bars, cache outside Git, and validate the offline pipeline against the owner-supplied eight-stock comparison.
 - [x] Step 2: implement a point-in-time Friday signal backtest by calling existing pure library functions only; store raw trade/signal results outside Git.
-- [ ] Step 3: run matched random baseline (200 rounds), SPY baseline, ATR stop sensitivity, walk-forward, and approximate earnings-week exclusion; report sample-size limits.
+- [x] Step 3: run matched random baseline (200 rounds), SPY baseline, ATR stop sensitivity, walk-forward, and approximate earnings-week exclusion; report sample-size limits.
 - [ ] Step 4: publish tables, raw CSV paths and commit SHAs in the final report.
 
 ## Step 0 findings
@@ -34,3 +34,11 @@
 - Entry/exit, 10-session pullback and breakout windows, 20-session exits, same-day stop priority and 0.1% per-side slippage are implemented in `simulate.mjs`; raw signals, market snapshots and closed trades are saved outside Git. Pending trades are counted as fills but excluded from R outcomes.
 - Local output path: `C:\Users\USER\AppData\Local\Temp\stock-portfolio-backtest-phase2-d13f9b52\results`. Raw files: `signals.json`, `market-snapshots.json`, `trades.csv`, `summary.csv`, `summary.json`, `baselines.csv`, `spy-baseline.csv`, `stop-sensitivity.csv`, `earnings-week-exclusion.csv`.
 - Pipeline limits carried forward: the private scanner-route risk/reward helper is not imported (route also imports Supabase/Next); `selectPreliminary` ranking instead uses the pure `buildStockCheck().riskRewardAtEntry`. Weekly OHLCV is aggregated from daily cache by calendar week. No credentials, environment settings, database, application routes, or Production systems were used.
+
+## Step 3 findings
+- Matched random baseline ran 200 deterministic rounds for each of the four executable opportunity cohorts. Mean expectancy / 5th–95th percentile R: pullback `0.206 / 0.118–0.310`, buy-now `0.114 / -0.103–0.308`, first-tranche NOW R:R <1.5 `0.126 / -0.167–0.394`, first-tranche NOW R:R >=1.5 `0.022 / -0.163–0.213`. SPY 20-session mean returns were respectively `0.836%`, `0.764%`, `0.929%`, `-0.092%`.
+- Stop sensitivity was run at multipliers `1.0`, `1.5`, `2.0` using the library stop helper. No app constant or threshold was changed. The sensitivity reruns fixed the default-library signal membership and varied only simulated stop distance.
+- The approximate earnings-week exclusion uses entry dates in days 22–28 of Jan/Apr/Jul/Oct. It is a calendar proxy, not historical earnings data. Expectancy after filtering: pullback `0.019R`, buy-now `0.054R`, first-tranche <1.5 `-0.141R`, first-tranche >=1.5 `0.058R`; the 4 breakout episodes remain too few to conclude.
+- Walk-forward split: in-sample 2021-10-29 through 2024-10-28; out-of-sample starts 2024-10-29 and runs through 2026-10-23. No thresholds were adjusted from out-of-sample results. Cohorts with fewer than 30 episodes are explicitly labeled `ตัวอย่างไม่พอสรุป` in raw summary JSON/CSV.
+- Step 3 output artifacts were regenerated from the committed runner at the external results path above; no raw market/result data is tracked in Git.
+- Step 2 engine commit: `bc3304e1035ca8a5bb0aa38339d97486a0f478d7`.
