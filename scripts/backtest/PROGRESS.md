@@ -93,3 +93,9 @@
 - `node --check scripts/backtest/simulate.mjs` and `git diff --check` passed. The only source changes for this step are within `scripts/backtest/`.
 - Follow-up D checkpoint commit: `ab30d39db3a346057a9c168ed853fe1f141002de`.
 - Follow-up E implementation and output checkpoint commit: `a0ce2f412d40a024b65f9a1ccdc9f55b35ab0ffb`.
+
+## Follow-up F: owner-approved backup push (step 0 of score-mining follow-up)
+- Pushed `codex/backtest-phase2` once to `origin` as a backup at SHA `9b45dd74c5cbab1d42f469ed6f456e8cb1a4fffe`; no PR was opened.
+- GitHub branch lookup confirmed the branch did not previously exist. The push created it as a new remote branch.
+- Exact commit combined status immediately after push: only Vercel status context, `pending`, deployment/check URL `https://vercel.com/nine41745/stock-portfolio/3oBY7JKxbakxGgMFENR7R8T9U1j7`. No GitHub CI context was reported at that time; automatic Preview may still be provisioning.
+- Step 1+ analysis commits will remain local; this authorization was for the single step-0 backup push only.
