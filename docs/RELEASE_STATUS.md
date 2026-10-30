@@ -1,5 +1,11 @@
 # Production Release Status
 
+## Version under preparation — v1.41.14
+
+- Scope: แสดงขอบบนและราคากลางของแผนรอย่อ พร้อมเวลาและข้อจำกัดของ R:R.
+- Development time: รอ Git commit event; ยังไม่มีเวลา Production ที่ยืนยันได้.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.14.
+
 ## Version under preparation — v1.41.13
 
 - Scope: ปรับการ์ดรอ Breakout ให้แสดงจุดทะลุและเงื่อนไขยืนยัน โดยซ่อน Entry/Stop/Target/R:R ซึ่งยังไม่ใช่แผนซื้อ.

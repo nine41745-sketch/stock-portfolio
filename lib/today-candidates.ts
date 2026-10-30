@@ -57,6 +57,32 @@ export function breakoutCardDetails(price: number | null, triggerPrice: number |
   return { triggerPrice, distancePct: Math.round(((triggerPrice - price) / price) * 10000) / 100 }
 }
 
+export function pullbackPlanDetails(price: number | null, zone: { low: number; high: number } | null, stop: number | null): {
+  upper: number
+  midpoint: number
+  distancePct: number | null
+  position: 'above' | 'inside' | 'below' | 'unknown'
+  atOrBelowStop: boolean
+} | null {
+  if (!zone || !Number.isFinite(zone.low) || !Number.isFinite(zone.high) || zone.low <= 0 || zone.high < zone.low) return null
+  const validPrice = price !== null && Number.isFinite(price) && price > 0
+  const position = !validPrice ? 'unknown' : price > zone.high ? 'above' : price < zone.low ? 'below' : 'inside'
+  return {
+    upper: zone.high,
+    midpoint: (zone.low + zone.high) / 2,
+    distancePct: position === 'above' ? ((price! - zone.high) / price!) * 100 : null,
+    position,
+    atOrBelowStop: validPrice && stop !== null && Number.isFinite(stop) && stop > 0 && price! <= stop,
+  }
+}
+
+export function formatBangkokTimestamp(value: string | null): string {
+  if (!value) return 'ไม่ทราบเวลา'
+  const time = new Date(value)
+  if (!Number.isFinite(time.getTime())) return 'ไม่ทราบเวลา'
+  return `${time.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })} เวลาไทย`
+}
+
 export function trendLabel(trend: string): string {
   if (trend === 'UPTREND') return 'แนวโน้มขาขึ้น'
   if (trend === 'DOWNTREND') return 'แนวโน้มขาลง'
