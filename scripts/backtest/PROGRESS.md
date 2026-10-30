@@ -11,7 +11,7 @@
 - [x] Step 1: inspect pure pipeline and provider fallback, acquire Yahoo daily bars for the 29 unique scanner symbols plus SPY (6 years), Stooq fallback below 200 bars, cache outside Git, and validate the offline pipeline against the owner-supplied eight-stock comparison.
 - [x] Step 2: implement a point-in-time Friday signal backtest by calling existing pure library functions only; store raw trade/signal results outside Git.
 - [x] Step 3: run matched random baseline (200 rounds), SPY baseline, ATR stop sensitivity, walk-forward, and approximate earnings-week exclusion; report sample-size limits.
-- [ ] Step 4: publish tables, raw CSV paths and commit SHAs in the final report.
+- [x] Step 4: publish tables, raw CSV paths and commit SHAs in the final report.
 
 ## Step 0 findings
 - `d05e84603b48badcf6ae21554df86a37317bfdc1`: missing `earningsStatus` now defaults to `unknown` in both score and buy-decision guards, and regression assertions cover the missing-status case; prevents a supplied `earningsDays` value from silently implying successful provider data.
@@ -42,3 +42,8 @@
 - Walk-forward split: in-sample 2021-10-29 through 2024-10-28; out-of-sample starts 2024-10-29 and runs through 2026-10-23. No thresholds were adjusted from out-of-sample results. Cohorts with fewer than 30 episodes are explicitly labeled `ตัวอย่างไม่พอสรุป` in raw summary JSON/CSV.
 - Step 3 output artifacts were regenerated from the committed runner at the external results path above; no raw market/result data is tracked in Git.
 - Step 2 engine commit: `bc3304e1035ca8a5bb0aa38339d97486a0f478d7`.
+
+## Step 4 closeout
+- Source branch is based on `origin/main` `d13f9b52f4a97fdc4c3a7957eb2489d644d46141`, with no app changes. Local commit sequence: `2de09bdde984bdafca5474e2c3a3440416b4471e` (Step 0 plan), `341736cd7b80e777aa926a4ae6d1f9ec1b1a483b` (snapshot/pipeline compare), `d359ca3701b86b1ca0fa2ea3ede0893e3357e94d` (Step 1 checkpoint), `bc3304e1035ca8a5bb0aa38339d97486a0f478d7` (backtest engine), `1cc0bbbf856a1f16b8e4d9feef4e0a603193dcd0` (Step 3 results).
+- `node --check` passed for all five `.mjs` scripts. `npm run ci`/`npm audit` were not requested or run. The available node executables are v24.18.0 and v24.22.1; Node 22 was not installed, so execution/runtime-specific validation under the repository's declared Node 22.x remains unverified.
+- Final raw-result tables and caveats are delivered in the owner response; market snapshot and raw CSV/JSON remain outside Git at the path above. The repository worktree contains only new `scripts/backtest/` files and has no uncommitted changes before this closeout commit.
