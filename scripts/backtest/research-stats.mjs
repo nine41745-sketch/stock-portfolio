@@ -56,6 +56,57 @@ export function twoSidedNormalP(tStatistic) {
   return Math.max(0, Math.min(1, 2 * tail))
 }
 
+// Two-sided Student-t tail using the regularized incomplete beta function.
+// Newey-West t statistics are asymptotic, but this finite-df p-value is a
+// conservative, reproducible input to the predeclared BH screening family.
+export function twoSidedStudentP(tStatistic, degreesOfFreedom) {
+  if (!(degreesOfFreedom > 0) || Number.isNaN(tStatistic)) return null
+  if (!Number.isFinite(tStatistic)) return 0
+  const x = degreesOfFreedom / (degreesOfFreedom + tStatistic * tStatistic)
+  return regularizedBeta(x, degreesOfFreedom / 2, 0.5)
+}
+
+function regularizedBeta(x, a, b) {
+  if (x <= 0) return 0
+  if (x >= 1) return 1
+  const factor = Math.exp(logGamma(a + b) - logGamma(a) - logGamma(b) + a * Math.log(x) + b * Math.log1p(-x))
+  if (x < (a + 1) / (a + b + 2)) return factor * betaFraction(x, a, b) / a
+  return 1 - factor * betaFraction(1 - x, b, a) / b
+}
+
+function betaFraction(x, a, b) {
+  const maxIterations = 200, epsilon = 3e-14, tiny = 1e-300
+  const qab = a + b, qap = a + 1, qam = a - 1
+  let c = 1, d = 1 - qab * x / qap
+  if (Math.abs(d) < tiny) d = tiny
+  d = 1 / d
+  let h = d
+  for (let m = 1; m <= maxIterations; m++) {
+    const m2 = 2 * m
+    let aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+    d = 1 + aa * d; if (Math.abs(d) < tiny) d = tiny
+    c = 1 + aa / c; if (Math.abs(c) < tiny) c = tiny
+    d = 1 / d; h *= d * c
+    aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+    d = 1 + aa * d; if (Math.abs(d) < tiny) d = tiny
+    c = 1 + aa / c; if (Math.abs(c) < tiny) c = tiny
+    d = 1 / d
+    const delta = d * c; h *= delta
+    if (Math.abs(delta - 1) < epsilon) break
+  }
+  return h
+}
+
+function logGamma(z) {
+  const coefficients = [676.5203681218851, -1259.1392167224028, 771.3234287776531, -176.6150291621406, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7]
+  if (z < 0.5) return Math.log(Math.PI) - Math.log(Math.sin(Math.PI * z)) - logGamma(1 - z)
+  const shifted = z - 1
+  let sum = 0.99999999999980993
+  for (let i = 0; i < coefficients.length; i++) sum += coefficients[i] / (shifted + i + 1)
+  const t = shifted + coefficients.length - 0.5
+  return 0.5 * Math.log(2 * Math.PI) + (shifted + 0.5) * Math.log(t) - t + Math.log(sum)
+}
+
 export function benjaminiHochberg(pValues, q = 0.1) {
   const valid = pValues.map((p, index) => ({ p, index })).filter(row => Number.isFinite(row.p)).sort((a, b) => a.p - b.p)
   let cutoff = -1
