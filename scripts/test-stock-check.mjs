@@ -45,6 +45,12 @@ const scoreUnknownEarnings = stockScanner.scoreScannerCandidate({ ...scoreInput,
 assert.equal(scoreWithEarnings.score, scoreWithoutEarnings.score, 'A confirmed empty calendar and a distant known event should not incur the unknown-data penalty')
 assert.equal(scoreUnknownEarnings.score, Math.max(0, Object.values(scoreUnknownEarnings.categoryScores).reduce((sum, value) => sum + value, 0) - stockScanner.EARNINGS_UNKNOWN_SCORE_PENALTY), 'Unknown earnings must reduce the six-category total by the named penalty')
 assert.match(scoreUnknownEarnings.reasons.join(' '), /วันประกาศงบยังไม่ทราบ/, 'Unknown earnings must be disclosed in score reasons')
+assert.equal(scoreUnknownEarnings.categoryScores.riskCatalyst, 5, 'Known EMA50 distance retains its risk points when earnings are unknown')
+assert.equal(scoreWithoutEarnings.categoryScores.riskCatalyst - scoreUnknownEarnings.categoryScores.riskCatalyst, 5, 'Only the earnings portion differs from a confirmed empty calendar')
+for (const category of ['trend', 'momentum', 'volume', 'priceLocation', 'relativeStrength']) {
+  assert.equal(scoreUnknownEarnings.categoryScores[category], scoreWithoutEarnings.categoryScores[category], `${category} must not change with earnings status`)
+}
+assert.equal(scoreWithoutEarnings.score - scoreUnknownEarnings.score, 5)
 
 const missingCategoryScore = stockScanner.scoreScannerCandidate({
   ...scoreInput, trend: 'UNKNOWN', rsi14: null, weeklyRsi14: null, macdHistogram: null,
@@ -200,6 +206,14 @@ const buyNow = stockCheck.buildStockCheck({
 })
 assert.equal(buyNow.decision, 'BUY_NOW', 'Strong near-support setup should permit BUY_NOW')
 assert.equal(buyNow.buyMode, 'STANDARD', 'Classic in-zone BUY_NOW must remain the standard buy mode')
+const unknownStandard = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 82, price: 100.5, ema50: 99.5, ema200: 90, atr14: 2,
+  support: 100, resistance: 115, rsi14: 55, weeklyRsi14: 58, macdHistogram: 1, volumeRatio: 1.3,
+  relativeStrength20: 5, relativeStrength60: 12, week52High: 120, week52Low: 70, earningsDays: null, earningsStatus: 'unknown', pe: 25,
+})
+assert.equal(unknownStandard.decision, 'WATCH')
+assert.equal(unknownStandard.buyMode, null)
+assert.equal(unknownStandard.summary, 'รอตรวจ Earnings ก่อนซื้อ')
 assert.ok((buyNow.riskRewardAtEntry ?? 0) >= 1.5, 'Standard BUY_NOW plan must have acceptable R:R')
 assert.ok((buyNow.stopLoss ?? 999) < (buyNow.entryZone?.low ?? 0), 'Stop must stay below planned entry')
 assert.equal(buyNow.target2Basis, 'historical-52w-high', 'Target 2 should identify the historical high when that value supplies the final level')
@@ -273,6 +287,14 @@ const firstTranche = stockCheck.buildStockCheck({
 })
 assert.equal(firstTranche.decision, 'BUY_NOW', 'Strong uptrend slightly above entry may permit a first tranche')
 assert.equal(firstTranche.buyMode, 'FIRST_TRANCHE', 'First-tranche BUY_NOW must be explicitly labeled')
+const unknownFirstTranche = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'PULLBACK', score: 80, price: 103, ema50: 100, ema200: 90, atr14: 2,
+  support: 98, resistance: 120, rsi14: 56, weeklyRsi14: 59, macdHistogram: 0.8, volumeRatio: 1.1,
+  relativeStrength20: 4, relativeStrength60: 9, week52High: 125, week52Low: 72, earningsDays: null, earningsStatus: 'unknown', pe: 26,
+})
+assert.equal(unknownFirstTranche.decision, 'WATCH')
+assert.equal(unknownFirstTranche.buyMode, null)
+assert.equal(unknownFirstTranche.summary, 'รอตรวจ Earnings ก่อนซื้อ')
 assert.match(firstTranche.decisionLabel, /ไม้แรก/, 'First-tranche label must be visible to the user')
 assert.ok((firstTranche.riskRewardNow ?? 0) >= 1.25, 'First tranche must use acceptable R:R from the live price')
 const firstTrancheLabelInput = (overrides = {}) => ({
@@ -471,6 +493,7 @@ assert.match(workspace, /🔥 โอกาสวันนี้/, 'Scanner works
 assert.match(workspace, /TodayOpportunities/, 'Today Opportunity Radar must be wired into Scanner workspace')
 
 const today = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'utf8')
+assert.match(today, /item\.earningsStatus === 'unknown'[^\n]*ตรวจ Earnings ไม่สำเร็จ/, 'Each card must disclose unknown earnings')
 assert.match(today, /chunkScannerSymbols\(uniqueSymbols\)/, 'Today radar must chunk the combined deduplicated universe')
 assert.match(today, /shouldShowEarningsUnknownBanner\(results\)/, 'Today radar must decide the banner from validated results only')
 assert.match(today, /ข้อมูล Earnings ใช้ไม่ได้ ผลถูกลดคะแนน/, 'Today radar must show the Thai unknown-earnings warning banner')
