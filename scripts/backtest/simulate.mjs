@@ -201,11 +201,12 @@ function randomTrade(symbol,date,atr){
   return exited?{...exited,symbol,signalDate:date}:null
 }
 const baseline=[]
-for(const targetGroup of ['รอย่อ','ซื้อได้ตอนนี้','ซื้อไม้แรก · R:R NOW <1.5','ซื้อไม้แรก · R:R NOW >=1.5']){
-  const rows=active.episodes.filter(e=>e.group===targetGroup)
+for(const mode of ['generic','plan'])for(const targetGroup of ['รอย่อ','ซื้อได้ตอนนี้','ซื้อไม้แรก · R:R NOW <1.5','ซื้อไม้แรก · R:R NOW >=1.5']){
+  const modelEpisodes=(mode==='plan'?activePlan:active).episodes
+  const rows=modelEpisodes.filter(e=>e.group===targetGroup)
   const trials=[]
   for(let round=0;round<200;round++){
-    let seed=(round+1)*2654435761>>>0
+    let seed=((round+1)*2654435761+(mode==='plan'?0x9e3779b9:0))>>>0
     const next=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296}
     const returns=[],randomActiveUntil=new Map()
     for(const episode of rows){
@@ -224,7 +225,7 @@ for(const targetGroup of ['รอย่อ','ซื้อได้ตอนน�
     trials.push(returns.length?returns.reduce((a,b)=>a+b,0)/returns.length:null)
   }
   const valid=trials.filter(Number.isFinite).sort((a,b)=>a-b)
-  baseline.push({group:targetGroup,matchedEpisodes:rows.length,rounds:200,meanExpectancy:valid.length?valid.reduce((a,b)=>a+b,0)/valid.length:null,
+    baseline.push({mode,group:targetGroup,matchedEpisodes:rows.length,rounds:200,meanExpectancy:valid.length?valid.reduce((a,b)=>a+b,0)/valid.length:null,
     p05:valid.length?valid[Math.floor((valid.length-1)*.05)]:null,p95:valid.length?valid[Math.floor((valid.length-1)*.95)]:null,
     ...bootstrapCI(valid,`random:${targetGroup}`),validRounds:valid.length})
 }
@@ -272,7 +273,7 @@ const summaryColumns=['group','period','exitModel','signals','episodes','suppres
 await fs.writeFile(path.join(resultDir,'summary.csv'),csv(primary.map(({trades,...rest})=>rest),summaryColumns))
 await fs.writeFile(path.join(resultDir,'plan-exit-summary.csv'),csv(planMetrics.map(({trades,...rest})=>rest),summaryColumns))
 await fs.writeFile(path.join(resultDir,'exit-mode-comparison.csv'),csv([...primary,...planMetrics].map(({trades,...rest})=>rest),summaryColumns))
-await fs.writeFile(path.join(resultDir,'baselines.csv'),csv(baseline,['group','matchedEpisodes','rounds','meanExpectancy','p05','p95','ci95Low','ci95High','validRounds']))
+await fs.writeFile(path.join(resultDir,'baselines.csv'),csv(baseline,['mode','group','matchedEpisodes','rounds','meanExpectancy','p05','p95','ci95Low','ci95High','validRounds']))
 await fs.writeFile(path.join(resultDir,'spy-baseline.csv'),csv(spyBaseline,['mode','group','n','avgMatchedReturn','medianMatchedReturn','ci95Low','ci95High']))
 await fs.writeFile(path.join(resultDir,'stop-sensitivity.csv'),csv(sensitivity,['multiplier','group','signals','episodes','suppressed','fills','pending','fillRate','winRate','avgR','medianR','expectancy','ci95Low','ci95High','worstR','sampleStatus']))
 await fs.writeFile(path.join(resultDir,'earnings-week-exclusion.csv'),csv(earningsFiltered.map(({trades,...rest})=>rest),['group','signals','episodes','suppressed','fills','fillRate','winRate','avgR','medianR','expectancy','ci95Low','ci95High','worstR']))
