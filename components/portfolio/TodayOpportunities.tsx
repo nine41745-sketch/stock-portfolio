@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { breakoutCardDetails, firstTrancheLabelReason, formatBangkokTimestamp, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, pullbackPlanDetails, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel } from '@/lib/today-candidates'
-import { chunkScannerSymbols, dedupeScannerSymbols, SCANNER_UNIVERSES, type ScannerCategoryScores } from '@/lib/stock-scanner'
+import { breakoutCardDetails, countBuyLabels, firstTrancheLabelReason, formatBangkokTimestamp, hasPurchasePlan, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, pullbackPlanDetails, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel, trendStrengthLabel } from '@/lib/today-candidates'
+import { chunkScannerSymbols, dedupeScannerSymbols, SCANNER_UNIVERSES, type ScannerCategoryScores, type ScannerScore } from '@/lib/stock-scanner'
 
 type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
 type Decision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAKOUT' | 'WATCH' | 'AVOID' | 'SKIP_POOR_RR'
@@ -11,6 +11,7 @@ type BuyMode = 'STANDARD' | 'FIRST_TRANCHE' | null
 type ScannerItem = {
   symbol: string
   score: number
+  label: ScannerScore['label']
   setup: ScannerSetup
   price: number | null
   trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS' | 'UNKNOWN'
@@ -31,6 +32,7 @@ type StockCheckResult = {
   symbol: string
   price: number | null
   score: number
+  label: ScannerScore['label']
   setup: ScannerSetup
   trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS' | 'UNKNOWN'
   ema50: number | null
@@ -228,7 +230,14 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
     normalizeOpportunityDecision({ decision: item.plan.decision, buyMode: item.plan.buyMode, price: item.price, entryZone: item.plan.entryZone, rrAtEntry: item.plan.riskRewardAtEntry }),
     item.plan.riskRewardAtEntry,
   ))
-  const buyNowCount = opportunityResults.filter(item => item.plan.decision === 'BUY_NOW').length
+  const { buyNowCount, firstTrancheCount } = countBuyLabels(opportunityResults.map(item => ({
+    decision: item.plan.decision,
+    buyMode: item.plan.buyMode,
+    price: item.price,
+    entryZone: item.plan.entryZone,
+    rrAtEntry: item.plan.riskRewardAtEntry,
+    riskRewardNow: item.plan.riskRewardNow,
+  })))
   const showEarningsUnknownBanner = shouldShowEarningsUnknownBanner(results)
 
   return (
@@ -239,6 +248,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-500">
             สแกนตามเกณฑ์ที่กำหนด คัดหุ้นเบื้องต้น แล้วตรวจแผนราคาและความเสี่ยงซ้ำ โดยไม่ใช้ AI
           </p>
+          <p className="mt-2 max-w-3xl text-xs leading-relaxed text-gray-500">คะแนนวัดความแข็งของแนวโน้มตามกฎ ยังไม่มีหลักฐานจาก backtest ว่าคะแนนสูงให้ผลตอบแทนดีกว่า ใช้เป็นตัวกรองและวางแผนความเสี่ยงเท่านั้น</p>
         </div>
         <button
           type="button"
@@ -259,6 +269,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
           <span>สแกน {scannedCount} หุ้น</span>
           <span>คัดเบื้องต้นสูงสุด {PRELIMINARY_LIMIT} ตัว · ยืนยันอัตโนมัติสูงสุด {FINALIST_LIMIT} ตัว</span>
           <span>ซื้อได้ตอนนี้ {buyNowCount} ตัว</span>
+          <span>ซื้อไม้แรก {firstTrancheCount} ตัว</span>
           <span>สแกนเสร็จ {new Date(checkedAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })} เวลาไทย</span>
         </div>
       )}
@@ -282,13 +293,13 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{preliminary.map(item => {
           const validated = results.some(result => result.symbol === item.symbol)
           return <div key={item.symbol} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-700 p-3 text-sm text-gray-200">
-            <span>{item.symbol} · คะแนน {item.score}/100 · {trendLabel(item.trend)}</span>
+            <span>{item.symbol} · คะแนนแนวโน้ม {item.score}/100 · {trendStrengthLabel(item.label)} · {trendLabel(item.trend)}</span>
             {validated ? <span className="text-green-300">ตรวจยืนยันแล้ว</span> : <button type="button" disabled={loading || manualSymbol !== null} onClick={() => void validateOnDemand(item)} className="rounded border border-blue-500 px-3 py-1 text-blue-300 disabled:opacity-50">{manualSymbol === item.symbol ? 'กำลังตรวจ...' : 'ตรวจแผนหุ้น'}</button>}
           </div>
         })}</div>
       </section>}
       {!loading && showEarningsUnknownBanner && <div role="status" className="mt-5 rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm font-semibold text-yellow-200">
-        ข้อมูล Earnings ใช้ไม่ได้ ผลถูกลดคะแนน
+        ข้อมูล Earnings ใช้ไม่ได้ ผลต่อคะแนนแนวโน้มลดลง
       </div>}
       {!loading && opportunityResults.length > 0 && <h2 className="mt-5 font-semibold text-white">ผลยืนยันที่ผ่านเกณฑ์โอกาส</h2>}
       {!loading && opportunityResults.length > 0 && (
@@ -307,7 +318,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
                 </div>
                 <div className="text-right">
                   <div className="text-lg font-bold text-white">{fmtPrice(item.price)}</div>
-                  <div className="text-xs text-gray-500">คะแนน {item.score}/100</div>
+                  <div className="text-xs text-gray-500">คะแนนแนวโน้ม {item.score}/100 · {trendStrengthLabel(item.label)}</div>
                 </div>
               </div>
 
@@ -321,6 +332,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
                   <p className="mt-1 text-xs text-gray-400">ยังไม่มีแผนซื้อ จะคำนวณเมื่อทะลุ</p>
                 </div>
               })() : <>
+                {hasPurchasePlan(item.plan.decision) && <p className="mt-2 text-xs text-yellow-300">ถ้าราคาเปิด gap ต่ำกว่า Stop ขาดทุนจริงอาจเกินที่วางแผนไว้</p>}
                 <div className="mt-4 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
                   <div className="rounded-lg border border-gray-800 p-2">
                     <div className="text-gray-600">อัตราผลตอบแทนต่อความเสี่ยง ณ ราคาปัจจุบัน</div>
