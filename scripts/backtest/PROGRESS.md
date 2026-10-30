@@ -59,3 +59,5 @@
 - Added `score-validity.mjs` to calculate forward 5/10/20-session returns, same-date universe excess returns, score-bucket summaries and per-Friday cross-sectional Spearman IC / naive t-stat for total and six category scores across all, Trend, period and Trend-period cohorts.
 - `node --check` initially found a malformed array closure in the new CSV mapping; fixed that exact syntax issue and reran syntax checks successfully for the score runner and both data-generation scripts. No data analysis has been run for this step yet.
 - Follow-up B implementation checkpoint SHA recorded after commit.
+- Reran the real library pipeline for 261 Fridays from the relocated snapshot: 7,250 available (Friday, ticker) records, 1,352 validated decision signals; the runner skipped 319 ticker-Fridays when the library lacked at least one required field among last close, EMA200 and ATR14. Generated 180 score-bucket/cohort/horizon rows and 84 IC rows.
+- Raw additions: `universe-scores.json`, `universe-forward-returns.csv`, `score-validity.csv`, `information-coefficient.csv`, and `score-validity-summary.json` under `D:\Projects\stock-portfolio-backtest-data\results`.
