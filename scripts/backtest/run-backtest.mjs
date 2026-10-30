@@ -99,7 +99,12 @@ for(let di=0;di<dates.length;di++){
   const candidates=[]
   for(const symbol of symbols){
     const technical=await withClock(date,()=>getTechnicalIndicators(symbol,context))
-    if(technical.lastClose===null||technical.ema200===null||technical.atr14===null){unavailableFridayTicker++;continue}
+    if(technical.lastClose===null||technical.ema200===null||technical.atr14===null){
+      unavailableFridayTicker++
+      universeScores.push({date,symbol,price:technical.lastClose,technicalDate:technical.lastBarAt?.slice(0,10)??null,trend:technical.trend??null,
+        score:null,categoryScores:null,setup:null,decision:null,group:null,preliminary:false,validated:false,unavailableReason:'missing-last-close-ema200-or-atr14'})
+      continue
+    }
     const {scored,plan,rs20,rs60}=libraryInputs(technical,spy)
     const bars=daily.get(symbol),idx=dailyIndex.get(symbol).get(technical.lastBarAt?.slice(0,10))
     const currentBar=idx===undefined?null:bars[idx]

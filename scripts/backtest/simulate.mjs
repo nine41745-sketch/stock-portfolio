@@ -57,7 +57,7 @@ function simulateExit(symbol,entryIndex,entryRaw,stop,target,maxDays=20){
   }
   return null
 }
-function fillSignal(signal,stopMultiplier){
+function fillSignal(signal,stopMultiplier,exitModel='generic'){
   const bars=barsBySymbol.get(signal.symbol),signalBar=signal.technicalDate?.slice(0,10)
   const at=indices.get(signal.symbol)?.get(signalBar)
   if(at===undefined)return {attempted:true,trade:null,reason:'no-signal-bar'}
@@ -67,7 +67,7 @@ function fillSignal(signal,stopMultiplier){
     entryIndex=at+1
     if(!bars[entryIndex]||bars[entryIndex].open==null)return {attempted:true,trade:null,reason:'no-next-open'}
     entryRaw=bars[entryIndex].open
-    stop=buildVariableStop(signal,stopMultiplier)
+    stop=exitModel==='plan'?signal.stop:buildVariableStop(signal,stopMultiplier)
     target=signal.target
   }else if(signal.group==='รอย่อ'){
     const zone=signal.entryZone
@@ -76,7 +76,7 @@ function fillSignal(signal,stopMultiplier){
       if(bars[i].low<=zone.high&&bars[i].high>=zone.low){entryIndex=i;entryRaw=signal.plannedEntry;break}
     }
     if(entryIndex===null)return {attempted:true,trade:null,reason:'not-filled-10d'}
-    stop=buildVariableStop(signal,stopMultiplier)
+    stop=exitModel==='plan'?signal.stop:buildVariableStop(signal,stopMultiplier)
     target=signal.target
   }else if(signal.group==='รอ Breakout'){
     const trigger=signal.breakoutTrigger
@@ -119,12 +119,22 @@ function activeEpisodes(rows){
     if(attempt.trade)activeUntil.set(episode.symbol,attempt.trade.exitDate)
     else if(attempt.pending)activeUntil.set(episode.symbol,barsBySymbol.get(episode.symbol).at(-1).date)
   }
-  return {episodes:kept,suppressed}
+  return {episodes:kept,suppressed,preSuppression:episodes}
 }
 function median(values){if(!values.length)return null;const s=[...values].sort((a,b)=>a-b),m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2}
-function stats(group,episodes,mult=1.5,excludeEarningsWeek=false,period=null,suppressedEpisodes=[]){
+function hashSeed(text){let h=2166136261;for(const c of text){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0}
+function bootstrapCI(values,label,rounds=4000){
+  if(!values.length)return {ci95Low:null,ci95High:null}
+  let seed=hashSeed(label)||1
+  const random=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296}
+  const means=[]
+  for(let i=0;i<rounds;i++){let sum=0;for(let j=0;j<values.length;j++)sum+=values[Math.floor(random()*values.length)];means.push(sum/values.length)}
+  means.sort((a,b)=>a-b)
+  return {ci95Low:means[Math.floor((rounds-1)*.025)],ci95High:means[Math.floor((rounds-1)*.975)]}
+}
+function stats(group,episodes,mult=1.5,excludeEarningsWeek=false,period=null,suppressedEpisodes=[],exitModel='generic'){
   const selected=episodes.filter(e=>e.group===group)
-  const attempts=selected.map(e=>({episode:e,...fillSignal(e.firstSignal,mult)}))
+  const attempts=selected.map(e=>({episode:e,...fillSignal(e.firstSignal,mult,exitModel)}))
   const eligible=excludeEarningsWeek?attempts.filter(a=>!a.filled||!isEarningsWeek(a.entryDate)):attempts
   const trades=eligible.filter(a=>a.trade).map(a=>a.trade)
   const fills=eligible.filter(a=>a.filled).length
@@ -132,10 +142,11 @@ function stats(group,episodes,mult=1.5,excludeEarningsWeek=false,period=null,sup
   const rs=trades.map(t=>t.r)
   const signalCount=signals.filter(s=>groupFor(s)===group&&(!period||periodName(s.date)===period)).length
   const suppressed=suppressedEpisodes.filter(e=>e.group===group&&(!period||periodName(e.firstDate)===period)).length
-  return {group,signals:signalCount,episodes:eligible.length,suppressed:suppressed+selected.length-eligible.length,
+  return {group,exitModel,signals:signalCount,episodes:eligible.length,suppressed:suppressed+selected.length-eligible.length,
     fills, pending, fillRate:eligible.length?fills/eligible.length:null,winRate:trades.length?trades.filter(t=>t.win).length/trades.length:null,
     avgR:rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:null,medianR:median(rs),expectancy:rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:null,
-    worstR:rs.length?Math.min(...rs):null,sampleStatus:eligible.length<30?'ตัวอย่างไม่พอสรุป':'จำนวน episode ถึงเกณฑ์เบื้องต้น',trades}
+    worstR:rs.length?Math.min(...rs):null,...bootstrapCI(rs,`${group}:${period??'all'}:${exitModel}:${mult}`),
+    sampleStatus:eligible.length<30?'ตัวอย่างไม่พอสรุป':'จำนวน episode ถึงเกณฑ์เบื้องต้น',trades}
 }
 function isEarningsWeek(iso){
   const d=new Date(`${iso}T00:00:00Z`),month=d.getUTCMonth()+1,day=d.getUTCDate()
@@ -148,12 +159,15 @@ function periodName(date){
 const allGroups=[...new Set(signals.map(groupFor))]
 const active=activeEpisodes(signals)
 const primary=[]
+const planMetrics=[]
 for(const group of allGroups){
   primary.push(stats(group,active.episodes,1.5,false,null,active.suppressed))
+  planMetrics.push(stats(group,active.episodes,1.5,false,null,active.suppressed,'plan'))
   for(const period of ['in-sample','out-of-sample']){
     const periodEpisodes=active.episodes.filter(e=>e.group===group&&periodName(e.firstDate)===period)
     const periodSuppressed=active.suppressed.filter(e=>periodName(e.firstDate)===period)
     primary.push({...stats(group,periodEpisodes,1.5,false,period,periodSuppressed),period})
+    planMetrics.push({...stats(group,periodEpisodes,1.5,false,period,periodSuppressed,'plan'),period})
   }
 }
 const tradeRows=primary.filter(row=>row.trades).flatMap(row=>row.trades)
@@ -204,19 +218,20 @@ for(const targetGroup of ['รอย่อ','ซื้อได้ตอนน�
   }
   const valid=trials.filter(Number.isFinite).sort((a,b)=>a-b)
   baseline.push({group:targetGroup,matchedEpisodes:rows.length,rounds:200,meanExpectancy:valid.length?valid.reduce((a,b)=>a+b,0)/valid.length:null,
-    p05:valid.length?valid[Math.floor((valid.length-1)*.05)]:null,p95:valid.length?valid[Math.floor((valid.length-1)*.95)]:null,validRounds:valid.length})
+    p05:valid.length?valid[Math.floor((valid.length-1)*.05)]:null,p95:valid.length?valid[Math.floor((valid.length-1)*.95)]:null,
+    ...bootstrapCI(valid,`random:${targetGroup}`),validRounds:valid.length})
+}
+function matchedSpyReturn(trade){
+  const spy=barsBySymbol.get('SPY'),entryIndex=indices.get('SPY')?.get(trade.entryDate),exitIndex=indices.get('SPY')?.get(trade.exitDate)
+  if(entryIndex===undefined||exitIndex===undefined||!Number.isFinite(spy[entryIndex]?.open)||!Number.isFinite(spy[exitIndex]?.close))return null
+  return (spy[exitIndex].close*(1-slippage)-spy[entryIndex].open*(1+slippage))/spy[entryIndex].open
 }
 const spyBaseline=[]
-for(const targetGroup of ['รอย่อ','ซื้อได้ตอนนี้','ซื้อไม้แรก · R:R NOW <1.5','ซื้อไม้แรก · R:R NOW >=1.5']){
+for(const mode of ['generic','plan'])for(const targetGroup of ['รอย่อ','ซื้อได้ตอนนี้','ซื้อไม้แรก · R:R NOW <1.5','ซื้อไม้แรก · R:R NOW >=1.5']){
   const episodes=active.episodes.filter(e=>e.group===targetGroup)
   const returns=[]
-  for(const episode of episodes){
-    const date=episode.firstSignal.technicalDate?.slice(0,10)??episode.firstDate
-    const entryIndex=nextIndex('SPY',date),bars=barsBySymbol.get('SPY')
-    if(entryIndex===null||!bars[entryIndex]||bars[entryIndex].open==null||!bars[entryIndex+19])continue
-    returns.push((bars[entryIndex+19].close*(1-slippage)-bars[entryIndex].open*(1+slippage))/(bars[entryIndex].open))
-  }
-  spyBaseline.push({group:targetGroup,n:returns.length,avg20dReturn:returns.length?returns.reduce((a,b)=>a+b,0)/returns.length:null,median20dReturn:median(returns)})
+  for(const episode of episodes){const attempt=fillSignal(episode.firstSignal,1.5,mode);if(attempt.trade){const value=matchedSpyReturn(attempt.trade);if(value!==null)returns.push(value)}}
+  spyBaseline.push({mode,group:targetGroup,n:returns.length,avgMatchedReturn:returns.length?returns.reduce((a,b)=>a+b,0)/returns.length:null,medianMatchedReturn:median(returns),...bootstrapCI(returns,`spy:${mode}:${targetGroup}`)})
 }
 
 function csv(rows,columns){
@@ -225,18 +240,31 @@ function csv(rows,columns){
 }
 await fs.mkdir(resultDir,{recursive:true})
 await fs.writeFile(path.join(resultDir,'trades.csv'),csv(allTrades,['symbol','group','signalDate','entryDate','exitDate','entryRaw','exitPrice','stop','target','reason','r','win','stopMultiplier','signalRrNow','signalRrAtEntry']))
+const planTradeRows=planMetrics.filter(row=>row.period===undefined).flatMap(row=>row.trades)
+await fs.writeFile(path.join(resultDir,'plan-exit-trades.csv'),csv(planTradeRows,['symbol','group','signalDate','entryDate','exitDate','entryRaw','exitPrice','stop','target','reason','r','win','stopMultiplier','signalRrNow','signalRrAtEntry']))
+const selectionDiagnostics=JSON.parse(await fs.readFile(path.join(resultDir,'selection-diagnostics.json'),'utf8'))
+selectionDiagnostics.signalToEpisodeByLabel=Object.fromEntries(allGroups.map(group=>[group,{validatedSignals:signals.filter(s=>groupFor(s)===group).length,
+  episodesBeforeActiveTradeSuppression:active.preSuppression.filter(e=>e.group===group).length,suppressedDuringOpenTrade:active.suppressed.filter(e=>e.group===group).length,
+  eligibleEpisodes:active.episodes.filter(e=>e.group===group).length}]))
+await fs.writeFile(path.join(resultDir,'selection-diagnostics.json'),JSON.stringify(selectionDiagnostics,null,2))
 await fs.writeFile(path.join(resultDir,'summary.json'),JSON.stringify({signalsByGroup:Object.fromEntries(allGroups.map(group=>[group,signals.filter(s=>groupFor(s)===group).length])),
   metrics:primary.map(({trades,...rest})=>rest),baseline,spyBaseline,earningsWeekExclusion:earningsFiltered.map(({trades,...rest})=>rest),
+  planExitMetrics:planMetrics.map(({trades,...rest})=>rest),
   stopSensitivity:sensitivity.map(({trades,...rest})=>rest),periodBoundary:'2024-10-29',earningsWeekRule:'Approximation: actual entry date day 22 through 28 of Jan/Apr/Jul/Oct',
   sampleCaveats:'<30 episodes is too small to conclude; historical earnings are unavailable and all signals were scored with earningsStatus=none.',
   modelingCaveats:['Decisions and scores are the actual exported library functions; classifySetup is invoked inside scoreScannerCandidate but not exported.',
     'The production API route private riskReward calculation is not imported; selectPreliminary candidate rank uses buildStockCheck riskRewardAtEntry as the pure library source.',
     'Yahoo weekly candles are aggregated from daily cache by ISO calendar week.',
+    'Generic mode preserves the previous simulator: recalculates the library Stop helper at the selected ATR multiplier, keeps buildStockCheck Target 1; plan mode uses exact signal-time buildStockCheck Stop and Target 1. Breakout has no buildStockCheck entry plan, so both modes use trigger entry, 1.5 ATR Stop and 2R Target.',
+    'Plan-vs-generic comparisons reuse the same episodes and suppression set to isolate exit-plan effect.',
     'ATR sensitivity changes stop distance during trade simulation only; signal membership/decision stays fixed at default app logic.',
     'Repeated same ticker/group signals within an episode are consolidated; subsequent same-ticker episodes during open trades are suppressed.']},null,2))
-await fs.writeFile(path.join(resultDir,'summary.csv'),csv(primary.map(({trades,...rest})=>rest),['group','period','signals','episodes','suppressed','fills','pending','fillRate','winRate','avgR','medianR','expectancy','worstR','sampleStatus']))
-await fs.writeFile(path.join(resultDir,'baselines.csv'),csv(baseline,['group','matchedEpisodes','rounds','meanExpectancy','p05','p95','validRounds']))
-await fs.writeFile(path.join(resultDir,'spy-baseline.csv'),csv(spyBaseline,['group','n','avg20dReturn','median20dReturn']))
-await fs.writeFile(path.join(resultDir,'stop-sensitivity.csv'),csv(sensitivity,['multiplier','group','signals','episodes','suppressed','fills','pending','fillRate','winRate','avgR','medianR','expectancy','worstR','sampleStatus']))
-await fs.writeFile(path.join(resultDir,'earnings-week-exclusion.csv'),csv(earningsFiltered.map(({trades,...rest})=>rest),['group','signals','episodes','suppressed','fills','fillRate','winRate','avgR','medianR','expectancy','worstR']))
+const summaryColumns=['group','period','exitModel','signals','episodes','suppressed','fills','pending','fillRate','winRate','avgR','medianR','expectancy','ci95Low','ci95High','worstR','sampleStatus']
+await fs.writeFile(path.join(resultDir,'summary.csv'),csv(primary.map(({trades,...rest})=>rest),summaryColumns))
+await fs.writeFile(path.join(resultDir,'plan-exit-summary.csv'),csv(planMetrics.map(({trades,...rest})=>rest),summaryColumns))
+await fs.writeFile(path.join(resultDir,'exit-mode-comparison.csv'),csv([...primary,...planMetrics].map(({trades,...rest})=>rest),summaryColumns))
+await fs.writeFile(path.join(resultDir,'baselines.csv'),csv(baseline,['group','matchedEpisodes','rounds','meanExpectancy','p05','p95','ci95Low','ci95High','validRounds']))
+await fs.writeFile(path.join(resultDir,'spy-baseline.csv'),csv(spyBaseline,['mode','group','n','avgMatchedReturn','medianMatchedReturn','ci95Low','ci95High']))
+await fs.writeFile(path.join(resultDir,'stop-sensitivity.csv'),csv(sensitivity,['multiplier','group','signals','episodes','suppressed','fills','pending','fillRate','winRate','avgR','medianR','expectancy','ci95Low','ci95High','worstR','sampleStatus']))
+await fs.writeFile(path.join(resultDir,'earnings-week-exclusion.csv'),csv(earningsFiltered.map(({trades,...rest})=>rest),['group','signals','episodes','suppressed','fills','fillRate','winRate','avgR','medianR','expectancy','ci95Low','ci95High','worstR']))
 console.log(JSON.stringify({signals:signals.length,episodes:active.episodes.length,suppressedDuringHold:active.suppressed.length,trades:allTrades.length,groups:allGroups.length,out:resultDir}))

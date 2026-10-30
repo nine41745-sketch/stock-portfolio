@@ -4,6 +4,7 @@ import { SNAPSHOT_DIR, RESULTS_DIR } from './paths.mjs'
 
 const snapshotDir=process.argv[2]??SNAPSHOT_DIR,resultDir=process.argv[3]??RESULTS_DIR
 const rows=JSON.parse(await fs.readFile(path.join(resultDir,'universe-scores.json'),'utf8'))
+const validatedSignals=JSON.parse(await fs.readFile(path.join(resultDir,'signals.json'),'utf8'))
 const manifest=JSON.parse(await fs.readFile(path.join(snapshotDir,'manifest.json'),'utf8'))
 const barsBySymbol=new Map()
 for(const symbol of manifest.symbols)barsBySymbol.set(symbol,JSON.parse(await fs.readFile(path.join(snapshotDir,`${symbol}.json`),'utf8')).bars)
@@ -35,7 +36,7 @@ for(const [cohort,predicate] of cohorts){
       for(const dateRows of byDate.values()){
         const available=dateRows.filter(r=>Number.isFinite(r[`forward${horizon}d`]))
         const universeMean=available.length?available.reduce((s,r)=>s+r[`forward${horizon}d`],0)/available.length:null
-        for(const r of available){if(!predicate(r)||r.score<low||r.score>=high)continue;observations.push({value:r[`forward${horizon}d`],excess:r[`forward${horizon}d`]-universeMean})}
+        for(const r of available){if(!Number.isFinite(r.score)||!predicate(r)||r.score<low||r.score>=high)continue;observations.push({value:r[`forward${horizon}d`],excess:r[`forward${horizon}d`]-universeMean})}
       }
       const sorted=xs=>xs.sort((a,b)=>a-b)
       const median=xs=>{if(!xs.length)return null;const a=sorted([...xs]),m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2}
@@ -83,4 +84,8 @@ await fs.writeFile(path.join(resultDir,'universe-forward-returns.csv'),csv(forwa
 await fs.writeFile(path.join(resultDir,'score-validity-summary.json'),JSON.stringify({baseSha:'d13f9b52f4a97fdc4c3a7957eb2489d644d46141',snapshotRequestedAt:manifest.requestedAt,rows:enriched.length,uniqueFridays:byDate.size,periodBoundary:boundary,
   forwardReturn:'open of next trading session to close of the 5th/10th/20th trading session, simple return',excess:'same Friday universe mean for the same horizon',
   ic:'daily cross-sectional Spearman of score/category and forward 20-session return; mean and naive t-stat over Fridays',limitations:['daily IC t-stat does not adjust for serial dependence in overlapping forward returns','bucket observations require the full forward horizon to exist; edge Fridays are omitted per horizon','trend is ordinally coded DOWNTREND=0, SIDEWAYS=1, UPTREND=2 for Spearman only']},null,2))
+const wait=rows.filter(r=>r.decision==='WAIT_FOR_BREAKOUT'),waitSignals=validatedSignals.filter(r=>r.decision==='WAIT_FOR_BREAKOUT')
+const signalCounts=Object.fromEntries([...new Set(validatedSignals.map(r=>r.group))].map(group=>[group,validatedSignals.filter(r=>r.group===group).length]))
+await fs.writeFile(path.join(resultDir,'selection-diagnostics.json'),JSON.stringify({waitForBreakout:{universeDecisionPairs:wait.length,passedPreliminary:wait.filter(r=>r.preliminary).length,passedAutomaticValidation:wait.filter(r=>r.validated).length,validatedSignalsBeforeEpisodeDedup:waitSignals.length},
+  validatedSignalsByLabel:signalCounts,note:'Preliminary/automatic selection counts are read from per-candidate output of the real selection functions. Episode deduplication and active-trade suppression are emitted by simulate.mjs.'},null,2))
 console.log(JSON.stringify({rows:enriched.length,fridays:byDate.size,bucketRows:bucketRows.length,icRows:icRows.length,resultDir}))

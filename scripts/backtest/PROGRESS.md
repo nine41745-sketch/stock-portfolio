@@ -61,3 +61,10 @@
 - Follow-up B implementation checkpoint SHA recorded after commit.
 - Reran the real library pipeline for 261 Fridays from the relocated snapshot: 7,250 available (Friday, ticker) records, 1,352 validated decision signals; the runner skipped 319 ticker-Fridays when the library lacked at least one required field among last close, EMA200 and ATR14. Generated 180 score-bucket/cohort/horizon rows and 84 IC rows.
 - Raw additions: `universe-scores.json`, `universe-forward-returns.csv`, `score-validity.csv`, `information-coefficient.csv`, and `score-validity-summary.json` under `D:\Projects\stock-portfolio-backtest-data\results`.
+
+## Follow-up C: exit-mode comparison and uncertainty
+- Extended `simulate.mjs` with a `plan` mode that uses exact signal-time `buildStockCheck` Stop/Target 1 for entry-plan groups and retains the prior `generic` simulator for comparison; WAIT_FOR_BREAKOUT keeps the previously specified trigger + 1.5 ATR / 2R simulation because no buildStockCheck buy plan exists for that decision.
+- Added deterministic percentile bootstrap 95% intervals at the trade/episode-return level to signal-group summaries, walk-forward summaries, Stop sensitivity, approximate earnings-week summaries and matched-random baselines. SPY is now compared by each realized stock trade's exact entry/exit dates for both exit modes.
+- Added per-Friday candidate-stage output and selection diagnostics for WAIT_FOR_BREAKOUT and signal-to-episode counts; unavailable ticker-Friday records are explicitly present with null scores and a missing-input reason.
+- `node --check` passed for the updated runners. Full new simulation and score-analysis outputs remain to be regenerated and inspected.
+- Follow-up C implementation checkpoint SHA recorded after commit.
