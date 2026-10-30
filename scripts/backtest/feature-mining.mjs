@@ -101,8 +101,8 @@ for (const result of confirmedPairs) {
 
 await fs.writeFile(path.join(resultDir, 'feature-ic.csv'), toCsv(icRows))
 await fs.writeFile(path.join(resultDir, 'feature-discovery-bh-holdout.csv'), toCsv(decisions))
-await fs.writeFile(path.join(resultDir, 'feature-confirmed-quintile-spread.csv'), toCsv(spreadRows))
-await fs.writeFile(path.join(resultDir, 'feature-confirmed-annual-spread.csv'), toCsv(annualRows))
+await fs.writeFile(path.join(resultDir, 'feature-confirmed-quintile-spread.csv'), toCsv(spreadRows, ['feature', 'horizon', 'cohort', 'offset', 'periods', 'meanCrossSectionN', 'meanTopN', 'meanBottomN', 'meanTopMinusBottom', 'nwLag', 'nwT', 'ci95Low', 'ci95High', 'sampleStatus']))
+await fs.writeFile(path.join(resultDir, 'feature-confirmed-annual-spread.csv'), toCsv(annualRows, ['feature', 'horizon', 'cohort', 'offset', 'year', 'periods', 'meanTopMinusBottom', 'nwT', 'ci95Low', 'ci95High', 'sampleStatus']))
 await fs.writeFile(path.join(resultDir, 'feature-mining-summary.json'), JSON.stringify({
   method: 'Cross-sectional Spearman IC from point-in-time daily feature values to open-next-session through close of session 5/20. Four non-overlapping Friday offsets with separate Newey-West lag-4 estimates. BH q=.10 corrects all 13×2×4=104 discovery feature×horizon×offset tests. A discovery offset is confirmed against the same holdout offset only when n>=30, sign matches and |t|>2.',
   periods: { discovery: `${discoveryStart}..${discoveryEnd}`, holdout: `${holdoutStart}..${dates.at(-1)}`, offsets: 'all four offsets included in the BH family; holdout confirmation matched by offset' },
@@ -126,7 +126,7 @@ function quintileSpread(sample, feature, outcome) {
 function average(values) { const numbers = values.filter(Number.isFinite); return numbers.length ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length : null }
 function numberOrNull(value) { if (value === null || value === undefined || value === '') return null; const number = Number(value); return Number.isFinite(number) ? number : null }
 function labelN(n) { return n < 30 ? 'ตัวอย่างไม่พอสรุป' : 'ผ่านเกณฑ์ n≥30' }
-function toCsv(values) { const columns = Object.keys(values[0] ?? {}), escape = value => value === null || value === undefined ? '' : /[",\r\n]/.test(String(value)) ? `"${String(value).replaceAll('"', '""')}"` : String(value); return [columns.join(','), ...values.map(row => columns.map(column => escape(row[column])).join(','))].join('\r\n') + '\r\n' }
+function toCsv(values, fallbackColumns = []) { const columns = Object.keys(values[0] ?? Object.fromEntries(fallbackColumns.map(column => [column, null]))), escape = value => value === null || value === undefined ? '' : /[",\r\n]/.test(String(value)) ? `"${String(value).replaceAll('"', '""')}"` : String(value); return [columns.join(','), ...values.map(row => columns.map(column => escape(row[column])).join(','))].join('\r\n') + '\r\n' }
 async function readCsv(file) {
   const text = await fs.readFile(file, 'utf8'), [header, ...lines] = text.trim().split(/\r?\n/), columns = header.split(',')
   return lines.map(line => { const cells = []; let cell = '', quoted = false; for (let i = 0; i < line.length; i++) { if (line[i] === '"' && line[i + 1] === '"' && quoted) { cell += '"'; i++ } else if (line[i] === '"') quoted = !quoted; else if (line[i] === ',' && !quoted) { cells.push(cell); cell = '' } else cell += line[i] } cells.push(cell); return Object.fromEntries(columns.map((column, index) => [column, cells[index]])) })
