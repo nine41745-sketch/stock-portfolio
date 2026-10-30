@@ -9,7 +9,7 @@
 ## Plan / checkpoints
 - [x] Step 0: inspect release diff and prior commits; record findings below.
 - [x] Step 1: inspect pure pipeline and provider fallback, acquire Yahoo daily bars for the 29 unique scanner symbols plus SPY (6 years), Stooq fallback below 200 bars, cache outside Git, and validate the offline pipeline against the owner-supplied eight-stock comparison.
-- [ ] Step 2: implement a point-in-time Friday signal backtest by calling existing pure library functions only; store raw trade/signal results outside Git.
+- [x] Step 2: implement a point-in-time Friday signal backtest by calling existing pure library functions only; store raw trade/signal results outside Git.
 - [ ] Step 3: run matched random baseline (200 rounds), SPY baseline, ATR stop sensitivity, walk-forward, and approximate earnings-week exclusion; report sample-size limits.
 - [ ] Step 4: publish tables, raw CSV paths and commit SHAs in the final report.
 
@@ -26,3 +26,11 @@
 - Eight-symbol check passed exactly: MSFT 85, MA 85, LLY 83, V 79, COST 76, JPM 76, CRWD 74, SNOW 68; all eight trends are UPTREND. Each score delta is 0. COST is now UPTREND/76 in the real indicator and scoring pipeline when fed the six-year Yahoo cache; this does not independently verify what Production displayed.
 - Important fidelity limits: Production `loadStockCheck` separately fetches Finnhub quote/metrics and a four-month Yahoo ATR; this offline comparison used the latest Yahoo close, supplied earnings statuses/days, and `getTechnicalIndicators().atr14`. Weekly candles were grouped from daily bars, not fetched as Yahoo-native weekly candles. These are recorded rather than presented as live-production evidence.
 - Step 1 implementation/data-pipeline checkpoint commit: `341736cd7b80e777aa926a4ae6d1f9ec1b1a483b`.
+
+## Step 2 findings
+- Backtest signal dates: 261 calendar Fridays from 2021-10-29 through 2026-10-23; the last cached completed market bar is 2026-10-29, so the next Friday (2026-10-30) is excluded because that session had not closed when the cache was acquired.
+- Every signal uses only cached bars whose date is at or before its Friday. The runner freezes the clock for the actual library `getTechnicalIndicators()` calls, adapts cached daily Yahoo OHLCV into provider responses, and invokes `scoreScannerCandidate()` (which calls the private `classifySetup()`), `buildStockCheck()`, `selectPreliminary()` and `selectAutomatic()`.
+- All earnings statuses were set to `none` as requested. Signals selected for automatic validation: 1,352 across seven groups. After grouping same ticker/group signals and suppressing repeated ticker signals while a simulated trade remains open: 773 eligible episodes, 231 suppressed episodes. The base simulation produced 378 fills, including 2 still open/right-censored at the cache end, and 376 completed trade outcomes.
+- Entry/exit, 10-session pullback and breakout windows, 20-session exits, same-day stop priority and 0.1% per-side slippage are implemented in `simulate.mjs`; raw signals, market snapshots and closed trades are saved outside Git. Pending trades are counted as fills but excluded from R outcomes.
+- Local output path: `C:\Users\USER\AppData\Local\Temp\stock-portfolio-backtest-phase2-d13f9b52\results`. Raw files: `signals.json`, `market-snapshots.json`, `trades.csv`, `summary.csv`, `summary.json`, `baselines.csv`, `spy-baseline.csv`, `stop-sensitivity.csv`, `earnings-week-exclusion.csv`.
+- Pipeline limits carried forward: the private scanner-route risk/reward helper is not imported (route also imports Supabase/Next); `selectPreliminary` ranking instead uses the pure `buildStockCheck().riskRewardAtEntry`. Weekly OHLCV is aggregated from daily cache by calendar week. No credentials, environment settings, database, application routes, or Production systems were used.
