@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const current: ChangelogEntry = {
   version: 'v1.41.14',
-  date: 'รอบันทึกเวลาพัฒนาจาก Git commit',
+  date: 'Development History — Feature commit 2026-10-30 13:45:11 +07:00 (ไม่ใช่ Production)',
   changes: [
     'แยกขอบบนและราคากลางของแผนรอย่อ พร้อมแสดงเวลาและอธิบายข้อจำกัดของ R:R ให้เข้าใจง่ายขึ้น',
   ],

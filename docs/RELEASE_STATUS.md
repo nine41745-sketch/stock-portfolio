@@ -3,7 +3,7 @@
 ## Version under preparation — v1.41.14
 
 - Scope: แสดงขอบบนและราคากลางของแผนรอย่อ พร้อมเวลาและข้อจำกัดของ R:R.
-- Development time: รอ Git commit event; ยังไม่มีเวลา Production ที่ยืนยันได้.
+- Development/Feature History: `2026-10-30T06:45:11Z` (`2026-10-30 13:45:11 +07:00`), from local Git commit `d3158e507251d9aed0c55d5914fd72506fb77018`.
 - Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.14.
 
 ## Version under preparation — v1.41.13
