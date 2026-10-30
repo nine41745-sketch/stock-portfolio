@@ -28,6 +28,7 @@ export interface StockCheckInput {
   week52High: number | null
   week52Low: number | null
   earningsDays: number | null
+  earningsStatus?: 'found' | 'none' | 'unknown'
   pe: number | null
 }
 

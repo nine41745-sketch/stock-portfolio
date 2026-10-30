@@ -115,6 +115,7 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     week52Low,
     earningsDays: earnings?.daysUntil ?? null,
     pe: metrics.pe,
+    earningsStatus: earningsResult.status,
   })
 
   return {
