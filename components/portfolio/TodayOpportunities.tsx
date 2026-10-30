@@ -346,7 +346,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
                 <span>• ตรวจแผนเมื่อ {new Date(item.checkedAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })} เวลาไทย</span>
               </div>
 
-              {item.earningsStatus === 'unknown' && <p className="mt-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-2 text-xs text-yellow-300">ไม่สามารถยืนยันวันประกาศงบได้ ลดคะแนน {item.earningsUnknownPenalty} คะแนน และไม่ให้คะแนนหมวดความเสี่ยง</p>}
+              {item.earningsStatus === 'unknown' && <p className="mt-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-2 text-xs text-yellow-300">ตรวจ Earnings ไม่สำเร็จ</p>}
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
                 {([
                   ['แนวโน้ม', item.categoryScores.trend], ['โมเมนตัม', item.categoryScores.momentum],

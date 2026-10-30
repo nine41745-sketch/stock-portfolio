@@ -358,9 +358,16 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
 
   decision = normalizeDecisionForRiskReward(decision, rrAtEntry)
   if (decision === 'SKIP_POOR_RR') buyMode = null
+  const awaitingEarnings = input.earningsStatus === 'unknown' && decision === 'BUY_NOW'
+  if (awaitingEarnings) {
+    decision = 'WATCH'
+    buyMode = null
+  }
 
   let summary: string
-  if (decision === 'BUY_NOW' && buyMode === 'FIRST_TRANCHE' && belowEntryDipOk) {
+  if (awaitingEarnings) {
+    summary = 'รอตรวจ Earnings ก่อนซื้อ'
+  } else if (decision === 'BUY_NOW' && buyMode === 'FIRST_TRANCHE' && belowEntryDipOk) {
     summary = 'ราคาย่อต่ำกว่า Entry Zone เล็กน้อย แต่โครงสร้าง EMA50 > EMA200 และแนวรับยังไม่เสีย พร้อม R:R จากราคาปัจจุบันที่ผ่านเกณฑ์ จึงเหมาะกับการช้อนไม้แรกบางส่วน'
   } else if (decision === 'BUY_NOW' && buyMode === 'FIRST_TRANCHE') {
     summary = 'สัญญาณหลักยังแข็งและ R:R จากราคาปัจจุบันผ่านเกณฑ์ไม้แรก เหมาะกับการเริ่มสถานะบางส่วนโดยยังไม่ทุ่มเต็มไม้'
