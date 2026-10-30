@@ -113,6 +113,7 @@ for (const cohort of cohorts) {
 
 const fullScoreOffsets = icRows.filter(row => row.cohort === 'all' && row.metric === 'score')
 const fullMean = average(fullScoreOffsets.map(row => row.meanIC))
+const fullMeanByOffset = new Map(fullScoreOffsets.map(row => [row.offset, row.meanIC]))
 const looRows = []
 for (const symbol of [...new Set(scoredRows.map(row => row.symbol))].sort()) {
   for (let offset = 0; offset < 4; offset++) {
@@ -124,7 +125,7 @@ for (const symbol of [...new Set(scoredRows.map(row => row.symbol))].sort()) {
       if (ic !== null) points.push(ic)
     }
     const hac = neweyWestMean(points, 4)
-    looRows.push({ omittedTicker: symbol, offset, dates: hac.n, meanIC: hac.mean, deltaVsFull: hac.mean - fullMean, nwT: hac.tStatistic, sampleStatus: labelN(hac.n) })
+    looRows.push({ omittedTicker: symbol, offset, dates: hac.n, meanIC: hac.mean, fullOffsetMeanIC: fullMeanByOffset.get(offset), deltaVsFull: hac.mean - fullMeanByOffset.get(offset), nwT: hac.tStatistic, sampleStatus: labelN(hac.n) })
   }
 }
 
