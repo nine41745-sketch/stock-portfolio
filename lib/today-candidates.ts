@@ -1,11 +1,29 @@
 export type Candidate = { symbol: string; score: number; setup: string; trend: string; price: number | null; ema50: number | null; ema200: number | null; support: number | null; riskReward: number | null; earnings: { daysUntil: number } | null }
 export type TodayDecision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAKOUT' | 'WATCH' | 'AVOID' | 'SKIP_POOR_RR'
 export type ScannerScoreLabel = 'น่าสนใจ' | 'เฝ้าดู' | 'ยังไม่เด่น'
+export const PULLBACK_LONG_WAIT_DISTANCE_PCT = 5
 
 export function trendStrengthLabel(label: ScannerScoreLabel): string {
   if (label === 'น่าสนใจ') return 'แนวโน้มแข็ง'
   if (label === 'เฝ้าดู') return 'แนวโน้มกลางๆ'
   return 'แนวโน้มอ่อน'
+}
+
+function trendStrengthSummaryLabel(label: ScannerScoreLabel): string {
+  if (label === 'น่าสนใจ') return 'แข็ง'
+  if (label === 'เฝ้าดู') return 'กลางๆ'
+  return 'อ่อน'
+}
+
+function trendDirectionSummaryLabel(trend: string): string {
+  if (trend === 'UPTREND') return 'ขาขึ้น'
+  if (trend === 'DOWNTREND') return 'ขาลง'
+  if (trend === 'SIDEWAYS') return 'ออกข้าง'
+  return 'ยังระบุไม่ได้'
+}
+
+export function scoreTrendSummary(score: number, label: ScannerScoreLabel, trend: string): string {
+  return `คะแนนแนวโน้ม ${score}/100 (${trendStrengthSummaryLabel(label)}) · ทิศทางราคา: ${trendDirectionSummaryLabel(trend)}`
 }
 
 export function hasPurchasePlan(decision: TodayDecision): boolean {
@@ -93,6 +111,12 @@ export function pullbackPlanDetails(price: number | null, zone: { low: number; h
     position,
     atOrBelowStop: validPrice && stop !== null && Number.isFinite(stop) && stop > 0 && price! <= stop,
   }
+}
+
+export function pullbackDistanceWarning(price: number | null, zone: { low: number; high: number } | null): string | null {
+  const details = pullbackPlanDetails(price, zone, null)
+  if (!details || details.distancePct === null || details.distancePct <= PULLBACK_LONG_WAIT_DISTANCE_PCT) return null
+  return 'ต้องรอราคาลงมากกว่า 5% ตั้งแจ้งเตือนที่ขอบบนโซนแทน'
 }
 
 export function formatBangkokTimestamp(value: string | null): string {
