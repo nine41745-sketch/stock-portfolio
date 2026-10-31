@@ -109,7 +109,98 @@ function hasOnlyAcceptedBracesFinding({ vulnerabilities, metadata, npmTree, exit
   return entries.every(([name]) => resolvesToAcceptedAdvisory(name))
 }
 
-export function renderAuditSummary({ report, npmTree, exitCode, mode, commit = 'not supplied' }) {
+const acceptedMinimatchAdvisory = 'GHSA-G3HV-75WG-M249'
+const acceptedMinimatchRange = '<11.0.1'
+const acceptedMinimatchExpiry = '2026-12-15'
+const minimatchReviewCondition = 'ลบข้อยกเว้นนี้เมื่อ ESLint toolchain ปล่อยรุ่นที่ใช้ minimatch 11.0.1 ขึ้นไป'
+
+function packageNameFromLockPath(path) {
+  const segments = path.split('/')
+  const marker = segments.lastIndexOf('node_modules')
+  if (marker < 0 || marker + 1 >= segments.length) return null
+  const first = segments[marker + 1]
+  return first.startsWith('@') ? `${first}/${segments[marker + 2] ?? ''}` : first
+}
+
+function isDevOnlyMinimatchChain({ vulnerabilities, names, npmTree, packageLock }) {
+  const lockPackages = packageLock?.packages
+  if (!lockPackages || typeof lockPackages !== 'object' || npmTree?.name !== 'stock-portfolio') return false
+
+  function lockNodesAreDevOnly(name, version) {
+    const candidates = Object.entries(lockPackages).filter(([path, entry]) =>
+      packageNameFromLockPath(path) === name && entry?.version === version)
+    return candidates.length > 0 && candidates.every(([, entry]) => entry.dev === true)
+  }
+
+  const pathsByName = collectDependencyPaths(npmTree, new Set(names))
+  for (const name of names) {
+    const vulnerability = vulnerabilities[name]
+    const affectedNodes = vulnerability?.nodes
+    if (!Array.isArray(affectedNodes) || affectedNodes.length === 0) return false
+    for (const nodePath of affectedNodes) {
+      const lockEntry = lockPackages[nodePath]
+      if (!lockEntry || lockEntry.dev !== true || packageNameFromLockPath(nodePath) !== name) return false
+    }
+
+    const dependencyPaths = pathsByName.get(name) ?? []
+    if (dependencyPaths.length === 0) return false
+    for (const dependencyPath of dependencyPaths) {
+      const segments = dependencyPath.split(' > ')
+      if (segments[0] !== 'stock-portfolio') return false
+      for (const segment of segments.slice(1)) {
+        const separator = segment.startsWith('@') ? segment.indexOf('@', 1) : segment.indexOf('@')
+        if (separator < 1) return false
+        const packageName = segment.slice(0, separator)
+        const version = segment.slice(separator + 1)
+        if (!lockNodesAreDevOnly(packageName, version)) return false
+      }
+    }
+  }
+  return true
+}
+
+function hasOnlyAcceptedMinimatchFinding({ vulnerabilities, metadata, npmTree, packageLock, exitCode, now }) {
+  if (exitCode !== 0 || !metadata || Number(metadata.critical) !== 0 || Number(metadata.high) !== 0 ||
+      Number(metadata.low) !== 0 || Number(metadata.info) !== 0) return false
+  const today = now instanceof Date ? now.toISOString().slice(0, 10) : String(now ?? '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today) || today > acceptedMinimatchExpiry) return false
+
+  const entries = Object.entries(vulnerabilities)
+  if (!entries.length || Number(metadata.moderate) !== entries.length) return false
+  if (metadata.total !== undefined && Number(metadata.total) !== entries.length) return false
+  for (const [, vulnerability] of entries) {
+    if (vulnerability?.severity !== 'moderate' || !Array.isArray(vulnerability.via) || vulnerability.via.length === 0) return false
+  }
+
+  const minimatch = vulnerabilities.minimatch
+  if (!minimatch || minimatch.range !== acceptedMinimatchRange || minimatch.via.length !== 1) return false
+  const [advisory] = minimatch.via
+  if (typeof advisory === 'string' || advisoryId(advisory) !== acceptedMinimatchAdvisory ||
+      advisory.severity !== 'moderate' || advisory.range !== acceptedMinimatchRange) return false
+
+  for (const [name, vulnerability] of entries) {
+    if (name === 'minimatch') continue
+    if (!vulnerability.via.every(item => typeof item === 'string' && vulnerabilities[item])) return false
+  }
+
+  // npm audit's via graph can contain dependency cycles (for example eslint ↔ eslint-utils).
+  // Start at the exact advisory package and accept only packages with a path to that root.
+  const reachesMinimatch = new Set(['minimatch'])
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const [name, vulnerability] of entries) {
+      if (name !== 'minimatch' && !reachesMinimatch.has(name) && vulnerability.via.some(item => reachesMinimatch.has(item))) {
+        reachesMinimatch.add(name)
+        changed = true
+      }
+    }
+  }
+  if (!entries.every(([name]) => reachesMinimatch.has(name))) return false
+  return isDevOnlyMinimatchChain({ vulnerabilities, names: entries.map(([name]) => name), npmTree, packageLock })
+}
+
+export function renderAuditSummary({ report, npmTree, packageLock, exitCode, mode, commit = 'not supplied', now = new Date() }) {
   const meta = report?.metadata?.vulnerabilities
   const vulnerabilities = report?.vulnerabilities
   if (report?.error || !report || typeof vulnerabilities !== 'object' || !meta) {
@@ -122,7 +213,8 @@ export function renderAuditSummary({ report, npmTree, exitCode, mode, commit = '
   const counts = severityOrder.map(severity => `${severity}: ${Number(meta[severity] ?? 0)}`).join(', ')
   const clean = names.length === 0 && exitCode === 0 && severityOrder.every(severity => Number(meta[severity] ?? 0) === 0)
   const exceptionAccepted = mode === 'Full' && hasOnlyAcceptedBracesFinding({ vulnerabilities, metadata: meta, npmTree, exitCode })
-  const status = clean ? 'PASS' : exceptionAccepted ? 'PASS_WITH_EXCEPTION' : names.length > 0 || severityOrder.some(severity => Number(meta[severity] ?? 0) > 0) ? 'FINDINGS' : 'BLOCKED'
+  const minimatchExceptionAccepted = mode === 'Full' && hasOnlyAcceptedMinimatchFinding({ vulnerabilities, metadata: meta, npmTree, packageLock, exitCode, now })
+  const status = clean ? 'PASS' : exceptionAccepted || minimatchExceptionAccepted ? 'PASS_WITH_EXCEPTION' : names.length > 0 || severityOrder.some(severity => Number(meta[severity] ?? 0) > 0) ? 'FINDINGS' : 'BLOCKED'
   const lines = [
     `# ${mode} npm audit`, '',
     `- Status: ${status}`,
@@ -133,6 +225,7 @@ export function renderAuditSummary({ report, npmTree, exitCode, mode, commit = '
     '',
   ]
   if (exceptionAccepted) lines.push(`- Accepted exception: ${acceptedAdvisory} only; Full audit remains non-clean and requires the documented review/closure conditions.`)
+  if (minimatchExceptionAccepted) lines.push(`- ข้อยกเว้นที่ยอมรับ: ${acceptedMinimatchAdvisory}; แพ็กเกจที่ได้รับผลกระทบ ${names.length} รายการ; เหตุผล: ทุกแพ็กเกจและทุกโหนดใน dependency chain เป็น dev-only ตาม package-lock.json; หมดอายุวันที่ ${acceptedMinimatchExpiry}; เงื่อนไขทบทวน: ${minimatchReviewCondition}`)
   if (names.length) {
     lines.push('## Affected packages, advisories, dependency paths, and npm fix metadata', '')
     for (const name of names) {
@@ -161,7 +254,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const auditText = await readFile(auditPath, 'utf8').catch(() => '')
   const report = await parse(auditPath)
   const npmTree = await parse(treePath)
-  const result = renderAuditSummary({ report: report ?? (auditText ? { error: { code: 'INVALID_JSON' } } : null), npmTree, exitCode: Number(exitCodeText), mode, commit: process.env.GITHUB_SHA ?? 'not supplied' })
+  const packageLock = await parse('package-lock.json')
+  const result = renderAuditSummary({ report: report ?? (auditText ? { error: { code: 'INVALID_JSON' } } : null), npmTree, packageLock, exitCode: Number(exitCodeText), mode, commit: process.env.GITHUB_SHA ?? 'not supplied' })
   await writeFile(outputPath, result.markdown, 'utf8')
   console.log(result.status)
 }

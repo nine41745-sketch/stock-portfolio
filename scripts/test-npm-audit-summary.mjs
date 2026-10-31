@@ -98,3 +98,68 @@ assert.match(ciWorkflow, /\[ "\$PRODUCTION_AUDIT_STATUS" != "PASS" \]/)
 assert.match(ciWorkflow, /\[ "\$FULL_AUDIT_STATUS" != "PASS_WITH_EXCEPTION" \]/)
 
 console.log('✓ Audit exception classifier covers the owner-provided npm audit JSON shape and fails closed on unrelated findings')
+
+const minimatchAdvisory = {
+  source: 9999999,
+  name: 'minimatch',
+  dependency: 'minimatch',
+  url: 'https://github.com/advisories/GHSA-g3hv-75wg-m249',
+  severity: 'moderate',
+  range: '<11.0.1',
+}
+
+function makeMinimatchAudit({ extraAdvisory = false, productionNode = false, nonDevAncestor = false } = {}) {
+  const vulnerabilities = {
+    minimatch: {
+      name: 'minimatch', severity: 'moderate', isDirect: false, range: '<11.0.1',
+      via: [minimatchAdvisory], effects: ['eslint'], nodes: ['node_modules/minimatch'], fixAvailable: true,
+    },
+    eslint: {
+      name: 'eslint', severity: 'moderate', isDirect: false, range: '*',
+      via: ['minimatch', 'eslint'], effects: [], nodes: ['node_modules/eslint'], fixAvailable: true,
+    },
+  }
+  const tree = {
+    name: 'stock-portfolio',
+    dependencies: {
+      eslint: { version: '9.39.5', dependencies: { minimatch: { version: '10.2.6' } } },
+    },
+  }
+  const packages = {
+    '': { name: 'stock-portfolio', version: '1.41.17' },
+    'node_modules/eslint': { version: '9.39.5', dev: !nonDevAncestor },
+    'node_modules/minimatch': { version: '10.2.6', dev: !productionNode },
+  }
+  if (extraAdvisory) {
+    vulnerabilities.glob = {
+      name: 'glob', severity: 'moderate', isDirect: false, range: '<11',
+      via: [{ name: 'glob', url: 'https://github.com/advisories/GHSA-other-1111-2222', severity: 'moderate', range: '<11' }],
+      effects: [], nodes: ['node_modules/glob'], fixAvailable: true,
+    }
+    tree.dependencies.glob = { version: '10.4.5' }
+    packages['node_modules/glob'] = { version: '10.4.5', dev: true }
+  }
+  const count = Object.keys(vulnerabilities).length
+  return {
+    report: {
+      metadata: { vulnerabilities: { info: 0, low: 0, moderate: count, high: 0, critical: 0, total: count } },
+      vulnerabilities,
+    },
+    npmTree: tree,
+    packageLock: { packages },
+  }
+}
+
+const minimatchOnly = makeMinimatchAudit()
+const minimatchAccepted = renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Full', now: '2026-12-15' })
+assert.equal(minimatchAccepted.status, 'PASS_WITH_EXCEPTION')
+assert.match(minimatchAccepted.markdown, /GHSA-g3hv-75wg-m249/i)
+assert.match(minimatchAccepted.markdown, /แพ็กเกจที่ได้รับผลกระทบ 2 รายการ/)
+assert.match(minimatchAccepted.markdown, /dev-only/i)
+assert.match(minimatchAccepted.markdown, /2026-12-15/)
+assert.match(minimatchAccepted.markdown, /ลบข้อยกเว้นนี้เมื่อ ESLint toolchain ปล่อยรุ่นที่ใช้ minimatch 11\.0\.1 ขึ้นไป/)
+assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ extraAdvisory: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ productionNode: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ nonDevAncestor: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Full', now: '2026-12-16' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Production-only', now: '2026-12-15' }).status, 'FINDINGS')
