@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { breakoutCardDetails, countBuyLabels, firstTrancheLabelReason, formatBangkokTimestamp, hasPurchasePlan, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, pullbackPlanDetails, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel, trendStrengthLabel } from '@/lib/today-candidates'
+import { breakoutCardDetails, countBuyLabels, firstTrancheLabelReason, formatBangkokTimestamp, hasPurchasePlan, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, pullbackDistanceWarning, pullbackPlanDetails, scoreTrendSummary, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel } from '@/lib/today-candidates'
 import { chunkScannerSymbols, dedupeScannerSymbols, SCANNER_UNIVERSES, type ScannerCategoryScores, type ScannerScore } from '@/lib/stock-scanner'
 
 type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
@@ -293,7 +293,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{preliminary.map(item => {
           const validated = results.some(result => result.symbol === item.symbol)
           return <div key={item.symbol} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-700 p-3 text-sm text-gray-200">
-            <span>{item.symbol} · คะแนนแนวโน้ม {item.score}/100 · {trendStrengthLabel(item.label)} · {trendLabel(item.trend)}</span>
+            <span>{item.symbol} · {scoreTrendSummary(item.score, item.label, item.trend)}</span>
             {validated ? <span className="text-green-300">ตรวจยืนยันแล้ว</span> : <button type="button" disabled={loading || manualSymbol !== null} onClick={() => void validateOnDemand(item)} className="rounded border border-blue-500 px-3 py-1 text-blue-300 disabled:opacity-50">{manualSymbol === item.symbol ? 'กำลังตรวจ...' : 'ตรวจแผนหุ้น'}</button>}
           </div>
         })}</div>
@@ -318,7 +318,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
                 </div>
                 <div className="text-right">
                   <div className="text-lg font-bold text-white">{fmtPrice(item.price)}</div>
-                  <div className="text-xs text-gray-500">คะแนนแนวโน้ม {item.score}/100 · {trendStrengthLabel(item.label)}</div>
+                  <div className="text-xs text-gray-500">{scoreTrendSummary(item.score, item.label, item.trend)}</div>
                 </div>
               </div>
 
@@ -354,8 +354,10 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
                 {item.plan.decision === 'BUY_ON_PULLBACK' && (() => {
                   const details = pullbackPlanDetails(item.price, item.plan.entryZone, item.plan.stopLoss)
                   if (!details) return <p className="mt-3 text-xs text-yellow-300">ข้อมูลช่วงเข้าซื้อไม่ครบ จึงยังระบุราคากลางไม่ได้</p>
+                  const distanceWarning = pullbackDistanceWarning(item.price, item.plan.entryZone)
                   return <div className="mt-3 rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-xs leading-relaxed text-gray-200">
                     <p>ขอบบนของช่วงเข้าซื้อ {fmtPrice(details.upper)}{details.distancePct !== null ? ` · ต่ำกว่าราคาที่ใช้ประเมิน ${details.distancePct.toFixed(2)}%` : ''}</p>
+                    {distanceWarning && <p role="status" className="mt-1 text-yellow-300">{distanceWarning}</p>}
                     <p className="mt-1">ราคากลางที่ใช้คำนวณ R:R {fmtMidpoint(details.midpoint)}</p>
                     <p className="mt-1">{details.position === 'above' ? 'ราคาที่ใช้ประเมินอยู่เหนือช่วงเข้าซื้อ' : details.position === 'inside' ? 'ราคาที่ใช้ประเมินอยู่ในช่วงเข้าซื้อ' : details.position === 'below' ? 'ราคาที่ใช้ประเมินอยู่ต่ำกว่าช่วงเข้าซื้อ' : 'ไม่มีราคาที่ใช้ระบุตำแหน่งเทียบช่วงเข้าซื้อ'}</p>
                     <p className="mt-1">แตะช่วงราคาไม่ได้ยืนยันว่าจะซื้อได้ที่ราคากลาง</p>

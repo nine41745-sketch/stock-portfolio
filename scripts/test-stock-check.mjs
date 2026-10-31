@@ -58,6 +58,15 @@ assert.deepEqual(scoreMissingStatus.categoryScores, scoreUnknownEarnings.categor
 assert.equal(todayCandidates.trendStrengthLabel('น่าสนใจ'), 'แนวโน้มแข็ง')
 assert.equal(todayCandidates.trendStrengthLabel('เฝ้าดู'), 'แนวโน้มกลางๆ')
 assert.equal(todayCandidates.trendStrengthLabel('ยังไม่เด่น'), 'แนวโน้มอ่อน')
+assert.equal(todayCandidates.PULLBACK_LONG_WAIT_DISTANCE_PCT, 5, 'Long pullback wait warning must use the configured 5% threshold')
+assert.equal(todayCandidates.pullbackDistanceWarning(100, { low: 90, high: 94.9 }), 'ต้องรอราคาลงมากกว่า 5% ตั้งแจ้งเตือนที่ขอบบนโซนแทน', 'A pullback requiring more than 5% decline must suggest an alert at the zone edge')
+assert.equal(todayCandidates.pullbackDistanceWarning(100, { low: 90, high: 95 }), null, 'Exactly 5% distance must not trigger a greater-than-5% warning')
+assert.equal(todayCandidates.pullbackDistanceWarning(100, { low: 96, high: 101 }), null, 'A price inside the pullback zone must not trigger a long-wait warning')
+assert.equal(todayCandidates.pullbackDistanceWarning(null, { low: 90, high: 95 }), null, 'Missing current price must not produce a distance warning')
+assert.equal(todayCandidates.pullbackDistanceWarning(100, null), null, 'Missing Entry Zone must not produce a distance warning')
+assert.equal(todayCandidates.scoreTrendSummary(66, 'เฝ้าดู', 'SIDEWAYS'), 'คะแนนแนวโน้ม 66/100 (กลางๆ) · ทิศทางราคา: ออกข้าง', 'Score and price direction must be separate and readable')
+assert.equal(todayCandidates.scoreTrendSummary(82, 'น่าสนใจ', 'UPTREND'), 'คะแนนแนวโน้ม 82/100 (แข็ง) · ทิศทางราคา: ขาขึ้น')
+assert.equal(todayCandidates.scoreTrendSummary(30, 'ยังไม่เด่น', 'DOWNTREND'), 'คะแนนแนวโน้ม 30/100 (อ่อน) · ทิศทางราคา: ขาลง')
 assert.deepEqual(todayCandidates.countBuyLabels([
   { decision: 'BUY_NOW', buyMode: 'STANDARD', price: 100, entryZone: { low: 98, high: 102 }, rrAtEntry: 2, riskRewardNow: 2 },
   { decision: 'BUY_NOW', buyMode: 'FIRST_TRANCHE', price: 103, entryZone: { low: 98, high: 102 }, rrAtEntry: 2, riskRewardNow: 2 },
@@ -155,6 +164,8 @@ assert.match(todayOpportunitySource, /แตะช่วงราคาไม่
 assert.match(todayOpportunitySource, /ค่าธรรมเนียม.*slippage.*gap/, 'R:R limitations must disclose fees, slippage and gap')
 assert.match(todayOpportunitySource, /ราคา ณ เวลา.*priceAsOf/, 'Source price time must remain visible')
 assert.match(todayOpportunitySource, /ตรวจแผนเมื่อ.*checkedAt/, 'Assessment time must remain separate from price time')
+assert.match(todayOpportunitySource, /pullbackDistanceWarning\(item\.price, item\.plan\.entryZone\)/, 'Only a pullback card should render the long-wait distance warning from its current price and zone')
+assert.ok((todayOpportunitySource.match(/scoreTrendSummary\(item\.score, item\.label, item\.trend\)/g) ?? []).length >= 2, 'Preliminary and confirmed stock summaries must both separate score strength from price direction')
 const todayOpportunityAst = ts.createSourceFile('TodayOpportunities.tsx', todayOpportunitySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 const breakoutCardBranches = (() => {
   const matches = []
@@ -548,7 +559,7 @@ assert.match(today, /earningsUnknownPenalty/, 'Today radar must disclose the pen
 assert.match(today, /priceAsOf/, 'Today radar must show per-ticker price time separately from scan completion')
 assert.match(today, /categoryScores\.relativeStrength/, 'Today radar must show all six score categories')
 assert.match(today, /คะแนนแนวโน้ม/, 'Today radar must label visible scores as trend strength')
-assert.match(today, /trendStrengthLabel\(item\.label\)/, 'Today radar must render the neutral trend-strength label')
+assert.match(today, /scoreTrendSummary\(item\.score, item\.label, item\.trend\)/, 'Today radar must render score strength separately from price direction')
 const todayCandidatesSource = fs.readFileSync('lib/today-candidates.ts', 'utf8')
 assert.match(todayCandidatesSource, /แนวโน้มแข็ง/)
 assert.match(todayCandidatesSource, /แนวโน้มกลางๆ/)

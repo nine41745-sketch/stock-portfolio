@@ -1,5 +1,11 @@
 # Production Release Status
 
+## Version under preparation — v1.41.16
+
+- Scope: แสดงคำแนะนำตั้งแจ้งเตือนเมื่อแผนรอย่ออยู่ห่างเกิน 5% และแยกคะแนนแนวโน้มออกจากทิศทางราคา.
+- Development/Feature History: `Development History — Feature commit 2026-10-31 12:09:31 +07:00 (ไม่ใช่ Production)`.
+- Release state: Local branch only; no push, PR, deployment or promotion. Security Gate and Production Release Gate remain HOLD for v1.41.16.
+
 ## Version under preparation — v1.41.15
 
 - Scope: ทำให้หน้าโอกาสวันนี้อธิบายคะแนนแนวโน้มอย่างเป็นกลาง แสดงคำเตือน gap risk และแยกตัวนับตามป้ายที่เห็นบนการ์ด.
