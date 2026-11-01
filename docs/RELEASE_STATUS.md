@@ -3,8 +3,8 @@
 ## Version under preparation — v1.41.16
 
 - Scope: เปลี่ยน lint toolchain ออกจาก ESLint/minimatch โดยคงกฎ lint ที่ตรวจเทียบแล้ว ใช้ regression และ audit lock แยกสำหรับโค้ดกฎที่ bundle.
-- Development/Feature History: รอ Git commit event จริง; ยังไม่กำหนดเวลาใน Diff.
-- Release state: Local Diff only; Security Gate and Production Release Gate remain HOLD. No merge, deployment or promotion is authorized by this task.
+- Development/Feature History: `2026-11-01T07:24:14Z` (`2026-11-01 14:24:14 +07:00`), from feature commit `008f4a0519d7596b73514409938743a643d14bad`.
+- Release state: Local task-branch commits only; no push, merge, deployment or promotion. Security Gate and Production Release Gate remain HOLD.
 
 ## Version under preparation — v1.41.14
 
