@@ -1,12 +1,23 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
 import test from 'node:test'
-import { Linter } from 'eslint'
 import { recordInterruptedRunSync, writeQaCheckpointSync } from './qa/qa-runner-evidence.mjs'
 import { getVerifiedLocalUserAccessToken, LocalUserAuthError } from './qa/local-user-auth-token.mjs'
+
+const lintTempDir = await mkdtemp(join(tmpdir(), 'stock-portfolio-qa-lint-'))
+test.after(async () => rm(lintTempDir, { recursive: true, force: true }))
+const lintConfigPath = join(lintTempDir, 'oxlint-config.json')
+const lintGlobals = Object.fromEntries(Object.getOwnPropertyNames(globalThis).map(name => [name, 'readonly']))
+for (const name of ['window', 'document', 'localStorage', 'getComputedStyle', 'navigator', 'HTMLElement', 'location', 'innerWidth', 'innerHeight']) {
+  lintGlobals[name] = 'readonly'
+}
+await writeFile(lintConfigPath, JSON.stringify({ env: { browser: true, node: true }, globals: lintGlobals, rules: { 'no-undef': 'error' } }))
 
 async function withTemporaryDirectory(run) {
   const parent = fileURLToPath(new URL('../.local-artifacts/', import.meta.url))
@@ -20,15 +31,28 @@ async function withTemporaryDirectory(run) {
 }
 
 function lintQaModule(source, filename) {
-  const globals = Object.fromEntries(Object.getOwnPropertyNames(globalThis).map(name => [name, 'readonly']))
-  for (const name of ['window', 'document', 'localStorage', 'getComputedStyle', 'navigator', 'HTMLElement', 'location', 'innerWidth', 'innerHeight']) {
-    globals[name] = 'readonly'
+  const sourcePath = join(lintTempDir, `${randomUUID()}-${filename.split(/[\\/]/).at(-1)}`)
+  writeFileSync(sourcePath, source)
+  const oxlintCli = fileURLToPath(new URL('../node_modules/oxlint/bin/oxlint', import.meta.url))
+  const run = spawnSync(process.execPath, [oxlintCli, '--config', lintConfigPath, '--format', 'json', sourcePath], { encoding: 'utf8' })
+  if (run.error) throw run.error
+  let result
+  try {
+    result = JSON.parse(run.stdout)
+  } catch {
+    throw new Error(`Oxlint did not return JSON for ${filename}: ${run.stderr || run.stdout}`)
   }
-  const linter = new Linter({ configType: 'flat' })
-  return linter.verify(source, {
-    languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals },
-    rules: { 'no-undef': 'error' },
-  }, { filename })
+  if (run.status !== 0 && !result.diagnostics?.some(message => message.code === 'eslint(no-undef)')) {
+    throw new Error(`Oxlint failed outside no-undef analysis for ${filename}: ${run.stderr || run.stdout}`)
+  }
+  return (result.diagnostics ?? [])
+    .filter(message => message.code === 'eslint(no-undef)')
+    .map(message => ({
+      ruleId: 'no-undef',
+      line: message.labels?.[0]?.span?.line,
+      column: message.labels?.[0]?.span?.column,
+      message: message.message,
+    }))
 }
 
 async function qaModulePaths(directory) {
@@ -40,7 +64,7 @@ async function qaModulePaths(directory) {
   return nested.flat()
 }
 
-test('QA harness modules have no undefined references under ESLint scope analysis', async () => {
+test('QA harness modules have no undefined references under Oxlint scope analysis', async () => {
   const qaDirectory = fileURLToPath(new URL('./qa/', import.meta.url))
   const findings = []
   for (const path of await qaModulePaths(qaDirectory)) {

@@ -73,6 +73,12 @@ jobs:
       - name: Test synthetic audit evidence summarizer
         run: node scripts/test-npm-audit-summary.mjs
 
+      - name: Install exact vendored lint audit dependencies
+        run: npm ci --prefix scripts/lint/vendor-audit --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+
+      - name: Audit dependencies shipped in the lint bundle
+        run: npm audit --prefix scripts/lint/vendor-audit --audit-level=high
+
       - name: Run Full npm audit and capture sanitized summary
         id: full-audit
         shell: bash

@@ -1,10 +1,10 @@
 # Production Release Status
 
-## Version under preparation — v1.41.15
+## Version under preparation — v1.41.16
 
-- Scope: ทำให้หน้าโอกาสวันนี้อธิบายคะแนนแนวโน้มอย่างเป็นกลาง แสดงคำเตือน gap risk และแยกตัวนับตามป้ายที่เห็นบนการ์ด.
-- Development/Feature History: `2026-10-30T11:08:41Z` (`2026-10-30 18:08:41 +07:00`), from Git commit `415b1b4097e39c0de558bac362ccc0d1d7e3cded`.
-- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.15. No merge or deployment is authorized by this task.
+- Scope: เปลี่ยน lint toolchain ออกจาก ESLint/minimatch โดยคงกฎ lint ที่ตรวจเทียบแล้ว ใช้ regression และ audit lock แยกสำหรับโค้ดกฎที่ bundle.
+- Development/Feature History: รอ Git commit event จริง; ยังไม่กำหนดเวลาใน Diff.
+- Release state: Local Diff only; Security Gate and Production Release Gate remain HOLD. No merge, deployment or promotion is authorized by this task.
 
 ## Version under preparation — v1.41.14
 
