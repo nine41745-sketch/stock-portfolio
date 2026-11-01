@@ -11,6 +11,14 @@ const rootLock = readJson('package-lock.json')
 const inventory = readJson('scripts/lint/vendor-audit/inventory.json')
 const vendorPackage = readJson('scripts/lint/vendor-audit/package.json')
 const vendorLock = readJson('scripts/lint/vendor-audit/package-lock.json')
+const canonicalTextBytes = (bytes) => Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n'))
+const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
+
+assert.equal(
+  sha256(canonicalTextBytes(Buffer.from('first\r\nsecond\r\n'))),
+  sha256(Buffer.from('first\nsecond\n')),
+  'bundle integrity hashes are independent of Windows versus Unix line endings',
+)
 
 assert.equal(packageJson.devDependencies.oxlint, '1.90.0')
 assert.equal(packageJson.devDependencies.eslint, undefined)
@@ -35,7 +43,7 @@ for (const dependency of inventory.packages) {
 
 for (const [relativePath, expectedHash] of Object.entries(inventory.bundles)) {
   const bytes = readFileSync(path.join(root, 'scripts/lint', relativePath))
-  const actualHash = createHash('sha256').update(bytes).digest('hex')
+  const actualHash = sha256(canonicalTextBytes(bytes))
   assert.equal(actualHash, expectedHash, `${relativePath} hash matches its reviewed inventory`)
   assert.equal(bytes.includes(Buffer.from('minimatch')), false, `${relativePath} does not include minimatch`)
 }

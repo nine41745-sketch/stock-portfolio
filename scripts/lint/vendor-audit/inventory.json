@@ -4,7 +4,7 @@
   "bundles": {
     "peerless-plugin.cjs": "b463b00898ee6a87db7d1a76af78bb0424b24602604dd22aa3df6e1c0bdbf360",
     "react-legacy-plugin.cjs": "e1ddf4840be3ee27bf40f39c24976d1b21407c305b3da140c6a4988e0c153385",
-    "react-namespace-plugin.cjs": "5f283003571ae4998c30f0958caa376b5ba56dc2de524a53a3af9790ad1d58e1"
+    "react-namespace-plugin.cjs": "40f0173327385fb3fcdebf9086c482ef0ea9c8ed4e5b46f439e2d3b94108ac0c"
   },
   "packages": [
     {
