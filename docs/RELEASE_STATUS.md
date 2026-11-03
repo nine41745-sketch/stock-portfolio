@@ -1,5 +1,11 @@
 # Production Release Status
 
+## Version under preparation — v1.41.16
+
+- Scope: ให้ Preview ของทุก branch ใช้ฐานข้อมูล Production ได้เมื่อเจ้าของตั้ง `NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH` เป็น `*` เองบน Vercel (การตัดสินใจของเจ้าของ 2026-11-03) ถ้าไม่ตั้งตัวแปรนี้ guard ยังปิด Preview เหมือนเดิม. Cron ยังถูกบล็อกบน Preview ทุกตัว.
+- Development/Feature History: `2026-11-03T03:46:28Z` (`2026-11-03 10:46:28 +07:00`), from local Git commit `d779baf6891d3c51e5db912df6cef9ac6413ffa6`.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.16. No merge, deployment or Vercel environment change is authorized by this task. Preview behavior on Vercel is NOT VERIFIED until the owner sets the variables and a Preview is inspected.
+
 ## Version under preparation — v1.41.15
 
 - Scope: ทำให้หน้าโอกาสวันนี้อธิบายคะแนนแนวโน้มอย่างเป็นกลาง แสดงคำเตือน gap risk และแยกตัวนับตามป้ายที่เห็นบนการ์ด.
