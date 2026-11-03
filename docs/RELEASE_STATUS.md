@@ -1,5 +1,11 @@
 # Production Release Status
 
+## Version under preparation — v1.41.20
+
+- Scope: Stock Check อธิบายว่าค่า P/E มาจาก Finnhub และชนิดอาจเป็นรายปีปรับค่าหรือ TTM.
+- Development/Feature History: `2026-11-03T06:06:34Z` (`2026-11-03 13:06:34 +07:00`), from local Git commit `c377b580fc4f6137b73284eb0256a4a9783d4ccc`.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.20. No merge, deployment or Production change is authorized by this task.
+
 ## Version under preparation — v1.41.19
 
 - Scope: แก้คุณภาพข้อมูลสแกน (ราคาเก่า, R:R, สัญญาณขัดกัน, volume ระหว่างตลาดเปิด, สัญลักษณ์ BRK.B, คะแนน/วันประกาศงบของ Discovery, ป้ายเวลาราคา, prompt ของ AI) จากผลทดสอบแบบอ่านอย่างเดียวบน Production.
