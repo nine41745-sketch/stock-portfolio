@@ -188,4 +188,14 @@ assert.match(fs.readFileSync('app/api/prices/route.ts', 'utf8'), /peKind: d\.peK
 assert.match(fs.readFileSync('app/dashboard/page.tsx', 'utf8'), /peKind: d\?\.peKind \?\? null/, 'Server-rendered holdings must carry the P/E kind')
 const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
 assert.ok(dashboardSource.includes('peKindLabel(h.peKind)') && dashboardSource.includes('peKindHint(h.peKind)'), 'Dashboard must label the P/E kind in table and card views')
+assert.equal(fundamentals.EARNINGS_WINDOW_DAYS, 60, 'The earnings window constant must be shared by the provider and the label')
+assert.match(fundamentals.earningsCalendarLabel({ status: 'missing', date: null, hour: null }, 'ไม่มีข้อมูลในแหล่งนี้'), /ไม่พบนัดประกาศผลใน 60 วันข้างหน้า/, 'An empty calendar window must not read as missing data')
+assert.doesNotMatch(fundamentals.earningsCalendarLabel({ status: 'missing', date: null, hour: null }, 'ไม่มีข้อมูลในแหล่งนี้'), /^ไม่มีข้อมูลในแหล่งนี้/)
+assert.equal(fundamentals.earningsCalendarLabel({ status: 'available', date: '2027-01-28', hour: 'amc' }, 'มีข้อมูล'), 'มีข้อมูล · 2027-01-28 (AMC)')
+assert.equal(fundamentals.earningsCalendarLabel({ status: 'available', date: '2027-01-28', hour: null }, 'มีข้อมูล'), 'มีข้อมูล · 2027-01-28')
+for (const status of ['provider_error', 'rate_limited', 'unavailable', 'stale']) {
+  assert.equal(fundamentals.earningsCalendarLabel({ status, date: null, hour: null }, `label-${status}`), `label-${status}`, 'Real provider failures must keep their own status label')
+}
+assert.ok(provider.includes('EARNINGS_WINDOW_DAYS,') && !/const EARNINGS_WINDOW_DAYS/.test(provider), 'Provider must use the shared window constant')
+assert.ok(fs.readFileSync('components/portfolio/FundamentalsPanel.tsx', 'utf8').includes('earningsCalendarLabel(result.earnings'), 'Panel must render the earnings calendar through the shared label')
 console.log('✓ P/E kind and additional metric coverage tests passed')
