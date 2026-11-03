@@ -114,6 +114,14 @@ Report exact SHA and passed/failed/skipped/unrun checks. Separate warnings/error
 - This exception does not authorize direct database tooling, migrations, schema changes, manual data changes, Secrets access, Preview environment changes outside branch-scoped public identifiers, Merge, Promote or Production deployment.
 - Do not extend this exception to another PR, branch, Preview deployment or future task without fresh owner approval.
 
+### Owner decision 2026-11-03 — Preview uses the Production database on every branch
+
+- The owner chose in chat to return to the original practice: SSO-protected Vercel Previews of any non-`main` branch may use the Production Supabase project through the application's normal authenticated UI/API. This supersedes the "PR #115 only" limit above for Preview branches, and only for them.
+- It is active only while the Vercel Preview variable `NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH` is exactly `*` and the public identifier `NEXT_PUBLIC_SUPABASE_PRODUCTION_PROJECT_REF` is set for Preview. Removing either variable restores isolation without a code change. The Preview must still report its Git branch, run on its own `*.vercel.app` deployment host (never the Production alias) and target exactly `<production-ref>.supabase.co`; otherwise the guard fails closed.
+- Production Cron endpoints stay blocked on every Preview. Do not invoke Cron endpoints during QA.
+- Agent QA on such a Preview is read-only by default: no trades, transactions, PIN changes, saved plans or `/api/analyze` unless the owner's task names that exact action. Direct database tooling, migrations, schema or manual data changes, Secrets access, Merge, Promote and Production deployment remain separately gated.
+- Setting or changing the Vercel variables is a Vercel configuration change and needs the owner's explicit approval each time.
+
 ## Version and changelog for every change
 
 - Starting with the next task, every distinct delivered change must receive a new version, including features, UI/UX changes, fixes, security or dependency updates, documentation, tests and maintenance. Treat the files and commits belonging to one coherent change as one versioned delivery, not as separate releases for each save or commit.
