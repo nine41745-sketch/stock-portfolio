@@ -1,8 +1,8 @@
-import { changelog as previousChangelog } from './changelog-v14115'
+import { changelog as previousChangelog } from './changelog-v14120'
 import type { ChangelogEntry } from './changelog'
 
 const current: ChangelogEntry = {
-  version: 'v1.41.16',
+  version: 'v1.41.21',
   date: 'Development History — Feature commit 2026-10-31 12:09:31 +07:00 (ไม่ใช่ Production)',
   changes: [
     'การ์ดรอย่อที่ต้องรอราคาลดลงเกิน 5% แนะนำให้ตั้งแจ้งเตือนที่ขอบบนของโซน โดยยังแสดงการ์ดและสถานะเดิม',

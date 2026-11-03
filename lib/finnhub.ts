@@ -21,11 +21,14 @@ export interface StockMetrics {
   week52Low: number | null
 }
 
-export async function getQuote(symbol: string, signal?: AbortSignal): Promise<FinnhubQuote | null> {
+// `fresh` skips the Next data cache. The default 60s revalidate is stale-while-revalidate, so the first
+// request after a long idle period (e.g. a weekend) can still be served the previous session's price.
+// Buy-decision paths (Stock Check / Today Opportunities) must pass fresh: true.
+export async function getQuote(symbol: string, signal?: AbortSignal, options?: { fresh?: boolean }): Promise<FinnhubQuote | null> {
   if (!KEY) return null
   try {
-    const res = await fetch(`${BASE}/quote?symbol=${symbol}&token=${KEY}`, {
-      next: { revalidate: 60 },
+    const res = await fetch(`${BASE}/quote?symbol=${encodeURIComponent(symbol)}&token=${KEY}`, {
+      ...(options?.fresh ? { cache: 'no-store' as const } : { next: { revalidate: 60 } }),
       ...(signal ? { signal } : {}),
     })
     if (!res.ok) return null

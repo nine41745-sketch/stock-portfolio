@@ -22,7 +22,11 @@ export interface ScannerTechnicalInput {
   ema50?: number | null
   support: number | null
   resistance: number | null
+  // Multi-touch structural support. When price is already below it, the short 20-bar low is not a
+  // trustworthy "Near Support" setup.
+  importantSupport?: number | null
   volumeRatio: number | null
+  volumeBasis?: 'latest-session' | 'last-completed-session'
   week52High?: number | null
   week52Low?: number | null
   relativeStrength20?: number | null
@@ -84,6 +88,17 @@ function distancePct(price: number | null | undefined, reference: number | null 
   return ((price - reference) / reference) * 100
 }
 
+// While the US session is open the ratio describes the last completed session, which cannot confirm a
+// breakout made at today's price.
+function breakoutVolumeConfirmed(input: ScannerTechnicalInput): boolean {
+  return input.volumeBasis !== 'last-completed-session' && (input.volumeRatio ?? 0) >= 1.2
+}
+
+function importantSupportBroken(input: ScannerTechnicalInput): boolean {
+  const distance = distancePct(input.lastClose, input.importantSupport)
+  return distance !== null && distance < 0
+}
+
 function classifySetup(input: ScannerTechnicalInput): ScannerSetup {
   const price = input.lastClose
   const supportDistance = distancePct(price, input.support)
@@ -105,14 +120,14 @@ function classifySetup(input: ScannerTechnicalInput): ScannerSetup {
     (input.weeklyRsi14 ?? 0) > 75
 
   if (materialBreakdown || relativeWeakness || momentumStress) return 'AVOID'
-  if (breakout && (input.volumeRatio ?? 0) >= 1.2) return 'BREAKOUT'
+  if (breakout && breakoutVolumeConfirmed(input)) return 'BREAKOUT'
   if (input.trend === 'DOWNTREND') return 'WAIT'
   if (
     input.trend === 'UPTREND' &&
     ema50Distance !== null && ema50Distance >= -1 && ema50Distance <= 4 &&
     (input.rsi14 ?? 0) >= 40 && (input.rsi14 ?? 100) <= 65
   ) return 'PULLBACK'
-  if (supportDistance !== null && supportDistance >= 0 && supportDistance <= 5) return 'NEAR_SUPPORT'
+  if (supportDistance !== null && supportDistance >= 0 && supportDistance <= 5 && !importantSupportBroken(input)) return 'NEAR_SUPPORT'
   if (
     input.trend === 'UPTREND' &&
     (input.macdHistogram ?? 0) > 0 &&
@@ -203,9 +218,12 @@ export function scoreScannerCandidate(input: ScannerTechnicalInput): ScannerScor
   if (!priceLocationInputsPresent) {
     warnings.push('ข้อมูลตำแหน่งราคาไม่ครบ คะแนนหมวดนี้เป็น 0')
   } else {
-    if (breakout && (input.volumeRatio ?? 0) >= 1.2) {
+    if (breakout && breakoutVolumeConfirmed(input)) {
       priceLocationScore += 8
       reasons.push('Breakout เหนือแนวต้านเดิมพร้อม Volume สนับสนุน')
+    } else if (supportDistance !== null && supportDistance >= 0 && supportDistance <= 5 && importantSupportBroken(input)) {
+      priceLocationScore += 3
+      warnings.push('ราคาหลุดแนวรับสำคัญแล้ว แม้ยังอยู่ใกล้แนวรับ 20 วัน — แนวรับระยะสั้นยังไม่ยืนยัน')
     } else if (supportDistance !== null && supportDistance >= 0 && supportDistance <= 5) {
       priceLocationScore += 8
       reasons.push('ราคาอยู่ใกล้แนวรับ 20 วันก่อนหน้า')

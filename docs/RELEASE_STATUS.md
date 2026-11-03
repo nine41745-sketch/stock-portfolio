@@ -1,10 +1,35 @@
 # Production Release Status
 
-## Version under preparation — v1.41.16
+## Version under preparation — v1.41.21
 
-- Scope: แสดงคำแนะนำตั้งแจ้งเตือนเมื่อแผนรอย่ออยู่ห่างเกิน 5% และแยกคะแนนแนวโน้มออกจากทิศทางราคา.
+- Scope: แสดงคำแนะนำตั้งแจ้งเตือนเมื่อแผนรอย่ออยู่ห่างเกิน 5% และแยกคะแนนแนวโน้มออกจากทิศทางราคา (PR #138, เรียงเลขใหม่จาก v1.41.16 หลัง main ไปถึง v1.41.20).
 - Development/Feature History: `Development History — Feature commit 2026-10-31 12:09:31 +07:00 (ไม่ใช่ Production)`.
-- Release state: Local branch only; no push, PR, deployment or promotion. Security Gate and Production Release Gate remain HOLD for v1.41.16.
+- Release state: Local Diff on a Draft PR; Security Gate and Production Release Gate remain HOLD for v1.41.21. No merge, deployment or Production change is authorized by this task.
+
+## Version under preparation — v1.41.20
+
+- Scope: Stock Check อธิบายว่าค่า P/E มาจาก Finnhub และชนิดอาจเป็นรายปีปรับค่าหรือ TTM.
+- Development/Feature History: `2026-11-03T06:06:34Z` (`2026-11-03 13:06:34 +07:00`), from local Git commit `c377b580fc4f6137b73284eb0256a4a9783d4ccc`.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.20. No merge, deployment or Production change is authorized by this task.
+
+## Version under preparation — v1.41.19
+
+- Scope: แก้คุณภาพข้อมูลสแกน (ราคาเก่า, R:R, สัญญาณขัดกัน, volume ระหว่างตลาดเปิด, สัญลักษณ์ BRK.B, คะแนน/วันประกาศงบของ Discovery, ป้ายเวลาราคา, prompt ของ AI) จากผลทดสอบแบบอ่านอย่างเดียวบน Production.
+- Development/Feature History: `2026-11-03T03:18:27Z` (`2026-11-03 10:18:27 +07:00`), from local Git commit `df5c478de10f5d736c3827699a0508bd68b03e8a`.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.19. No merge, deployment or Production change is authorized by this task. Behavior on a live Preview/Production deployment is NOT VERIFIED; the cache-staleness cause of old prices is an unconfirmed hypothesis.
+
+## Version under preparation — v1.41.18
+
+- Scope: ให้ Preview ของทุก branch ใช้ฐานข้อมูล Production ได้เมื่อเจ้าของตั้ง `NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH` เป็น `*` เองบน Vercel (การตัดสินใจของเจ้าของ 2026-11-03) ถ้าไม่ตั้งตัวแปรนี้ guard ยังปิด Preview เหมือนเดิม. Cron ยังถูกบล็อกบน Preview ทุกตัว.
+- Development/Feature History: `2026-11-03T03:46:28Z` (`2026-11-03 10:46:28 +07:00`), from local Git commit `d779baf6891d3c51e5db912df6cef9ac6413ffa6`.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.18. No merge, deployment or Production change is authorized by this task. The owner set the Vercel Preview variables on 2026-11-03; Preview behavior on Vercel remains NOT VERIFIED until a Preview built after this change is inspected.
+
+## Version under preparation — v1.41.17
+
+- Scope: ปรับ security-audit ให้ยกเว้น GHSA-g3hv-75wg-m249 ได้เฉพาะกรณี dev-only ทั้ง dependency chain พร้อมวันหมดอายุ 2026-12-15; Production-only audit ยังไม่มีข้อยกเว้น.
+- Development/Feature History: `2026-10-31T05:48:47Z` (`2026-10-31 12:48:47 +07:00`), from local Git commit; no Production time is claimed.
+- Release state: local branch only; no push or deployment. Security Gate และ Production Release Gate คง HOLD; งานนี้เปลี่ยนเฉพาะ CI/reporting และไฟล์เวอร์ชัน/เอกสาร ไม่มีการเปลี่ยน runtime.
+
 
 ## Version under preparation — v1.41.15
 

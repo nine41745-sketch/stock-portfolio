@@ -21,10 +21,12 @@ async function importTsModule(filePath, transform = source => source) {
 
 const perf = await importTsModule('lib/performance.ts')
 globalThis.__testPerformance = perf
+globalThis.__testProviderSymbol = await importTsModule('lib/provider-symbol.ts')
 globalThis.__testYahoo = { chart: undefined }
 const historyModule = await importTsModule('lib/performance-history.ts', source => source
   .replace(/import YahooFinance from 'yahoo-finance2'\r?\n/, '')
   .replace(/import \{[\s\S]*?\} from '@\/lib\/performance'\r?\n/, 'const { buildPerformanceCurve } = globalThis.__testPerformance\n')
+  .replace(/import \{ toHistorySymbol \} from '@\/lib\/provider-symbol'\r?\n/, 'const { toHistorySymbol } = globalThis.__testProviderSymbol\n')
   .replace('const yahooFinance = new YahooFinance()', 'const yahooFinance = globalThis.__testYahoo'))
 
 const baseTransactions = [

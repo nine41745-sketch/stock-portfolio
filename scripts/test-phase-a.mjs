@@ -317,6 +317,7 @@ function scannerApiHarness({
     },
     '@/lib/all-time-high': { getAllTimeHigh: async symbol => { marketCalls.push(['ath', symbol]); return { allTimeHigh: 120 } } },
     '@/lib/ath': { getAthState: () => ({ distancePct: -16.7, status: 'below' }) },
+    '@/lib/risk-reward': load('lib/risk-reward.ts'),
   })
   return {
     queryCalls,

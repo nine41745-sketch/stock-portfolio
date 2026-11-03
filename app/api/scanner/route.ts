@@ -8,6 +8,7 @@ import { getTechnicalIndicators, TechnicalIndicators } from '@/lib/indicators'
 import { dedupeScannerSymbols, MAX_SCAN_SYMBOLS, SCANNER_UNIVERSES, ScannerUniverseKey, scoreScannerCandidate } from '@/lib/stock-scanner'
 import { getAllTimeHigh } from '@/lib/all-time-high'
 import { getAthState } from '@/lib/ath'
+import { calcRiskReward } from '@/lib/risk-reward'
 
 export const maxDuration = 45
 
@@ -21,10 +22,7 @@ function diffOrNull(a: number | null, b: number | null): number | null {
 function riskReward(price: number | null, support: number | null, resistance: number | null): number | null {
   if (price === null || support === null || resistance === null) return null
   if (!(support < price && price < resistance)) return null
-  const risk = price - support
-  const reward = resistance - price
-  if (risk <= 0 || reward <= 0) return null
-  return Math.round((reward / risk) * 100) / 100
+  return calcRiskReward(price, support, resistance)
 }
 
 async function getMineSymbols(
@@ -93,7 +91,9 @@ async function scanOne(symbol: string, spy: TechnicalIndicators) {
     ema50: technical.ema50,
     support: technical.scannerSupport,
     resistance: technical.scannerResistance,
+    importantSupport: technical.importantSupport,
     volumeRatio: technical.scannerVolumeRatio,
+    volumeBasis: technical.scannerVolumeBasis,
     week52High: technical.week52High,
     week52Low: technical.week52Low,
     relativeStrength20,
