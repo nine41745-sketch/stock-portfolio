@@ -8,6 +8,7 @@ import {
   isCurrentProductionDeployment,
   assertSupabaseTargetIsSafeForServer,
   isProductionCronRequestAllowed,
+  PREVIEW_PRODUCTION_ACCESS_ALL_BRANCHES,
 } from '../lib/supabase/runtime-safety.mjs'
 
 const syntheticRef = 'synthetic-project-1234'
@@ -89,6 +90,49 @@ await assert.rejects(
   }),
   /not isolated/,
   'The server guard must reject Production Supabase from any other Preview branch'
+)
+
+// Owner decision (2026-11-03): an explicit '*' opt-in approves every Preview branch, but nothing else is relaxed.
+const allBranchesPreviewConfig = {
+  ...explicitlyApprovedPreviewProductionConfig,
+  previewProductionAccessBranch: PREVIEW_PRODUCTION_ACCESS_ALL_BRANCHES,
+  gitCommitRef: 'fix/any-preview-branch',
+}
+assert.equal(PREVIEW_PRODUCTION_ACCESS_ALL_BRANCHES, '*')
+assert.doesNotThrow(
+  () => assertSupabaseTargetIsSafe(allBranchesPreviewConfig),
+  'The all-branches opt-in must let any Preview branch reach its exact Production Supabase target'
+)
+await assert.doesNotReject(
+  () => assertSupabaseTargetIsSafeForServer(allBranchesPreviewConfig),
+  'The server guard must honor the all-branches opt-in'
+)
+for (const [overrides, reason] of [
+  [{ previewProductionAccessBranch: undefined }, 'without the opt-in variable isolation must be restored for every branch'],
+  [{ previewProductionAccessBranch: '' }, 'an empty opt-in must not approve any branch'],
+  [{ previewProductionAccessBranch: '**' }, 'only the exact marker approves all branches'],
+  [{ previewProductionAccessBranch: 'fix/*' }, 'branch patterns are not supported'],
+  [{ gitCommitRef: undefined }, 'a Preview that cannot report its Git branch must fail closed'],
+  [{ gitCommitRef: '  ' }, 'a blank Git branch must fail closed'],
+  [{ productionProjectRef: undefined }, 'the exact Production project ref is still required'],
+  [{ productionProjectRef: 'short' }, 'a malformed Production project ref must fail closed'],
+  [{ supabaseUrl: 'https://other-project.supabase.co' }, 'the target must still equal the exact Production project'],
+  [{ supabaseUrl: `https://${productionRef}.supabase.co.evil.example` }, 'hostname suffix tricks must still be rejected'],
+  [{ requestHost: 'attacker.example.test' }, 'the request must still match the Preview deployment host'],
+  [{ requestHost: productionHost, deploymentUrl: productionHost }, 'the Production hostname must never be treated as a Preview'],
+  [{ requestHost: 'preview.example.com', deploymentUrl: 'preview.example.com' }, 'only *.vercel.app deployment hosts qualify'],
+  [{ deploymentEnv: 'production' }, 'the opt-in must not alter Production environment rules'],
+]) {
+  assert.throws(
+    () => assertSupabaseTargetIsSafe({ ...allBranchesPreviewConfig, ...overrides }),
+    /not isolated/,
+    reason
+  )
+}
+await assert.rejects(
+  () => assertSupabaseTargetIsSafeForServer({ ...allBranchesPreviewConfig, previewProductionAccessBranch: undefined }),
+  /not isolated/,
+  'The server guard must fail closed again once the opt-in variable is removed'
 )
 assert.doesNotThrow(
   () => assertSupabaseTargetIsSafe({
