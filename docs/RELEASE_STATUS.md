@@ -1,5 +1,11 @@
 # Production Release Status
 
+## Version under preparation — v1.41.21
+
+- Scope: แสดงคำแนะนำตั้งแจ้งเตือนเมื่อแผนรอย่ออยู่ห่างเกิน 5% และแยกคะแนนแนวโน้มออกจากทิศทางราคา (PR #138, เรียงเลขใหม่จาก v1.41.16 หลัง main ไปถึง v1.41.20).
+- Development/Feature History: `Development History — Feature commit 2026-10-31 12:09:31 +07:00 (ไม่ใช่ Production)`.
+- Release state: Local Diff on a Draft PR; Security Gate and Production Release Gate remain HOLD for v1.41.21. No merge, deployment or Production change is authorized by this task.
+
 ## Version under preparation — v1.41.20
 
 - Scope: Stock Check อธิบายว่าค่า P/E มาจาก Finnhub และชนิดอาจเป็นรายปีปรับค่าหรือ TTM.
