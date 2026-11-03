@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { breakoutCardDetails, countBuyLabels, firstTrancheLabelReason, formatBangkokTimestamp, hasPurchasePlan, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, pullbackPlanDetails, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel, trendStrengthLabel } from '@/lib/today-candidates'
+import { breakoutCardDetails, countBuyLabels, firstTrancheLabelReason, formatBangkokTimestamp, formatPriceTimeLabel, hasPurchasePlan, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, pullbackPlanDetails, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel, trendStrengthLabel } from '@/lib/today-candidates'
 import { chunkScannerSymbols, dedupeScannerSymbols, SCANNER_UNIVERSES, type ScannerCategoryScores, type ScannerScore } from '@/lib/stock-scanner'
 
 type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
@@ -76,7 +76,9 @@ function fmtPrice(value: number | null): string {
 }
 
 function fmtRatio(value: number | null): string {
-  return value === null ? '—' : `${value.toFixed(2)}:1`
+  if (value === null) return '—'
+  // Engine values above 10 are extreme ratios from a very tight stop; show them as 10+ instead of an exact-looking number.
+  return value >= 10 ? '10+:1' : `${value.toFixed(2)}:1`
 }
 
 function fmtMidpoint(value: number): string {
@@ -370,7 +372,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
                 <span>• {setupLabel(item.setup)}</span>
                 {item.plan.decision === 'WAIT_FOR_BREAKOUT' ? null : <span>• อัตราผลตอบแทนต่อความเสี่ยง ณ จุดเข้า {fmtRatio(item.plan.riskRewardAtEntry)}</span>}
                 {item.earnings && <span>• คาดประกาศงบใน {item.earnings.daysUntil} วัน</span>}
-                <span>• ราคา ณ เวลา {formatBangkokTimestamp(item.priceAsOf)} · แหล่งข้อมูล {item.priceSourceLabel}</span>
+                <span>• {formatPriceTimeLabel(item.priceAsOf, item.priceSourceLabel)} · แหล่งข้อมูล {item.priceSourceLabel}</span>
                 <span>• ตรวจแผนเมื่อ {formatBangkokTimestamp(item.checkedAt)}</span>
               </div>
 

@@ -1,5 +1,6 @@
 import { ATR } from 'technicalindicators'
 import YahooFinance from 'yahoo-finance2'
+import { toHistorySymbol } from '@/lib/provider-symbol'
 
 const yahooFinance = new YahooFinance()
 
@@ -11,7 +12,7 @@ export async function getAtr14(symbol: string): Promise<number | null> {
   try {
     const period1 = new Date()
     period1.setMonth(period1.getMonth() - 4)
-    const result = await yahooFinance.chart(symbol, { period1, interval: '1d' })
+    const result = await yahooFinance.chart(toHistorySymbol(symbol), { period1, interval: '1d' })
     const quotes = (result.quotes ?? []).filter(q =>
       typeof q.high === 'number' && Number.isFinite(q.high) &&
       typeof q.low === 'number' && Number.isFinite(q.low) &&

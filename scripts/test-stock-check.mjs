@@ -153,7 +153,9 @@ assert.match(todayOpportunitySource, /ขอบบนของช่วงเข
 assert.match(todayOpportunitySource, /ราคากลางที่ใช้คำนวณ R:R/, 'Pullback card must identify the midpoint used for R:R')
 assert.match(todayOpportunitySource, /แตะช่วงราคาไม่ได้ยืนยันว่าจะซื้อได้ที่ราคากลาง/, 'Touching the zone must not promise a midpoint fill')
 assert.match(todayOpportunitySource, /ค่าธรรมเนียม.*slippage.*gap/, 'R:R limitations must disclose fees, slippage and gap')
-assert.match(todayOpportunitySource, /ราคา ณ เวลา.*priceAsOf/, 'Source price time must remain visible')
+assert.match(todayOpportunitySource, /formatPriceTimeLabel\(item\.priceAsOf, item\.priceSourceLabel\)/, 'Source price time must remain visible')
+assert.match(todayCandidates.formatPriceTimeLabel('2026-11-02T16:00:00Z', 'Finnhub'), /^ราคา ณ เวลา /, 'Finnhub quotes keep the provider clock time')
+assert.match(todayCandidates.formatPriceTimeLabel('2026-11-02T14:30:00Z', 'Yahoo'), /^ราคาแท่งวันล่าสุด \(วันซื้อขาย /, 'Historical fallback must show the trading day, not the bar-open clock time')
 assert.match(todayOpportunitySource, /ตรวจแผนเมื่อ.*checkedAt/, 'Assessment time must remain separate from price time')
 const todayOpportunityAst = ts.createSourceFile('TodayOpportunities.tsx', todayOpportunitySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 const breakoutCardBranches = (() => {

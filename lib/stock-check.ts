@@ -364,6 +364,16 @@ export function buildStockCheck(input: StockCheckInput): StockCheckPlan {
     buyMode = null
   }
 
+  // R:R is only a "supporting point" when the plan is actually tradable; next to AVOID it contradicts the
+  // decision, so move it to the risk list with an explicit caveat.
+  if (decision === 'AVOID') {
+    const rrIndex = reasons.findIndex(reason => reason.startsWith('R:R '))
+    if (rrIndex >= 0) {
+      reasons.splice(rrIndex, 1)
+      warnings.push(`R:R ตามแผน ${rrAtEntry!.toFixed(2)}:1 ไม่ใช้เป็นเหตุผลซื้อ เพราะโครงสร้างราคาเสีย`)
+    }
+  }
+
   let summary: string
   if (awaitingEarnings) {
     summary = 'รอตรวจ Earnings ก่อนซื้อ'

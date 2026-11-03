@@ -1,5 +1,11 @@
 # Production Release Status
 
+## Version under preparation — v1.41.19
+
+- Scope: แก้คุณภาพข้อมูลสแกน (ราคาเก่า, R:R, สัญญาณขัดกัน, volume ระหว่างตลาดเปิด, สัญลักษณ์ BRK.B, คะแนน/วันประกาศงบของ Discovery, ป้ายเวลาราคา, prompt ของ AI) จากผลทดสอบแบบอ่านอย่างเดียวบน Production.
+- Development/Feature History: `2026-11-03T03:18:27Z` (`2026-11-03 10:18:27 +07:00`), from local Git commit `df5c478de10f5d736c3827699a0508bd68b03e8a`.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.19. No merge, deployment or Production change is authorized by this task. Behavior on a live Preview/Production deployment is NOT VERIFIED; the cache-staleness cause of old prices is an unconfirmed hypothesis.
+
 ## Version under preparation — v1.41.18
 
 - Scope: ให้ Preview ของทุก branch ใช้ฐานข้อมูล Production ได้เมื่อเจ้าของตั้ง `NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH` เป็น `*` เองบน Vercel (การตัดสินใจของเจ้าของ 2026-11-03) ถ้าไม่ตั้งตัวแปรนี้ guard ยังปิด Preview เหมือนเดิม. Cron ยังถูกบล็อกบน Preview ทุกตัว.

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requirePhaseAPortfolio, PhaseAError, phaseAErrorResponse } from '@/lib/phase-a-context'
 import { getTechnicalIndicators } from '@/lib/indicators'
-import { getUpcomingEarnings } from '@/lib/finnhub'
+import { getUpcomingEarningsStatus } from '@/lib/finnhub'
 import { getAllTimeHigh } from '@/lib/all-time-high'
 import { DiscoveryDeadline, type DiscoveryProviderContext } from '@/lib/discovery-deadline'
 import { SCANNER_UNIVERSES, scoreScannerCandidate } from '@/lib/stock-scanner'
@@ -26,6 +26,7 @@ interface DiscoveryItem extends DiscoveryCandidate {
   dataSource: DiscoverySource
   freshness: 'fresh' | 'stale' | 'unknown'
   earningsDays: number | null
+  earningsStatus: 'found' | 'none' | 'unknown'
   allTimeHigh: number | null
   inHoldings: boolean
   inWatchlist: boolean
@@ -35,7 +36,7 @@ function unavailable(symbol: string, warning: string, inHoldings: boolean, inWat
   return {
     symbol, status: 'unavailable', score: null, label: null, setup: null,
     trend: null, reasons: [], categoryScores: null, price: null,
-    relativeStrength20: null, relativeStrength60: null, earningsDays: null,
+    relativeStrength20: null, relativeStrength60: null, earningsDays: null, earningsStatus: 'unknown',
     lastBarAt: null, dataSource: 'unavailable', freshness: discoveryFreshness(null, now),
     allTimeHigh: null, inHoldings, inWatchlist, warning,
   }
@@ -55,7 +56,7 @@ async function scanSymbol(
   // Same indicator + existing deterministic Scanner scorer, not a second scoring model.
   // Each of three existing adapters runs once per symbol; errors are isolated.
   const [indicators, earnings, ath] = await Promise.allSettled([
-    getTechnicalIndicators(symbol, providers), getUpcomingEarnings(symbol, providers), getAllTimeHigh(symbol, providers),
+    getTechnicalIndicators(symbol, providers), getUpcomingEarningsStatus(symbol, providers), getAllTimeHigh(symbol, providers),
   ])
   if (indicators.status !== 'fulfilled') return unavailable(symbol, 'โหลดข้อมูลทางเทคนิคไม่สำเร็จ', inHoldings, inWatchlist, now)
   const t = indicators.value
@@ -74,19 +75,23 @@ async function scanSymbol(
   }
   const relativeStrength20 = Math.round((t.return20dPct - spy20) * 100) / 100
   const relativeStrength60 = Math.round((t.return60dPct - spy60) * 100) / 100
-  const earningsDays = earnings.status === 'fulfilled' ? earnings.value?.daysUntil ?? null : null
+  // Same earnings status as Scanner: "no earnings in 60 days" (none) is not the same as "lookup failed" (unknown).
+  const earningsStatus = earnings.status === 'fulfilled' ? earnings.value.status : 'unknown'
+  const earningsDays = earnings.status === 'fulfilled' && earnings.value.status === 'found' ? earnings.value.earnings.daysUntil : null
+  const resolvedEarningsStatus = earningsStatus === 'found' && earningsDays === null ? 'unknown' : earningsStatus
   const scored = scoreScannerCandidate({
     trend: t.trend, rsi14: t.rsi14, weeklyRsi14: t.weeklyRsi14,
     macdHistogram: t.macd.histogram, lastClose: t.lastClose, ema50: t.ema50,
     support: t.scannerSupport, resistance: t.scannerResistance,
-    volumeRatio: t.scannerVolumeRatio, week52High: t.week52High, week52Low: t.week52Low,
+    importantSupport: t.importantSupport,
+    volumeRatio: t.scannerVolumeRatio, volumeBasis: t.scannerVolumeBasis, week52High: t.week52High, week52Low: t.week52Low,
     relativeStrength20, relativeStrength60, earningsDays,
-    earningsStatus: earningsDays === null ? 'unknown' : 'found',
+    earningsStatus: resolvedEarningsStatus,
   })
   return {
     symbol, status: 'available', score: scored.score, label: scored.label, setup: scored.setup,
     trend: t.trend, reasons: scored.reasons, categoryScores: scored.categoryScores,
-    price: t.lastClose, relativeStrength20, relativeStrength60, earningsDays,
+    price: t.lastClose, relativeStrength20, relativeStrength60, earningsDays, earningsStatus: resolvedEarningsStatus,
     lastBarAt, dataSource: source, freshness,
     allTimeHigh: ath.status === 'fulfilled' ? ath.value.allTimeHigh : null,
     inHoldings, inWatchlist,
