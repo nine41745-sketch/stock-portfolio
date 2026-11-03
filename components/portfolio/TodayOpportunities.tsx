@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { breakoutCardDetails, countBuyLabels, firstTrancheLabelReason, formatBangkokTimestamp, hasPurchasePlan, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, pullbackPlanDetails, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel, trendStrengthLabel } from '@/lib/today-candidates'
+import { breakoutCardDetails, countBuyLabels, firstTrancheLabelReason, formatBangkokTimestamp, formatPriceTimeLabel, hasPurchasePlan, isTodayOpportunityEligible, normalizeOpportunityDecision, opportunityLabel as formatOpportunityLabel, preliminaryRank, pullbackPlanDetails, selectAutomatic, selectPreliminary, setupLabel, shouldShowEarningsUnknownBanner, trendLabel, trendStrengthLabel } from '@/lib/today-candidates'
 import { chunkScannerSymbols, dedupeScannerSymbols, SCANNER_UNIVERSES, type ScannerCategoryScores, type ScannerScore } from '@/lib/stock-scanner'
 
 type ScannerSetup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
@@ -370,7 +370,7 @@ export default function TodayOpportunities({ holdingSymbols }: { holdingSymbols:
                 <span>• {setupLabel(item.setup)}</span>
                 {item.plan.decision === 'WAIT_FOR_BREAKOUT' ? null : <span>• อัตราผลตอบแทนต่อความเสี่ยง ณ จุดเข้า {fmtRatio(item.plan.riskRewardAtEntry)}</span>}
                 {item.earnings && <span>• คาดประกาศงบใน {item.earnings.daysUntil} วัน</span>}
-                <span>• ราคา ณ เวลา {formatBangkokTimestamp(item.priceAsOf)} · แหล่งข้อมูล {item.priceSourceLabel}</span>
+                <span>• {formatPriceTimeLabel(item.priceAsOf, item.priceSourceLabel)} · แหล่งข้อมูล {item.priceSourceLabel}</span>
                 <span>• ตรวจแผนเมื่อ {formatBangkokTimestamp(item.checkedAt)}</span>
               </div>
 

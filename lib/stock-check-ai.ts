@@ -78,6 +78,27 @@ async function callModel(model: string, prompt: string): Promise<string> {
   return data.choices?.[0]?.message?.content ?? ''
 }
 
+// Relationships are computed here so the model never has to infer (and mis-state) them from raw numbers.
+export function buildStockCheckFacts(snapshot: Pick<StockCheckSnapshot, 'price' | 'ema50' | 'ema200' | 'week52High' | 'week52Low' | 'trend'>): string[] {
+  const facts: string[] = []
+  const { price, ema50, ema200, week52High, week52Low } = snapshot
+  if (ema50 !== null && ema200 !== null) {
+    facts.push(ema50 > ema200
+      ? 'EMA50 อยู่เหนือ EMA200 (โครงสร้างขาขึ้นระยะกลาง)'
+      : ema50 < ema200 ? 'EMA50 อยู่ต่ำกว่า EMA200 (โครงสร้างขาลงระยะกลาง)' : 'EMA50 เท่ากับ EMA200')
+  }
+  if (price !== null && ema50 !== null) facts.push(price >= ema50 ? 'ราคาอยู่เหนือ EMA50' : 'ราคาอยู่ต่ำกว่า EMA50')
+  if (price !== null && week52High !== null && week52High > 0) {
+    const gap = ((week52High - price) / week52High) * 100
+    facts.push(gap > 0.05 ? `ราคาอยู่ต่ำกว่า 52W High ${gap.toFixed(1)}%` : 'ราคาอยู่ที่หรือเหนือ 52W High')
+  }
+  if (price !== null && week52Low !== null && week52Low > 0) {
+    facts.push(`ราคาอยู่สูงกว่า 52W Low ${(((price - week52Low) / week52Low) * 100).toFixed(1)}%`)
+  }
+  facts.push(`Trend ที่ engine จัดประเภท: ${snapshot.trend}`)
+  return facts
+}
+
 export async function analyzeStockCheckWithAi(snapshot: StockCheckSnapshot): Promise<StockCheckAiResult> {
   if (!process.env.GROQ_API_KEY) throw new Error('AI_NOT_CONFIGURED')
 
@@ -95,6 +116,11 @@ export async function analyzeStockCheckWithAi(snapshot: StockCheckSnapshot): Pro
 - แยกให้ชัดระหว่าง "ยังไม่ใช่จุดซื้อ" กับ "ควรหลีกเลี่ยงจริง" ตาม Decision ที่ engine ให้มา
 - ห้ามแต่งข้อมูลที่ไม่มีให้มา ถ้าข้อมูลไม่พอให้บอกตรงๆ
 - ให้น้ำหนักข้อมูลล่าสุดและ company-specific มากกว่า macro ทั่วไป
+- ห้ามสรุปความสัมพันธ์ของตัวเลขเอง (EMA, ราคากับ 52W High) ให้ใช้ "ข้อเท็จจริงที่คำนวณแล้ว" ด้านล่างตามตัวอักษร
+- ห้ามแนะนำให้ซื้อ ขาย หรือถือสถานะที่มีอยู่ ให้อธิบายเฉพาะผล Decision ของ engine และความเสี่ยง
+
+ข้อเท็จจริงที่คำนวณแล้ว:
+${buildStockCheckFacts(snapshot).map(fact => `- ${fact}`).join('\n')}
 
 ผล deterministic:
 - Decision: ${p.decision} (${p.decisionLabel})

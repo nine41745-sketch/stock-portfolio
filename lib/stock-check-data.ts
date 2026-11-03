@@ -4,6 +4,7 @@ import { getAtr14 } from '@/lib/atr'
 import { scoreScannerCandidate } from '@/lib/stock-scanner'
 import { buildStockCheck, sanitizeWeek52Range, StockCheckPlan, StockCheckSetup } from '@/lib/stock-check'
 import { providerQuoteTimestamp } from '@/lib/stock-check-presentation'
+import { isQuoteUsable } from '@/lib/quote-freshness'
 
 function diffOrNull(a: number | null, b: number | null): number | null {
   if (a === null || b === null) return null
@@ -48,16 +49,19 @@ export interface StockCheckSnapshot {
 }
 
 export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot> {
-  const [technical, spy, quote, metrics, earningsResult, atr14] = await Promise.all([
+  const [technical, spy, rawQuote, metrics, earningsResult, atr14] = await Promise.all([
     getTechnicalIndicators(symbol),
     getTechnicalIndicators('SPY'),
-    getQuote(symbol),
+    getQuote(symbol, undefined, { fresh: true }),
     getStockMetrics(symbol),
     getUpcomingEarningsStatus(symbol),
     getAtr14(symbol),
   ])
   const earnings = earningsResult.status === 'found' ? earningsResult.earnings : null
 
+  // A quote whose own timestamp is older than the latest historical bar is stale; never let it override
+  // fresher data when deciding a buy.
+  const quote = isQuoteUsable(rawQuote, technical.lastBarAt) ? rawQuote : null
   const price = quote?.c ?? technical.lastClose
   const dayChangePct = quote?.dp ?? technical.return1dPct
   const relativeStrength20 = diffOrNull(technical.return20dPct, spy.return20dPct)
@@ -85,6 +89,7 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     ema50: technical.ema50,
     support: technical.scannerSupport,
     resistance: technical.scannerResistance,
+    importantSupport: technical.importantSupport,
     volumeRatio: technical.scannerVolumeRatio,
     week52High,
     week52Low,

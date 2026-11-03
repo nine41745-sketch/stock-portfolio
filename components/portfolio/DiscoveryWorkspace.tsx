@@ -10,6 +10,12 @@ type Item = {
   label: string | null; setup: string | null; trend: string | null; price: number | null; reasons: string[]
   dataSource: string; lastBarAt: string | null; freshness: string
   relativeStrength20: number | null; inHoldings: boolean; inWatchlist: boolean; warning: string | null
+  earningsDays?: number | null; earningsStatus?: 'found' | 'none' | 'unknown'
+}
+function earningsLabel(item: Item): string {
+  if (item.earningsStatus === 'found' && typeof item.earningsDays === 'number') return `อีก ${item.earningsDays} วัน`
+  if (item.earningsStatus === 'none') return 'ไม่มีกำหนดใน 60 วัน'
+  return 'ไม่ทราบ (ข้อมูลไม่พร้อม)'
 }
 type Result = {
   portfolioId: string; view: 'theme' | 'radar'; theme: DiscoveryTheme | null
@@ -34,6 +40,7 @@ function Results({ data }: { data: Item[] }) {
       <p className="text-sm">ราคาจากข้อมูลย้อนหลัง: {item.price === null ? 'ไม่ทราบ' : '$' + item.price.toFixed(2)}</p>
       <p className="text-xs text-gray-600 dark:text-gray-400">{item.dataSource} · {dateLabel(item.lastBarAt)} · {item.freshness === 'fresh' ? 'ข้อมูลภายใน 5 วันปฏิทิน' : item.freshness === 'stale' ? 'ข้อมูลเก่า' : 'เวลาไม่ยืนยัน'}</p>
       <p className="text-xs">Relative Strength (ผลตอบแทนเทียบ SPY ย้อนหลัง 20 วัน): {item.relativeStrength20 === null ? 'ไม่พร้อม' : item.relativeStrength20.toFixed(2) + '%'}</p>
+      {item.status === 'available' && <p className="text-xs">วันประกาศงบ: {earningsLabel(item)}</p>}
       {(item.inHoldings || item.inWatchlist) && <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">{[item.inHoldings && 'ถือในพอร์ต',item.inWatchlist && 'อยู่ใน Watchlist พอร์ตนี้'].filter(Boolean).join(' · ')}</p>}
       {item.reasons.length > 0 && <p className="text-xs font-semibold">เหตุผลจากเกณฑ์ที่ตรวจ</p>}
       {item.reasons.length > 0 && <ul className="list-inside list-disc text-xs text-gray-700 dark:text-gray-300">{item.reasons.map((reason,i) => <li key={i}>{reason}</li>)}</ul>}

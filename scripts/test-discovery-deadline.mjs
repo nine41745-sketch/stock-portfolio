@@ -111,7 +111,7 @@ function routeLoader(technical, deadlineClass) {
   '@/lib/supabase/server':{createClient:async()=>db},
   '@/lib/phase-a-context':{PhaseAError,requirePhaseAPortfolio:async()=>({userId:'owner',portfolioId:'portfolio',supabase:db}),phaseAErrorResponse:()=>Response.json({error:'gate'},{status:403})},
   '@/lib/indicators':{getTechnicalIndicators:technical},
-  '@/lib/finnhub':{getUpcomingEarnings:async()=>null},
+  '@/lib/finnhub':{getUpcomingEarningsStatus:async()=>({status:'unknown',earnings:null})},
   '@/lib/all-time-high':{getAllTimeHigh:async()=>({allTimeHigh:null})},
   '@/lib/stock-scanner':load('lib/stock-scanner.ts'),
   '@/lib/discovery-contract':load('lib/discovery-contract.ts'),

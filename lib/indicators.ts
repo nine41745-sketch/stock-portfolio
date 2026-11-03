@@ -13,6 +13,8 @@ import YahooFinance from 'yahoo-finance2'
 import { discoveryFetch, type DiscoveryProviderContext } from '@/lib/discovery-deadline'
 import { getDiscoveryYahooChart } from '@/lib/discovery-yahoo'
 import { calculateImportantSupport } from '@/lib/important-support'
+import { isPartialUsSessionBar } from '@/lib/market-session'
+import { toHistorySymbol } from '@/lib/provider-symbol'
 
 const yahooFinance = new YahooFinance()
 
@@ -189,7 +191,8 @@ async function fetchHistoricalBars(symbol: string): Promise<Bar[]> {
   return (await fetchHistoricalBarsWithSource(symbol)).bars
 }
 
-async function fetchHistoricalBarsWithSource(symbol: string, context?: DiscoveryProviderContext, signal?: AbortSignal): Promise<{ bars: Bar[]; source: 'Yahoo Finance' | 'Stooq' | 'unavailable' }> {
+async function fetchHistoricalBarsWithSource(rawSymbol: string, context?: DiscoveryProviderContext, signal?: AbortSignal): Promise<{ bars: Bar[]; source: 'Yahoo Finance' | 'Stooq' | 'unavailable' }> {
+  const symbol = toHistorySymbol(rawSymbol)
   const yahoo = await fetchFromYahoo(symbol, context, signal)
   if (yahoo.length >= 200) return { bars: yahoo, source: 'Yahoo Finance' }
 
@@ -199,7 +202,8 @@ async function fetchHistoricalBarsWithSource(symbol: string, context?: Discovery
   return { bars: [], source: 'unavailable' }
 }
 
-async function fetchHistoricalWeeklyBars(symbol: string, context?: DiscoveryProviderContext): Promise<Bar[]> {
+async function fetchHistoricalWeeklyBars(rawSymbol: string, context?: DiscoveryProviderContext): Promise<Bar[]> {
+  const symbol = toHistorySymbol(rawSymbol)
   const yahoo = await fetchFromYahooWeekly(symbol, context)
   if (yahoo.length >= 15) return yahoo
 
@@ -271,7 +275,10 @@ function calcVolumeRatio(bars: Bar[], window = 20): number | null {
 }
 
 // Scanner compares today's volume with the previous 20 completed sessions, excluding today from denominator.
-function calcScannerVolumeRatio(bars: Bar[], window = 20): number | null {
+function calcScannerVolumeRatio(allBars: Bar[], window = 20, now: Date = new Date()): number | null {
+  // While the US session is still open the newest bar holds only part of the day's volume; compare the
+  // last completed session instead of a half-day against full-day averages.
+  const bars = isPartialUsSessionBar(allBars.at(-1)?.date ?? null, now) ? allBars.slice(0, -1) : allBars
   if (bars.length < window + 1) return null
   const priorWindow = bars.slice(-(window + 1), -1)
   if (priorWindow.length !== window) return null
