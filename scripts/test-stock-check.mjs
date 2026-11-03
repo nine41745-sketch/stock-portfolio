@@ -652,7 +652,7 @@ const bothEmpty = await aiGuard.runModelChain([async () => ({ text: '', truncate
 assert.equal(bothEmpty, null, 'No reply from any model must stay an AI-unavailable error')
 
 const aiRunSource = fs.readFileSync('lib/stock-check-ai.ts', 'utf8')
-assert.match(aiRunSource, /const PRIMARY_MAX_COMPLETION_TOKENS = 4000/, 'The 120B model needs room for hidden reasoning')
+assert.match(aiRunSource, /const PRIMARY_OUTPUT_LIMIT = 4000/, 'The 120B model needs room for hidden reasoning')
 assert.match(aiRunSource, /AbortSignal\.timeout\(timeoutMs\)/, 'Each model call must time out so both attempts fit inside maxDuration')
 assert.ok(25_000 + 15_000 < 45_000, 'Primary + fallback timeouts must stay under the 45s route limit')
 assert.match(aiRunSource, /finish_reason === 'length'/, 'A reply cut at the token limit must be detected')

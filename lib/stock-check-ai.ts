@@ -7,8 +7,8 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const PRIMARY_MODEL = 'openai/gpt-oss-120b'
 const FALLBACK_MODEL = 'openai/gpt-oss-20b'
 // Hidden reasoning tokens count toward this limit; 1400 left the JSON empty or cut off for the 120B model.
-const PRIMARY_MAX_COMPLETION_TOKENS = 4000
-const FALLBACK_MAX_COMPLETION_TOKENS = 2000
+const PRIMARY_OUTPUT_LIMIT = 4000
+const FALLBACK_OUTPUT_LIMIT = 2000
 // Both attempts plus the news lookup must finish inside the route's 45s maxDuration.
 const PRIMARY_TIMEOUT_MS = 25_000
 const FALLBACK_TIMEOUT_MS = 15_000
@@ -69,6 +69,7 @@ async function callModel(model: string, prompt: string, timeoutMs: number): Prom
 
 async function requestModel(model: string, prompt: string, timeoutMs: number): Promise<ModelReply> {
   const reasoningEffort = model === PRIMARY_MODEL ? 'high' : 'medium'
+  const limit = model === PRIMARY_MODEL ? PRIMARY_OUTPUT_LIMIT : FALLBACK_OUTPUT_LIMIT
   const res = await fetch(GROQ_URL, {
     method: 'POST',
     cache: 'no-store',
@@ -80,7 +81,7 @@ async function requestModel(model: string, prompt: string, timeoutMs: number): P
     body: JSON.stringify({
       model,
       messages: [{ role: 'user', content: prompt }],
-      max_completion_tokens: model === PRIMARY_MODEL ? PRIMARY_MAX_COMPLETION_TOKENS : FALLBACK_MAX_COMPLETION_TOKENS,
+      max_completion_tokens: limit,
       temperature: 0.2,
       reasoning_effort: reasoningEffort,
       reasoning_format: 'hidden',
