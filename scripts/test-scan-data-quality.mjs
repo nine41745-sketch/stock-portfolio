@@ -52,7 +52,7 @@ assert.match(stockCheckData, /isQuoteUsable\(rawQuote, technical\.lastBarAt\)/)
 const scanner = fs.readFileSync(new URL('../app/api/scanner/route.ts', import.meta.url), 'utf8')
 assert.match(scanner, /calcRiskReward\(price, support, resistance\)/)
 const indicators = fs.readFileSync(new URL('../lib/indicators.ts', import.meta.url), 'utf8')
-assert.match(indicators, /isPartialUsSessionBar\(allBars\.at\(-1\)\?\.date/)
+assert.match(indicators, /isPartialUsSessionBar\(lastBarAt\)/)
 assert.match(indicators, /toHistorySymbol\(rawSymbol\)/)
 
 console.log('scan data quality tests passed')
@@ -89,3 +89,38 @@ console.log('signal consistency tests passed')
 const stockCheckPlanSource = fs.readFileSync(new URL('../lib/stock-check.ts', import.meta.url), 'utf8')
 assert.match(stockCheckPlanSource, /if \(decision === 'AVOID'\) \{\s*const rrIndex = reasons\.findIndex\(reason => reason\.startsWith\('R:R '\)\)/)
 console.log('stock check AVOID/R:R consistency tests passed')
+
+// Review fixes: only US share classes are dash-converted; exchange suffixes stay untouched.
+assert.equal(toHistorySymbol('SHOP.TO'), 'SHOP.TO')
+assert.equal(toHistorySymbol('7203.T'), '7203.T')
+assert.equal(toHistorySymbol('vod.l'), 'VOD.L')
+assert.equal(toHistorySymbol('BRK.B'), 'BRK-B')
+
+// Stooq calendar-day bars (00:00Z) must keep their own date instead of shifting to the previous New York day.
+const { formatPriceTimeLabel } = await import('../lib/today-candidates.ts')
+const stooqLabel = formatPriceTimeLabel('2026-11-02T00:00:00.000Z', 'Stooq')
+const yahooLabel = formatPriceTimeLabel('2026-11-02T14:30:00.000Z', 'Yahoo')
+assert.equal(stooqLabel.slice(stooqLabel.indexOf('วันซื้อขาย')), yahooLabel.slice(yahooLabel.indexOf('วันซื้อขาย')), 'Stooq and Yahoo bars for the same trading day show the same date')
+
+// Trending: unknown earnings must not count as "no earnings risk".
+const { rankDiscoveryTrending } = await import('../lib/discovery-contract.ts')
+const trendRow = (symbol, earningsStatus, earningsDays) => ({ symbol, score: 80, setup: 'PULLBACK', trend: 'UPTREND', relativeStrength20: 3, earningsDays, earningsStatus, status: 'available' })
+assert.deepEqual(rankDiscoveryTrending([trendRow('KNOWN', 'none', null), trendRow('SOON', 'found', 3), trendRow('LATER', 'found', 20), trendRow('LOST', 'unknown', null)]).map(row => row.symbol).sort(), ['KNOWN', 'LATER'])
+
+// Scanner: broken important support falls through to the remaining setups, and a partial-session
+// volume ratio cannot confirm a breakout made at today's price.
+const momentumInput = { ...nearSupportInput, trend: 'UPTREND', macdHistogram: 1, relativeStrength20: 2, rsi14: 60, ema50: 90, lastClose: 101, support: 100, resistance: 120 }
+assert.equal(scoreScannerCandidate({ ...momentumInput, importantSupport: 105 }).setup, 'MOMENTUM', 'broken important support must not skip the Momentum check')
+const breakoutInput = { ...nearSupportInput, trend: 'UPTREND', lastClose: 125, support: 100, resistance: 120, volumeRatio: 1.6, macdHistogram: 1, relativeStrength20: 2, ema50: 118 }
+assert.equal(scoreScannerCandidate({ ...breakoutInput, volumeBasis: 'latest-session' }).setup, 'BREAKOUT')
+assert.notEqual(scoreScannerCandidate({ ...breakoutInput, volumeBasis: 'last-completed-session' }).setup, 'BREAKOUT', 'previous-session volume cannot confirm today\'s breakout')
+assert.match(indicators, /scannerVolumeBasis: partialSession \? 'last-completed-session' : 'latest-session'/)
+assert.match(scanner, /volumeBasis: technical\.scannerVolumeBasis/)
+assert.match(discovery, /volumeBasis: t\.scannerVolumeBasis/)
+assert.match(stockCheckData, /volumeBasis: technical\.scannerVolumeBasis/)
+
+// Share-class conversion reaches every Yahoo boundary, not only the indicator history.
+for (const file of ['premarket', 'performance-history', 'stock-meta']) {
+  assert.match(fs.readFileSync(new URL(`../lib/${file}.ts`, import.meta.url), 'utf8'), /toHistorySymbol\(symbol\)/, `${file} must normalize share classes`)
+}
+console.log('review follow-up tests passed')

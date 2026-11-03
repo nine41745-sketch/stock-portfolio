@@ -49,6 +49,8 @@ export interface TechnicalIndicators {
   scannerSwingLow: number | null
   scannerResistance: number | null
   scannerVolumeRatio: number | null
+  // 'last-completed-session' while the US session is open (today's bar holds only part of the day's volume).
+  scannerVolumeBasis: 'latest-session' | 'last-completed-session'
   importantSupport: number | null
   importantSupportTouches: number
   return1dPct: number | null
@@ -75,6 +77,7 @@ const EMPTY_INDICATORS: TechnicalIndicators = {
   scannerSwingLow: null,
   scannerResistance: null,
   scannerVolumeRatio: null,
+  scannerVolumeBasis: 'latest-session',
   importantSupport: null,
   importantSupportTouches: 0,
   return1dPct: null,
@@ -275,10 +278,10 @@ function calcVolumeRatio(bars: Bar[], window = 20): number | null {
 }
 
 // Scanner compares today's volume with the previous 20 completed sessions, excluding today from denominator.
-function calcScannerVolumeRatio(allBars: Bar[], window = 20, now: Date = new Date()): number | null {
+function calcScannerVolumeRatio(allBars: Bar[], window: number, partialSession: boolean): number | null {
   // While the US session is still open the newest bar holds only part of the day's volume; compare the
   // last completed session instead of a half-day against full-day averages.
-  const bars = isPartialUsSessionBar(allBars.at(-1)?.date ?? null, now) ? allBars.slice(0, -1) : allBars
+  const bars = partialSession ? allBars.slice(0, -1) : allBars
   if (bars.length < window + 1) return null
   const priorWindow = bars.slice(-(window + 1), -1)
   if (priorWindow.length !== window) return null
@@ -318,6 +321,7 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
     fetchHistoricalWeeklyBars(symbol, context),
   ])
   const lastBarAt = bars.at(-1)?.date ?? null
+  const partialSession = isPartialUsSessionBar(lastBarAt)
 
   const weeklyRsi14 = calcWeeklyRsi(weeklyBars)
 
@@ -394,7 +398,8 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
     scannerSupport: scannerLevels.support,
     scannerSwingLow,
     scannerResistance: scannerLevels.resistance,
-    scannerVolumeRatio: calcScannerVolumeRatio(bars),
+    scannerVolumeRatio: calcScannerVolumeRatio(bars, 20, partialSession),
+    scannerVolumeBasis: partialSession ? 'last-completed-session' : 'latest-session',
     importantSupport: importantSupport.level,
     importantSupportTouches: importantSupport.touches,
     return1dPct: calcReturnPct(closes, 1),

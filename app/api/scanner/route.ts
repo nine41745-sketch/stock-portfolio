@@ -93,6 +93,7 @@ async function scanOne(symbol: string, spy: TechnicalIndicators) {
     resistance: technical.scannerResistance,
     importantSupport: technical.importantSupport,
     volumeRatio: technical.scannerVolumeRatio,
+    volumeBasis: technical.scannerVolumeBasis,
     week52High: technical.week52High,
     week52Low: technical.week52Low,
     relativeStrength20,

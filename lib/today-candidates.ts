@@ -107,7 +107,10 @@ export function formatBangkokTimestamp(value: string | null): string {
 export function formatPriceTimeLabel(priceAsOf: string | null, sourceLabel: string): string {
   if (sourceLabel === 'Finnhub') return `ราคา ณ เวลา ${formatBangkokTimestamp(priceAsOf)}`
   if (!priceAsOf || !Number.isFinite(new Date(priceAsOf).getTime())) return 'ราคาแท่งวันล่าสุด · ไม่ทราบวันที่'
-  const tradingDay = new Date(priceAsOf).toLocaleDateString('th-TH', { timeZone: 'America/New_York', year: 'numeric', month: 'short', day: 'numeric' })
+  // Stooq bars are plain calendar days stored at 00:00Z; converting them to New York time would show the day before.
+  const bar = new Date(priceAsOf)
+  const calendarDay = bar.getUTCHours() === 0 && bar.getUTCMinutes() === 0
+  const tradingDay = bar.toLocaleDateString('th-TH', { timeZone: calendarDay ? 'UTC' : 'America/New_York', year: 'numeric', month: 'short', day: 'numeric' })
   return `ราคาแท่งวันล่าสุด (วันซื้อขาย ${tradingDay} ตามเวลาสหรัฐฯ)`
 }
 

@@ -126,7 +126,7 @@ export default function DiscoveryWorkspace({ activePortfolioId }: { activePortfo
           <div className="mt-3 flex flex-wrap gap-2">{visible.coverage.byTheme.map(row=><span className="rounded border border-gray-400 px-2 py-1 text-xs dark:border-gray-600" key={row.theme}>{THEME_NAMES[row.theme]} {row.attempted}/{row.total}</span>)}</div>
           <ul className="mt-3 list-inside list-disc text-xs text-amber-700 dark:text-amber-300">{visible.warnings.map((warning,i)=><li key={i}>{warning}</li>)}</ul>
         </div>
-        <div className="space-y-2"><h2 className="text-lg font-bold">โอกาสที่มีแนวโน้มเด่น <span className="text-sm font-normal">(เฉพาะผลสแกนครั้งนี้)</span></h2><p className="text-sm">Scanner Score ≥58 · ขาขึ้น · Relative Strength 20 วันเหนือ SPY · ไม่ AVOID · ไม่มี Earnings Risk 7 วันตามข้อมูลที่ทราบ</p><Results data={visible.trending}/></div>
+        <div className="space-y-2"><h2 className="text-lg font-bold">โอกาสที่มีแนวโน้มเด่น <span className="text-sm font-normal">(เฉพาะผลสแกนครั้งนี้)</span></h2><p className="text-sm">Scanner Score ≥58 · ขาขึ้น · Relative Strength 20 วันเหนือ SPY · ไม่ AVOID · ทราบวันประกาศงบและไม่มี Earnings Risk ภายใน 7 วัน</p><Results data={visible.trending}/></div>
         <div className="space-y-2"><h2 className="text-lg font-bold">ผลสำรวจหุ้นกลุ่มคัดสรร</h2><p className="text-sm">น่าสนใจ {visible.coverage.interesting} · เฝ้าดู {visible.coverage.watch} · AVOID {visible.coverage.avoid} · ไม่พร้อม {visible.coverage.unavailable}</p><Results data={visible.items}/></div>
       </section>}
     </>}

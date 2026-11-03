@@ -1,10 +1,12 @@
 const NEW_YORK = 'America/New_York'
 
+const NEW_YORK_FORMAT = new Intl.DateTimeFormat('en-US', {
+  timeZone: NEW_YORK, year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short',
+})
+
 function newYorkParts(date: Date): { ymd: string; minutes: number; weekday: string } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: NEW_YORK, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short',
-  }).formatToParts(date)
+  const parts = NEW_YORK_FORMAT.formatToParts(date)
   const get = (type: string) => parts.find(part => part.type === type)?.value ?? ''
   return {
     ymd: `${get('year')}-${get('month')}-${get('day')}`,

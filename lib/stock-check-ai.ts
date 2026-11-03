@@ -118,6 +118,7 @@ export async function analyzeStockCheckWithAi(snapshot: StockCheckSnapshot): Pro
 - ให้น้ำหนักข้อมูลล่าสุดและ company-specific มากกว่า macro ทั่วไป
 - ห้ามสรุปความสัมพันธ์ของตัวเลขเอง (EMA, ราคากับ 52W High) ให้ใช้ "ข้อเท็จจริงที่คำนวณแล้ว" ด้านล่างตามตัวอักษร
 - ห้ามแนะนำให้ซื้อ ขาย หรือถือสถานะที่มีอยู่ ให้อธิบายเฉพาะผล Decision ของ engine และความเสี่ยง
+- ช่อง action ให้ทวนผล Decision ของ engine เป็นข้อความสั้น (เช่น "รอย่อเข้า Entry Zone", "ยังไม่ใช่จุดซื้อ") ห้ามเพิ่มคำสั่งซื้อหรือขายใหม่
 
 ข้อเท็จจริงที่คำนวณแล้ว:
 ${buildStockCheckFacts(snapshot).map(fact => `- ${fact}`).join('\n')}

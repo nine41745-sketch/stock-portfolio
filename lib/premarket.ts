@@ -1,4 +1,5 @@
 import YahooFinance from 'yahoo-finance2'
+import { toHistorySymbol } from '@/lib/provider-symbol'
 
 const yahooFinance = new YahooFinance()
 const CHUNK_SIZE = 6
@@ -31,7 +32,7 @@ function dateMs(value: unknown): number | null {
 
 async function getOne(symbol: string, now: Date): Promise<PreMarketSnapshot> {
   try {
-    const quote = await yahooFinance.quote(symbol)
+    const quote = await yahooFinance.quote(toHistorySymbol(symbol))
     const preMarketPrice = finiteNumber(quote.preMarketPrice)
     const previousClose = finiteNumber(quote.regularMarketPreviousClose)
     const regularMarketPrice = finiteNumber(quote.regularMarketPrice)

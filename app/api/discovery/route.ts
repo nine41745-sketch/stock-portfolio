@@ -84,7 +84,7 @@ async function scanSymbol(
     macdHistogram: t.macd.histogram, lastClose: t.lastClose, ema50: t.ema50,
     support: t.scannerSupport, resistance: t.scannerResistance,
     importantSupport: t.importantSupport,
-    volumeRatio: t.scannerVolumeRatio, week52High: t.week52High, week52Low: t.week52Low,
+    volumeRatio: t.scannerVolumeRatio, volumeBasis: t.scannerVolumeBasis, week52High: t.week52High, week52Low: t.week52Low,
     relativeStrength20, relativeStrength60, earningsDays,
     earningsStatus: resolvedEarningsStatus,
   })

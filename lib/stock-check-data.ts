@@ -91,6 +91,7 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     resistance: technical.scannerResistance,
     importantSupport: technical.importantSupport,
     volumeRatio: technical.scannerVolumeRatio,
+    volumeBasis: technical.scannerVolumeBasis,
     week52High,
     week52Low,
     relativeStrength20,

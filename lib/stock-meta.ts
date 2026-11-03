@@ -14,6 +14,7 @@
 // ============================================================
 import YahooFinance from 'yahoo-finance2'
 import { cacheGet, cacheSet } from './cache'
+import { toHistorySymbol } from './provider-symbol'
 
 const yahooFinance = new YahooFinance()
 
@@ -40,7 +41,7 @@ const META_CACHE_TTL_SEC = 24 * 60 * 60
 
 async function fetchFromYahoo(symbol: string): Promise<StockMeta | null> {
   try {
-    const profile = await yahooFinance.quoteSummary(symbol, { modules: ['assetProfile'] })
+    const profile = await yahooFinance.quoteSummary(toHistorySymbol(symbol), { modules: ['assetProfile'] })
     const sector = profile.assetProfile?.sector ?? null
     const industry = profile.assetProfile?.industry ?? null
     if (!sector && !industry) return null
