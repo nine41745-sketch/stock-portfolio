@@ -25,7 +25,7 @@ const groupFixture = [
   { field: 'grossMarginTTM', value: 0 }, { field: '52WeekHigh', value: 4 },
   { field: 'unknownMetric', value: -7 },
 ]
-const groupedFixture = ['กำไรและรายได้', 'หนี้และส่วนผู้ถือหุ้น', 'มูลค่า', 'ราคาและความผันผวน', 'อื่น ๆ']
+const groupedFixture = ['กำไรและรายได้', 'ผลตอบแทนต่อทุน', 'กระแสเงินสดและเงินปันผล', 'สภาพคล่อง', 'หนี้และส่วนผู้ถือหุ้น', 'มูลค่า', 'ราคาและความผันผวน', 'อื่น ๆ']
   .flatMap(group => groupFixture.filter(metric => fundamentals.additionalMetricGroup(metric.field) === group))
 assert.deepEqual(groupedFixture.map(item => item.field).sort(), groupFixture.map(item => item.field).sort(), 'Grouping must keep each source field exactly once')
 assert.equal(fundamentals.additionalMetricLabel('grossMarginTTM'), 'อัตรากำไรขั้นต้น · TTM')
@@ -35,7 +35,29 @@ assert.equal(fundamentals.additionalMetricLabel('unknownMetric'), 'ข้อม�
 const extra = fundamentals.normalizeAdditionalMetrics({ revenueGrowthTTMYoy: 0, grossMarginTTM: -12.5, '52WeekHigh': 4, 'totalDebt/totalEquityAnnual': 2, peTTM: 5, invalid: Infinity, token: 123, note: 'not a number' })
 assert.deepEqual(extra, [{ field: '52WeekHigh', value: 4 }, { field: 'grossMarginTTM', value: -12.5 }, { field: 'revenueGrowthTTMYoy', value: 0 }, { field: 'totalDebt/totalEquityAnnual', value: 2 }], 'Preserve finite source values, exclude known table metrics and sensitive or invalid fields')
 assert.deepEqual(fundamentals.normalizeAdditionalMetrics(null), [], 'Missing provider data produces no fabricated metrics')
-assert.equal(fundamentals.normalizeAdditionalMetrics(Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`metric${i}`, i]))).length, 60, 'Extra metrics must be bounded')
+assert.equal(fundamentals.normalizeAdditionalMetrics(Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`metric${i}`, i]))).length, 100, 'A realistic Finnhub response (~130 fields) must not be truncated')
+assert.equal(fundamentals.normalizeAdditionalMetrics(Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`metric${i}`, i]))).length, fundamentals.MAX_ADDITIONAL_METRICS, 'Extra metrics must stay bounded')
+// Fields sorted after the old 60-item cut must survive (regression: ROE and debt ratios were hidden).
+const lateFields = fundamentals.normalizeAdditionalMetrics({ ...Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`aMetric${String(i).padStart(3, '0')}`, i])), roeTTM: 30, 'totalDebt/totalEquityAnnual': 1.5, pfcfShareTTM: 9 })
+assert.ok(['roeTTM', 'totalDebt/totalEquityAnnual', 'pfcfShareTTM'].every(field => lateFields.some(item => item.field === field)), 'Late-sorted fields must not be dropped')
+assert.equal(fundamentals.additionalMetricGroup('roeTTM'), 'ผลตอบแทนต่อทุน')
+assert.equal(fundamentals.additionalMetricGroup('pfcfShareTTM'), 'กระแสเงินสดและเงินปันผล')
+assert.equal(fundamentals.additionalMetricGroup('currentEv/freeCashFlowTTM'), 'กระแสเงินสดและเงินปันผล')
+assert.equal(fundamentals.additionalMetricGroup('dividendPerShareTTM'), 'กระแสเงินสดและเงินปันผล')
+assert.equal(fundamentals.additionalMetricGroup('roi5Y'), 'ผลตอบแทนต่อทุน')
+assert.equal(fundamentals.additionalMetricGroup('currentRatioQuarterly'), 'สภาพคล่อง')
+assert.equal(fundamentals.additionalMetricLabel('roeTTM'), 'ผลตอบแทนต่อส่วนของผู้ถือหุ้น (ROE) · TTM')
+assert.equal(fundamentals.additionalMetricLabel('roeTTMx'), 'ข้อมูลเพิ่มเติมจากผู้ให้บริการ', 'Near-miss field names stay unlabelled')
+// P/E kind shown on the portfolio must follow the same field order as before.
+const { selectPe, peKindLabel } = await importTsModule('lib/pe-kind.ts')
+assert.deepEqual(selectPe({ peNormalizedAnnual: 62.4, peTTM: 75.5 }), { pe: 62.4, peKind: 'ANNUAL' })
+assert.deepEqual(selectPe({ peTTM: 75.5 }), { pe: 75.5, peKind: 'TTM' })
+assert.deepEqual(selectPe({ peExclExtraTTM: 12 }), { pe: 12, peKind: 'TTM' })
+assert.deepEqual(selectPe({ peNormalizedAnnual: 'x', peTTM: Number.NaN }), { pe: null, peKind: null })
+assert.deepEqual(selectPe(null), { pe: null, peKind: null })
+assert.equal(peKindLabel('ANNUAL'), 'รายปี')
+assert.equal(peKindLabel(null), null)
+
 assert.ok(!fundamentals.normalizeAdditionalMetrics({ apiKey: 123, accessToken: 456, secretCode: 789 }).length, 'Never surface credential-like field names')
 assert.deepEqual(fundamentals.normalizeSymbols([' aapl ', 'AAPL', '', 'msft']), ['AAPL', 'MSFT'])
 assert.equal(validation.parseSymbol(' aapl '), 'AAPL')
@@ -158,3 +180,12 @@ assert.match(scannerWorkspace, /bg-gray-50.*dark:bg-gray-900/, 'Scanner tabs mus
 assert.match(scannerWorkspace, /text-gray-700.*dark:text-gray-400/, 'Inactive Scanner tabs must use readable light and dark text')
 
 console.log('✓ Fundamentals normalization, comparison, valuation, status and API guard tests passed')
+
+// Portfolio P/E kind wiring: Finnhub -> /api/prices -> dashboard label.
+const finnhubSource = fs.readFileSync('lib/finnhub.ts', 'utf8')
+assert.match(finnhubSource, /\.\.\.selectPe\(m\)/, 'Portfolio P/E must come from selectPe so the kind travels with the value')
+assert.match(fs.readFileSync('app/api/prices/route.ts', 'utf8'), /peKind: d\.peKind \?\? null/, '/api/prices must return the P/E kind')
+assert.match(fs.readFileSync('app/dashboard/page.tsx', 'utf8'), /peKind: d\?\.peKind \?\? null/, 'Server-rendered holdings must carry the P/E kind')
+const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
+assert.ok(dashboardSource.includes('peKindLabel(h.peKind)') && dashboardSource.includes('peKindHint(h.peKind)'), 'Dashboard must label the P/E kind in table and card views')
+console.log('✓ P/E kind and additional metric coverage tests passed')

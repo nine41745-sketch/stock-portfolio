@@ -1,6 +1,7 @@
 import { discoveryFetch, type DiscoveryProviderContext } from '@/lib/discovery-deadline'
 import { resolveUpcomingEarningsStatus, type EarningsStatus } from '@/lib/earnings-status'
 import { FinnhubQuote } from '@/types'
+import { selectPe, type PeKind } from '@/lib/pe-kind'
 
 const BASE = 'https://finnhub.io/api/v1'
 const KEY  = process.env.FINNHUB_API_KEY!
@@ -17,6 +18,7 @@ function normalizeSymbols(symbols: string[]): string[] {
 
 export interface StockMetrics {
   pe: number | null
+  peKind?: PeKind | null
   week52High: number | null
   week52Low: number | null
 }
@@ -86,18 +88,18 @@ export async function getQuoteObservations(symbols: string[], options?: { signal
   return result
 }
 
-async function getBasicMetrics(symbol: string): Promise<{ pe: number | null; week52High: number | null; week52Low: number | null }> {
+async function getBasicMetrics(symbol: string): Promise<{ pe: number | null; peKind: PeKind | null; week52High: number | null; week52Low: number | null }> {
   try {
     const res = await fetch(`${BASE}/stock/metric?symbol=${symbol}&metric=all&token=${KEY}`, { next: { revalidate: 1800 } })
-    if (!res.ok) return { pe: null, week52High: null, week52Low: null }
+    if (!res.ok) return { pe: null, peKind: null, week52High: null, week52Low: null }
     const d = await res.json()
     const m = d?.metric ?? {}
     return {
-      pe: m.peNormalizedAnnual ?? m.peTTM ?? m.peBasicExclExtraTTM ?? m.peExclExtraTTM ?? null,
+      ...selectPe(m),
       week52High: m['52WeekHigh'] ?? null,
       week52Low:  m['52WeekLow']  ?? null,
     }
-  } catch { return { pe: null, week52High: null, week52Low: null } }
+  } catch { return { pe: null, peKind: null, week52High: null, week52Low: null } }
 }
 
 export async function getStockMetrics(symbol: string): Promise<StockMetrics> {
@@ -150,11 +152,12 @@ async function fetchOneWithMetrics(sym: string): Promise<QuoteWithMetrics> {
       price: currentPrice,
       dayChange: q?.dp ?? null,
       pe: m.pe,
+      peKind: m.peKind ?? null,
       week52High,
       week52Low,
     }
   } catch {
-    return { price: null, dayChange: null, pe: null, week52High: null, week52Low: null }
+    return { price: null, dayChange: null, pe: null, peKind: null, week52High: null, week52Low: null }
   }
 }
 

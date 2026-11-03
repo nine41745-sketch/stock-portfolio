@@ -64,6 +64,7 @@ export default async function DashboardPage() {
       pnl_pct,
       dayChange: d?.dayChange ?? null,
       pe: d?.pe ?? null,
+      peKind: d?.peKind ?? null,
       week52High: d?.week52High ?? null,
       week52Low: d?.week52Low ?? null,
     }

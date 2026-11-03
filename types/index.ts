@@ -1,3 +1,5 @@
+import type { PeKind } from '@/lib/pe-kind'
+
 export interface Holding {
   id: string
   user_id: string
@@ -17,6 +19,7 @@ export interface HoldingWithPrice extends Holding {
   pnl_pct: number | null
   dayChange?: number | null
   pe?: number | null
+  peKind?: PeKind | null
   week52High?: number | null
   week52Low?: number | null
 }

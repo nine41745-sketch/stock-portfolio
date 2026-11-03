@@ -58,6 +58,32 @@ const ADDITIONAL_METRIC_LABELS: Record<string, string> = {
   '52WeekLow': 'ราคาต่ำสุดในรอบ 52 สัปดาห์',
   'totalDebt/totalEquityAnnual': 'หนี้สินรวมต่อส่วนของผู้ถือหุ้น · รายปี',
   'totalDebt/totalEquityQuarterly': 'หนี้สินรวมต่อส่วนของผู้ถือหุ้น · รายไตรมาส',
+  roeTTM: 'ผลตอบแทนต่อส่วนของผู้ถือหุ้น (ROE) · TTM',
+  roeRfy: 'ผลตอบแทนต่อส่วนของผู้ถือหุ้น (ROE) · ปีงบล่าสุด',
+  roe5Y: 'ผลตอบแทนต่อส่วนของผู้ถือหุ้น (ROE) · เฉลี่ย 5 ปี',
+  roiTTM: 'ผลตอบแทนต่อเงินลงทุน (ROI) · TTM',
+  roiAnnual: 'ผลตอบแทนต่อเงินลงทุน (ROI) · รายปี',
+  roi5Y: 'ผลตอบแทนต่อเงินลงทุน (ROI) · เฉลี่ย 5 ปี',
+  roaTTM: 'ผลตอบแทนต่อสินทรัพย์ (ROA) · TTM',
+  roaRfy: 'ผลตอบแทนต่อสินทรัพย์ (ROA) · ปีงบล่าสุด',
+  'currentEv/freeCashFlowTTM': 'มูลค่ากิจการต่อกระแสเงินสดอิสระ · TTM',
+  'currentEv/freeCashFlowAnnual': 'มูลค่ากิจการต่อกระแสเงินสดอิสระ · รายปี',
+  pfcfShareTTM: 'ราคาต่อกระแสเงินสดอิสระ (P/FCF) · TTM',
+  pfcfShareAnnual: 'ราคาต่อกระแสเงินสดอิสระ (P/FCF) · รายปี',
+  cashFlowPerShareTTM: 'กระแสเงินสดต่อหุ้น · TTM',
+  cashFlowPerShareAnnual: 'กระแสเงินสดต่อหุ้น · รายปี',
+  dividendPerShareTTM: 'เงินปันผลต่อหุ้น · TTM',
+  dividendIndicatedAnnual: 'เงินปันผลต่อหุ้น · ประมาณการรายปี',
+  dividendGrowthRate5Y: 'อัตราการเติบโตเงินปันผล · 5 ปี',
+  currentDividendYieldTTM: 'อัตราผลตอบแทนเงินปันผล · TTM',
+  dividendYieldIndicatedAnnual: 'อัตราผลตอบแทนเงินปันผล · ประมาณการรายปี',
+  dividendPerShareAnnual: 'เงินปันผลต่อหุ้น · รายปี',
+  payoutRatioTTM: 'สัดส่วนการจ่ายเงินปันผล · TTM',
+  payoutRatioAnnual: 'สัดส่วนการจ่ายเงินปันผล · รายปี',
+  currentRatioQuarterly: 'อัตราส่วนสภาพคล่อง (Current Ratio) · รายไตรมาส',
+  currentRatioAnnual: 'อัตราส่วนสภาพคล่อง (Current Ratio) · รายปี',
+  quickRatioQuarterly: 'อัตราส่วนสภาพคล่องหมุนเร็ว (Quick Ratio) · รายไตรมาส',
+  quickRatioAnnual: 'อัตราส่วนสภาพคล่องหมุนเร็ว (Quick Ratio) · รายปี',
 }
 
 export function additionalMetricLabel(field: string): string {
@@ -73,9 +99,16 @@ export function additionalMetricGroup(field: string): string {
     'หนี้และส่วนผู้ถือหุ้น': ['totalDebt/totalEquityAnnual', 'totalDebt/totalEquityQuarterly'],
     'มูลค่า': ['marketCapitalization', 'enterpriseValue'],
     'ราคาและความผันผวน': ['beta', '52WeekHigh', '52WeekLow'],
+    'ผลตอบแทนต่อทุน': ['roeTTM', 'roeRfy', 'roe5Y', 'roiTTM', 'roiAnnual', 'roi5Y', 'roaTTM', 'roaRfy'],
+    'กระแสเงินสดและเงินปันผล': ['currentEv/freeCashFlowTTM', 'currentEv/freeCashFlowAnnual', 'pfcfShareTTM', 'pfcfShareAnnual', 'cashFlowPerShareTTM', 'cashFlowPerShareAnnual', 'currentDividendYieldTTM', 'dividendYieldIndicatedAnnual', 'dividendPerShareAnnual', 'dividendPerShareTTM', 'dividendIndicatedAnnual', 'dividendGrowthRate5Y', 'payoutRatioTTM', 'payoutRatioAnnual'],
+    'สภาพคล่อง': ['currentRatioQuarterly', 'currentRatioAnnual', 'quickRatioQuarterly', 'quickRatioAnnual'],
   }
   return Object.entries(groups).find(([, fields]) => fields.includes(field))?.[0] ?? 'อื่น ๆ'
 }
+
+// Finnhub sends roughly 130 numeric fields; the cap only bounds a pathological response. A cap below the
+// real size silently hid every field sorted after the cut (ROE, revenue per share, debt ratios).
+export const MAX_ADDITIONAL_METRICS = 200
 
 // Keep provider field names and raw numeric values: unit, period and freshness are not inferred.
 export function normalizeAdditionalMetrics(raw: unknown): AdditionalMetric[] {
@@ -87,7 +120,7 @@ export function normalizeAdditionalMetrics(raw: unknown): AdditionalMetric[] {
       && !alreadyShown.has(field)
       && typeof value === 'number' && Number.isFinite(value))
     .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
-    .slice(0, 60)
+    .slice(0, MAX_ADDITIONAL_METRICS)
     .map(([field, value]) => ({ field, value: value as number }))
 }
 
