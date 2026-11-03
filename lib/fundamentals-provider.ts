@@ -1,4 +1,5 @@
 import {
+  EARNINGS_WINDOW_DAYS,
   metricStatusFromHttp,
   normalizeFinnhubMetrics,
   normalizeAdditionalMetrics,
@@ -16,7 +17,6 @@ const KEY = process.env.FINNHUB_API_KEY
 const METRICS_REVALIDATE_SECONDS = 1800
 const EARNINGS_REVALIDATE_SECONDS = 21600
 const REQUEST_TIMEOUT_MS = 8000
-const EARNINGS_WINDOW_DAYS = 60
 const SYMBOL_CHUNK_SIZE = 2
 const SYMBOL_CHUNK_DELAY_MS = 250
 

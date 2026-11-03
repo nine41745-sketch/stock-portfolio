@@ -246,3 +246,15 @@ export function classifyFreshness(sourceUpdatedAt: string | null, nowMs: number,
   if (!Number.isFinite(updatedAtMs) || updatedAtMs > nowMs + 60_000) return 'stale'
   return nowMs - updatedAtMs > maxAgeMs ? 'stale' : 'fresh'
 }
+
+export const EARNINGS_WINDOW_DAYS = 60
+
+// Finnhub answering successfully with no row inside the window is not missing data: the next report is simply further out.
+export function earningsCalendarLabel(
+  earnings: { status: ProviderStatus; date: string | null; hour: string | null },
+  statusLabel: string,
+): string {
+  if (earnings.date) return `${statusLabel} · ${earnings.date}${earnings.hour ? ` (${earnings.hour.toUpperCase()})` : ''}`
+  if (earnings.status === 'missing') return `ไม่พบนัดประกาศผลใน ${EARNINGS_WINDOW_DAYS} วันข้างหน้า (ผู้ให้บริการตอบสำเร็จ จึงไม่ใช่ข้อมูลขาด)`
+  return statusLabel
+}

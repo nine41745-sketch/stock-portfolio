@@ -6,6 +6,7 @@ import {
   checkComparisonCompatibility,
   additionalMetricLabel,
   additionalMetricGroup,
+  earningsCalendarLabel,
   normalizeSymbols,
   type FundamentalObservation,
   type ProviderStatus,
@@ -299,7 +300,7 @@ export default function FundamentalsPanel() {
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">สกุลเงินจาก Company Profile: {result.profileCurrency ?? 'ไม่ทราบ'} · ยังไม่มีหลักฐานยืนยันว่านี่คือสกุลเงินของ EPS</p>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">สกุลเงินของ EPS: ไม่ได้ระบุใน Metrics response · Fiscal Period End: ไม่ทราบ</p>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">เวลาอัปเดตต้นทาง: ไม่ได้ระบุใน metric response</p>
-            <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Earnings Calendar: {STATUS_LABELS[result.earnings.status]}{result.earnings.date ? ` · ${result.earnings.date}${result.earnings.hour ? ` (${result.earnings.hour.toUpperCase()})` : ''}` : ''}</p>
+            <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Earnings Calendar: {earningsCalendarLabel(result.earnings, STATUS_LABELS[result.earnings.status])}</p>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Actual vs Estimate: ยังไม่ยืนยันสิทธิ์ Endpoint ของ Finnhub</p>
           </article>)}
         </div>
