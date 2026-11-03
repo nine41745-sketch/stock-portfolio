@@ -124,3 +124,9 @@ for (const file of ['premarket', 'performance-history', 'stock-meta']) {
   assert.match(fs.readFileSync(new URL(`../lib/${file}.ts`, import.meta.url), 'utf8'), /toHistorySymbol\(symbol\)/, `${file} must normalize share classes`)
 }
 console.log('review follow-up tests passed')
+
+// Extreme R:R from the engine (e.g. 130:1 from a very tight stop) is displayed as 10+ in every UI.
+for (const file of ['components/portfolio/TodayOpportunities.tsx', 'components/portfolio/StockCheckPanel.tsx', 'components/portfolio/OpportunityHub.tsx']) {
+  assert.match(fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), /'10\+:1'/, `${file} must cap the displayed R:R at 10+`)
+}
+console.log('R:R display cap tests passed')

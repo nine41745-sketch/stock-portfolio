@@ -76,7 +76,9 @@ function fmtPrice(value: number | null): string {
 }
 
 function fmtRatio(value: number | null): string {
-  return value === null ? '—' : `${value.toFixed(2)}:1`
+  if (value === null) return '—'
+  // Engine values above 10 are extreme ratios from a very tight stop; show them as 10+ instead of an exact-looking number.
+  return value >= 10 ? '10+:1' : `${value.toFixed(2)}:1`
 }
 
 function fmtMidpoint(value: number): string {
