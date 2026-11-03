@@ -4,7 +4,13 @@
 
 - Scope: ระยะ A ของแผนปรับหน้าพื้นฐาน/มูลค่า: แสดงชนิด P/E บนหน้าพอร์ต และเลิกตัดข้อมูลเพิ่มเติมของ Finnhub ที่ 60 รายการ (เพดานใหม่ 200) พร้อมจัดกลุ่ม ROE/ROI กระแสเงินสด เงินปันผล และสภาพคล่อง. ไม่แตะ P/E Scenario, SQL หรือตัวแปร Vercel.
 - Development/Feature History: `Development History — Feature commit 2026-11-03 16:01:00 +07:00 (ไม่ใช่ Production)`.
-- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.22. No merge, deployment or Production change is authorized by this task. เลขเวอร์ชันข้าม v1.41.21 เพราะ PR #138 ใช้เลขนี้อยู่; ผู้ merge ทีหลังต้องรวมไฟล์เวอร์ชัน/changelog.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.22. No merge, deployment or Production change is authorized by this task.
+
+## Version under preparation — v1.41.21
+
+- Scope: แสดงคำแนะนำตั้งแจ้งเตือนเมื่อแผนรอย่ออยู่ห่างเกิน 5% และแยกคะแนนแนวโน้มออกจากทิศทางราคา (PR #138, เรียงเลขใหม่จาก v1.41.16 หลัง main ไปถึง v1.41.20).
+- Development/Feature History: `Development History — Feature commit 2026-10-31 12:09:31 +07:00 (ไม่ใช่ Production)`.
+- Release state: Local Diff on a Draft PR; Security Gate and Production Release Gate remain HOLD for v1.41.21. No merge, deployment or Production change is authorized by this task.
 
 ## Version under preparation — v1.41.20
 

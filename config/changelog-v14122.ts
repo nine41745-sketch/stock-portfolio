@@ -1,4 +1,4 @@
-import { changelog as previousChangelog } from './changelog-v14120'
+import { changelog as previousChangelog } from './changelog-v14121'
 import type { ChangelogEntry } from './changelog'
 
 const current: ChangelogEntry = {
