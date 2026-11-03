@@ -600,4 +600,65 @@ assert.match(stockCheckUi, /formatTarget2Context\(/, 'Target 2 must explain its 
 assert.match(stockCheckUi, /R:R คำนวณถึง Target 1/, 'R:R display must say it is measured to Target 1')
 assert.match(stockCheckUi, /AI ส่งรูปแบบที่อ่านไม่ได้ จึงใช้สรุปจาก Stock Check แทน/, 'AI parse fallback must be disclosed to the user')
 
+// AI claim guard: sentences below are the wrong/right wordings seen in real Stock Check AI output on 2026-11-03.
+const aiGuard = await importTsModule('lib/stock-check-ai-guard.ts')
+const aaplFacts = { price: 330.99, ema50: 334.24, ema200: 302.85, week52High: 351.73, week52Low: 243.42, earningsFound: false }
+const msftFacts = { price: 516.12, ema50: 509.56, ema200: 465.25, week52High: 551.15, week52Low: 349.2, earningsFound: false }
+const nvdaFacts = { price: 208.29, ema50: 218.42, ema200: 205.64, week52High: 243.37, week52Low: 164.27, earningsFound: true }
+assert.equal(aiGuard.findAiClaimViolation('ราคาอยู่ในช่วง 52\u2011Week Low 36% และสูงกว่า 52\u2011Week High 5.9%', aaplFacts), 'price-vs-52w-high', 'Price below the 52W High must not be described as above it')
+assert.equal(aiGuard.findAiClaimViolation('ราคาอยู่ 6.4% ต่ำกว่า 52W High และ 47.8% สูงกว่า 52W Low', msftFacts), null, 'Correct 52W directions must pass')
+assert.equal(aiGuard.findAiClaimViolation('ราคาต่ำกว่า 52W Low', msftFacts), 'price-vs-52w-low', 'Price above the 52W Low must not be described as below it')
+assert.equal(aiGuard.findAiClaimViolation('ราคาอยู่ที่เหนือ 52W High', { ...msftFacts, price: 551.15 }), null, 'Price at the 52W High may be described as at or above it')
+assert.equal(aiGuard.findAiClaimViolation('อยู่ในช่วงด้านล่างของช่วง 52\u2011สัปดาห์', nvdaFacts), 'range-position-lower', 'A mid-range price must not be described as the lower part of the 52W range')
+assert.equal(aiGuard.findAiClaimViolation('อยู่ในช่วงด้านล่างของช่วง 52 สัปดาห์', { ...nvdaFacts, price: 170 }), null, 'A genuinely low price may be described as the lower part of the range')
+assert.equal(aiGuard.findAiClaimViolation('อยู่ในส่วนบนของช่วง 52 สัปดาห์', nvdaFacts), 'range-position-upper', 'A mid-range price must not be described as the upper part of the range')
+assert.equal(aiGuard.findAiClaimViolation('EMA50 อยู่เหนือ EMA200 และราคาเหนือ EMA50 แสดงโครงสร้างขาขึ้น', msftFacts), null, 'Correct EMA wording must pass')
+assert.equal(aiGuard.findAiClaimViolation('ราคาอยู่เหนือ EMA50 และ EMA200', msftFacts), null, 'A shared direction over both EMAs must pass when both hold')
+assert.equal(aiGuard.findAiClaimViolation('ราคาอยู่เหนือ EMA50 และ EMA200', nvdaFacts), 'price-vs-ema50', 'Price below EMA50 must not be described as above both EMAs')
+assert.equal(aiGuard.findAiClaimViolation('ราคายังคงต่ำกว่า EMA50', msftFacts), 'price-vs-ema50', 'Price above EMA50 must not be described as below it')
+assert.equal(aiGuard.findAiClaimViolation('EMA50 อยู่ต่ำกว่า EMA200', msftFacts), 'ema50-vs-ema200', 'EMA50 above EMA200 must not be described as below it')
+assert.equal(aiGuard.findAiClaimViolation('ไม่มีข้อมูล earnings ใน 60 วันล่าสุด', aaplFacts), 'earnings-window', 'The earnings window looks forward, never "recent"')
+assert.equal(aiGuard.findAiClaimViolation('ไม่มีข้อมูล earnings ใน 60 วัน ทำให้ไม่สามารถตรวจสอบผลประกอบการล่าสุดได้', msftFacts), 'earnings-window', 'No upcoming date must not be turned into "cannot check recent results"')
+assert.equal(aiGuard.findAiClaimViolation('ไม่พบนัดประกาศผลใน 60 วันข้างหน้า', aaplFacts), null, 'The forward-looking wording must pass')
+assert.equal(aiGuard.findAiClaimViolation('ไม่พบนัดประกาศผลใน 60 วันข้างหน้า', nvdaFacts), 'earnings-denied', 'Denying an earnings date the engine found must be blocked')
+assert.equal(aiGuard.findAiClaimViolation('ราคาสูงกว่า 52W High', { ...aaplFacts, price: null }), null, 'Without a price the guard must not guess')
+
+const guardedFields = aiGuard.guardAiClaims({
+  summary: 'สรุปที่ราคาอยู่สูงกว่า 52W High',
+  reasons: ['เหตุผลปกติ', 'ราคาต่ำกว่า EMA200 ชัดเจน'],
+  risks: ['ความเสี่ยงปกติ'],
+  action: 'รอย่อเข้า Entry Zone',
+}, aaplFacts, 'สรุปจาก engine')
+assert.equal(guardedFields.removed, 2, 'Contradicting summary and list items must be counted')
+assert.equal(guardedFields.fields.summary, 'สรุปจาก engine', 'A contradicting summary must be replaced with the engine summary')
+assert.deepEqual(guardedFields.fields.reasons, ['เหตุผลปกติ'], 'A contradicting list item must be dropped, others kept')
+assert.deepEqual(guardedFields.fields.risks, ['ความเสี่ยงปกติ'])
+assert.equal(guardedFields.fields.action, 'รอย่อเข้า Entry Zone')
+
+let fallbackCalls = 0
+const usableJson = text => text.includes('"summary"')
+const goodReply = { text: '{"summary":"ok"}', truncated: false }
+const firstGood = await aiGuard.runModelChain([async () => goodReply, async () => { fallbackCalls += 1; return goodReply }], usableJson)
+assert.deepEqual([firstGood.index, firstGood.usable, fallbackCalls], [0, true, 0], 'A usable primary reply must not trigger the fallback model')
+const emptyThenGood = await aiGuard.runModelChain([async () => ({ text: '', truncated: false }), async () => goodReply], usableJson)
+assert.deepEqual([emptyThenGood.index, emptyThenGood.usable], [1, true], 'An empty primary reply must use the fallback model')
+const cutThenGood = await aiGuard.runModelChain([async () => ({ text: '{"summary":"cut', truncated: true }), async () => goodReply], usableJson)
+assert.deepEqual([cutThenGood.index, cutThenGood.usable], [1, true], 'A reply cut off at the token limit must use the fallback model')
+const unparseableThenGood = await aiGuard.runModelChain([async () => ({ text: 'ไม่ใช่ JSON', truncated: false }), async () => goodReply], usableJson)
+assert.deepEqual([unparseableThenGood.index, unparseableThenGood.usable], [1, true], 'An unparseable primary reply must use the fallback model')
+const bothUnusable = await aiGuard.runModelChain([async () => ({ text: 'ไม่ใช่ JSON', truncated: false }), async () => ({ text: '{"x":1}', truncated: false })], usableJson)
+assert.deepEqual([bothUnusable.text, bothUnusable.usable], ['{"x":1}', false], 'When no reply is usable the last non-empty one is returned for the engine-summary fallback')
+const bothEmpty = await aiGuard.runModelChain([async () => ({ text: '', truncated: false }), async () => ({ text: '', truncated: false })], usableJson)
+assert.equal(bothEmpty, null, 'No reply from any model must stay an AI-unavailable error')
+
+const aiRunSource = fs.readFileSync('lib/stock-check-ai.ts', 'utf8')
+assert.match(aiRunSource, /const PRIMARY_OUTPUT_LIMIT = 4000/, 'The 120B model needs room for hidden reasoning')
+assert.match(aiRunSource, /AbortSignal\.timeout\(timeoutMs\)/, 'Each model call must time out so both attempts fit inside maxDuration')
+assert.ok(25_000 + 15_000 < 45_000, 'Primary + fallback timeouts must stay under the 45s route limit')
+assert.match(aiRunSource, /finish_reason === 'length'/, 'A reply cut at the token limit must be detected')
+assert.match(aiRunSource, /guardAiClaims\(initial/, 'AI text must pass the claim guard before it is returned')
+assert.match(aiRunSource, /ไม่พบนัดประกาศผลใน 60 วันข้างหน้า/, 'The prompt must state the earnings window looks forward')
+assert.match(aiRunSource, /ตำแหน่งของราคาในช่วง 52W/, 'The prompt facts must include the computed 52W range position')
+assert.match(fs.readFileSync('components/portfolio/StockCheckPanel.tsx', 'utf8'), /ตัดข้อความ AI ที่ขัดกับข้อมูลที่ระบบคำนวณแล้ว/, 'Removed AI claims must be disclosed to the user')
+
 console.log('✓ Stock Check synthetic regression tests passed')

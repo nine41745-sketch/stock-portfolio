@@ -1,5 +1,11 @@
 # Production Release Status
 
+## Version under preparation — v1.41.24
+
+- Scope: คุณภาพข้อความ AI ของ Stock Check: ตัวตรวจคำกล่าวอ้างที่ขัดกับตัวเลขที่คำนวณแล้ว, เพิ่มงบโทเค็นของโมเดลหลัก, ลองโมเดลสำรองเมื่อคำตอบใช้ไม่ได้, ปรับ prompt เรื่องช่วงเวลา earnings. ไม่แตะ `secValuationGuard`, SQL หรือตัวแปร Vercel.
+- Development/Feature History: `Development History — Feature commit 2026-11-04 09:00:00 +07:00 (ไม่ใช่ Production)`.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.24. No push, merge, deployment or Production change is authorized by this task. Behavior against the live Groq API is NOT VERIFIED; the token-budget cause of empty/truncated replies is an unconfirmed hypothesis.
+
 ## Version under preparation — v1.41.23
 
 - Scope: ระยะ B ของแผนปรับหน้าพื้นฐาน/มูลค่า: ปฏิทินประกาศผลที่ว่างอธิบายว่า "ไม่พบนัดใน 60 วันข้างหน้า" แยกจากข้อมูลขาดหรือผู้ให้บริการขัดข้อง. ไม่แตะ `secValuationGuard`, P/E Scenario, SQL หรือตัวแปร Vercel.

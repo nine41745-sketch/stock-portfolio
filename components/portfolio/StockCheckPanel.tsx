@@ -63,6 +63,7 @@ type AiResult = {
   news: Array<{ headline: string; source: string; datetime: number }>
   usedModel: string | null
   usedFallbackSummary: boolean
+  removedClaims?: number
 }
 
 function fmtPrice(value: number | null): string {
@@ -363,6 +364,7 @@ export default function StockCheckPanel({
             <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="font-bold text-purple-300">✨ AI Deep Analysis</p><span className="text-[10px] text-gray-600">{aiResult.usedModel ?? 'model unknown'}</span></div>
               {aiResult.usedFallbackSummary && <p className="mb-2 text-xs text-amber-300">AI ส่งรูปแบบที่อ่านไม่ได้ จึงใช้สรุปจาก Stock Check แทน</p>}
+              {(aiResult.removedClaims ?? 0) > 0 && <p className="mb-2 text-xs text-amber-300">ตัดข้อความ AI ที่ขัดกับข้อมูลที่ระบบคำนวณแล้ว {aiResult.removedClaims} รายการ</p>}
               <p className="text-sm leading-relaxed text-gray-300">{aiResult.summary}</p>
               <div className="mt-3 grid gap-3 lg:grid-cols-2">
                 <div><p className="mb-1 text-xs font-semibold text-gray-400">เหตุผลเพิ่มเติม</p><ul className="space-y-1 text-xs text-gray-400">{aiResult.reasons.map(item => <li key={item}>• {item}</li>)}</ul></div>
