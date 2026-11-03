@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getMultipleQuotesWithMetrics } from '@/lib/finnhub'
+import type { PeKind } from '@/lib/pe-kind'
 import { InputValidationError, parseSymbol } from '@/lib/portfolio-validation'
 
 const MAX_SYMBOLS_PER_REQUEST = 25
@@ -29,11 +30,11 @@ export async function GET(request: NextRequest) {
   const data = await getMultipleQuotesWithMetrics(symbols)
 
   const prices: Record<string, number> = {}
-  const metrics: Record<string, { pe: number | null; week52High: number | null; week52Low: number | null; dayChange: number | null }> = {}
+  const metrics: Record<string, { pe: number | null; peKind: PeKind | null; week52High: number | null; week52Low: number | null; dayChange: number | null }> = {}
 
   for (const [sym, d] of Object.entries(data)) {
     if (d.price !== null) prices[sym] = d.price
-    metrics[sym] = { pe: d.pe, week52High: d.week52High, week52Low: d.week52Low, dayChange: d.dayChange }
+    metrics[sym] = { pe: d.pe, peKind: d.peKind ?? null, week52High: d.week52High, week52Low: d.week52Low, dayChange: d.dayChange }
   }
 
   return NextResponse.json({ prices, metrics })

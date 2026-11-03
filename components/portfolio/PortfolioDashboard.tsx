@@ -12,6 +12,7 @@ import { AUTO_LOGOUT_MS, AUTO_LOGOUT_WARN_MS, FALLBACK_USD_THB_RATE } from '@/li
 import { getMarketStatus, MarketStatus } from '@/lib/market-status'
 import { changelog, CURRENT_VERSION } from '@/config/changelog'
 import { getAthState } from '@/lib/ath'
+import { peKindHint, peKindLabel } from '@/lib/pe-kind'
 import { getImportantSupportState } from '@/lib/important-support'
 
 interface Props {
@@ -587,7 +588,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
         const m = metrics?.[h.symbol] ?? {}
         return { ...h, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct,
           dayChange: m.dayChange !== undefined ? m.dayChange : h.dayChange,
-          pe: m.pe !== undefined ? m.pe : h.pe, week52High: m.week52High !== undefined ? m.week52High : h.week52High, week52Low: m.week52Low !== undefined ? m.week52Low : h.week52Low }
+          pe: m.pe !== undefined ? m.pe : h.pe, peKind: m.peKind !== undefined ? m.peKind : h.peKind, week52High: m.week52High !== undefined ? m.week52High : h.week52High, week52Low: m.week52Low !== undefined ? m.week52Low : h.week52Low }
       }))
       setLastUpdate(new Date().toISOString())
     } catch {
@@ -706,8 +707,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       setHoldings(prev => {
         const exists = prev.find(h => h.symbol === payload.symbol)
         const nm = metrics?.[payload.symbol] ?? {}
-        if (exists) return prev.map(h => h.symbol === payload.symbol ? { ...h, ...payload, cost_basis: payload.cost_basis ?? null, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null } : h)
-        return [...prev, { id: realId ?? Date.now().toString(), user_id: '', symbol: payload.symbol, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null }]
+        if (exists) return prev.map(h => h.symbol === payload.symbol ? { ...h, ...payload, cost_basis: payload.cost_basis ?? null, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, peKind: nm.peKind ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null } : h)
+        return [...prev, { id: realId ?? Date.now().toString(), user_id: '', symbol: payload.symbol, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, peKind: nm.peKind ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null }]
       })
     } else {
       // v1.8.2: แก้บั๊ก market_value ค้างค่าเก่า — เดิมแก้ shares แล้วยังใช้ h.market_value ตัวเก่ามาคำนวณ P&L
@@ -1221,7 +1222,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
                         <td className={`px-3 py-2.5 text-right font-mono font-medium ${h.dayChange == null ? 'text-gray-600' : h.dayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {h.dayChange != null ? `${h.dayChange >= 0 ? '+' : ''}${h.dayChange.toFixed(2)}%` : <span className="text-gray-600">N/A</span>}
                         </td>
-                        <td className="px-3 py-2.5 text-right text-gray-300 font-mono">{h.pe != null ? h.pe.toFixed(1) : <span className="text-gray-600">N/A</span>}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-300 font-mono">{h.pe != null ? <span title={peKindHint(h.peKind)}>{h.pe.toFixed(1)}{peKindLabel(h.peKind) && <span className="ml-1 text-[10px] text-gray-500">{peKindLabel(h.peKind)}</span>}</span> : <span className="text-gray-600">N/A</span>}</td>
                         <td className="px-3 py-2.5 text-right text-gray-400 font-mono text-xs">{h.week52High != null ? `$${h.week52High.toFixed(2)}` : <span className="text-gray-600">N/A</span>}</td>
                         <td className="px-3 py-2.5 text-right text-gray-400 font-mono text-xs">{h.week52Low  != null ? `$${h.week52Low.toFixed(2)}`  : <span className="text-gray-600">N/A</span>}</td>
                         <td className="px-3 py-2.5 text-right text-gray-600 text-xs">{fmtDate(h.updated_at)}</td>
@@ -1307,7 +1308,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
                   <div><p className="text-gray-600 text-xs mb-0.5">{pnlPos ? 'กำไร' : 'ขาดทุน'}</p><p className={`text-sm font-medium font-mono ${pnlColor}`}>{fmtPnl(h.pnl)}</p></div>
                 </div>
                 <div className="grid grid-cols-3 gap-3 mb-3">
-                  <div><p className="text-gray-600 text-xs mb-0.5">P/E</p><p className="text-gray-300 text-xs font-mono">{h.pe != null ? h.pe.toFixed(1) : 'N/A'}</p></div>
+                  <div><p className="text-gray-600 text-xs mb-0.5">P/E</p><p className="text-gray-300 text-xs font-mono" title={peKindHint(h.peKind)}>{h.pe != null ? h.pe.toFixed(1) : 'N/A'}{h.pe != null && peKindLabel(h.peKind) && <span className="ml-1 text-[10px] text-gray-500">{peKindLabel(h.peKind)}</span>}</p></div>
                   <div><p className="text-gray-600 text-xs mb-0.5">52W</p><p className="text-gray-500 text-xs font-mono">{h.week52Low != null ? `$${h.week52Low.toFixed(0)}` : '—'}–{h.week52High != null ? `$${h.week52High.toFixed(0)}` : '—'}</p></div>
                 </div>
                 <div className="flex gap-2">

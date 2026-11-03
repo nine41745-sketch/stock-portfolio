@@ -210,11 +210,11 @@ export default function FundamentalsPanel() {
 
         <section aria-labelledby="additional-metrics-title" className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/70">
           <h3 id="additional-metrics-title" className="font-semibold">ข้อมูลเพิ่มเติมจาก Finnhub</h3>
-          <p className="text-xs text-gray-700 dark:text-gray-300">แสดงชื่อช่องและตัวเลขตามที่ผู้ให้บริการส่งมา สูงสุด 60 รายการต่อหุ้น ไม่สรุปหน่วย สกุลเงิน งวด หรือความสดที่ยังไม่มีหลักฐาน และไม่ใช้ข้อมูลส่วนนี้คำนวณราคาเป้าหมาย</p>
+          <p className="text-xs text-gray-700 dark:text-gray-300">แสดงชื่อช่องและตัวเลขตามที่ผู้ให้บริการส่งมา สูงสุด 200 รายการต่อหุ้น ไม่สรุปหน่วย สกุลเงิน งวด หรือความสดที่ยังไม่มีหลักฐาน และไม่ใช้ข้อมูลส่วนนี้คำนวณราคาเป้าหมาย</p>
           {results.map(result => <details key={`${result.symbol}-additional`} className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950">
             <summary className="cursor-pointer font-medium">{result.symbol} · ข้อมูลเพิ่มเติม {(result.additionalMetrics ?? []).length} รายการ</summary>
             {(result.additionalMetrics ?? []).length ? <div className="mt-3 space-y-4">
-              {['กำไรและรายได้', 'หนี้และส่วนผู้ถือหุ้น', 'มูลค่า', 'ราคาและความผันผวน', 'อื่น ๆ'].map(group => {
+              {['กำไรและรายได้', 'ผลตอบแทนต่อทุน', 'กระแสเงินสดและเงินปันผล', 'สภาพคล่อง', 'หนี้และส่วนผู้ถือหุ้น', 'มูลค่า', 'ราคาและความผันผวน', 'อื่น ๆ'].map(group => {
                 const metrics = (result.additionalMetrics ?? []).filter(metric => additionalMetricGroup(metric.field) === group)
                 if (!metrics.length) return null
                 return <section key={group} aria-label={`${result.symbol} ${group}`}><h5 className="mb-2 text-sm font-semibold">{group}</h5><dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
