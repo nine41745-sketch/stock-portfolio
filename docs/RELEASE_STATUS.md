@@ -1,10 +1,17 @@
 # Production Release Status
 
-## Version under preparation — v1.41.16
+## Version under preparation — v1.41.18
 
 - Scope: ให้ Preview ของทุก branch ใช้ฐานข้อมูล Production ได้เมื่อเจ้าของตั้ง `NEXT_PUBLIC_SUPABASE_PREVIEW_PRODUCTION_ACCESS_BRANCH` เป็น `*` เองบน Vercel (การตัดสินใจของเจ้าของ 2026-11-03) ถ้าไม่ตั้งตัวแปรนี้ guard ยังปิด Preview เหมือนเดิม. Cron ยังถูกบล็อกบน Preview ทุกตัว.
 - Development/Feature History: `2026-11-03T03:46:28Z` (`2026-11-03 10:46:28 +07:00`), from local Git commit `d779baf6891d3c51e5db912df6cef9ac6413ffa6`.
-- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.16. No merge, deployment or Vercel environment change is authorized by this task. Preview behavior on Vercel is NOT VERIFIED until the owner sets the variables and a Preview is inspected.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.18. No merge, deployment or Production change is authorized by this task. The owner set the Vercel Preview variables on 2026-11-03; Preview behavior on Vercel remains NOT VERIFIED until a Preview built after this change is inspected.
+
+## Version under preparation — v1.41.17
+
+- Scope: ปรับ security-audit ให้ยกเว้น GHSA-g3hv-75wg-m249 ได้เฉพาะกรณี dev-only ทั้ง dependency chain พร้อมวันหมดอายุ 2026-12-15; Production-only audit ยังไม่มีข้อยกเว้น.
+- Development/Feature History: `2026-10-31T05:48:47Z` (`2026-10-31 12:48:47 +07:00`), from local Git commit; no Production time is claimed.
+- Release state: local branch only; no push or deployment. Security Gate และ Production Release Gate คง HOLD; งานนี้เปลี่ยนเฉพาะ CI/reporting และไฟล์เวอร์ชัน/เอกสาร ไม่มีการเปลี่ยน runtime.
+
 
 ## Version under preparation — v1.41.15
 

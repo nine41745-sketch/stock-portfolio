@@ -1,6 +1,6 @@
 {
   "name": "stock-portfolio",
-  "version": "1.41.16",
+  "version": "1.41.18",
   "private": true,
   "engines": {
     "node": "22.x"
