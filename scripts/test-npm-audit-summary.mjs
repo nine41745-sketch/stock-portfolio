@@ -99,20 +99,22 @@ assert.match(ciWorkflow, /\[ "\$FULL_AUDIT_STATUS" != "PASS_WITH_EXCEPTION" \]/)
 
 console.log('✓ Audit exception classifier covers the owner-provided npm audit JSON shape and fails closed on unrelated findings')
 
-const minimatchAdvisory = {
-  source: 9999999,
-  name: 'minimatch',
-  dependency: 'minimatch',
-  url: 'https://github.com/advisories/GHSA-g3hv-75wg-m249',
-  severity: 'moderate',
-  range: '<11.0.1',
+function makeMinimatchAdvisory(range) {
+  return {
+    source: 9999999,
+    name: 'minimatch',
+    dependency: 'minimatch',
+    url: 'https://github.com/advisories/GHSA-g3hv-75wg-m249',
+    severity: 'moderate',
+    range,
+  }
 }
 
-function makeMinimatchAudit({ extraAdvisory = false, productionNode = false, nonDevAncestor = false } = {}) {
+function makeMinimatchAudit({ extraAdvisory = false, productionNode = false, nonDevAncestor = false, packageRange = '<11.0.1', advisoryRange = '<11.0.1' } = {}) {
   const vulnerabilities = {
     minimatch: {
-      name: 'minimatch', severity: 'moderate', isDirect: false, range: '<11.0.1',
-      via: [minimatchAdvisory], effects: ['eslint'], nodes: ['node_modules/minimatch'], fixAvailable: true,
+      name: 'minimatch', severity: 'moderate', isDirect: false, range: packageRange,
+      via: [makeMinimatchAdvisory(advisoryRange)], effects: ['eslint'], nodes: ['node_modules/minimatch'], fixAvailable: true,
     },
     eslint: {
       name: 'eslint', severity: 'moderate', isDirect: false, range: '*',
@@ -163,3 +165,30 @@ assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ productionNode: true }
 assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ nonDevAncestor: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
 assert.equal(renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Full', now: '2026-12-16' }).status, 'FINDINGS')
 assert.equal(renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Production-only', now: '2026-12-15' }).status, 'FINDINGS')
+
+// npm audit now spells the same advisory range as '7.0.0 - 11.0.0' (package) and '>=7.0.0 <11.0.1' (advisory).
+const minimatchCurrentShape = makeMinimatchAudit({ packageRange: '7.0.0 - 11.0.0', advisoryRange: '>=7.0.0 <11.0.1' })
+assert.equal(renderAuditSummary({ ...minimatchCurrentShape, exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'PASS_WITH_EXCEPTION')
+// Every other condition still applies to the new spelling.
+assert.equal(renderAuditSummary({ ...minimatchCurrentShape, exitCode: 0, mode: 'Full', now: '2026-12-16' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...minimatchCurrentShape, exitCode: 0, mode: 'Production-only', now: '2026-12-15' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ packageRange: '7.0.0 - 11.0.0', advisoryRange: '>=7.0.0 <11.0.1', extraAdvisory: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ packageRange: '7.0.0 - 11.0.0', advisoryRange: '>=7.0.0 <11.0.1', productionNode: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ packageRange: '7.0.0 - 11.0.0', advisoryRange: '>=7.0.0 <11.0.1', nonDevAncestor: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...minimatchCurrentShape, exitCode: 1, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
+// Any other range spelling fails closed, whichever side is changed.
+for (const [packageRange, advisoryRange] of [
+  ['7.0.0 - 11.0.0', '>=7.0.0 <12.0.0'],
+  ['7.0.0 - 11.0.0', '*'],
+  ['7.0.0 - 12.0.0', '>=7.0.0 <11.0.1'],
+  ['*', '>=7.0.0 <11.0.1'],
+  ['>=7.0.0', '>=7.0.0 <11.0.1'],
+  ['7.0.0 - 11.0.0', '>=6.0.0 <11.0.1'],
+]) {
+  assert.equal(
+    renderAuditSummary({ ...makeMinimatchAudit({ packageRange, advisoryRange }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status,
+    'FINDINGS',
+    `Unrecognized minimatch range spelling must fail closed (${packageRange} / ${advisoryRange})`,
+  )
+}
+console.log('✓ minimatch audit exception accepts only the exact known range spellings and keeps every other condition')

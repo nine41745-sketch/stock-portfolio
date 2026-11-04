@@ -1,5 +1,12 @@
 # Production Release Status
 
+## Version under preparation — v1.41.25
+
+- Scope: ปรับตัวตรวจ `scripts/qa/summarize-npm-audit.mjs` ให้ข้อยกเว้น minimatch (GHSA-g3hv-75wg-m249) ยอมรับช่วงเวอร์ชันที่ npm audit รายงานอยู่ตอนนี้ (package `7.0.0 - 11.0.0`, advisory `>=7.0.0 <11.0.1`) นอกเหนือจากค่าเดิม `<11.0.1`; เงื่อนไขอื่นไม่เปลี่ยน (moderate เท่านั้น, dev-only ทั้ง chain, หมดอายุ 2026-12-15, Production-only audit ไม่มีข้อยกเว้น). ไม่แตะ workflow, ruleset, SQL, env หรือการตั้งค่า GitHub/Vercel.
+- Development/Feature History: `Development History — Feature commit 2026-11-05 01:57:07 +07:00 (ไม่ใช่ Production)`.
+- Evidence: on 2026-11-04 the `security-audit` job of Draft PR #146 (head `dacc7558`, documentation only) reported `FULL_AUDIT_STATUS: FINDINGS` with the production-only audit PASS, while main run for `8fd13d52` (2026-11-03) reported `PASS_WITH_EXCEPTION` with the same lockfile. Reproduced locally with the real dependency tree: before the change `summarize-npm-audit.mjs` returned `FINDINGS`; after it returns `PASS_WITH_EXCEPTION`. The cause is the external advisory data spelling, not repository code. The 2026-12-15 expiry recorded for v1.41.17 is unchanged; the exception had already stopped matching before that date.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.25. This change modifies a security gate checker, so AGENTS.md requires independent review of the exact PR head before merge; no reviewer has been named. No push, merge, deployment or Production change is authorized by this task.
+
 ## Version under preparation — v1.41.24
 
 - Scope: คุณภาพข้อความ AI ของ Stock Check: ตัวตรวจคำกล่าวอ้างที่ขัดกับตัวเลขที่คำนวณแล้ว, เพิ่มงบโทเค็นของโมเดลหลัก, ลองโมเดลสำรองเมื่อคำตอบใช้ไม่ได้, ปรับ prompt เรื่องช่วงเวลา earnings. ไม่แตะ `secValuationGuard`, SQL หรือตัวแปร Vercel.

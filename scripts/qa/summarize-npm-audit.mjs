@@ -110,7 +110,10 @@ function hasOnlyAcceptedBracesFinding({ vulnerabilities, metadata, npmTree, exit
 }
 
 const acceptedMinimatchAdvisory = 'GHSA-G3HV-75WG-M249'
-const acceptedMinimatchRange = '<11.0.1'
+// npm audit has reported the same advisory range in more than one spelling. Accept only these exact strings;
+// any other range still fails closed.
+const acceptedMinimatchPackageRanges = new Set(['<11.0.1', '7.0.0 - 11.0.0'])
+const acceptedMinimatchAdvisoryRanges = new Set(['<11.0.1', '>=7.0.0 <11.0.1'])
 const acceptedMinimatchExpiry = '2026-12-15'
 const minimatchReviewCondition = 'ลบข้อยกเว้นนี้เมื่อ ESLint toolchain ปล่อยรุ่นที่ใช้ minimatch 11.0.1 ขึ้นไป'
 
@@ -173,10 +176,10 @@ function hasOnlyAcceptedMinimatchFinding({ vulnerabilities, metadata, npmTree, p
   }
 
   const minimatch = vulnerabilities.minimatch
-  if (!minimatch || minimatch.range !== acceptedMinimatchRange || minimatch.via.length !== 1) return false
+  if (!minimatch || !acceptedMinimatchPackageRanges.has(minimatch.range) || minimatch.via.length !== 1) return false
   const [advisory] = minimatch.via
   if (typeof advisory === 'string' || advisoryId(advisory) !== acceptedMinimatchAdvisory ||
-      advisory.severity !== 'moderate' || advisory.range !== acceptedMinimatchRange) return false
+      advisory.severity !== 'moderate' || !acceptedMinimatchAdvisoryRanges.has(advisory.range)) return false
 
   for (const [name, vulnerability] of entries) {
     if (name === 'minimatch') continue
