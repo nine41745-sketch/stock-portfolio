@@ -5,18 +5,21 @@
 - Scope: คุณภาพข้อความ AI ของ Stock Check: ตัวตรวจคำกล่าวอ้างที่ขัดกับตัวเลขที่คำนวณแล้ว, เพิ่มงบโทเค็นของโมเดลหลัก, ลองโมเดลสำรองเมื่อคำตอบใช้ไม่ได้, ปรับ prompt เรื่องช่วงเวลา earnings. ไม่แตะ `secValuationGuard`, SQL หรือตัวแปร Vercel.
 - Development/Feature History: `Development History — Feature commit 2026-11-04 09:00:00 +07:00 (ไม่ใช่ Production)`.
 - Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.24. No push, merge, deployment or Production change is authorized by this task. Behavior against the live Groq API is NOT VERIFIED; the token-budget cause of empty/truncated replies is an unconfirmed hypothesis.
+- Production: deployed and promoted on 2026-11-03 (see "Current Production status — v1.41.24" below). The gate states above were written before deployment and are not updated here; the gate decision is recorded in that section.
 
 ## Version under preparation — v1.41.23
 
 - Scope: ระยะ B ของแผนปรับหน้าพื้นฐาน/มูลค่า: ปฏิทินประกาศผลที่ว่างอธิบายว่า "ไม่พบนัดใน 60 วันข้างหน้า" แยกจากข้อมูลขาดหรือผู้ให้บริการขัดข้อง. ไม่แตะ `secValuationGuard`, P/E Scenario, SQL หรือตัวแปร Vercel.
 - Development/Feature History: `Development History — Feature commit 2026-11-03 23:30:00 +07:00 (ไม่ใช่ Production)`.
 - Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.23. No merge, deployment or Production change is authorized by this task.
+- Production: no separate Production deployment. It shipped inside the v1.41.24 deployment (source SHA `8fd13d5230131e51a0c41e0934cf3d084e05852b`); see "Current Production status — v1.41.24" below.
 
 ## Version under preparation — v1.41.22
 
 - Scope: ระยะ A ของแผนปรับหน้าพื้นฐาน/มูลค่า: แสดงชนิด P/E บนหน้าพอร์ต และเลิกตัดข้อมูลเพิ่มเติมของ Finnhub ที่ 60 รายการ (เพดานใหม่ 200) พร้อมจัดกลุ่ม ROE/ROI กระแสเงินสด เงินปันผล และสภาพคล่อง. ไม่แตะ P/E Scenario, SQL หรือตัวแปร Vercel.
 - Development/Feature History: `Development History — Feature commit 2026-11-03 16:01:00 +07:00 (ไม่ใช่ Production)`.
 - Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.22. No merge, deployment or Production change is authorized by this task.
+- Production: deployed and promoted on 2026-11-03 and later superseded by v1.41.24; see "Production deployments after v1.41.10" below.
 
 ## Version under preparation — v1.41.21
 
@@ -76,12 +79,51 @@
 - Current Production remains v1.41.10 at SHA `2eb275f27f8b724548ba7421ad26af1254e33325` / Deployment `dpl_9HDmqhAr9bLeeKdYTRePtqLmNCGg`.
 
 
+## Current Production status — v1.41.24
+
+Recorded after deployment, on 2026-11-04 (Asia/Bangkok). Facts below come from the Vercel API/Activity events, GitHub check runs, or read-only requests made in an owner-unlocked session; anything not checked is listed under "Not verified".
+
+- Production deployment: [`dpl_g13ug98zKMDF4Sz6LCR5yDnJwv4m`](https://vercel.com/nine41745/stock-portfolio/g13ug98zKMDF4Sz6LCR5yDnJwv4m), URL `stock-portfolio-3tgr93ozn-nine41745.vercel.app`, READY, target production. After promotion the Vercel project API reports it as the production target.
+- Source: `main` at `8fd13d5230131e51a0c41e0934cf3d084e05852b` (squash merge of PR #145); package version `1.41.24`. It also contains v1.41.23 (PR #144), which had no Production deployment of its own.
+- Provenance limit: the deployment was created with `vercel deploy --prod --yes --no-wait` from a clean git worktree detached at this exact SHA (`git rev-parse HEAD` was checked before the command). It was NOT created with `--meta sourceGitSha=...`, so Vercel deployment metadata carries no source SHA for it. The SHA above is therefore supported by the local check and the merge record, not by Vercel metadata.
+- Deployment time: Vercel Activity event `uev_pSi7GseWZZfLfQdzQBjLLG6Y` — `2026-11-03T18:23:37.730Z` (`2026-11-04T01:23:37.730+07:00`), "requested by claude-code_2-1-309_agent", via Vercel CLI. It was created Staged (the project has `autoAssignCustomDomains` off).
+- Production (promotion) time: Vercel Activity event `uev_idpeN23IYDTj2Wipui1H0qUT` (`manual-deployment-promotion-created`) — `2026-11-03T18:26:23.882Z` (`2026-11-04T01:26:23.882+07:00`), via Vercel CLI. Alias event `uev_GcjkxJJNDdNGtJtk0XUuMYPz` — `2026-11-03T18:26:25.650Z` (`2026-11-04T01:26:25.650+07:00`), "assigned 2 aliases". The deployment alias list shows `stock-portfolio-nine41745.vercel.app` and `stock-portfolio-seven-inky.vercel.app`.
+- Owner approvals (given in chat, one per action): deploy of the exact SHA to a Staged Production deployment, then promotion of the exact deployment ID. Merge of PR #145 at head `15c2d57ac4f973e137e26b3d9018fc0ef18152fe` was approved separately.
+- CI: GitHub check runs `verify` and `security-audit` completed with success on `8fd13d52`. CI was not rerun for this record.
+- Rollback target: [`dpl_3G5cwXFrbjrRcwNCFdkETnX7L4ep`](https://vercel.com/nine41745/stock-portfolio/3G5cwXFrbjrRcwNCFdkETnX7L4ep) (v1.41.22, promoted `2026-11-03T16:03:03.606Z`). Rollback was not executed and is not authorized by this record.
+- Post-promotion read-only checks (owner-unlocked session; no trade, edit or save action): Dashboard displayed v1.41.24; the P/E kind label ("รายปี") still showed in the portfolio; the Fundamentals page showed "ไม่พบนัดประกาศผลใน 60 วันข้างหน้า" for AAPL and NOW; Finnhub additional metrics returned 113 (AAPL) and 101 (NOW) items; SEC status was available for both; Stock Check prices for AAPL, MSFT and NVDA came from Finnhub with age 0 minutes; the Stock Check AI endpoint returned HTTP 200 for AAPL and NVDA with no fallback summary and 0 removed claims (NVDA used the smaller fallback model after a Groq 429).
+- Runtime logs: no error-level entries for this deployment in the 24 hours checked other than three Groq HTTP 429 (rate limit) responses on `openai/gpt-oss-120b`, caused by test traffic.
+- Cron evidence, read-only, checked 2026-11-04T02:24Z (09:24 +07:00). No Cron endpoint was called and Run was not pressed:
+  - Registry: the Vercel project API reports `crons.deploymentId` = `dpl_g13ug98zKMDF4Sz6LCR5yDnJwv4m`, enabled (`disabledAt` null), updated `2026-11-03T18:26:24Z`, with three definitions matching `vercel.json`: `/api/cron/daily-analyze` `15 1 * * 2-6`, and `/api/cron/premarket-analyze` `45 12 * * 1-5` and `45 13 * * 1-5` (UTC).
+  - Invocation: one runtime log record for `GET /api/cron/daily-analyze` on this deployment at `2026-11-04T02:07:50.298Z` (production, region iad1, level info; the message is a Yahoo library survey notice). Vercel Hobby retains about one hour of runtime logs, so earlier logs could not be read, the HTTP status was not visible, and only this one record was returned.
+  - Errors: zero error-level and zero warning-level log records for this deployment between 01:24Z and 02:24Z.
+  - Result: through the owner-logged-in session, `GET /api/daily-analyses/today` (select-only route; its source was read first) returned 8 analyses (ORCL, NVO, WDC, RKLB, SOFI, NOW, VRT, EOSE), all `analysedAt` `2026-11-04T02:07:51.456Z`, mode `DAILY_POST_CLOSE`, model `openai/gpt-oss-120b`, no stale symbols.
+  - Text check against the stored technical numbers: trend, RSI and earnings-day statements matched. Two problems were observed in the portfolio analysis text, which does not use the Stock Check claim guard: WDC summary line 1 says there is no new scale-in trigger and the action is HOLD while line 2 says it is suitable for adding a position; EOSE text says price is at support but price $1.87 is 17.6% above support $1.59. NVO earnings are on the same day (`daysUntil` 0) and are not mentioned. These are observations only; no change was made.
+  - Unconfirmed observation: the stored technicals for all 8 symbols use a last daily bar dated 2026-11-02 while the price comes from Finnhub for 2026-11-03; a later read of the Yahoo daily series for ORCL does include the 2026-11-03 bar. The cause (provider timing, cache or code) was not investigated and it was not compared with earlier days.
+  - Pre-market run, checked 2026-11-04T18:34Z (2026-11-05 01:34 +07:00) through the same select-only route: 6 of the 8 symbols (ORCL, NVO, WDC, RKLB, NOW, VRT) carry mode `PREMARKET_TRIGGER` with `analysedAt` `2026-11-04T14:16:53.360Z`, model `openai/gpt-oss-120b`; SOFI and EOSE still carry the `DAILY_POST_CLOSE` result from 02:07:51Z. A single save time for the batch means one pre-market execution saved results. That the other schedule candidate was skipped by the `08:45-09:44 ET` window rule is an inference from `lib/market-status.ts` and `app/api/cron/premarket-analyze/route.ts`, not an observation: the runtime logs for that time were outside the Hobby retention window.
+  - The pre-market route reuses `baseline.technical` from the stored daily analysis (route line 205), so its `lastBarAt` (`2026-11-02`), RSI and EMA50 repeat the daily values. It therefore gives no new evidence about the one-session lag of the daily technicals.
+  - Pre-market text spot check against stored numbers: WDC "gap down 4.1%" (price 332.94 vs previous close 347.35) and VRT "gap down 7.5%" (218.2 vs 235.97) match. RKLB says earnings are "not near" while the stored earnings date is 2026-11-09 (5 days; the daily text said "near"). NVO reports earnings on 2026-11-04 and its pre-market text does not mention it.
+- Preview evidence for the same code (PR #145, head `15c2d57a`): eight Stock Check AI calls returned HTTP 200, none used the engine-summary fallback and none had a claim removed; 3 of 8 used the smaller model after Groq 429.
+- Security Gate and Production Release Gate: NOT recorded as lifted for v1.41.24. The owner approved the exact deployment and the exact promotion, but did not state that the gates are lifted, and the Cron checks below were not performed. Status: HOLD pending an explicit owner decision.
+- Not verified: which `premarket-analyze` schedule candidate executed (no runtime log in the retention window; see inference above); whether the `daily-analyze` run finished with a successful HTTP status (not visible in the retained logs); Discovery page; mobile and light-theme layout, including the longer Earnings Calendar text; whether the AI claim guard removes a contradicting sentence from a live model reply (it is covered by synthetic tests only); how often Groq 429 occurs under normal use; authenticated staged QA beyond the read-only checks above.
+- Deviations from the Promotion procedure in `AGENTS.md`: the deployment was not created with `--skip-domain --meta sourceGitSha=...`; the promotion approval named the deployment ID and source SHA but not the exact Production domains; Cron registry/invocation evidence was not inspected at promotion time; and this record was written after the promotion, not at the same time.
+- Remaining work (none of it authorized by this record): the next `daily-analyze` run (schedule 2026-11-05 01:15Z) to see whether its last daily bar is the latest completed session; Discovery and mobile/light-theme checks; the CI audit exception for `minimatch` (`GHSA-g3hv-75wg-m249`, dev-only) expires 2026-12-15 per `scripts/qa/summarize-npm-audit.mjs`, after which the full audit is expected to report findings; the `braces` exception record lists 2026-11-20 as its next review date; Git tags exist up to `v1.41.9` and the latest GitHub Release is `v1.34.1` — creating tags/releases needs owner approval; 7 open Dependabot PRs and 8 older Draft PRs have not been reviewed.
+
+## Production deployments after v1.41.10
+
+Recorded retroactively from the Vercel deployment list and Activity events on 2026-11-04. Gate approvals for these releases were not found in this file; no gate state is asserted here.
+
+- v1.41.14 — `dpl_4PX68LdE4dWuBxrNHcgdLELeHKu1`, Vercel metadata SHA `d13f9b52` (package version at that commit: `1.41.14`). Promoted `2026-10-30T07:42:00.055Z` (`2026-10-30T14:42:00.055+07:00`) per event `uev_wW58qIHpcRTCEjbv9T4fHsbW`, via ChatGPT.
+- v1.41.15 — `dpl_67gJnAVZb8U41WN3JQxz2zNNqbuy`, Vercel metadata SHA `7612fc3a` (package version at that commit: `1.41.15`). Promoted `2026-10-30T12:07:00.067Z` (`2026-10-30T19:07:00.067+07:00`) per event `uev_aMzDwGGUyOesB8mupc6yyQ3l`, via ChatGPT. Production ran this version until v1.41.22.
+- v1.41.22 — `dpl_3G5cwXFrbjrRcwNCFdkETnX7L4ep`, source SHA `9f3bcd56a09d5ffb5163c8d39e5dbe0e0361addf` (from the detached worktree used for the deploy; Vercel metadata has no SHA, same provenance limit as above). Deployed `2026-11-03T15:53:41.746Z` (event `uev_9zmLtPXH0frdhjgpbQx28OeF`), promoted `2026-11-03T16:03:03.606Z` (`2026-11-03T23:03:03.606+07:00`, event `uev_2cDJv22SBz2mRCQvfVjFaQih`), via Vercel CLI. Superseded by v1.41.24 at `2026-11-03T18:26:23.882Z`.
+- v1.41.11 to v1.41.13, v1.41.16 to v1.41.21 and v1.41.23: no separate Production deployment found in the Vercel production deployment list; they reached Production only inside the deployments above.
+
 ## Previous Production status — v1.41.9
 
 - Previous Production deployment: [`dpl_8XPNygW7YbPB1sd8UitoG9oyiWjb`](https://vercel.com/nine41745/stock-portfolio/8XPNygW7YbPB1sd8UitoG9oyiWjb), source SHA `b13d977e1304ad4075398edb30b795f802f51a82` (previously verified). Before the v1.41.10 promotion, both Production domains mapped to this deployment.
 - The earlier v1.41.8 gate approval remains scoped only to that release; current v1.41.10 gate decisions are recorded below.
 
-## Current Production status — v1.41.10
+## Previous Production status — v1.41.10
 
 - Production source SHA (main at the time of promotion): `2eb275f27f8b724548ba7421ad26af1254e33325`; package version `1.41.10`. The deployment command ran in a clean checkout at this exact Git SHA. The build log also contained `f4c2867`, which does not match this source SHA and must not be treated as its short commit.
 - Production deployment: [`dpl_9HDmqhAr9bLeeKdYTRePtqLmNCGg`](https://vercel.com/nine41745/stock-portfolio/9HDmqhAr9bLeeKdYTRePtqLmNCGg), URL [stock-portfolio-2efgnsaba-nine41745.vercel.app](https://stock-portfolio-2efgnsaba-nine41745.vercel.app), READY, source SHA `2eb275f27f8b724548ba7421ad26af1254e33325`. Created once with `vercel deploy --prod --skip-domain --meta sourceGitSha=2eb275f27f8b724548ba7421ad26af1254e33325`.
