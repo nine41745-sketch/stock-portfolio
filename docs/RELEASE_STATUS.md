@@ -1,5 +1,12 @@
 # Production Release Status
 
+## Version under preparation — v1.41.26
+
+- Scope: ถอดข้อยกเว้น braces (GHSA-vfj7-8cjw-p6xm) ออกจาก `scripts/qa/summarize-npm-audit.mjs` พร้อมเทสต์ลบใน `scripts/test-npm-audit-summary.mjs` (รายงานรูปแบบ braces เดิมต้องได้ `FINDINGS`), แก้เฉพาะข้อความ echo ในขั้น "Enforce audit gate" ของ `.github/workflows/ci.yml` และใส่สถานะ Closed ในเอกสารข้อยกเว้น braces. ไม่ผ่อนเงื่อนไขอื่นของตัวตรวจ, ไม่แตะลอจิกของ workflow, ruleset, SQL, env หรือการตั้งค่า GitHub/Vercel; ข้อยกเว้น minimatch ไม่เปลี่ยน.
+- Development/Feature History: `Development History — Feature commit 2026-11-05 07:56:26 +07:00 (ไม่ใช่ Production)`.
+- Evidence (inspected 2026-11-05): GitHub advisory API reports GHSA-vfj7-8cjw-p6xm as withdrawn (`withdrawn_at` 2026-10-23T12:53:02Z); `npm audit --json` reports 8 moderate findings (minimatch chain) and no `braces`, while `braces@3.0.3` is still installed via `tailwindcss`. If an advisory for it is published again the full audit now reports `FINDINGS`.
+- Release state: Local Diff only (not pushed). Security Gate and Production Release Gate remain HOLD for v1.41.26. This changes a security gate checker and a workflow message, so AGENTS.md requires independent review of the exact PR head before Ready or merge; no reviewer has been named for this change. Production remains `dpl_g13ug98zKMDF4Sz6LCR5yDnJwv4m` (v1.41.24); this change is CI-only and has no application runtime impact.
+
 ## Version under preparation — v1.41.25
 
 - Scope: ปรับตัวตรวจ `scripts/qa/summarize-npm-audit.mjs` ให้ข้อยกเว้น minimatch (GHSA-g3hv-75wg-m249) ยอมรับช่วงเวอร์ชันที่ npm audit รายงานอยู่ตอนนี้ (package `7.0.0 - 11.0.0`, advisory `>=7.0.0 <11.0.1`) นอกเหนือจากค่าเดิม `<11.0.1`; เงื่อนไขอื่นไม่เปลี่ยน (moderate เท่านั้น, dev-only ทั้ง chain, หมดอายุ 2026-12-15, Production-only audit ไม่มีข้อยกเว้น). ไม่แตะ workflow, ruleset, SQL, env หรือการตั้งค่า GitHub/Vercel.
