@@ -19,16 +19,24 @@ const SYSTEM_PREFIX = /^\s*(?:Scale-in Guard|Execution Guard|ระบบปร�
 // Splits on newlines, " | " and sentence ends; the capture group keeps the separators.
 const SEGMENT_SPLIT = /(\n+|\s\|\s|(?<=[.!?])\s+)/
 
-const SUPPORT_CLAIM = /(?:ทดสอบ|แตะ|ชน|ใกล้|บริเวณ|อยู่ที่|ลงมาที่|ยืนที่)\s*(?:โซน|ระดับ|บริเวณ|เส้น)?\s*(?:แนวรับ|support)/gi
+// The model also writes "ระดับสนับสนุน" / "แนวสนับสนุน" for the support level, so those count as "แนวรับ".
+const SUPPORT_CLAIM = /(?:ทดสอบ|แตะ|ชน|ใกล้|บริเวณ|อยู่ที่|ลงมาที่|ยืนที่)\s*(?:โซน|ระดับ|บริเวณ|เส้น)?\s*(?:แนวรับ|แนวสนับสนุน|สนับสนุน|support)/gi
 const EARNINGS_NOT_NEAR =
   /(?:ยัง)?ไม่(?:ใกล้|ถึง)[^|.\n]{0,14}?(?:ประกาศ(?:ผล|งบ)|earnings)|(?:ประกาศ(?:ผล|งบ)|earnings)[^|.\n]{0,18}?(?:ยัง)?ไม่(?:ใกล้|ถึง|ภายใน)|earnings[^|.\n]{0,20}?(?:not|isn't|aren't)\s+(?:expected\s+)?(?:near|close|soon)|ประกาศ(?:ผล|งบ)[^|.\n]{0,12}?ยังอีกนาน|ยังอีกนาน[^|.\n]{0,12}?ประกาศ(?:ผล|งบ)/i
-// "งบการเงิน" (financial statements) is deliberately not a mention of the announcement date.
-const EARNINGS_MENTION = /ประกาศ(?:ผล|งบ)|earnings|งบไตรมาส/i
+// "งบการเงิน" (financial statements) is deliberately not a mention of the announcement date. "ผลประกอบการ" is only a
+// mention when it is tied to timing ("ผลประกอบการที่ใกล้เข้ามา", "ผลประกอบการจะประกาศใน 4 วัน"), not in "หากผลประกอบการเป็นบวก".
+const EARNINGS_MENTION = /ประกาศ(?:ผล|งบ)|earnings|งบไตรมาส|ผลประกอบการ[^|.\n]{0,24}?(?:ใกล้|ประกาศ|ภายใน|อีก\s*\d+\s*วัน|\d+\s*วัน)/i
 
 // "เพิ่ม" alone is ambiguous ("ควรเพิ่มความระวัง" is not about the position), so it only counts when followed by a
 // position word or a clause end; "ซื้อเพิ่ม" / "ทยอยซื้อ" / "สะสม" are unambiguous.
 const ADD = '(?:เพิ่ม(?=\\s*(?:สถานะ|ไม้|หุ้น|โพซิชัน|position|พอร์ต)|\\s*(?:[.,;]|$))|ซื้อเพิ่ม|ทยอยซื้อ|สะสม)'
-const BUY_ADVOCACY = new RegExp(`(?:เหมาะ(?:กับ|ที่จะ)?(?:การ)?\\s*${ADD}|ควร${ADD}|น่า${ADD}|แนะนำ(?:ให้)?${ADD})`, 'g')
+// Two word orders: "เหมาะกับการซื้อเพิ่ม / ควรทยอยซื้อ" and "การซื้อเพิ่มในขนาดเล็กจึงเหมาะสม". In the second one a
+// "ไม่" / "ค่อย" right before the suitability word negates it ("การซื้อเพิ่มยังไม่เหมาะสม").
+const SUITABLE = '(?:(?<!ไม่)(?<!ค่อย)(?<!มิ)(?:จึง)?(?:เหมาะสม|เหมาะ|น่าสนใจ|น่าซื้อ|คุ้มค่า))'
+const BUY_ADVOCACY = new RegExp(
+  `(?:เหมาะ(?:กับ|ที่จะ)?(?:การ)?\\s*${ADD}|ควร${ADD}|น่า${ADD}|แนะนำ(?:ให้)?${ADD}|(?:การ)?(?:ซื้อเพิ่ม|ทยอยซื้อ|สะสม|เพิ่มสถานะ|เพิ่มไม้)[^|.\\n\\s]{0,24}?${SUITABLE})`,
+  'g',
+)
 const SELL_ADVOCACY =
   /(?:เหมาะ(?:กับ|ที่จะ)?(?:การ)?\s*(?:ขายทำกำไร|ขาย|ลดสถานะ|ปิดสถานะ)|ควร(?:ขายทำกำไร|ขาย|ลดสถานะ|ปิดสถานะ))/g
 

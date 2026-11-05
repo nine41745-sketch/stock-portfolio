@@ -302,6 +302,100 @@ const withText = (fields, extra = {}) => makeResult({ ...fields, ...extra })
   assert.equal(guard.guardPortfolioAnalysisText(makeResult({ summary: note.replace('Scale-in Guard', 'ข้อความ') })).removed, 1, 'the same text without the system prefix is cut')
 }
 
+// ---------- wording gaps seen in the Production run of 2026-11-05 (v1.41.27) ----------
+// The sentences below are copied from the saved analyses shown on the Production dashboard that day.
+
+const baseTechnical = makeResult().technical
+
+// RKLB (HOLD, price $52.37, support $49.25, earnings in 4 days).
+{
+  const guardNote = 'Scale-in Guard: ไม่มี New Trigger — ราคา/เทคนิคัลยังไม่เปลี่ยนมากพอจากไม้ล่าสุด (เกณฑ์ movement ขั้นต่ำ 5.8%) และยังไม่ถึง prior support หรือ breakout/momentum confirmation ใหม่; เวลาเพียงอย่างเดียวไม่ปลดล็อก BUY ซ้ำ'
+  const kept1 = 'พื้นฐานของ Rocket Lab ยังแข็งแรงโดยไม่มีสัญญาณเสียหายเชิงโครงสร้างหรือปัญหากฎระเบียบ, แม้ข่าวระบุว่ามูลค่าอาจสูงกว่าความเป็นธรรมหลังข้อตกลงกับ Iridium แต่ยังไม่ถึงขั้นทำลาย thesis.'
+  const kept2 = 'การประเมินมูลค่ามีความเชื่อมั่นต่ำเนื่องจากข้อมูล P/E ไม่ครบ.'
+  const kept3 = 'พอร์ตมีการกระจายที่ดีแต่ตำแหน่ง RKLB มีสัดส่วน 20% ซึ่งค่อนข้างสูง; เงินสดสำรองจำกัด (4.6%).'
+  const contradicting = 'เนื่องจาก RSI ต่ำ (<45) แสดงโอกาสสะสมและราคายังอยู่เหนือระดับสนับสนุน, การซื้อเพิ่มในขนาดเล็กจึงเหมาะสมพร้อมระมัดระวังความผันผวนจากผลประกอบการที่ใกล้เข้ามา'
+  const rklb = fields => makeResult({
+    technical: { ...baseTechnical, support: 49.25, ema50: 63.34, ema200: 72.37 },
+    usedPrice: 52.37,
+    earnings: { date: '2026-11-09', daysUntil: 4, hour: 'amc' },
+    ...fields,
+  })
+
+  // HOLD but the model says a small add is suitable: that sentence goes, the guard note and the other sentences stay.
+  const summary = guard.guardPortfolioAnalysisText(rklb({ summary: `${guardNote}\n${kept1} ${kept2} ${kept3} ${contradicting}` }))
+  assert.equal(summary.removed, 1)
+  assert.ok(summary.result.summary.startsWith(guardNote), 'The system guard note must stay')
+  for (const text of [kept1, kept2, kept3]) assert.ok(summary.result.summary.includes(text.replace(/\.$/, '')), `a correct sentence must stay: ${text}`)
+  assert.ok(!summary.result.summary.includes('การซื้อเพิ่มในขนาดเล็กจึงเหมาะสม'), 'the contradicting sentence must be removed')
+
+  // "ใกล้ระดับสนับสนุน" while the price is 6.3% above the support the prompt showed.
+  const opportunity = 'RSI อยู่ในโซนสะสมและราคาใกล้ระดับสนับสนุน ทำให้มีโอกาสซื้อเพิ่มที่ราคาต่ำกว่าค่าเฉลี่ยระยะยาว หากผลประกอบการเป็นบวก ราคาจะมีแนวโน้มปรับตัวขึ้น'
+  const opp = guard.guardPortfolioAnalysisText(rklb({ risksAndOpportunities: { caution: '', opportunity } }))
+  assert.ok(opp.removed >= 1)
+  assert.ok(!opp.result.risksAndOpportunities.opportunity.includes('ใกล้ระดับสนับสนุน'))
+
+  // The model already said when the earnings come ("ผลประกอบการจะประกาศใน 4 วันข้างหน้า"): no second notice.
+  const caution = 'ผลประกอบการจะประกาศใน 4 วันข้างหน้า ราคาอาจผันผวนอย่างรุนแรง (High Risk). สัดส่วนพอร์ตของ RKLB อยู่ที่ 20% ทำให้ concentration risk สูง; เงินสดสำรองต่ำ (4.6% ของพอร์ต) จึงควรจำกัดขนาดการซื้อเพิ่ม'
+  const mentioned = rklb({ risksAndOpportunities: { caution, opportunity: '' } })
+  const noNotice = guard.guardPortfolioAnalysisText(mentioned)
+  assert.equal(noNotice.noticeAdded, false)
+  assert.equal(noNotice.result, mentioned)
+  // The summary wording "ผลประกอบการที่ใกล้เข้ามา" alone also counts as a mention.
+  assert.equal(guard.guardPortfolioAnalysisText(rklb({ summary: 'ระวังความผันผวนจากผลประกอบการที่ใกล้เข้ามา' })).noticeAdded, false)
+  // "หากผลประกอบการเป็นบวก" says nothing about timing, so the notice is still added.
+  assert.equal(guard.guardPortfolioAnalysisText(rklb({ summary: 'หากผลประกอบการเป็นบวก ราคามีแนวโน้มขึ้น' })).noticeAdded, true)
+}
+
+// EOSE (HOLD, price $2.14, support $1.59, earnings today): none of this may be cut.
+{
+  const eose = fields => makeResult({
+    technical: { ...baseTechnical, support: 1.59, ema50: 2.79, ema200: 6.5 },
+    usedPrice: 2.14,
+    earnings: { date: '2026-11-05', daysUntil: 0, hour: null },
+    ...fields,
+  })
+  const r = eose({
+    summary: 'พอร์ตมีสัดส่วน 12.2% ซึ่งค่อนข้างสูงและเงินสดสำรองต่ำ จึงควรหลีกเลี่ยงการเพิ่มตำแหน่งและรอสัญญาณชัดเจนต่อไป',
+    technicalSummary: 'ราคาตอนนี้ $2.14 อยู่ต่ำกว่า EMA50 ($2.79) และ EMA100 ($3.94) แสดงแนวโน้มลงต่อเนื่อง',
+    risksAndOpportunities: {
+      caution: 'ใกล้ประกาศงบในวันนี้ (0 วัน) ราคาอาจผันผวนอย่างรุนแรง – ควรพิจารณาลดขนาดโพซิชันหรือรอผลประกอบการก่อนทำการซื้อเพิ่ม; สัดส่วนพอร์ต 12.2% สูงอาจเสี่ยง concentration',
+      opportunity: 'หากราคาตกสู่แนวรับ $1.59 และ RSI รายวันลดต่ำกว่า 40 อาจเปิดโอกาสซื้อเพิ่มในระดับราคาต่ำ',
+    },
+    risks: ['ความเสี่ยงจากความผันผวนสูงในวันประกาศผลประกอบการ'],
+  })
+  const out = guard.guardPortfolioAnalysisText(r)
+  assert.equal(out.removed, 0)
+  assert.equal(out.noticeAdded, false)
+  assert.equal(out.result, r)
+}
+
+// Variants of the new wording: cut when it contradicts a HOLD, keep when negated, conditional or about something else.
+{
+  const cut = ['การซื้อเพิ่มจึงน่าสนใจ', 'การทยอยซื้อในจังหวะนี้เหมาะสม', 'เพิ่มสถานะเล็กน้อยก็เหมาะสม']
+  for (const summary of cut) assert.equal(guard.guardPortfolioAnalysisText(makeResult({ summary })).removed, 1, `must be cut for HOLD: ${summary}`)
+  const keep = [
+    'การซื้อเพิ่มยังไม่เหมาะสม',
+    'การซื้อเพิ่มไม่น่าสนใจ',
+    'การซื้อเพิ่มจะเหมาะสมเมื่อราคายืนเหนือ 2.4',
+    'หากราคาย่อ การซื้อเพิ่มเหมาะสม',
+    'ราคายังอยู่เหนือระดับสนับสนุน',
+    'ราคาห่างจากระดับสนับสนุนพอสมควร',
+  ]
+  for (const summary of keep) {
+    const r = makeResult({ summary })
+    const out = guard.guardPortfolioAnalysisText(r)
+    assert.equal(out.removed, 0, `must be kept: ${summary}`)
+    assert.equal(out.result, r)
+  }
+  // The same buy wording is fine when the final action is BUY.
+  const buy = makeResult({ summary: 'การซื้อเพิ่มจึงน่าสนใจ', recommendation: { action: 'BUY', buyConditions: '', sellConditions: '' } })
+  assert.equal(guard.guardPortfolioAnalysisText(buy).result, buy)
+  // "ระดับสนับสนุน" is cut like "แนวรับ" when the price is far from it (price 1.87, support 1.59).
+  for (const summary of ['ราคาใกล้ระดับสนับสนุน', 'ราคาทดสอบแนวสนับสนุน']) {
+    assert.equal(guard.guardPortfolioAnalysisText(makeResult({ summary })).removed, 1, `support wording must be cut: ${summary}`)
+  }
+}
+
 // Idempotent: a second pass over guarded output changes nothing.
 {
   const r = withText(
