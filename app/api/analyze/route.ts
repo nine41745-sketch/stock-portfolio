@@ -11,6 +11,7 @@ import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { InputValidationError, parseSymbol } from '@/lib/portfolio-validation'
 import { HoldingWithPrice, DetailedAnalysisResult, NewsItem } from '@/types'
 import { applyRecentTradeExecutionGuard, recentTradeFingerprint, type RecentSyncedTrade } from '@/lib/analysis-execution-guard'
+import { applyPortfolioAiClaimGuard } from '@/lib/portfolio-ai-claim-guard'
 import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
 
 interface RawNewsItem {
@@ -307,7 +308,8 @@ export async function POST(request: NextRequest) {
     const cacheKey = `analyze:${user.id}:${portfolioCacheScope}:${symbol}:${fingerprint}`
     const cached = cacheGet<DetailedAnalysisResult>(cacheKey)
     if (cached) {
-      const guardedCached = applyRecentTradeExecutionGuard(cached, recentTrade, executionGuardContext)
+      // The cache holds raw AI output; both guards are deterministic and re-run on every request, before persistence.
+      const guardedCached = applyPortfolioAiClaimGuard(applyRecentTradeExecutionGuard(cached, recentTrade, executionGuardContext))
       await saveManualLatest(guardedCached)
       return NextResponse.json(guardedCached)
     }
@@ -333,7 +335,7 @@ export async function POST(request: NextRequest) {
       cacheSet(cacheKey, rawResult, ANALYZE_CACHE_TTL_SEC)
     }
 
-    const result = applyRecentTradeExecutionGuard(rawResult, recentTrade, executionGuardContext)
+    const result = applyPortfolioAiClaimGuard(applyRecentTradeExecutionGuard(rawResult, recentTrade, executionGuardContext))
 
     if (!result.error && result.technicalSummary && result.summary) {
       await saveManualLatest(result)
