@@ -69,19 +69,22 @@ function makeAudit({ extraAdvisory = false, critical = 0, nonMajorFix = false, i
   }
 }
 
+// GHSA-vfj7-8cjw-p6xm was withdrawn by GitHub on 2026-10-23 and its CI exception was removed in v1.41.26.
+// The old braces-shaped report must now fail closed instead of being accepted.
 const describedRealShape = makeAudit()
-const accepted = renderAuditSummary({ ...describedRealShape, exitCode: 1, mode: 'Full', commit: 'synthetic-shape' })
-assert.equal(accepted.status, 'PASS_WITH_EXCEPTION')
-assert.match(accepted.markdown, /GHSA-vfj7-8cjw-p6xm/)
-assert.match(accepted.markdown, /tailwindcss@3\.4\.19 > chokidar@3\.6\.0 > braces@3\.0\.3/)
-assert.match(accepted.markdown, /eslint-config-next@16\.4\.1 > @next\/eslint-plugin-next@16\.4\.1 > fast-glob@3\.3\.1/)
+const formerlyAccepted = renderAuditSummary({ ...describedRealShape, exitCode: 1, mode: 'Full', commit: 'synthetic-shape' })
+assert.equal(formerlyAccepted.status, 'FINDINGS')
+assert.ok(!/Accepted exception/i.test(formerlyAccepted.markdown), 'A braces report must not be reported as an accepted exception')
+assert.match(formerlyAccepted.markdown, /GHSA-vfj7-8cjw-p6xm/)
+assert.match(formerlyAccepted.markdown, /tailwindcss@3\.4\.19 > chokidar@3\.6\.0 > braces@3\.0\.3/)
+assert.equal(renderAuditSummary({ ...describedRealShape, exitCode: 0, mode: 'Full' }).status, 'FINDINGS')
 
 assert.equal(renderAuditSummary({ ...makeAudit({ extraAdvisory: true }), exitCode: 1, mode: 'Full' }).status, 'FINDINGS')
 assert.equal(renderAuditSummary({ ...makeAudit({ critical: 1 }), exitCode: 1, mode: 'Full' }).status, 'FINDINGS')
 assert.equal(renderAuditSummary({ ...makeAudit({ nonMajorFix: true }), exitCode: 1, mode: 'Full' }).status, 'FINDINGS')
 assert.equal(renderAuditSummary({ ...makeAudit({ invalidPath: true }), exitCode: 1, mode: 'Full' }).status, 'FINDINGS')
 assert.equal(renderAuditSummary({ ...describedRealShape, exitCode: 1, mode: 'Production-only' }).status, 'FINDINGS')
-assert.equal(renderAuditSummary({ ...makeAudit({ includeEslint: false }), exitCode: 1, mode: 'Full' }).status, 'PASS_WITH_EXCEPTION')
+assert.equal(renderAuditSummary({ ...makeAudit({ includeEslint: false }), exitCode: 1, mode: 'Full' }).status, 'FINDINGS')
 
 const clean = renderAuditSummary({
   report: { metadata: { vulnerabilities: { critical: 0, high: 0, moderate: 0, low: 0, info: 0 } }, vulnerabilities: {} },
@@ -97,7 +100,7 @@ assert.match(ciWorkflow, /npm audit --omit=dev --audit-level=high --json/)
 assert.match(ciWorkflow, /\[ "\$PRODUCTION_AUDIT_STATUS" != "PASS" \]/)
 assert.match(ciWorkflow, /\[ "\$FULL_AUDIT_STATUS" != "PASS_WITH_EXCEPTION" \]/)
 
-console.log('✓ Audit exception classifier covers the owner-provided npm audit JSON shape and fails closed on unrelated findings')
+console.log('✓ Audit classifier no longer accepts the withdrawn braces advisory and fails closed on every braces-shaped report')
 
 function makeMinimatchAdvisory(range) {
   return {
