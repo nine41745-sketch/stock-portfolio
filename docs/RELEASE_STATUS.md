@@ -1,5 +1,14 @@
 # Production Release Status
 
+## Version under preparation — v1.41.27
+
+- Scope: เพิ่มตัวตรวจข้อความ AI ของพอร์ต `lib/portfolio-ai-claim-guard.ts` เรียกใช้หลัง execution guard ที่ `/api/analyze` (ผลใหม่และผลจากแคช ก่อนบันทึก `saveManualLatest`), `cron/daily-analyze` และ `cron/premarket-analyze`. กฎ: (1) พูดว่าอยู่ที่/ใกล้แนวรับทั้งที่ราคาห่างจาก `technical.support` เกิน 5%, (2) บอกว่าประกาศงบยังไม่ใกล้ทั้งที่ `daysUntil` ≤ 7, (3) ประกาศงบ ≤ 7 วันแต่ข้อความไม่พูดถึง ระบบเติมคำเตือนใน caution, (4) ข้อความชวนซื้อเพิ่ม/ขายที่ขัดกับ action สุดท้าย, (5) EMA/ราคาเทียบ EMA ใช้กฎเดิมของ Stock Check. ตัดระดับประโยค/clause; ไม่แก้ buyConditions/sellConditions และ note ของระบบ; ไม่เรียก AI เพิ่ม; ไม่มี SQL, env, dependency หรือ vercel.json.
+- Development/Feature History: `Development History — Feature commit 2026-11-05 11:31:10 +07:00 (ไม่ใช่ Production)`.
+- Cause evidence (code inspected): ข้อความพอร์ตมาจาก `analyzeHoldingDetailed` (ปุ่ม) และ `analyzePortfolioBatch` (cron) ซึ่งไม่เคยเรียก claim guard ของ Stock Check; WDC เกิดจาก `guardHold` เติม note HOLD ไว้หน้า `summary` ขณะที่ข้อความเดิมของ AI ยังชวนเพิ่มสถานะ.
+- Not verified: ยังไม่ได้ทดสอบกับ Groq จริงหรือข้อความจริงที่บันทึกไว้ (เทสต์เป็นข้อความสังเคราะห์ที่สร้างจากอาการที่พบ); regex ภาษาไทยอาจไม่ครอบคลุมถ้อยคำอื่น. ตัวตรวจจับได้เฉพาะกฎข้างบน ไม่ใช่ทุกข้อผิด.
+- Known open item (not fixed here): prompt ของปุ่มวิเคราะห์ขอให้ AI พูดถึงพื้นฐานและ valuation แต่ส่งให้เฉพาะ P/E และ 52W High/Low ไม่มีรายได้ กำไร หรือข้อมูล SEC จึงอาจเขียนข้อมูลพื้นฐานจากความจำ. แยกเป็นงานถัดไป.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.27. This changes the runtime of an AI endpoint, so AGENTS.md requires independent review of the exact PR head before merge; no reviewer has been recorded yet. No merge, deployment or Production change is authorized by this task. Production remains `dpl_g13ug98zKMDF4Sz6LCR5yDnJwv4m` (v1.41.24).
+
 ## Version under preparation — v1.41.26
 
 - Scope: ถอดข้อยกเว้น braces (GHSA-vfj7-8cjw-p6xm) ออกจาก `scripts/qa/summarize-npm-audit.mjs` พร้อมเทสต์ลบใน `scripts/test-npm-audit-summary.mjs` (รายงานรูปแบบ braces เดิมต้องได้ `FINDINGS`), แก้เฉพาะข้อความ echo ในขั้น "Enforce audit gate" ของ `.github/workflows/ci.yml` และใส่สถานะ Closed ในเอกสารข้อยกเว้น braces. ไม่ผ่อนเงื่อนไขอื่นของตัวตรวจ, ไม่แตะลอจิกของ workflow, ruleset, SQL, env หรือการตั้งค่า GitHub/Vercel; ข้อยกเว้น minimatch ไม่เปลี่ยน.

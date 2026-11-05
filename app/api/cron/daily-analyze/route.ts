@@ -8,6 +8,7 @@ import { getMultipleQuotesWithMetrics, getUpcomingEarnings } from '@/lib/finnhub
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { HoldingWithPrice, NewsItem } from '@/types'
 import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
+import { applyPortfolioAiClaimGuard } from '@/lib/portfolio-ai-claim-guard'
 import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
 import { getUsMarketClock } from '@/lib/market-status'
 
@@ -234,7 +235,7 @@ export async function GET(request: NextRequest) {
           }
 
           const technical = technicalBySymbol.get(holding.symbol)
-          const result = applyRecentTradeExecutionGuard(
+          const executionGuarded = applyRecentTradeExecutionGuard(
             rawResult,
             recentTradeBySymbol.get(holding.symbol) ?? null,
             technical
@@ -251,6 +252,7 @@ export async function GET(request: NextRequest) {
                 }
               : null
           )
+          const result = applyPortfolioAiClaimGuard(executionGuarded)
 
           const row = {
             user_id: userId,

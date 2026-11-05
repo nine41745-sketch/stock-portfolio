@@ -10,6 +10,7 @@ import { getUsMarketClock, isPremarketCronWindow, PREMARKET_CRON_WINDOW } from '
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { getResultTimestamp } from '@/lib/latest-analysis'
 import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
+import { applyPortfolioAiClaimGuard } from '@/lib/portfolio-ai-claim-guard'
 import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
 import { DetailedAnalysisResult, HoldingWithPrice, NewsItem } from '@/types'
 
@@ -224,7 +225,7 @@ export async function GET(request: NextRequest) {
           const symbol = input.holding.symbol
           const rawResult = batch.results[symbol]
           if (!rawResult) { failed++; continue }
-          const result = applyRecentTradeExecutionGuard({
+          const executionGuarded = applyRecentTradeExecutionGuard({
             ...rawResult,
             analysisMode: 'PREMARKET_TRIGGER',
             priceSource: input.context?.priceSource ?? 'Finnhub',
@@ -242,6 +243,7 @@ export async function GET(request: NextRequest) {
             trend: input.technical.trend,
             macdHistogram: input.technical.macd.histogram,
           })
+          const result = applyPortfolioAiClaimGuard(executionGuarded)
           const save = await supabase.rpc('save_latest_manual_analysis', {
             p_user_id: userId,
             ...(portfolioId ? { p_portfolio_id: portfolioId } : {}),
