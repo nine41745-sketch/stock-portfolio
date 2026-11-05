@@ -21,7 +21,7 @@ const SEGMENT_SPLIT = /(\n+|\s\|\s|(?<=[.!?])\s+)/
 
 const SUPPORT_CLAIM = /(?:ทดสอบ|แตะ|ชน|ใกล้|บริเวณ|อยู่ที่|ลงมาที่|ยืนที่)\s*(?:โซน|ระดับ|บริเวณ|เส้น)?\s*(?:แนวรับ|support)/gi
 const EARNINGS_NOT_NEAR =
-  /(?:ยัง)?ไม่(?:ใกล้|ถึง)[^|.\n]{0,14}?(?:ประกาศ(?:ผล|งบ)|earnings)|(?:ประกาศ(?:ผล|งบ)|earnings)[^|.\n]{0,18}?(?:ยัง)?ไม่(?:ใกล้|ถึง|ภายใน)|earnings[^|.\n]{0,20}?(?:not|isn't|aren't)\s+(?:near|close|soon)/i
+  /(?:ยัง)?ไม่(?:ใกล้|ถึง)[^|.\n]{0,14}?(?:ประกาศ(?:ผล|งบ)|earnings)|(?:ประกาศ(?:ผล|งบ)|earnings)[^|.\n]{0,18}?(?:ยัง)?ไม่(?:ใกล้|ถึง|ภายใน)|earnings[^|.\n]{0,20}?(?:not|isn't|aren't)\s+(?:expected\s+)?(?:near|close|soon)|ประกาศ(?:ผล|งบ)[^|.\n]{0,12}?ยังอีกนาน|ยังอีกนาน[^|.\n]{0,12}?ประกาศ(?:ผล|งบ)/i
 // "งบการเงิน" (financial statements) is deliberately not a mention of the announcement date.
 const EARNINGS_MENTION = /ประกาศ(?:ผล|งบ)|earnings|งบไตรมาส/i
 
@@ -33,9 +33,13 @@ const SELL_ADVOCACY =
   /(?:เหมาะ(?:กับ|ที่จะ)?(?:การ)?\s*(?:ขายทำกำไร|ขาย|ลดสถานะ|ปิดสถานะ)|ควร(?:ขายทำกำไร|ขาย|ลดสถานะ|ปิดสถานะ))/g
 
 const NEGATED = /(?:ไม่ได้|มิได้|ไม่|ห่าง|ยังไม่)\s*$/
-// A claim made inside a condition ("ถ้า…", "เมื่อ…", "หาก…") is a hypothesis, not an assertion about now.
-const CONDITIONAL_BEFORE = /(?:ถ้า|หาก|เมื่อ(?!วาน)|ในกรณีที่)[^|.\n]{0,24}$/
-const CONDITIONAL_AFTER = /^[^|.\n]{0,40}?(?:ต่อเมื่อ|ถ้า|หาก|เมื่อ(?!วาน)|หลังจาก|ถึงจะ)/
+// A claim made inside a condition ("ถ้า…", "เมื่อ…", "หาก…") is a hypothesis, not an assertion about now. Thai text
+// rarely has punctuation, so a condition word must sit in the SAME space-free run as the claim ("ควรเพิ่มสถานะเมื่อ…",
+// "ถ้าราคาลงมาใกล้แนวรับ"); a condition in a neighbouring clause ("ราคาอยู่ที่แนวรับ ถ้ามองระยะยาว…") must not excuse it.
+const CONDITIONAL_BEFORE_RUN = /(?:ถ้า|หาก|เมื่อ(?!วาน)|ในกรณีที่)[^\s|.\n]{0,24}$/
+// Advice ("ควรเพิ่ม…") may also be conditional on a clause just before it ("หากราคาย่อ ควรทยอยซื้อ").
+const CONDITIONAL_BEFORE_CLAUSE = /(?:ถ้า|หาก|เมื่อ(?!วาน)|ในกรณีที่)[^|.\n]{0,24}$/
+const CONDITIONAL_AFTER_RUN = /^[^\s|.\n]{0,40}?(?:ต่อเมื่อ|ถ้า|หาก|เมื่อ(?!วาน)|หลังจาก|ถึงจะ)/
 // A clause that is left over after a removal and cannot stand on its own.
 const ORPHAN_CLAUSE = /^(?:ไม่|ถ้า|หาก|เมื่อ|ค่อย|แล้ว|และ|แต่|ก็|จึง|หรือ|ซึ่ง)$|^[\d.,$%\s]+$/
 
@@ -54,14 +58,22 @@ function finite(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
-/** True when a pattern matches and is neither negated just before it nor part of a condition. */
-function hasAffirmedMatch(text: string, pattern: RegExp): boolean {
+/**
+ * True when a pattern matches and is neither negated just before it nor part of a condition. A "fact" claim ("price is
+ * at support") is only excused by a condition wrapped around it; "advice" ("should add") can also be conditional on
+ * a clause before it or on a word right after it.
+ */
+function hasAffirmedMatch(text: string, pattern: RegExp, kind: 'fact' | 'advice'): boolean {
   for (const match of text.matchAll(pattern)) {
     const start = match.index ?? 0
     const end = start + match[0].length
+    const before = text.slice(Math.max(0, start - 30), start)
     if (NEGATED.test(text.slice(Math.max(0, start - 8), start))) continue
-    if (CONDITIONAL_BEFORE.test(text.slice(Math.max(0, start - 30), start))) continue
-    if (CONDITIONAL_AFTER.test(text.slice(end, end + 48))) continue
+    if (kind === 'fact') {
+      if (CONDITIONAL_BEFORE_RUN.test(before)) continue
+    } else if (CONDITIONAL_BEFORE_CLAUSE.test(before) || CONDITIONAL_AFTER_RUN.test(text.slice(end, end + 48))) {
+      continue
+    }
     return true
   }
   return false
@@ -75,13 +87,13 @@ export function findPortfolioClaimViolation(segment: string, ctx: GuardContext):
 
   const { price } = ctx.facts
   if (finite(price) && finite(ctx.support) && ctx.support > 0) {
-    if (Math.abs(price - ctx.support) / ctx.support > SUPPORT_DISTANCE_LIMIT && hasAffirmedMatch(segment, SUPPORT_CLAIM)) {
+    if (Math.abs(price - ctx.support) / ctx.support > SUPPORT_DISTANCE_LIMIT && hasAffirmedMatch(segment, SUPPORT_CLAIM, 'fact')) {
       return 'price-near-support'
     }
   }
   if (ctx.earningsNear && EARNINGS_NOT_NEAR.test(segment)) return 'earnings-not-near'
-  if (ctx.action !== null && ctx.action !== 'BUY' && hasAffirmedMatch(segment, BUY_ADVOCACY)) return 'buy-text-vs-action'
-  if ((ctx.action === 'BUY' || ctx.action === 'HOLD') && hasAffirmedMatch(segment, SELL_ADVOCACY)) return 'sell-text-vs-action'
+  if (ctx.action !== null && ctx.action !== 'BUY' && hasAffirmedMatch(segment, BUY_ADVOCACY, 'advice')) return 'buy-text-vs-action'
+  if ((ctx.action === 'BUY' || ctx.action === 'HOLD') && hasAffirmedMatch(segment, SELL_ADVOCACY, 'advice')) return 'sell-text-vs-action'
   return null
 }
 

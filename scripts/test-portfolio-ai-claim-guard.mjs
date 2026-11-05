@@ -255,6 +255,53 @@ const withText = (fields, extra = {}) => makeResult({ ...fields, ...extra })
   assert.equal(guard.guardPortfolioAnalysisText(r).result, r)
 }
 
+// ---------- independent review, round 2 (PR #150, head 11256c85) ----------
+
+// A condition word in a NEIGHBOURING clause must not excuse an assertion (price 1.87 vs support 1.59, action HOLD).
+{
+  for (const summary of [
+    'ราคาอยู่ที่แนวรับ ถ้ามองระยะยาวยังดี',
+    'ราคาอยู่ที่แนวรับ หากมองในมุมมองพื้นฐานยังดี',
+    'ถ้าตลาดดี ราคาอยู่ที่แนวรับ',
+    'เมื่อเทียบกับปีก่อน ราคาอยู่ที่แนวรับแล้ว',
+    'ควรเพิ่มสถานะ ถ้ามองระยะยาว',
+  ]) {
+    const out = guard.guardPortfolioAnalysisText(makeResult({ summary: `${summary}. สภาพคล่องปกติดี` }))
+    assert.equal(out.removed, 1, `must be removed despite a neighbouring condition word: ${summary}`)
+    // The false claim goes; a leftover clause that can stand alone may stay, so only the claim wording is asserted.
+    assert.ok(!/แนวรับ|เพิ่มสถานะ/.test(out.result.summary), `the claim must be gone: ${out.result.summary}`)
+    assert.ok(out.result.summary.includes('สภาพคล่องปกติดี'), 'the neighbouring sentence must stay')
+  }
+  // "เมื่อวาน" (yesterday) is not a condition word.
+  const yesterday = guard.guardPortfolioAnalysisText(makeResult({ summary: 'เมื่อวานราคาอยู่ที่แนวรับ' }))
+  assert.equal(yesterday.removed, 1)
+  // Advice that is conditional on a clause before it stays.
+  const conditional = makeResult({ summary: 'หากราคาย่อลงมา ควรทยอยซื้อ' })
+  assert.equal(guard.guardPortfolioAnalysisText(conditional).result, conditional)
+}
+
+// Every alternative of the buy wording and the earnings wording has a "must cut" case.
+{
+  for (const summary of ['ควรทยอยซื้อในจังหวะนี้', 'ควรสะสมเพิ่ม', 'เหมาะกับการซื้อเพิ่ม', 'แนะนำให้ทยอยซื้อ', 'น่าสะสมช่วงนี้']) {
+    assert.equal(guard.guardPortfolioAnalysisText(makeResult({ summary })).removed, 1, `buy wording must be cut for HOLD: ${summary}`)
+  }
+  const near = { earnings: { date: '2026-11-09', daysUntil: 5, hour: null } }
+  for (const summary of ['Earnings are not expected soon', 'ประกาศงบยังอีกนาน']) {
+    assert.equal(guard.guardPortfolioAnalysisText(withText({ summary: `${summary}. ถือต่อ` }, near)).removed, 1, `earnings denial must be cut: ${summary}`)
+  }
+  // "งบไตรมาส" counts as a mention of the announcement, so no notice is added.
+  const mentioned = guard.guardPortfolioAnalysisText(withText({ summary: 'งบไตรมาสหน้าต้องจับตา' }, near))
+  assert.equal(mentioned.noticeAdded, false)
+}
+
+// System notes are exempt even when they contain wording the guard would cut in model text.
+{
+  const note = 'Scale-in Guard: ยังไม่มี trigger ใหม่ ควรเพิ่มสถานะ และราคาอยู่ที่แนวรับ'
+  const r = makeResult({ summary: note })
+  assert.equal(guard.guardPortfolioAnalysisText(r).result, r, 'a system note must never be cut')
+  assert.equal(guard.guardPortfolioAnalysisText(makeResult({ summary: note.replace('Scale-in Guard', 'ข้อความ') })).removed, 1, 'the same text without the system prefix is cut')
+}
+
 // Idempotent: a second pass over guarded output changes nothing.
 {
   const r = withText(
