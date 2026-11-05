@@ -396,6 +396,64 @@ const baseTechnical = makeResult().technical
   }
 }
 
+// ---------- independent review of PR #152 (head 99edf4db) ----------
+
+const earningsNear = { earnings: { date: '2026-11-09', daysUntil: 4, hour: null } }
+
+// F1: "ผลประกอบการ" denials are removed by the not-near rule, so they never count as a mention and the notice is added.
+{
+  for (const summary of ['ผลประกอบการยังไม่ใกล้ประกาศ', 'ผลประกอบการยังไม่ถึงกำหนด และไม่ใกล้', 'ผลประกอบการยังอีกนาน', 'ผลประกอบการไม่ได้ใกล้']) {
+    const out = guard.guardPortfolioAnalysisText(withText({ summary: `${summary}. ถือต่อ` }, earningsNear))
+    assert.ok(out.removed >= 1, `the denial must be removed: ${summary}`)
+    assert.equal(out.noticeAdded, true, `the notice must be added after removing: ${summary}`)
+  }
+  // A miss against the target is not a denial of the date: "ไม่ถึงเป้า" / "ไม่ใกล้เคียงเป้า" stay.
+  for (const summary of ['ผลประกอบการไตรมาสก่อนไม่ถึงเป้า', 'ผลประกอบการไตรมาสก่อนไม่ใกล้เคียงเป้า']) {
+    const out = guard.guardPortfolioAnalysisText(withText({ summary }, earningsNear))
+    assert.equal(out.removed, 0, `must not be cut: ${summary}`)
+    assert.equal(out.noticeAdded, true, `no look-ahead mention, so the notice is added: ${summary}`)
+  }
+}
+
+// F2: only a look-ahead "ผลประกอบการ" counts as a mention.
+{
+  for (const summary of [
+    'ผลประกอบการไตรมาสที่ประกาศไปแล้วออกมาดี',
+    'ผลประกอบการปีที่แล้วประกาศกำไรเพิ่ม',
+    'ผลประกอบการไตรมาสก่อนดีเกินคาด ใกล้เคียงเป้า',
+    'ผลประกอบการใน 3 ปีที่ผ่านมาสม่ำเสมอ',
+    `ผลประกอบการ${'ก'.repeat(40)}ใกล้`,
+  ]) {
+    assert.equal(guard.guardPortfolioAnalysisText(withText({ summary }, earningsNear)).noticeAdded, true, `not a look-ahead mention: ${summary}`)
+  }
+  for (const summary of ['ผลประกอบการภายใน 4 วันนี้ต้องจับตา', 'ผลประกอบการจะประกาศในอีก 4 วัน', 'ผลประกอบการที่ใกล้เข้ามา', 'ผลประกอบการอีก 4 วันข้างหน้า']) {
+    assert.equal(guard.guardPortfolioAnalysisText(withText({ summary }, earningsNear)).noticeAdded, false, `look-ahead mention: ${summary}`)
+  }
+}
+
+// F3 + F6: every negation form keeps the reversed-order wording, and each alternative and bound is pinned.
+{
+  for (const summary of [
+    'การซื้อเพิ่มไม่ได้เหมาะสม',
+    'การซื้อเพิ่มมิได้เหมาะสม',
+    'การซื้อเพิ่มไม่ถึงกับเหมาะสม',
+    'การซื้อเพิ่มใช่ว่าจะเหมาะสม',
+    'การซื้อเพิ่มไม่ค่อยเหมาะสม',
+    'การซื้อเพิ่มยังไม่เหมาะสม',
+    'การซื้อเพิ่มไม่น่าสนใจ',
+    `การซื้อเพิ่ม${'ก'.repeat(40)}เหมาะสม`,
+    'การซื้อเพิ่ม ราคานี้ เหมาะสม',
+  ]) {
+    const r = makeResult({ summary })
+    const out = guard.guardPortfolioAnalysisText(r)
+    assert.equal(out.removed, 0, `must be kept: ${summary}`)
+    assert.equal(out.result, r)
+  }
+  for (const summary of ['การซื้อเพิ่มคุ้มค่า', 'การทยอยซื้อน่าซื้อ', 'การสะสมในจังหวะนี้เหมาะ', 'การซื้อเพิ่มค่อนข้างน่าสนใจ']) {
+    assert.equal(guard.guardPortfolioAnalysisText(makeResult({ summary })).removed, 1, `must be cut for HOLD: ${summary}`)
+  }
+}
+
 // Idempotent: a second pass over guarded output changes nothing.
 {
   const r = withText(
