@@ -170,6 +170,91 @@ const withText = (fields, extra = {}) => makeResult({ ...fields, ...extra })
   assert.equal(guard.guardPortfolioAnalysisText(noTechnical).result, noTechnical)
 }
 
+// ---------- independent review findings (PR #150, head 37b93636) ----------
+
+// M1: malformed model output must never make the guard throw (the route would return 500 on every cache hit).
+{
+  const near = { earnings: { date: '2026-11-09', daysUntil: 5, hour: null } }
+  const variants = [
+    { risksAndOpportunities: { caution: 42, opportunity: { text: 'x' } } },
+    { summary: 7 },
+    { technicalSummary: null },
+    { risks: { not: 'a list' } },
+    { newsImpact: [1, null, 'ราคาอยู่ที่แนวรับ'] },
+    { recommendation: undefined },
+    { risksAndOpportunities: undefined },
+    { risksAndOpportunities: null },
+  ]
+  for (const fields of variants) {
+    const out = guard.guardPortfolioAnalysisText(makeResult({ ...fields, ...near }))
+    assert.ok(out.result && typeof out.result === 'object', `guard must return a result for ${JSON.stringify(fields)}`)
+  }
+  // A non-string caution is replaced by the system notice instead of crashing.
+  const out = guard.guardPortfolioAnalysisText(makeResult({ risksAndOpportunities: { caution: 42, opportunity: '' }, ...near }))
+  assert.equal(out.noticeAdded, true)
+  assert.ok(String(out.result.risksAndOpportunities.caution).startsWith('ระบบเตือน: ประกาศงบในอีก 5 วัน'))
+  // Only the string item in a mixed list is guarded; the others are kept as they are.
+  const mixed = guard.guardPortfolioAnalysisText(makeResult({ newsImpact: [1, null, 'ราคาอยู่ที่แนวรับ'] }))
+  assert.deepEqual(mixed.result.newsImpact, [1, null])
+  // A result without a valid action skips the action rules but keeps the numeric ones.
+  const noAction = guard.guardPortfolioAnalysisText(makeResult({ recommendation: undefined, summary: 'ควรเพิ่มสถานะ. ราคาอยู่ที่แนวรับ' }))
+  assert.equal(noAction.removed, 1)
+  assert.ok(noAction.result.summary.includes('ควรเพิ่มสถานะ'))
+}
+
+// M2: ordinary Thai wording that is not a contradiction must survive (action HOLD).
+{
+  for (const summary of [
+    'ควรเพิ่มความระวังเรื่องความผันผวน',
+    'ควรเพิ่มการติดตามข่าว',
+    'ควรเพิ่มสถานะเมื่อราคายืนเหนือ 2.4',
+    'ควรเพิ่มไม้ถ้าราคาย่อลงมา',
+    'ราคาไม่ได้อยู่ที่แนวรับ',
+    'ยังไม่ได้ทดสอบแนวรับ',
+    'ถ้าราคาลงมาใกล้แนวรับ 1.59 ค่อยพิจารณา',
+  ]) {
+    const r = makeResult({ summary })
+    const out = guard.guardPortfolioAnalysisText(r)
+    assert.equal(out.removed, 0, `false positive for: ${summary}`)
+    assert.equal(out.result, r)
+  }
+}
+
+// L1: a clause left over after a removal must be able to stand alone, otherwise the whole sentence goes.
+{
+  const out = guard.guardPortfolioAnalysisText(makeResult({ summary: 'ไม่ ควรเพิ่มสถานะ แต่ราคาอยู่ที่แนวรับ. สภาพคล่องปกติดี' }))
+  assert.equal(out.result.summary, 'สภาพคล่องปกติดี')
+}
+
+// L2: a downgrade note joined with " | " keeps the note and still lets the model text be checked.
+{
+  const note = 'ระบบปรับคำแนะนำจาก SELL_ALL เป็น HOLD อัตโนมัติ เนื่องจาก AI ไม่ได้ให้หลักฐานเฉพาะบริษัทมากพอ'
+  const out = guard.guardPortfolioAnalysisText(makeResult({ risksAndOpportunities: { caution: `${note} | ราคาอยู่ที่แนวรับ 1.59 ดอลลาร์`, opportunity: '' } }))
+  assert.equal(out.removed, 1)
+  assert.equal(out.result.risksAndOpportunities.caution, note)
+  for (const path of ['lib/groq.ts', 'lib/portfolio-batch.ts']) {
+    assert.match(fs.readFileSync(path, 'utf8'), /\[downgradeNote\.trim\(\), [^\]]+\]\.filter\(Boolean\)\.join\(' \| '\)/, `${path} must separate the downgrade note from model text with " | "`)
+  }
+}
+
+// L3: "financial statements" is not a mention of the announcement date; English "not near" is caught too.
+{
+  const near = { earnings: { date: '2026-11-09', daysUntil: 5, hour: null } }
+  const notice = guard.guardPortfolioAnalysisText(withText({ summary: 'งบการเงินแข็งแรง ถือต่อ' }, near))
+  assert.equal(notice.noticeAdded, true)
+  const english = guard.guardPortfolioAnalysisText(withText({ summary: 'Earnings are not near. ถือต่อ' }, near))
+  assert.equal(english.removed, 1)
+  assert.ok(!english.result.summary.includes('Earnings'))
+}
+
+// L4: sell wording that contradicts a HOLD is dropped too, but a conditional one is kept.
+{
+  const out = guard.guardPortfolioAnalysisText(makeResult({ summary: 'ควรขายทำกำไรทันที. ถือต่อ' }))
+  assert.equal(out.removed, 1)
+  const r = makeResult({ summary: 'ควรขายถ้าหลุดแนวรับ 1.5' })
+  assert.equal(guard.guardPortfolioAnalysisText(r).result, r)
+}
+
 // Idempotent: a second pass over guarded output changes nothing.
 {
   const r = withText(

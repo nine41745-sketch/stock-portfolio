@@ -590,7 +590,7 @@ ${newsSnippet}
       technicalSummary,
       newsImpact: Array.isArray(parsed.newsImpact) ? parsed.newsImpact : [],
       risksAndOpportunities: {
-        caution: downgradeNote ? `${downgradeNote}${rawCaution}` : rawCaution,
+        caution: downgradeNote ? [downgradeNote.trim(), rawCaution].filter(Boolean).join(' | ') : rawCaution,
         opportunity: parsed.risksAndOpportunities?.opportunity ?? '',
       },
       recommendation: {

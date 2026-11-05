@@ -426,7 +426,7 @@ INPUT=${JSON.stringify(payload)}`
       }
     })
 
-    const caution = `${downgradeNote}${trimText(item.caution, 240)}`.trim()
+    const caution = [downgradeNote.trim(), trimText(item.caution, 240)].filter(Boolean).join(' | ')
     const summary = trimText(item.summary, 420) || `Daily Portfolio Review: ${finalAction} โดยอิงข้อมูลพอร์ตและตัวชี้วัดล่าสุด`
     const meta = metas[index]
 
