@@ -454,6 +454,65 @@ const earningsNear = { earnings: { date: '2026-11-09', daysUntil: 4, hour: null 
   }
 }
 
+// ---------- Cron wording seen in the saved Production analyses of 2026-11-07 (v1.41.28) ----------
+// The Cron batch prompt writes "ราคาติดระดับสนับสนุน" / "ราคาติดเหนือค่า support". These sentences are copied from the
+// saved analyses (all HOLD except NOW) together with the price and support that were stored with them.
+
+{
+  const cron = (price, support, fields, extra = {}) => makeResult({
+    technical: { ...baseTechnical, support },
+    usedPrice: price,
+    ...fields,
+    ...extra,
+  })
+  const guardNote = 'Scale-in Guard: ไม่มี New Trigger — ราคา/เทคนิคัลยังไม่เปลี่ยนมากพอจากไม้ล่าสุด (เกณฑ์ movement ขั้นต่ำ 5.5%) และยังไม่ถึง prior support หรือ breakout/momentum confirmation ใหม่; เวลาเพียงอย่างเดียวไม่ปลดล็อก BUY ซ้ำ'
+
+  // Far from support (more than 5%): the claim goes, a system note stays.
+  const tooFar = [
+    ['EOSE', 1.74, 1.59, 'หุ้น EOSE อยู่ใน Downtrend RSI 40, ราคาติดระดับสนับสนุนใกล้ค่า cost จึงคงไว้เพื่อดูการฟื้นตัว', 'ติดระดับสนับสนุน'],
+    ['ORCL', 116.1, 109.21, `${guardNote}\nORCL มี RSI 38.6 <45, ราคาติดระดับสนับสนุน 109.21 ใกล้ราคา 116.1, ไม่มีข่าวลบรุนแรง`, 'ติดระดับสนับสนุน'],
+    ['NVO', 40.3, 37.9, 'NVO อยู่ใน Downtrend RSI 52.8, ราคาติดเหนือค่า support 37.9, กำไรขาดทุน -24.9%', 'ติดเหนือค่า support'],
+    ['SOFI', 16.04, 13.86, 'SOFI มี RSI 49.6, อยู่ใน Downtrend, ราคาติดเหนือ support 13.86 แต่ไม่มีสัญญาณซื้อชัดเจน', 'ติดเหนือ support'],
+  ]
+  for (const [symbol, price, support, summary, claim] of tooFar) {
+    const out = guard.guardPortfolioAnalysisText(cron(price, support, { symbol, summary }))
+    assert.ok(out.removed >= 1, `${symbol}: the "ติด…สนับสนุน" claim must be removed (price ${price}, support ${support})`)
+    assert.ok(!out.result.summary.includes(claim), `${symbol}: the claim must be gone: ${out.result.summary}`)
+    assert.ok(out.result.summary.length > 0, `${symbol}: the summary must not be left empty`)
+  }
+  const orcl = guard.guardPortfolioAnalysisText(cron(116.1, 109.21, { summary: tooFar[1][3] }))
+  assert.ok(orcl.result.summary.startsWith(guardNote), 'The system guard note must stay')
+
+  // Within 5% of support: the same wording is true and must stay (VRT 3.5% above, NOW 0.6% above and BUY).
+  const vrt = cron(176.73, 170.8, { summary: 'VRT มี RSI 34.1 <45, ราคาติดระดับสนับสนุน 170.8 ใกล้ราคา 176.7, ไม่มีข่าวลบรุนแรง' })
+  assert.equal(guard.guardPortfolioAnalysisText(vrt).result, vrt)
+  const now = cron(102.36, 101.8, {
+    summary: 'NOW มี RSI 27.8 ต่ำ, ราคาติดสนับสนุน 101.8 ใกล้ราคา 102.36, ไม่มีข่าวลบรุนแรง',
+    recommendation: { action: 'BUY', buyConditions: '', sellConditions: '' },
+  })
+  assert.equal(guard.guardPortfolioAnalysisText(now).result, now)
+
+  // WDC (pre-market, price 291 is below support 321.6): a conditional "ติด support" opportunity stays.
+  const wdc = cron(291, 321.6, { risksAndOpportunities: { caution: '', opportunity: 'โอกาสซื้อเมื่อราคาติด support และ RSI ลดลง' } })
+  assert.equal(guard.guardPortfolioAnalysisText(wdc).result, wdc)
+
+  // Negated, conditional and unrelated "ติด" sentences stay even when the price is far from support (1.74 vs 1.59 is 9.4%).
+  for (const summary of [
+    'ราคาไม่ได้ติดระดับสนับสนุน',
+    'หากราคาติดระดับสนับสนุน ค่อยพิจารณา',
+    'ราคาติดลบต่อเนื่อง',
+    'ราคาติดแนวต้านมาหลายวัน',
+    'ราคาห่างจากระดับสนับสนุนพอสมควร',
+  ]) {
+    const r = cron(1.74, 1.59, { summary })
+    const out = guard.guardPortfolioAnalysisText(r)
+    assert.equal(out.removed, 0, `must be kept: ${summary}`)
+    assert.equal(out.result, r)
+  }
+  // The bare verb "ติด" is not enough without a support noun right after it.
+  assert.equal(guard.guardPortfolioAnalysisText(cron(1.74, 1.59, { summary: 'ราคาติดกรอบบนของช่วงราคาอยู่ไม่ไกล' })).removed, 0)
+}
+
 // Idempotent: a second pass over guarded output changes nothing.
 {
   const r = withText(

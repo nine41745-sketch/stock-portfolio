@@ -20,7 +20,9 @@ const SYSTEM_PREFIX = /^\s*(?:Scale-in Guard|Execution Guard|ระบบปร�
 const SEGMENT_SPLIT = /(\n+|\s\|\s|(?<=[.!?])\s+)/
 
 // The model also writes "ระดับสนับสนุน" / "แนวสนับสนุน" for the support level, so those count as "แนวรับ".
-const SUPPORT_CLAIM = /(?:ทดสอบ|แตะ|ชน|ใกล้|บริเวณ|อยู่ที่|ลงมาที่|ยืนที่)\s*(?:โซน|ระดับ|บริเวณ|เส้น)?\s*(?:แนวรับ|แนวสนับสนุน|สนับสนุน|support)/gi
+// The Cron batch prompt mostly writes "ราคาติดระดับสนับสนุน" / "ราคาติดเหนือค่า support" ("price is stuck to support"), so
+// "ติด" and "ติดเหนือ" count as verbs too, and "ค่า" may sit before the noun. The 5% distance rule decides, as before.
+const SUPPORT_CLAIM = /(?:ทดสอบ|แตะ|ชน|ใกล้|บริเวณ|อยู่ที่|ลงมาที่|ยืนที่|ติด(?:เหนือ)?)\s*(?:โซน|ระดับ|ค่า|บริเวณ|เส้น)?\s*(?:แนวรับ|แนวสนับสนุน|สนับสนุน|support)/gi
 const EARNINGS_NOT_NEAR =
   /(?:ยัง)?ไม่(?:ได้)?(?:ใกล้(?!เคียง)|ถึง(?!เป้า|คาด|เกณฑ์|ประมาณ))[^|.\n]{0,14}?(?:ประกาศ(?:ผล|งบ)|earnings|ผลประกอบการ)|(?:ประกาศ(?:ผล|งบ)|earnings|ผลประกอบการ)[^|.\n]{0,18}?(?:ยัง)?ไม่(?:ได้)?(?:ใกล้(?!เคียง)|ถึง(?!เป้า|คาด|เกณฑ์|ประมาณ)|ภายใน)|earnings[^|.\n]{0,20}?(?:not|isn't|aren't)\s+(?:expected\s+)?(?:near|close|soon)|(?:ประกาศ(?:ผล|งบ)|ผลประกอบการ)[^|.\n]{0,12}?ยัง(?:อีกนาน|อีกไกล|ห่าง)|ยังอีกนาน[^|.\n]{0,12}?(?:ประกาศ(?:ผล|งบ)|ผลประกอบการ)/i
 // "งบการเงิน" (financial statements) is deliberately not a mention of the announcement date. "ผลประกอบการ" is only a

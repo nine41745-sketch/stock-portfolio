@@ -1,5 +1,13 @@
 # Production Release Status
 
+## Version under preparation — v1.41.29
+
+- Scope: กฎแนวรับของตัวตรวจข้อความ AI ของพอร์ต (`lib/portfolio-ai-claim-guard.ts`) จับกริยา "ติด" และ "ติดเหนือ" และคำว่า "ค่า" ก่อนแนวรับ/สนับสนุน/support (เกณฑ์เดิม: ราคาห่าง `technical.support` เกิน 5%). ไม่ตัดประโยคปฏิเสธหรือเงื่อนไข. ไม่มี SQL, env, dependency, `vercel.json`, workflow, cron handler.
+- Development/Feature History: `Development History — Feature commit 2026-11-09 10:40:27 +07:00 (ไม่ใช่ Production)`.
+- Evidence (read-only, 2026-11-09, `GET /api/daily-analyses/today` ในเบราว์เซอร์ที่เจ้าของล็อกอิน หลังตรวจโค้ด route และ helper แล้วว่ามีแต่ select): ผลของ cron daily (2026-11-07 02:07Z) บน v1.41.28 ใช้ถ้อยคำ "ราคาติดระดับสนับสนุน" / "ราคาติดเหนือค่า support" ที่ guard ไม่ตัด ทั้งที่ราคาห่างแนวรับ EOSE 9.4%, ORCL 6.3%, NVO 6.3%, SOFI 15.7% ส่วน VRT 3.5% และ NOW 0.6% อยู่ในเกณฑ์จึงถูกต้อง. เทสต์ใหม่ใช้ประโยคจริงเหล่านี้ (ตัด 4 / เก็บ 2) และเทสต์ปฏิเสธ/เงื่อนไข/"ติดลบ"/"ติดแนวต้าน" ที่ต้องเก็บ. ตรวจด้วย mutation 4 จุดแล้วว่าเทสต์ล้มเมื่อปิดกริยา, "เหนือ", "ค่า" หรือเกณฑ์ 5%.
+- Not verified: ยังไม่ได้ทดสอบกับ Groq จริงหลังการแก้; เห็นเฉพาะข้อความหลังกรอง ไม่เห็นต้นฉบับของ AI จึงบอกไม่ได้ว่า guard v1.41.28 ตัดอะไรไปแล้วบ้าง; ข้อมูลเป็น cron รอบเดียว.
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.29. This changes the runtime of an AI endpoint, so AGENTS.md requires independent review of the exact PR head before merge; no reviewer has been recorded yet for this version. No merge, deployment or Production change is authorized by this task. Production remains `dpl_HS2DTHeHqyWtiVU6QA2HEVMnyZ5S` (v1.41.28).
+
 ## Version under preparation — v1.41.28
 
 - Scope: ขยายถ้อยคำที่ตัวตรวจข้อความ AI ของพอร์ต (`lib/portfolio-ai-claim-guard.ts`) จับ หลังเห็นผลจริงของ v1.41.27 บน Production (RKLB วิเคราะห์ 2026-11-05 12:59 ICT): (1) "การซื้อเพิ่ม/ทยอยซื้อ/สะสม…จึงเหมาะสม/น่าสนใจ" (ลำดับคำกลับกับของเดิม) เมื่อ action ไม่ใช่ BUY, (2) "ใกล้/อยู่ที่ ระดับสนับสนุน/แนวสนับสนุน" นับเหมือน "แนวรับ" (เกณฑ์ 5% จาก `technical.support`), (3) "ผลประกอบการ…ใกล้/ประกาศ/N วัน" นับเป็นการพูดถึงประกาศงบ เพื่อไม่เติมคำเตือนซ้ำ. ไม่จับกรณีปฏิเสธ มีเงื่อนไข หรือ "หากผลประกอบการเป็นบวก". ไม่มี SQL, env, dependency, `vercel.json`, workflow.
