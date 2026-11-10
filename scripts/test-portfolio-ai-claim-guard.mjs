@@ -574,6 +574,65 @@ const earningsNear = { earnings: { date: '2026-11-09', daysUntil: 4, hour: null 
   }
 }
 
+// ---------- independent review of PR #156 (head 69463176) ----------
+
+{
+  const at = (price, support, summary) => makeResult({ technical: { ...baseTechnical, support }, usedPrice: price, summary })
+  // F1/F2: conditions, forecasts, requirements, the past and other "prices" are not a statement about the current price.
+  for (const [price, support, summary] of [
+    [1.74, 1.59, 'ราคาจะปรับตัวลงถ้าต่ำกว่าแนวรับ 1.59'],
+    [1.74, 1.59, 'ราคามีความเสี่ยงหากต่ำกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคาอาจต่ำกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคาอาจลงไปต่ำกว่าแนวรับ'],
+    [1.5, 1.59, 'ราคาต้องกลับขึ้นไปเหนือแนวรับ 1.59'],
+    [1.5, 1.59, 'ราคาควรยืนเหนือแนวรับให้ได้'],
+    [1.74, 1.59, 'ราคาปิดต่ำกว่าแนวรับ 1.59 เมื่อวาน'],
+    [1.74, 1.59, 'ราคาเคยต่ำกว่าแนวรับเมื่อเดือนก่อน'],
+    [1.74, 1.59, 'ราคาต้นทุนต่ำกว่าแนวรับ'],
+    [1.5, 1.59, 'ราคาซื้อเฉลี่ยของคุณสูงกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคาเป้าหมายของนักวิเคราะห์ต่ำกว่า support'],
+    [1.74, 1.59, 'ราคาต่ำกว่าแนวรับเดิม'],
+    [1.74, 1.59, 'ราคาต่ำกว่าแนวรับที่ 20 วัน'],
+    [1.5, 1.59, 'ราคาหุ้นคู่แข่งสูงกว่าแนวรับของตัวเอง'],
+    [1.74, 1.59, 'ราคาต่ำกว่าแนวรับของวันก่อน'],
+  ]) {
+    const r = at(price, support, summary)
+    const out = guard.guardPortfolioAnalysisText(r)
+    assert.equal(out.removed, 0, `must be kept (price ${price}, support ${support}): ${summary}`)
+    assert.equal(out.result, r)
+  }
+  // Each excluded word on its own (one word per sentence, so every alternative of the exclusion list is pinned).
+  for (const [price, support, summary] of [
+    [1.74, 1.59, 'ราคาลงถ้าต่ำกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคาลงหากต่ำกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคาลงเมื่อต่ำกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคาในกรณีที่ต่ำกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคาจะต่ำกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคาเคยต่ำกว่าแนวรับ'],
+    [1.5, 1.59, 'ราคาเฉลี่ยสูงกว่าแนวรับ'],
+    [1.5, 1.59, 'ราคาซื้อสูงกว่าแนวรับ'],
+    [1.5, 1.59, 'ราคาคู่แข่งสูงกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคาเดิมต่ำกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคาก่อนหน้าต่ำกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคามีความเสี่ยงต่ำกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคาต่ำกว่าแนวรับเก่า'],
+    [1.74, 1.59, 'ราคาต่ำกว่าแนวรับก่อนหน้า'],
+    [1.74, 1.59, 'ราคาต่ำกว่าแนวรับเมื่อวาน'],
+  ]) {
+    const r = at(price, support, summary)
+    const out = guard.guardPortfolioAnalysisText(r)
+    assert.equal(out.removed, 0, `must be kept (price ${price}, support ${support}): ${summary}`)
+    assert.equal(out.result, r)
+  }
+  // F3: a decimal price in the gap no longer hides a wrong claim.
+  for (const summary of ['ราคาปัจจุบัน 1.74 ต่ำกว่าแนวรับ 1.59', 'ราคา 1.74 ต่ำกว่า support']) {
+    assert.ok(guard.guardPortfolioAnalysisText(at(1.74, 1.59, summary)).removed >= 1, `must be cut: ${summary}`)
+  }
+  // The same wording is fine when it is true.
+  const trueClaim = at(1.5, 1.59, 'ราคาปัจจุบัน 1.50 ต่ำกว่าแนวรับ 1.59')
+  assert.equal(guard.guardPortfolioAnalysisText(trueClaim).result, trueClaim)
+}
+
 // Idempotent: a second pass over guarded output changes nothing.
 {
   const r = withText(
