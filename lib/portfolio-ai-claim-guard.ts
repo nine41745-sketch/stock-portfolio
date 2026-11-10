@@ -23,6 +23,11 @@ const SEGMENT_SPLIT = /(\n+|\s\|\s|(?<=[.!?])\s+)/
 // The Cron batch prompt mostly writes "ราคาติดระดับสนับสนุน" / "ราคาติดเหนือค่า support" ("price is stuck to support"), so
 // "ติด" and "ติดเหนือ" count as verbs too, and "ค่า" may sit before the noun. The 5% distance rule decides, as before.
 const SUPPORT_CLAIM = /(?:ทดสอบ|แตะ|ชน|ใกล้|บริเวณ|อยู่ที่|ลงมาที่|ยืนที่|ติด(?:เหนือ)?)\s*(?:โซน|ระดับ|ค่า|บริเวณ|เส้น)?\s*(?:แนวรับ|แนวสนับสนุน|สนับสนุน|support)/gi
+// "ราคาต่ำกว่า support 1.59" while the price is above it (or "เหนือ" while it is below). Not "หลุดแนวรับ": the app has more
+// than one support level and the model may mean the other one. The comparison uses `technical.support`, the value both
+// prompts show to the model.
+const PRICE_VS_SUPPORT = /ราคา[^|.;\n]{0,24}?(เหนือ|สูงกว่า|ต่ำกว่า|ใต้)\s*(?:โซน|ระดับ|ค่า|เส้น)?\s*(?:แนวรับ|แนวสนับสนุน|สนับสนุน|support)/gi
+const SUPPORT_TOLERANCE = 0.0005
 const EARNINGS_NOT_NEAR =
   /(?:ยัง)?ไม่(?:ได้)?(?:ใกล้(?!เคียง)|ถึง(?!เป้า|คาด|เกณฑ์|ประมาณ))[^|.\n]{0,14}?(?:ประกาศ(?:ผล|งบ)|earnings|ผลประกอบการ)|(?:ประกาศ(?:ผล|งบ)|earnings|ผลประกอบการ)[^|.\n]{0,18}?(?:ยัง)?ไม่(?:ได้)?(?:ใกล้(?!เคียง)|ถึง(?!เป้า|คาด|เกณฑ์|ประมาณ)|ภายใน)|earnings[^|.\n]{0,20}?(?:not|isn't|aren't)\s+(?:expected\s+)?(?:near|close|soon)|(?:ประกาศ(?:ผล|งบ)|ผลประกอบการ)[^|.\n]{0,12}?ยัง(?:อีกนาน|อีกไกล|ห่าง)|ยังอีกนาน[^|.\n]{0,12}?(?:ประกาศ(?:ผล|งบ)|ผลประกอบการ)/i
 // "งบการเงิน" (financial statements) is deliberately not a mention of the announcement date. "ผลประกอบการ" is only a
@@ -78,19 +83,30 @@ function finite(value: unknown): value is number {
  * at support") is only excused by a condition wrapped around it; "advice" ("should add") can also be conditional on
  * a clause before it or on a word right after it.
  */
+function isAffirmedMatch(text: string, match: RegExpMatchArray, kind: 'fact' | 'advice'): boolean {
+  const start = match.index ?? 0
+  const end = start + match[0].length
+  const before = text.slice(Math.max(0, start - 30), start)
+  if (NEGATED.test(text.slice(Math.max(0, start - 8), start))) return false
+  if (NEGATION_INSIDE.test(match[0])) return false
+  if (kind === 'fact') return !CONDITIONAL_BEFORE_RUN.test(before)
+  return !CONDITIONAL_BEFORE_CLAUSE.test(before) && !CONDITIONAL_AFTER_RUN.test(text.slice(end, end + 48))
+}
+
 function hasAffirmedMatch(text: string, pattern: RegExp, kind: 'fact' | 'advice'): boolean {
   for (const match of text.matchAll(pattern)) {
-    const start = match.index ?? 0
-    const end = start + match[0].length
-    const before = text.slice(Math.max(0, start - 30), start)
-    if (NEGATED.test(text.slice(Math.max(0, start - 8), start))) continue
-    if (NEGATION_INSIDE.test(match[0])) continue
-    if (kind === 'fact') {
-      if (CONDITIONAL_BEFORE_RUN.test(before)) continue
-    } else if (CONDITIONAL_BEFORE_CLAUSE.test(before) || CONDITIONAL_AFTER_RUN.test(text.slice(end, end + 48))) {
-      continue
-    }
-    return true
+    if (isAffirmedMatch(text, match, kind)) return true
+  }
+  return false
+}
+
+/** True when an affirmed "price is above/below support" claim points the wrong way for the stored price and support. */
+function contradictsSupportDirection(text: string, price: number, support: number): boolean {
+  for (const match of text.matchAll(PRICE_VS_SUPPORT)) {
+    if (!isAffirmedMatch(text, match, 'fact')) continue
+    const above = match[1] === 'เหนือ' || match[1] === 'สูงกว่า'
+    const consistent = above ? price >= support * (1 - SUPPORT_TOLERANCE) : price <= support * (1 + SUPPORT_TOLERANCE)
+    if (!consistent) return true
   }
   return false
 }
@@ -106,6 +122,7 @@ export function findPortfolioClaimViolation(segment: string, ctx: GuardContext):
     if (Math.abs(price - ctx.support) / ctx.support > SUPPORT_DISTANCE_LIMIT && hasAffirmedMatch(segment, SUPPORT_CLAIM, 'fact')) {
       return 'price-near-support'
     }
+    if (contradictsSupportDirection(segment, price, ctx.support)) return 'price-vs-support-direction'
   }
   if (ctx.earningsNear && EARNINGS_NOT_NEAR.test(segment)) return 'earnings-not-near'
   if (ctx.action !== null && ctx.action !== 'BUY' && hasAffirmedMatch(segment, BUY_ADVOCACY, 'advice')) return 'buy-text-vs-action'

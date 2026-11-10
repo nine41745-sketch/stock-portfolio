@@ -513,6 +513,67 @@ const earningsNear = { earnings: { date: '2026-11-09', daysUntil: 4, hour: null 
   assert.equal(guard.guardPortfolioAnalysisText(cron(1.74, 1.59, { summary: 'ราคาติดกรอบบนของช่วงราคาอยู่ไม่ไกล' })).removed, 0)
 }
 
+// ---------- price vs support direction, from the saved Cron analyses of 2026-11-10 (v1.41.29) ----------
+// EOSE (HOLD, price 1.74, support 1.59) was saved with "ราคาต่ำกว่า support 1.59" although the price is 9.4% above it.
+
+{
+  const dir = (price, support, summary, extra = {}) => makeResult({
+    technical: { ...baseTechnical, support },
+    usedPrice: price,
+    summary,
+    ...extra,
+  })
+  const guardNote = 'Scale-in Guard: ไม่มี New Trigger — ราคา/เทคนิคัลยังไม่เปลี่ยนมากพอจากไม้ล่าสุด (เกณฑ์ movement ขั้นต่ำ 10.8%) และยังไม่ถึง prior support หรือ breakout/momentum confirmation ใหม่; เวลาเพียงอย่างเดียวไม่ปลดล็อก BUY ซ้ำ'
+
+  // Must cut: the real EOSE sentence, and the mirror image.
+  const eose = guard.guardPortfolioAnalysisText(dir(1.74, 1.59, `${guardNote}\nราคาต่ำกว่า support 1.59, RSI 37.3 แสดงโอกาสซื้อในช่วง oversold`))
+  assert.ok(eose.removed >= 1, 'The false "below support" claim must be removed')
+  assert.ok(!eose.result.summary.includes('ราคาต่ำกว่า support'), `the claim must be gone: ${eose.result.summary}`)
+  assert.ok(eose.result.summary.startsWith(guardNote), 'The system guard note must stay')
+  for (const [price, support, summary] of [
+    [1.74, 1.59, 'ราคาต่ำกว่าแนวรับ'],
+    [1.74, 1.59, 'ราคาอยู่ใต้ระดับสนับสนุน'],
+    [291, 321.6, 'ราคาเหนือแนวรับ'],
+    [291, 321.6, 'ราคาอยู่สูงกว่าค่า support ไม่มาก'],
+  ]) {
+    const out = guard.guardPortfolioAnalysisText(dir(price, support, summary))
+    assert.ok(out.removed >= 1, `must be cut (price ${price}, support ${support}): ${summary}`)
+  }
+
+  // Must keep: the real NOW and WDC sentences (close to support, no direction claim) ...
+  const now = dir(101.97, 100.55, 'RSI 27.7 ต่ำ, ราคาอยู่ใกล้ support 100.55, แนวโน้ม sideways', { recommendation: { action: 'BUY', buyConditions: '', sellConditions: '' } })
+  assert.equal(guard.guardPortfolioAnalysisText(now).result, now)
+  const wdc = dir(263.78, 258.61, 'RSI 28.3 ต่ำ, ราคาใกล้ support 258.61, แนวโน้ม sideways, ไม่มีข่าวลบสำคัญ', { recommendation: { action: 'BUY', buyConditions: '', sellConditions: '' } })
+  assert.equal(guard.guardPortfolioAnalysisText(wdc).result, wdc)
+  // ... and direction claims that are true.
+  for (const [price, support, summary] of [
+    [291, 321.6, 'ราคาต่ำกว่า support 321.6 หลังข่าวร้าย'],
+    [291, 321.6, 'ราคาอยู่ใต้แนวรับ'],
+    [263.78, 258.61, 'ราคาสูงกว่าระดับสนับสนุนเล็กน้อย'],
+    [263.78, 258.61, 'ราคาอยู่เหนือค่า support'],
+    [1.59, 1.59, 'ราคาต่ำกว่า support เล็กน้อย'],
+    [1.59, 1.59, 'ราคาสูงกว่า support เล็กน้อย'],
+  ]) {
+    const r = dir(price, support, summary)
+    const out = guard.guardPortfolioAnalysisText(r)
+    assert.equal(out.removed, 0, `a true claim must stay (price ${price}, support ${support}): ${summary}`)
+    assert.equal(out.result, r)
+  }
+  // Negated, conditional and "broke support" wording stays even when the direction would be wrong.
+  for (const summary of [
+    'ราคาไม่ต่ำกว่า support 1.59',
+    'หากราคาต่ำกว่า support 1.59 ค่อยพิจารณา',
+    'เมื่อราคาต่ำกว่าแนวรับ ควรระวัง',
+    'ราคาหลุดแนวรับ',
+    'กำไรต่ำกว่า support ของนักวิเคราะห์',
+  ]) {
+    const r = dir(1.74, 1.59, summary)
+    const out = guard.guardPortfolioAnalysisText(r)
+    assert.equal(out.removed, 0, `must be kept: ${summary}`)
+    assert.equal(out.result, r)
+  }
+}
+
 // Idempotent: a second pass over guarded output changes nothing.
 {
   const r = withText(
