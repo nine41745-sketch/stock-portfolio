@@ -663,6 +663,95 @@ const earningsNear = { earnings: { date: '2026-11-09', daysUntil: 4, hour: null 
 
 // ---------- wiring ----------
 
+// ---------- v1.41.31: gaps found in the first live run of v1.41.30 (EOSE, 2026-11-10 03:17Z, HOLD) ----------
+// The 52-week facts were never passed to the shared rule, "แนะนำซื้อเพิ่ม…เมื่อ…" was excused as a condition because the
+// "เมื่อ" belongs to a purpose clause, and "RSI อยู่ในโซน oversold" was not checked at all.
+{
+  const tech = (over = {}) => ({ ...makeResult().technical, support: 1.59, resistance: 2.4, rsi14: 41.6, weeklyRsi14: 44, week52High: 4.9, week52Low: 1.2, ...over })
+  const eose = (fields, techOver = {}, action = 'HOLD') => makeResult({
+    usedPrice: 1.88,
+    recommendation: { action, buyConditions: '', sellConditions: '' },
+    technical: tech(techOver),
+    ...fields,
+  })
+  const guardNote = 'Scale-in Guard: ไม่มี New Trigger — ราคา/เทคนิคัลยังไม่เปลี่ยนมากพอจากไม้ล่าสุด'
+
+  // The real paragraph (verbatim apart from the guard note): three wrong sentences/clauses, one true condition.
+  const paragraph = `${guardNote}\nพื้นฐานของ EOSE ยังไม่มีสัญญาณเสียหายอย่างมีนัยสำคัญ แม้กำไรสะสม -30% จากต้นทุน แต่ราคาต่ำกว่า 52‑week low $1.59 ทำให้มูลค่าตลาดอยู่ในระดับต่ำมาก ส่วน valuation confidence ต่ำเนื่องจากไม่มีข้อมูล P/E ที่ครบถ้วน จึงแนะนำซื้อเพิ่มในปริมาณจำกัดเพื่อจับจังหวะการสะสมเมื่อ RSI อยู่ในโซน oversold`
+  const outParagraph = guard.guardPortfolioAnalysisText(eose({ summary: paragraph }))
+  assert.ok(outParagraph.removed >= 1, 'the false 52-week and buy claims must be cut')
+  assert.ok(!outParagraph.result.summary.includes('52'), 'the 52-week claim (non-breaking hyphen) must be cut')
+  assert.ok(!outParagraph.result.summary.includes('แนะนำซื้อเพิ่ม'), 'the buy advice under HOLD must be cut')
+  assert.ok(outParagraph.result.summary.startsWith(guardNote), 'the system note stays')
+
+  // 52-week: ASCII hyphen, no hyphen, Thai wording; wrong direction is cut, right direction and missing data are kept.
+  for (const text of ['ราคาต่ำกว่า 52-week low $1.59', 'ราคาต่ำกว่า 52 week low', 'ราคาต่ำกว่าระดับ 52W Low']) {
+    const out = guard.guardPortfolioAnalysisText(eose({ summary: `${text} ทำให้น่าสนใจ`, technicalSummary: 'แนวโน้มลง' }))
+    assert.ok(out.removed >= 1, `must be cut: ${text}`)
+  }
+  {
+    const r = eose({ summary: 'ราคาสูงกว่า 52-week low อยู่มาก' })
+    const out = guard.guardPortfolioAnalysisText(r)
+    assert.equal(out.removed, 0, 'a true 52-week statement stays')
+    assert.equal(out.result, r)
+    const noData = eose({ summary: 'ราคาต่ำกว่า 52-week low $1.59' }, { week52Low: null })
+    assert.equal(guard.guardPortfolioAnalysisText(noData).removed, 0, 'without a stored 52-week low nothing is cut')
+    assert.equal(guard.guardPortfolioAnalysisText(eose({ summary: 'ราคาสูงกว่า 52-week high' })).removed, 1, 'a false "above the 52-week high" is cut')
+    assert.equal(guard.guardPortfolioAnalysisText(eose({ summary: 'ราคาต่ำกว่า 52-week high มาก' })).removed, 0, 'a true "below the 52-week high" stays')
+    const below = eose({ summary: 'ราคาต่ำกว่า 52-week low แล้ว' }, { week52Low: 2.1 })
+    assert.equal(guard.guardPortfolioAnalysisText(below).removed, 0, 'a true "below the 52-week low" stays')
+  }
+
+  // Buy advice under HOLD: the "เมื่อ" of a purpose clause is no condition, a real condition still is.
+  const buyUnderHold = guard.guardPortfolioAnalysisText(eose({ summary: 'แนะนำซื้อเพิ่มในปริมาณจำกัดเพื่อจับจังหวะการสะสมเมื่อ RSI ต่ำ' }))
+  assert.ok(buyUnderHold.removed >= 1, 'buy advice under HOLD must be cut')
+  for (const summary of [
+    'แนะนำซื้อเพิ่มเมื่อราคาย่อลงถึงแนวรับ',
+    'ควรทยอยซื้อในปริมาณเล็กน้อยเมื่อราคาย่อ',
+    'แนะนำซื้อเพิ่มต่อเมื่อมี trigger ใหม่',
+  ]) {
+    const r = eose({ summary })
+    assert.equal(guard.guardPortfolioAnalysisText(r).removed, 0, `a conditional advice stays: ${summary}`)
+  }
+  assert.equal(guard.guardPortfolioAnalysisText(eose({ summary: 'แนะนำซื้อเพิ่มในปริมาณจำกัดเพื่อจับจังหวะ' }, {}, 'BUY')).removed, 0, 'buy advice under BUY stays')
+
+  // RSI zone: RSI 41.6 is not oversold and not overbought.
+  for (const text of ['RSI อยู่ในโซน oversold (41)', 'RSI(14) รายวันอยู่ใน oversold', 'RSI 41.6 อยู่ในโซนขายมากเกินไป', 'RSI อยู่ในโซน overbought']) {
+    const out = guard.guardPortfolioAnalysisText(eose({ risksAndOpportunities: { caution: '', opportunity: text } }))
+    assert.equal(out.removed, 1, `must be cut: ${text}`)
+  }
+  for (const text of [
+    'RSI ใกล้เข้าโซน oversold',
+    'ถ้า RSI ลงโซน oversold ค่อยพิจารณา',
+    'เมื่อ RSI เข้า oversold ควรระวัง',
+    'RSI ไม่ได้อยู่ในโซน oversold',
+    'ไม่ได้ RSI อยู่ในโซน oversold',
+    'RSI ออกจากโซน oversold แล้ว',
+    'RSI เคยอยู่ใน oversold เมื่อเดือนก่อน',
+    'RSI 41.6 อยู่ในโซนกลาง',
+  ]) {
+    const r = eose({ risksAndOpportunities: { caution: '', opportunity: text } })
+    const out = guard.guardPortfolioAnalysisText(r)
+    assert.equal(out.removed, 0, `must be kept: ${text}`)
+    assert.equal(out.result, r)
+  }
+  // True claims stay; the weekly RSI is used when the text says so.
+  {
+    const r = eose({ summary: 'RSI 27.7 อยู่ในโซน oversold' }, { rsi14: 27.7 })
+    assert.equal(guard.guardPortfolioAnalysisText(r).removed, 0, 'a true oversold claim stays')
+    const weekly = eose({ summary: 'RSI รายสัปดาห์อยู่ในโซน oversold' }, { rsi14: 55, weeklyRsi14: 30 })
+    assert.equal(guard.guardPortfolioAnalysisText(weekly).removed, 0, 'the weekly RSI is used for a weekly claim')
+    const weeklyWrong = eose({ summary: 'RSI รายสัปดาห์อยู่ในโซน oversold' }, { rsi14: 30, weeklyRsi14: 55 })
+    assert.equal(guard.guardPortfolioAnalysisText(weeklyWrong).removed, 1, 'a wrong weekly claim is cut')
+    const hot = eose({ summary: 'RSI อยู่ในโซน overbought' }, { rsi14: 72 })
+    assert.equal(guard.guardPortfolioAnalysisText(hot).removed, 0, 'a true overbought claim stays')
+    const missingHot = eose({ summary: 'RSI อยู่ในโซน overbought' }, { rsi14: null, weeklyRsi14: null })
+    assert.equal(guard.guardPortfolioAnalysisText(missingHot).removed, 0, 'without RSI data an overbought claim is not cut either')
+    const missing = eose({ summary: 'RSI อยู่ในโซน oversold' }, { rsi14: null, weeklyRsi14: null })
+    assert.equal(guard.guardPortfolioAnalysisText(missing).removed, 0, 'without RSI data nothing is cut')
+  }
+}
+
 const analyzeRoute = fs.readFileSync('app/api/analyze/route.ts', 'utf8')
 const guardCalls = analyzeRoute.match(/applyPortfolioAiClaimGuard\(applyRecentTradeExecutionGuard\(/g) ?? []
 assert.equal(guardCalls.length, 2, '/api/analyze must guard both the cached and the fresh result')

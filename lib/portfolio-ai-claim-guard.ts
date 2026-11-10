@@ -60,6 +60,15 @@ const BUY_ADVOCACY = new RegExp(
 const SELL_ADVOCACY =
   /(?:เหมาะ(?:กับ|ที่จะ)?(?:การ)?\s*(?:ขายทำกำไร|ขาย|ลดสถานะ|ปิดสถานะ)|ควร(?:ขายทำกำไร|ขาย|ลดสถานะ|ปิดสถานะ))/g
 
+// "RSI อยู่ในโซน oversold (41)" while the stored RSI is 41.6. Only a direct statement about the RSI zone counts: the gap may
+// hold a decimal number but not a near/forecast/condition/negation word, and the match is skipped when negated or conditional.
+const RSI_ZONE_CLAIM = /(?:RSI|อาร์เอสไอ)((?:[^|.;\n]|(?<=\d)\.(?=\d)){0,30}?)(oversold|overbought|โอเวอร์โซลด์|โอเวอร์บอต|ขายมากเกินไป|ซื้อมากเกินไป)/gi
+const RSI_GAP_EXCLUDED = /ใกล้|เกือบ|เริ่ม|ไม่|จะ|อาจ|ถ้า|หาก|เมื่อ|ต้อง|ควร|เคย|ก่อน|ที่ผ่านมา|ออกจาก|พ้น|หลุด|คล้าย/
+const RSI_WEEKLY = /สัปดาห์|weekly|week/i
+/** Oversold is claimed while RSI is clearly above the zone (or overbought while clearly below it). */
+const RSI_OVERSOLD_MAX = 35
+const RSI_OVERBOUGHT_MIN = 65
+
 const NEGATED = /(?:ไม่ได้|มิได้|ไม่|ห่าง|ยังไม่)\s*$/
 // A claim made inside a condition ("ถ้า…", "เมื่อ…", "หาก…") is a hypothesis, not an assertion about now. Thai text
 // rarely has punctuation, so a condition word must sit in the SAME space-free run as the claim ("ควรเพิ่มสถานะเมื่อ…",
@@ -67,7 +76,9 @@ const NEGATED = /(?:ไม่ได้|มิได้|ไม่|ห่าง|�
 const CONDITIONAL_BEFORE_RUN = /(?:ถ้า|หาก|เมื่อ(?!วาน)|ในกรณีที่)[^\s|.\n]{0,24}$/
 // Advice ("ควรเพิ่ม…") may also be conditional on a clause just before it ("หากราคาย่อ ควรทยอยซื้อ").
 const CONDITIONAL_BEFORE_CLAUSE = /(?:ถ้า|หาก|เมื่อ(?!วาน)|ในกรณีที่)[^|.\n]{0,24}$/
-const CONDITIONAL_AFTER_RUN = /^[^\s|.\n]{0,40}?(?:ต่อเมื่อ|ถ้า|หาก|เมื่อ(?!วาน)|หลังจาก|ถึงจะ)/
+// The run may not cross "เพื่อ" (purpose): in "แนะนำซื้อเพิ่มในปริมาณจำกัดเพื่อจับจังหวะ…เมื่อ RSI อยู่ในโซน…" the later "เมื่อ"
+// describes the reason, not a condition on the advice (seen in EOSE on 2026-11-10, HOLD with a buy recommendation).
+const CONDITIONAL_AFTER_RUN = /^(?:(?!เพื่อ)[^\s|.\n]){0,40}?(?:ต่อเมื่อ|ถ้า|หาก|เมื่อ(?!วาน)|หลังจาก|ถึงจะ)/
 // A clause that is left over after a removal and cannot stand on its own.
 const ORPHAN_CLAUSE = /^(?:ไม่|ถ้า|หาก|เมื่อ|ค่อย|แล้ว|และ|แต่|ก็|จึง|หรือ|ซึ่ง)$|^[\d.,$%\s]+$/
 
@@ -77,6 +88,9 @@ const ACTIONS: readonly string[] = ['BUY', 'HOLD', 'SELL_PARTIAL', 'SELL_ALL']
 interface GuardContext {
   facts: AiClaimFacts
   support: number | null
+  /** Stored RSI(14) values the RSI-zone rule compares with; null when missing. */
+  rsiDaily: number | null
+  rsiWeekly: number | null
   earningsNear: boolean
   /** null when the result carries no valid action: the action rules are then skipped. */
   action: Action | null
@@ -122,6 +136,22 @@ function contradictsSupportDirection(text: string, price: number, support: numbe
   return false
 }
 
+/** True when an affirmed "RSI is oversold/overbought" claim points the wrong way for the stored RSI value. */
+function contradictsRsiZone(text: string, rsiDaily: number | null, rsiWeekly: number | null): boolean {
+  for (const match of text.matchAll(RSI_ZONE_CLAIM)) {
+    if (!isAffirmedMatch(text, match, 'fact')) continue
+    // "RSI" is written with spaces around it, so a condition word may sit in the previous space-separated clause.
+    const start = match.index ?? 0
+    if (CONDITIONAL_BEFORE_CLAUSE.test(text.slice(Math.max(0, start - 30), start))) continue
+    if (RSI_GAP_EXCLUDED.test(match[1])) continue
+    const rsi = RSI_WEEKLY.test(match[1]) ? rsiWeekly : rsiDaily
+    if (!finite(rsi)) continue
+    const oversold = /^(?:oversold|โอเวอร์โซลด์|ขายมากเกินไป)$/i.test(match[2])
+    if (oversold ? rsi > RSI_OVERSOLD_MAX : rsi < RSI_OVERBOUGHT_MIN) return true
+  }
+  return false
+}
+
 /** Returns a short rule name when one segment of AI text contradicts the computed facts, otherwise null. */
 export function findPortfolioClaimViolation(segment: string, ctx: GuardContext): string | null {
   if (SYSTEM_PREFIX.test(segment)) return null
@@ -135,6 +165,7 @@ export function findPortfolioClaimViolation(segment: string, ctx: GuardContext):
     }
     if (contradictsSupportDirection(segment, price, ctx.support)) return 'price-vs-support-direction'
   }
+  if (contradictsRsiZone(segment, ctx.rsiDaily, ctx.rsiWeekly)) return 'rsi-zone'
   if (ctx.earningsNear && EARNINGS_NOT_NEAR.test(segment)) return 'earnings-not-near'
   if (ctx.action !== null && ctx.action !== 'BUY' && hasAffirmedMatch(segment, BUY_ADVOCACY, 'advice')) return 'buy-text-vs-action'
   if ((ctx.action === 'BUY' || ctx.action === 'HOLD') && hasAffirmedMatch(segment, SELL_ADVOCACY, 'advice')) return 'sell-text-vs-action'
@@ -232,11 +263,13 @@ function runGuard(result: DetailedAnalysisResult): PortfolioGuardOutcome {
       price: finite(result.usedPrice) ? result.usedPrice : null,
       ema50: finite(technical.ema50) ? technical.ema50 : null,
       ema200: finite(technical.ema200) ? technical.ema200 : null,
-      week52High: null,
-      week52Low: null,
+      week52High: finite(technical.week52High) ? technical.week52High : null,
+      week52Low: finite(technical.week52Low) ? technical.week52Low : null,
       earningsFound: earnings !== null,
     },
     support: finite(technical.support) ? technical.support : null,
+    rsiDaily: finite(technical.rsi14) ? technical.rsi14 : null,
+    rsiWeekly: finite(technical.weeklyRsi14) ? technical.weeklyRsi14 : null,
     earningsNear: earnings !== null && Number.isFinite(earnings.daysUntil) && earnings.daysUntil >= 0 && earnings.daysUntil <= EARNINGS_NEAR_DAYS,
     action,
   }
