@@ -16,7 +16,12 @@ export function sanitizeWeek52(
   if (price && price > 0) {
     if (week52High && week52High > price * WEEK52_HIGH_MAX_RATIO) week52High = null
     if (week52Low && week52Low < price * 0.05) week52Low = null
-    if (week52Low && week52Low > price * 5) week52Low = null
+    // A low far ABOVE the price cannot be real (the low is never above the price), so the whole range is in another
+    // scale (DKK, SEK, BRL ... for an ADR); a high of that range at 5-25x would otherwise pass as a USD value.
+    if (week52Low && week52Low > price * 5) {
+      week52Low = null
+      week52High = null
+    }
   }
   return { week52High, week52Low }
 }

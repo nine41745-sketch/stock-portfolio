@@ -26,6 +26,13 @@ assert.deepEqual(clean(1.98, 19.65, 1.59), { week52High: 19.65, week52Low: 1.59 
 // A 90-95% crash (10-20x) is kept.
 assert.deepEqual(clean(2, 40, 1.5), { week52High: 40, week52Low: 1.5 })
 assert.deepEqual(clean(1, 20, 0.9), { week52High: 20, week52Low: 0.9 })
+// Review of PR #164: an ADR whose whole range is in another scale (DKK ~7x, SEK ~10x, BRL ~5-6x, MXN ~18x) is dropped as a pair.
+assert.deepEqual(clean(40, 40 * 7, 40 * 6), { week52High: null, week52Low: null }, 'DKK-like range')
+assert.deepEqual(clean(40, 40 * 11, 40 * 6), { week52High: null, week52Low: null }, 'a range far above the price')
+assert.deepEqual(clean(40, 40 * 18, 40 * 12), { week52High: null, week52Low: null }, 'MXN-like range')
+// A low exactly at 5x is not above 5x, so the pair stays; a low that is too small does not touch the high.
+assert.deepEqual(clean(100, 900, 500), { week52High: 900, week52Low: 500 })
+assert.deepEqual(clean(100, 150, 4.99), { week52High: 150, week52Low: null }, 'a too small low is dropped alone')
 // A USD quote with a THB high (about 33x) is a unit error and is dropped, the sane low stays.
 assert.deepEqual(clean(40, 40 * 33.5, 35), { week52High: null, week52Low: 35 })
 // The 25x limit itself: exactly 25x stays, just above it is dropped.
@@ -36,6 +43,7 @@ assert.equal(clean(100, 150, 4.99).week52Low, null)
 assert.equal(clean(100, 150, 5).week52Low, 5)
 assert.equal(clean(100, 900, 501).week52Low, null)
 assert.equal(clean(100, 900, 500).week52Low, 500)
+assert.equal(clean(100, 900, 501).week52High, null, 'the high goes with a low above 5x')
 // Without a usable price nothing is judged and the values pass through.
 for (const price of [null, 0, -3]) assert.deepEqual(clean(price, 999, 0.001), { week52High: 999, week52Low: 0.001 })
 // Missing values stay missing.
@@ -73,6 +81,10 @@ assert.match(component, /Personal Investment Command Center · \{CURRENT_VERSION
 assert.doesNotMatch(component, /v1\.\d+\.\d+ RC/, 'the version label must not be hard-coded')
 assert.match(component, /limitRows\(allocationRows, ALLOCATION_ROW_LIMIT\)/)
 assert.doesNotMatch(component, /allocationRows\.slice\(/, 'allocation rows must not be cut silently')
-assert.match(component, /และอีก \{allocationView\.hidden\} รายการ/)
+assert.match(component, /const ALLOCATION_ROW_LIMIT = 20\r?\n/, 'the Command Center shows up to 20 allocation targets (the old 8 hid SPCX and DIME)')
+assert.match(component, /\{allocationView\.shown\.map\(row => /, 'the card renders the limited list')
+assert.doesNotMatch(component, /allocationView\.shown\.slice\(/, 'the limited list must not be cut again')
+assert.match(component, /\{allocationView\.hidden > 0 && <li [^>]*>และอีก \{allocationView\.hidden\} รายการ/, 'the hidden-count line shows only when rows are hidden')
+assert.doesNotMatch(component, /allocationView\.hidden >= 0/, 'never show "and 0 more"')
 
 console.log('✓ 52-week range check, row limit and Command Center label regression tests passed')
