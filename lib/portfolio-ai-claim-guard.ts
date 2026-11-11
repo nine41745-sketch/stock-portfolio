@@ -101,6 +101,8 @@ interface GuardContext {
   earningsNear: boolean
   /** null when the result carries no valid action: the action rules are then skipped. */
   action: Action | null
+  /** How many claims each rule removed in this run: rule names only, never the removed text. */
+  tally: Record<string, number>
 }
 
 function finite(value: unknown): value is number {
@@ -267,9 +269,11 @@ function guardText<T>(text: T, ctx: GuardContext): { text: T | string; removed: 
     const segment = parts[i]
     const separator = parts[i + 1] ?? ''
     if (segment.trim() === '') continue
-    if (findPortfolioClaimViolation(segment, ctx) !== null) {
+    const rule = findPortfolioClaimViolation(segment, ctx)
+    if (rule !== null) {
       const narrowed = narrowViolation(segment, ctx)
       removed += narrowed.removed
+      ctx.tally[rule] = (ctx.tally[rule] ?? 0) + narrowed.removed
       if (narrowed.text !== '') kept.push({ segment: narrowed.text, separator })
       continue
     }
@@ -306,6 +310,8 @@ export interface PortfolioGuardOutcome {
   result: DetailedAnalysisResult
   removed: number
   noticeAdded: boolean
+  /** Removed claims per rule name (for the log line); empty when nothing was removed. */
+  rules: Record<string, number>
 }
 
 function runGuard(result: DetailedAnalysisResult): PortfolioGuardOutcome {
@@ -326,6 +332,7 @@ function runGuard(result: DetailedAnalysisResult): PortfolioGuardOutcome {
     rsiWeekly: finite(technical.weeklyRsi14) ? technical.weeklyRsi14 : null,
     earningsNear: earnings !== null && Number.isFinite(earnings.daysUntil) && earnings.daysUntil >= 0 && earnings.daysUntil <= EARNINGS_NEAR_DAYS,
     action,
+    tally: {},
   }
 
   const rawRisksAndOpportunities = result.risksAndOpportunities as DetailedAnalysisResult['risksAndOpportunities'] | undefined | null
@@ -361,7 +368,7 @@ function runGuard(result: DetailedAnalysisResult): PortfolioGuardOutcome {
     }
   }
 
-  if (removed === 0 && !noticeAdded) return { result, removed: 0, noticeAdded: false }
+  if (removed === 0 && !noticeAdded) return { result, removed: 0, noticeAdded: false, rules: {} }
 
   return {
     result: {
@@ -377,28 +384,30 @@ function runGuard(result: DetailedAnalysisResult): PortfolioGuardOutcome {
     },
     removed,
     noticeAdded,
+    rules: ctx.tally,
   }
 }
 
 /** Pure function: returns the same object when nothing needs to change. Run it after the execution guard. */
 export function guardPortfolioAnalysisText(result: DetailedAnalysisResult): PortfolioGuardOutcome {
   if (!result || typeof result !== 'object' || result.error || !result.technical || typeof result.technical !== 'object') {
-    return { result, removed: 0, noticeAdded: false }
+    return { result, removed: 0, noticeAdded: false, rules: {} }
   }
   try {
     return runGuard(result)
   } catch (error) {
     // The guard must never take a route down: on any unexpected shape, show the original analysis.
     console.error(`[portfolio-ai-guard] ${typeof result.symbol === 'string' ? result.symbol : 'unknown'}: guard skipped after an error`, error)
-    return { result, removed: 0, noticeAdded: false }
+    return { result, removed: 0, noticeAdded: false, rules: {} }
   }
 }
 
-/** Call-site wrapper: applies the guard and logs counts only (no amounts, no text). */
+/** Call-site wrapper: applies the guard and logs counts and rule names only (no amounts, no text). */
 export function applyPortfolioAiClaimGuard(result: DetailedAnalysisResult): DetailedAnalysisResult {
   const outcome = guardPortfolioAnalysisText(result)
   if (outcome.removed > 0 || outcome.noticeAdded) {
-    console.warn(`[portfolio-ai-guard] ${result.symbol}: removed ${outcome.removed} claim(s), earnings notice added: ${outcome.noticeAdded}`)
+    const rules = Object.entries(outcome.rules).map(([name, count]) => `${name}=${count}`).join(',')
+    console.warn(`[portfolio-ai-guard] ${result.symbol}: removed ${outcome.removed} claim(s)${rules ? ` (rules: ${rules})` : ''}, earnings notice added: ${outcome.noticeAdded}`)
   }
   return outcome.result
 }
