@@ -752,6 +752,81 @@ const earningsNear = { earnings: { date: '2026-11-09', daysUntil: 4, hour: null 
   }
 }
 
+// ---------- independent review of PR #158 (head 68a40886): over-cut cases and untested boundaries ----------
+{
+  const tech = (over = {}) => ({ ...makeResult().technical, support: 1.59, resistance: 2.4, rsi14: 41.6, weeklyRsi14: 44, week52High: 4.9, week52Low: 1.59, ...over })
+  const mk = (summary, techOver = {}, price = 1.88) => makeResult({ usedPrice: price, summary, technical: tech(techOver) })
+  const keptText = (summary, techOver = {}, price = 1.88) => {
+    const r = mk(summary, techOver, price)
+    const out = guard.guardPortfolioAnalysisText(r)
+    assert.equal(out.removed, 0, `must be kept: ${summary}`)
+    assert.equal(out.result, r)
+  }
+  const cutText = (summary, techOver = {}, price = 1.88) => {
+    assert.ok(guard.guardPortfolioAnalysisText(mk(summary, techOver, price)).removed >= 1, `must be cut: ${summary}`)
+  }
+
+  // M1: conditions, negations and the past around a 52-week statement are not claims about the current price.
+  for (const text of [
+    'หากราคาต่ำกว่า 52-week low $1.59 จะเป็นสัญญาณลบ',
+    'ราคาไม่ได้ต่ำกว่า 52-week low',
+    'ราคายังไม่ต่ำกว่า 52-week low',
+    'ถ้าหลุดต่ำกว่า 52-week low ให้ระวัง',
+    'ราคาเคยต่ำกว่า 52-week low เมื่อเดือนก่อน',
+    'ราคาต่ำกว่า 52-week low เมื่อวาน',
+    'เมื่อราคาต่ำกว่า 52-week low ค่อยพิจารณาใหม่',
+  ]) keptText(text)
+  // ...while the plain wrong statements are still cut, and the range-position rule goes through the same filter.
+  cutText('ราคาต่ำกว่า 52-week low $1.59 ทำให้มูลค่าต่ำ')
+  cutText('ราคาสูงกว่า 52-week high')
+  cutText('ราคาอยู่ด้านล่างของช่วง 52 สัปดาห์', {}, 3.5)
+  cutText('ราคาอยู่ด้านบนของช่วง 52 สัปดาห์', {}, 1.7)
+  keptText('หากราคาอยู่ด้านล่างของช่วง 52 สัปดาห์ ควรระวัง', {}, 3.5)
+  keptText('ราคาอยู่ด้านล่างของช่วง 52 สัปดาห์', {}, 1.7)
+
+  // M2: comparing with the zone or describing a move away from it does not say RSI is in the zone.
+  for (const text of [
+    'RSI 41.6 ยังห่างจากโซน oversold',
+    'RSI อยู่เหนือโซน oversold',
+    'RSI สูงกว่าระดับ oversold',
+    'RSI ต่ำกว่าโซน overbought อยู่มาก',
+    'RSI ยังต่ำกว่าเขต overbought',
+    'RSI ฟื้นตัวจากโซน oversold',
+    'RSI เด้งจาก oversold แล้ว',
+    'RSI ผ่านโซน oversold มาแล้ว',
+    'RSI ข้ามโซน oversold ขึ้นมา',
+    'RSI ทะลุโซน oversold',
+    // one excluded word per sentence
+    'RSI ห่าง oversold',
+    'RSI ใต้ overbought',
+    'RSI ฟื้น oversold',
+    'RSI เด้ง oversold',
+    'RSI จาก oversold',
+  ]) keptText(text)
+  keptText('ราคาเคยต่ำกว่า 52-week low')
+  keptText('ราคาปิดต่ำกว่า 52-week low')
+
+  // M3: the period may be named before the word RSI.
+  keptText('Weekly RSI อยู่ในโซน oversold', { rsi14: 55, weeklyRsi14: 30 })
+  keptText('สัปดาห์นี้ RSI อยู่ในโซน oversold', { rsi14: 55, weeklyRsi14: 30 })
+  cutText('Weekly RSI อยู่ในโซน oversold', { rsi14: 30, weeklyRsi14: 55 })
+  cutText('สัปดาห์นี้ RSI อยู่ในโซน oversold', { rsi14: 30, weeklyRsi14: 55 })
+
+  // L1: another indicator that contains "RSI".
+  keptText('Stochastic RSI อยู่ในโซน oversold')
+  keptText('StochRSI อยู่ในโซน overbought')
+
+  // L5: the thresholds and the Thai overbought wording are pinned.
+  keptText('RSI อยู่ในโซน oversold', { rsi14: 34 })
+  cutText('RSI อยู่ในโซน oversold', { rsi14: 36 })
+  keptText('RSI อยู่ในโซน overbought', { rsi14: 66 })
+  cutText('RSI อยู่ในโซน overbought', { rsi14: 64 })
+  cutText('RSI อยู่ในโซนซื้อมากเกินไป')
+  keptText('RSI อยู่ในโซนซื้อมากเกินไป', { rsi14: 80 })
+  cutText('RSI อยู่ในโซนขายมากเกินไป')
+  keptText('RSI อยู่ในโซนขายมากเกินไป', { rsi14: 20 })
+}
+
 const analyzeRoute = fs.readFileSync('app/api/analyze/route.ts', 'utf8')
 const guardCalls = analyzeRoute.match(/applyPortfolioAiClaimGuard\(applyRecentTradeExecutionGuard\(/g) ?? []
 assert.equal(guardCalls.length, 2, '/api/analyze must guard both the cached and the fresh result')

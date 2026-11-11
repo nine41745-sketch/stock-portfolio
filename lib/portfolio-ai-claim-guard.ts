@@ -4,7 +4,7 @@
 // system. No model call is made. Rules are intentionally narrow and number-based: they catch the contradictions
 // seen in production (support, earnings proximity, action vs. text) and the EMA / 52-week claims already covered by
 // the Stock Check guard, not every possible wrong sentence.
-import { findAiClaimViolation, type AiClaimFacts } from '@/lib/stock-check-ai-guard'
+import { consistent, findAiClaimViolation, LOWER_PART_OF_RANGE, normalize, UPPER_PART_OF_RANGE, VS_52W, type AiClaimFacts } from '@/lib/stock-check-ai-guard'
 import type { DetailedAnalysisResult } from '@/types'
 
 /** "At support" claims are rejected when the price is further than this from `technical.support` (the value the prompt shows). */
@@ -63,7 +63,10 @@ const SELL_ADVOCACY =
 // "RSI อยู่ในโซน oversold (41)" while the stored RSI is 41.6. Only a direct statement about the RSI zone counts: the gap may
 // hold a decimal number but not a near/forecast/condition/negation word, and the match is skipped when negated or conditional.
 const RSI_ZONE_CLAIM = /(?:RSI|อาร์เอสไอ)((?:[^|.;\n]|(?<=\d)\.(?=\d)){0,30}?)(oversold|overbought|โอเวอร์โซลด์|โอเวอร์บอต|ขายมากเกินไป|ซื้อมากเกินไป)/gi
-const RSI_GAP_EXCLUDED = /ใกล้|เกือบ|เริ่ม|ไม่|จะ|อาจ|ถ้า|หาก|เมื่อ|ต้อง|ควร|เคย|ก่อน|ที่ผ่านมา|ออกจาก|พ้น|หลุด|คล้าย/
+// A comparison with the zone ("ห่าง/เหนือ/ต่ำกว่า…โซน oversold") or a move away from it ("ฟื้น/เด้ง/จาก/ผ่าน/ข้าม/ทะลุ") is not a claim that RSI is in the zone.
+const RSI_GAP_EXCLUDED = /ใกล้|เกือบ|เริ่ม|ไม่|จะ|อาจ|ถ้า|หาก|เมื่อ|ต้อง|ควร|เคย|ก่อน|ที่ผ่านมา|ออกจาก|พ้น|หลุด|คล้าย|ห่าง|เหนือ|สูงกว่า|ต่ำกว่า|ใต้|ฟื้น|เด้ง|จาก|ผ่าน|ข้าม|ทะลุ/
+// "Stochastic RSI" is another indicator with other zones.
+const RSI_OTHER_INDICATOR = /stoch[a-z]*\s*$/i
 const RSI_WEEKLY = /สัปดาห์|weekly|week/i
 /** Oversold is claimed while RSI is clearly above the zone (or overbought while clearly below it). */
 const RSI_OVERSOLD_MAX = 35
@@ -144,7 +147,10 @@ function contradictsRsiZone(text: string, rsiDaily: number | null, rsiWeekly: nu
     const start = match.index ?? 0
     if (CONDITIONAL_BEFORE_CLAUSE.test(text.slice(Math.max(0, start - 30), start))) continue
     if (RSI_GAP_EXCLUDED.test(match[1])) continue
-    const rsi = RSI_WEEKLY.test(match[1]) ? rsiWeekly : rsiDaily
+    if (RSI_OTHER_INDICATOR.test(text.slice(Math.max(0, start - 16), start))) continue
+    // "Weekly RSI …" / "สัปดาห์นี้ RSI …" name the period before the word RSI, "RSI รายสัปดาห์ …" after it.
+    const weekly = RSI_WEEKLY.test(match[1]) || RSI_WEEKLY.test(text.slice(Math.max(0, start - 14), start))
+    const rsi = weekly ? rsiWeekly : rsiDaily
     if (!finite(rsi)) continue
     const oversold = /^(?:oversold|โอเวอร์โซลด์|ขายมากเกินไป)$/i.test(match[2])
     if (oversold ? rsi > RSI_OVERSOLD_MAX : rsi < RSI_OVERBOUGHT_MIN) return true
@@ -152,13 +158,51 @@ function contradictsRsiZone(text: string, rsiDaily: number | null, rsiWeekly: nu
   return false
 }
 
+// A 52-week statement about the past ("เคยต่ำกว่า … เมื่อเดือนก่อน") is not a claim about the current price.
+const WEEK52_BEFORE_EXCLUDED = /เคย|ปิด|เปิด$/
+const WEEK52_AFTER_EXCLUDED = /^[^|.\n]{0,24}?(?:เมื่อ(?:วาน|วัน|เดือน|ปี|สัปดาห์|ก่อน)|ที่ผ่านมา)/
+
+/**
+ * 52-week claims ("ราคาต่ำกว่า 52-week low", "อยู่ด้านบนของช่วง 52 สัปดาห์") against the stored 52-week range. The Stock Check
+ * guard cannot tell a statement from a condition, so the portfolio guard applies them itself through isAffirmedMatch:
+ * "หากราคาต่ำกว่า 52-week low ควรลดสถานะ" and "ราคายังไม่ต่ำกว่า 52-week low" are kept.
+ */
+function contradicts52Week(rawText: string, price: number, high: number | null, low: number | null): boolean {
+  const text = normalize(rawText)
+  const usable = (match: RegExpMatchArray): boolean => {
+    if (!isAffirmedMatch(text, match, 'fact')) return false
+    const start = match.index ?? 0
+    const end = start + match[0].length
+    if (WEEK52_BEFORE_EXCLUDED.test(text.slice(Math.max(0, start - 8), start))) return false
+    return !WEEK52_AFTER_EXCLUDED.test(text.slice(end, end + 40))
+  }
+  for (const match of text.matchAll(new RegExp(VS_52W.source, 'gi'))) {
+    if (!usable(match)) continue
+    const isHigh = /^(high|สูงสุด)$/i.test(match[2])
+    const reference = isHigh ? high : low
+    if (finite(reference) && !consistent(match[1], price, reference)) return true
+  }
+  if (finite(high) && finite(low) && high > low) {
+    const position = (price - low) / (high - low)
+    for (const match of text.matchAll(new RegExp(LOWER_PART_OF_RANGE.source, 'gi'))) {
+      if (usable(match) && position > 0.4) return true
+    }
+    for (const match of text.matchAll(new RegExp(UPPER_PART_OF_RANGE.source, 'gi'))) {
+      if (usable(match) && position < 0.6) return true
+    }
+  }
+  return false
+}
+
 /** Returns a short rule name when one segment of AI text contradicts the computed facts, otherwise null. */
 export function findPortfolioClaimViolation(segment: string, ctx: GuardContext): string | null {
   if (SYSTEM_PREFIX.test(segment)) return null
-  const base = findAiClaimViolation(segment, ctx.facts)
+  // The shared rule is called without the 52-week range: those claims are checked below with the affirmed-claim filter.
+  const base = findAiClaimViolation(segment, { ...ctx.facts, week52High: null, week52Low: null })
   if (base) return base
 
   const { price } = ctx.facts
+  if (finite(price) && contradicts52Week(segment, price, ctx.facts.week52High, ctx.facts.week52Low)) return 'price-vs-52w-range'
   if (finite(price) && finite(ctx.support) && ctx.support > 0) {
     if (Math.abs(price - ctx.support) / ctx.support > SUPPORT_DISTANCE_LIMIT && hasAffirmedMatch(segment, SUPPORT_CLAIM, 'fact')) {
       return 'price-near-support'
