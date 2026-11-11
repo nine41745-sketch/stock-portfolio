@@ -916,6 +916,37 @@ const earningsNear = { earnings: { date: '2026-11-09', daysUntil: 4, hour: null 
   keptText('ราคาอยู่ด้านบนของช่วง 52 สัปดาห์', {}, 3.907)
 }
 
+// ---------- v1.41.32: the log line names the rules that removed claims (never the text) ----------
+{
+  const logged = []
+  const original = console.warn
+  console.warn = (...args) => logged.push(args.join(' '))
+  try {
+    guard.applyPortfolioAiClaimGuard(withText({ summary: 'ราคาอยู่ที่แนวรับลับเฉพาะ' }))
+    guard.applyPortfolioAiClaimGuard(withText(
+      { summary: 'ราคาอยู่ที่แนวรับลับเฉพาะ', risksAndOpportunities: { caution: 'ประกาศผลยังไม่ใกล้ลับเฉพาะ', opportunity: '' } },
+      { earnings: { date: '2026-11-13', daysUntil: 2, hour: null } },
+    ))
+    guard.applyPortfolioAiClaimGuard(withText({ summary: 'ถือต่อ' }))
+  } finally {
+    console.warn = original
+  }
+  assert.equal(logged.length, 2, 'a run that removes nothing logs nothing')
+  assert.match(logged[0], /^\[portfolio-ai-guard\] TEST: removed 1 claim\(s\) \(rules: price-near-support=1\), earnings notice added: false$/)
+  assert.match(logged[1], /removed 2 claim\(s\) \(rules: [a-z0-9-]+=1,[a-z0-9-]+=1\)/)
+  assert.ok(logged[1].includes('price-near-support=1') && logged[1].includes('earnings-not-near=1'), 'every rule is named with its count')
+  for (const line of logged) assert.ok(!line.includes('ลับเฉพาะ'), 'Log lines must not contain analysis text')
+
+  const out = guard.guardPortfolioAnalysisText(withText({ summary: 'ราคาอยู่ที่แนวรับ ราคาอยู่ที่แนวรับอีกครั้ง. ถือต่อ' }))
+  assert.deepEqual(Object.keys(out.rules), ['price-near-support'])
+  assert.ok(out.rules['price-near-support'] >= 1)
+  const two = guard.guardPortfolioAnalysisText(withText({ summary: 'ราคาอยู่ที่แนวรับ ราคาอยู่ที่แนวรับอีกครั้ง ถือต่อไปก่อนนะ' }))
+  assert.equal(two.removed, 2)
+  assert.deepEqual(two.rules, { 'price-near-support': 2 }, 'two clauses removed by one rule are counted twice')
+  assert.deepEqual(guard.guardPortfolioAnalysisText(withText({ summary: 'ถือต่อ' })).rules, {}, 'no rules when nothing was removed')
+  assert.deepEqual(guard.guardPortfolioAnalysisText(makeResult({ error: 'FAILED' })).rules, {}, 'no rules for an error result')
+}
+
 const analyzeRoute = fs.readFileSync('app/api/analyze/route.ts', 'utf8')
 const guardCalls = analyzeRoute.match(/applyPortfolioAiClaimGuard\(applyRecentTradeExecutionGuard\(/g) ?? []
 assert.equal(guardCalls.length, 2, '/api/analyze must guard both the cached and the fresh result')
