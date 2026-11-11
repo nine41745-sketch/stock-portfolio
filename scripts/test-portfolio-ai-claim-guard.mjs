@@ -827,6 +827,95 @@ const earningsNear = { earnings: { date: '2026-11-09', daysUntil: 4, hour: null 
   keptText('RSI อยู่ในโซนขายมากเกินไป', { rsi14: 20 })
 }
 
+// ---------- independent review of PR #158, round 2 (head 2db7de6f): forecasts, "waiting for", definitions ----------
+{
+  const tech = (over = {}) => ({ ...makeResult().technical, support: 1.59, resistance: 2.4, rsi14: 41.6, weeklyRsi14: 44, week52High: 4.9, week52Low: 1.59, ...over })
+  const mk = (summary, techOver = {}, price = 1.88) => makeResult({ usedPrice: price, summary, technical: tech(techOver) })
+  const keptText = (summary, techOver = {}, price = 1.88) => {
+    const r = mk(summary, techOver, price)
+    const out = guard.guardPortfolioAnalysisText(r)
+    assert.equal(out.removed, 0, `must be kept: ${summary}`)
+    assert.equal(out.result, r)
+  }
+  const cutText = (summary, techOver = {}, price = 1.88) => {
+    assert.ok(guard.guardPortfolioAnalysisText(mk(summary, techOver, price)).removed >= 1, `must be cut: ${summary}`)
+  }
+
+  // M-A: forecasts, risks and requirements about a 52-week low are not statements about the current price.
+  for (const text of [
+    'ความเสี่ยงคือราคาอาจต่ำกว่า 52-week low',
+    'ราคาอาจต่ำกว่า 52-week low',
+    'ราคาจะต่ำกว่า 52-week low',
+    'หากไม่เกิดการเด้งกลับ ราคาอาจต่ำกว่า 52-week low',
+    'ก่อนที่ราคาจะต่ำกว่า 52-week low',
+    'จนกว่าราคาจะต่ำกว่า 52-week low',
+    'เฝ้าระวังกรณีราคาต่ำกว่า 52-week low',
+    'กรณีราคาต่ำกว่า 52-week low ให้ตัดขาดทุน',
+    // one word per sentence
+    'ต้องระวังราคาต่ำกว่า 52-week low',
+    'ควรเฝ้าดูราคาต่ำกว่า 52-week low',
+    'รอราคาต่ำกว่า 52-week low',
+    'เสี่ยงราคาต่ำกว่า 52-week low',
+    // L-C: yesterday, before or after the claim
+    'เมื่อวานราคาต่ำกว่า 52-week low',
+    'ราคาเมื่อวานต่ำกว่า 52-week low',
+  ]) keptText(text)
+  cutText('ราคาตอนนี้ต่ำกว่า 52-week low')
+  cutText('แต่ราคาต่ำกว่า 52‑week low $1.59 ทำให้มูลค่าตลาดต่ำ')
+
+  // M-B: waiting for a zone and the definition of a threshold say nothing about the current RSI.
+  for (const text of [
+    'รอให้ RSI เข้าสู่โซน oversold ก่อน',
+    'รอ RSI ลงแตะโซน oversold',
+    'ควรรอ RSI ลงไปที่โซน oversold',
+    'ต้องรอให้ RSI เข้า oversold',
+    'RSI ที่ 70 ขึ้นไปคือ overbought',
+    'RSI ระดับ 30 ถือว่า oversold',
+    'RSI < 30 คือ oversold',
+    'RSI > 70 overbought',
+    'RSI น้อยกว่า 30 หมายถึง oversold',
+    // one word per sentence
+    'ถ้ารอ RSI oversold',
+    'RSI 30 คือ oversold',
+    'RSI 30 ถือ oversold',
+    'RSI 70 ขึ้นไป overbought',
+    'RSI 30 ลงไป oversold',
+    'RSI มากกว่า 70 overbought',
+  ]) keptText(text)
+  keptText('หวัง RSI เข้าโซน oversold')
+  for (const text of [
+    'ก่อนที่ราคาต่ำกว่า 52-week low',
+    'จนกว่าราคาต่ำกว่า 52-week low',
+    'RSI รอโซน oversold',
+    'RSI 30 หมายถึง oversold',
+    'RSI น้อยกว่า oversold',
+    'ควร RSI เข้าโซน oversold',
+    'ต้อง RSI เข้าโซน oversold',
+    'จะ RSI เข้าโซน oversold',
+    'RSI 41.6 ส่วน Stochastic oversold',
+    'RSI 41.6 ส่วน CCI oversold',
+    'RSI 41.6 ส่วน ADX overbought',
+    'RSI 41.6 ส่วน Williams oversold',
+    'RSI 41.6 ส่วน OBV overbought',
+  ]) keptText(text)
+  keptText('ก่อน RSI เข้าโซน oversold ควรรอ')
+
+  // L-A: another indicator between RSI and the zone word.
+  keptText('RSI เป็นกลาง 50 ขณะที่ MACD overbought', { rsi14: 50 })
+  keptText('RSI 41.6 และ MFI อยู่ในโซน oversold')
+  keptText('RSI 41.6 ส่วน Bollinger overbought')
+  // L-D: two RSI words in one sentence: the one next to the zone word counts.
+  keptText('Weekly RSI เป็นกลาง และ RSI อยู่ในโซน oversold', { rsi14: 25, weeklyRsi14: 50 })
+  cutText('Weekly RSI เป็นกลาง และ RSI อยู่ในโซน oversold', { rsi14: 55, weeklyRsi14: 50 })
+
+  // L-B: the range-position thresholds (0.4 for "lower part", 0.6 for "upper part") are pinned on both sides.
+  // low 1.59, high 4.9: position 0.3 -> 2.583, 0.45 -> 3.0795, 0.55 -> 3.4105, 0.7 -> 3.907
+  keptText('ราคาอยู่ด้านล่างของช่วง 52 สัปดาห์', {}, 2.583)
+  cutText('ราคาอยู่ด้านล่างของช่วง 52 สัปดาห์', {}, 3.0795)
+  cutText('ราคาอยู่ด้านบนของช่วง 52 สัปดาห์', {}, 3.4105)
+  keptText('ราคาอยู่ด้านบนของช่วง 52 สัปดาห์', {}, 3.907)
+}
+
 const analyzeRoute = fs.readFileSync('app/api/analyze/route.ts', 'utf8')
 const guardCalls = analyzeRoute.match(/applyPortfolioAiClaimGuard\(applyRecentTradeExecutionGuard\(/g) ?? []
 assert.equal(guardCalls.length, 2, '/api/analyze must guard both the cached and the fresh result')

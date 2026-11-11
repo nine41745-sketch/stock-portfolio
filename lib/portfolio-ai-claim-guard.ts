@@ -62,11 +62,15 @@ const SELL_ADVOCACY =
 
 // "RSI อยู่ในโซน oversold (41)" while the stored RSI is 41.6. Only a direct statement about the RSI zone counts: the gap may
 // hold a decimal number but not a near/forecast/condition/negation word, and the match is skipped when negated or conditional.
-const RSI_ZONE_CLAIM = /(?:RSI|อาร์เอสไอ)((?:[^|.;\n]|(?<=\d)\.(?=\d)){0,30}?)(oversold|overbought|โอเวอร์โซลด์|โอเวอร์บอต|ขายมากเกินไป|ซื้อมากเกินไป)/gi
+const RSI_ZONE_CLAIM = /(?:RSI|อาร์เอสไอ)((?:(?!RSI|อาร์เอสไอ)(?:[^|.;\n]|(?<=\d)\.(?=\d))){0,30}?)(oversold|overbought|โอเวอร์โซลด์|โอเวอร์บอต|ขายมากเกินไป|ซื้อมากเกินไป)/gi
 // A comparison with the zone ("ห่าง/เหนือ/ต่ำกว่า…โซน oversold") or a move away from it ("ฟื้น/เด้ง/จาก/ผ่าน/ข้าม/ทะลุ") is not a claim that RSI is in the zone.
-const RSI_GAP_EXCLUDED = /ใกล้|เกือบ|เริ่ม|ไม่|จะ|อาจ|ถ้า|หาก|เมื่อ|ต้อง|ควร|เคย|ก่อน|ที่ผ่านมา|ออกจาก|พ้น|หลุด|คล้าย|ห่าง|เหนือ|สูงกว่า|ต่ำกว่า|ใต้|ฟื้น|เด้ง|จาก|ผ่าน|ข้าม|ทะลุ/
+const RSI_GAP_EXCLUDED = /ใกล้|เกือบ|เริ่ม|ไม่|จะ|อาจ|ถ้า|หาก|เมื่อ|ต้อง|ควร|เคย|ก่อน|ที่ผ่านมา|ออกจาก|พ้น|หลุด|คล้าย|ห่าง|เหนือ|สูงกว่า|ต่ำกว่า|ใต้|ฟื้น|เด้ง|จาก|ผ่าน|ข้าม|ทะลุ|รอ|คือ|ถือ|หมายถึง|ขึ้นไป|ลงไป|น้อยกว่า|มากกว่า|[<>≤≥]/
 // "Stochastic RSI" is another indicator with other zones.
 const RSI_OTHER_INDICATOR = /stoch[a-z]*\s*$/i
+// Another indicator named between "RSI" and the zone word ("RSI เป็นกลาง ขณะที่ MACD overbought") means the zone word is about that one.
+const RSI_OTHER_IN_GAP = /macd|mfi|stoch|cci|adx|williams|bollinger|\bbb\b|obv|\bema|\bsma|volume/i
+// Wishes, requirements and plans before the word RSI ("รอให้ RSI เข้าโซน oversold", "ต้องรอ RSI ลง…") are not statements about now.
+const RSI_BEFORE_EXCLUDED = /รอ|ควร|ต้อง|หวัง|จะ|ก่อน/
 const RSI_WEEKLY = /สัปดาห์|weekly|week/i
 /** Oversold is claimed while RSI is clearly above the zone (or overbought while clearly below it). */
 const RSI_OVERSOLD_MAX = 35
@@ -139,6 +143,11 @@ function contradictsSupportDirection(text: string, price: number, support: numbe
   return false
 }
 
+/** The part of a text window that follows the last sentence/clause separator. */
+function sentenceTail(window: string): string {
+  return window.slice(Math.max(window.lastIndexOf('|'), window.lastIndexOf('.'), window.lastIndexOf('\n')) + 1)
+}
+
 /** True when an affirmed "RSI is oversold/overbought" claim points the wrong way for the stored RSI value. */
 function contradictsRsiZone(text: string, rsiDaily: number | null, rsiWeekly: number | null): boolean {
   for (const match of text.matchAll(RSI_ZONE_CLAIM)) {
@@ -146,7 +155,8 @@ function contradictsRsiZone(text: string, rsiDaily: number | null, rsiWeekly: nu
     // "RSI" is written with spaces around it, so a condition word may sit in the previous space-separated clause.
     const start = match.index ?? 0
     if (CONDITIONAL_BEFORE_CLAUSE.test(text.slice(Math.max(0, start - 30), start))) continue
-    if (RSI_GAP_EXCLUDED.test(match[1])) continue
+    if (RSI_GAP_EXCLUDED.test(match[1]) || RSI_OTHER_IN_GAP.test(match[1])) continue
+    if (RSI_BEFORE_EXCLUDED.test(sentenceTail(text.slice(Math.max(0, start - 16), start)))) continue
     if (RSI_OTHER_INDICATOR.test(text.slice(Math.max(0, start - 16), start))) continue
     // "Weekly RSI …" / "สัปดาห์นี้ RSI …" name the period before the word RSI, "RSI รายสัปดาห์ …" after it.
     const weekly = RSI_WEEKLY.test(match[1]) || RSI_WEEKLY.test(text.slice(Math.max(0, start - 14), start))
@@ -159,7 +169,7 @@ function contradictsRsiZone(text: string, rsiDaily: number | null, rsiWeekly: nu
 }
 
 // A 52-week statement about the past ("เคยต่ำกว่า … เมื่อเดือนก่อน") is not a claim about the current price.
-const WEEK52_BEFORE_EXCLUDED = /เคย|ปิด|เปิด$/
+const WEEK52_BEFORE_EXCLUDED = /เคย|ปิด|เปิด$|เมื่อวาน|จะ|อาจ|กรณี|ก่อนที่|จนกว่า|เสี่ยง|ต้อง|ควร|รอ/
 const WEEK52_AFTER_EXCLUDED = /^[^|.\n]{0,24}?(?:เมื่อ(?:วาน|วัน|เดือน|ปี|สัปดาห์|ก่อน)|ที่ผ่านมา)/
 
 /**
@@ -173,7 +183,7 @@ function contradicts52Week(rawText: string, price: number, high: number | null, 
     if (!isAffirmedMatch(text, match, 'fact')) return false
     const start = match.index ?? 0
     const end = start + match[0].length
-    if (WEEK52_BEFORE_EXCLUDED.test(text.slice(Math.max(0, start - 8), start))) return false
+    if (WEEK52_BEFORE_EXCLUDED.test(sentenceTail(text.slice(Math.max(0, start - 20), start)))) return false
     return !WEEK52_AFTER_EXCLUDED.test(text.slice(end, end + 40))
   }
   for (const match of text.matchAll(new RegExp(VS_52W.source, 'gi'))) {
