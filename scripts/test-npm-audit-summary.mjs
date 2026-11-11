@@ -50,8 +50,8 @@ function makeAudit({ extraAdvisory = false, critical = 0, nonMajorFix = false, i
       } },
     },
   }
-  if (includeEslint) tree.dependencies['eslint-config-next'] = { version: '16.4.1', dependencies: {
-    '@next/eslint-plugin-next': { version: '16.4.1', dependencies: {
+  if (includeEslint) tree.dependencies['eslint-config-next'] = { version: '16.4.5', dependencies: {
+    '@next/eslint-plugin-next': { version: '16.4.5', dependencies: {
       'fast-glob': { version: '3.3.1', dependencies: {
           // npm ls --json can omit a deduped child edge although audit.via reports
           // fast-glob -> micromatch -> braces and the installed tree resolves it.
