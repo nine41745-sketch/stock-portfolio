@@ -1,5 +1,13 @@
 # Production Release Status
 
+## Version under preparation — v1.41.32
+
+- Scope: `applyPortfolioAiClaimGuard` logs the rule names and counts of removed claims (for example `[portfolio-ai-guard] EOSE: removed 1 claim(s) (rules: price-vs-52w-range=1), earnings notice added: false`). Before, the log said only how many claims were removed, so after the v1.41.31 release it could not be told which rule fired on EOSE (`removed 1 claim(s)`, 2026-11-11T10:22:15Z). The guard decisions and what the user sees do not change. No text, number or amount is logged. No SQL, env, dependency, `vercel.json`, workflow or Cron handler.
+- Development/Feature History: `Development History — Feature commit 2026-11-11 17:26:24 +07:00 (ไม่ใช่ Production)`.
+- Evidence (read-only, 2026-11-11): the Production log of `dpl_7Hkcj7jR8w2kGY3GYRxcdf3JXqYa` for the EOSE analysis; the saved text after filtering shows no 52-week, buy-under-HOLD or oversold sentence, but which sentence was removed is unknown. New tests check the log line for one and two rules and that no analysis text appears in it.
+- Not verified: behavior against live Groq output; the rule names are only as useful as the rules are specific (a segment is attributed to the first rule that matches it).
+- Release state: Local Diff; Security Gate and Production Release Gate remain HOLD for v1.41.32. This changes the runtime of an AI endpoint (log only), so AGENTS.md requires independent review of the exact PR head before merge; no reviewer has been recorded yet for this version. No merge, deployment or Production change is authorized by this task beyond the Draft PR. Production remains `dpl_7Hkcj7jR8w2kGY3GYRxcdf3JXqYa` (v1.41.31).
+
 ## Released — v1.41.31 (Production)
 
 - Scope: แก้ 3 ช่องที่พบจากการกดวิเคราะห์ EOSE บน Production (v1.41.30, 2026-11-10T03:17:48Z, HOLD, ราคา 1.88, แนวรับ 1.59) ใน `lib/portfolio-ai-claim-guard.ts`: (1) ส่ง `technical.week52High/Low` ที่บันทึกไว้ให้กฎ 52 สัปดาห์ที่ใช้ร่วมกับ Stock Check (เดิมส่ง null จึงไม่เคยตัด "ราคาต่ำกว่า 52‑week low $1.59" ทั้งที่ราคาสูงกว่า); (2) "แนะนำซื้อเพิ่มในปริมาณจำกัดเพื่อจับจังหวะ…เมื่อ RSI…" ถูกมองเป็นเงื่อนไขเพราะ "เมื่อ" อยู่ห่างไม่เกิน 40 ตัวอักษร จึงไม่ถูกตัดภายใต้ HOLD — ตอนนี้ช่วงค้นหาเงื่อนไขไม่ข้ามคำว่า "เพื่อ"; (3) กฎใหม่ "RSI อยู่ในโซน oversold/overbought" เทียบกับ `rsi14`/`weeklyRsi14` (oversold ผิดถ้า RSI > 35, overbought ผิดถ้า RSI < 65; ไม่จับ ใกล้/เกือบ/ไม่/เงื่อนไข/ออกจาก). ไม่มี SQL, env, dependency, `vercel.json`, workflow, cron handler.
