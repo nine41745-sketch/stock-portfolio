@@ -14,11 +14,12 @@ async function importTsModule(filePath) {
   return import(`data:text/javascript;base64,${Buffer.from(compiled.outputText).toString('base64')}`)
 }
 
-const { sanitizeWeek52, WEEK52_HIGH_MAX_RATIO } = await importTsModule('lib/week52.ts')
+const { sanitizeWeek52, WEEK52_HIGH_MAX_RATIO, WEEK52_LOW_MAX_RATIO } = await importTsModule('lib/week52.ts')
 const { limitRows } = await importTsModule('lib/limit-rows.ts')
 
 // ---------- 52-week range ----------
 assert.equal(WEEK52_HIGH_MAX_RATIO, 25)
+assert.equal(WEEK52_LOW_MAX_RATIO, 1.5)
 const clean = (price, high, low) => sanitizeWeek52(price, high, low)
 
 // EOSE on 2026-11-11: price 1.98, 52-week high 19.65 (9.9x) and low 1.59 is a real range after a crash and must be kept.
@@ -30,8 +31,20 @@ assert.deepEqual(clean(1, 20, 0.9), { week52High: 20, week52Low: 0.9 })
 assert.deepEqual(clean(40, 40 * 7, 40 * 6), { week52High: null, week52Low: null }, 'DKK-like range')
 assert.deepEqual(clean(40, 40 * 11, 40 * 6), { week52High: null, week52Low: null }, 'a range far above the price')
 assert.deepEqual(clean(40, 40 * 18, 40 * 12), { week52High: null, week52Low: null }, 'MXN-like range')
-// A low exactly at 5x is not above 5x, so the pair stays; a low that is too small does not touch the high.
-assert.deepEqual(clean(100, 900, 500), { week52High: 900, week52Low: 500 })
+// Round 2 of the review: the limit for the low is 1.5x the price, so a range whose low is only a few times the price is caught too.
+assert.deepEqual(clean(50, 560, 231), { week52High: null, week52Low: null }, 'DKK range with the price 1.5x above its low')
+assert.deepEqual(clean(20, 165, 82.5), { week52High: null, week52Low: null }, 'BRL-like range')
+assert.deepEqual(clean(40, 600, 160), { week52High: null, week52Low: null }, 'SEK-like range')
+assert.deepEqual(clean(50, 476, 285.6), { week52High: null, week52Low: null }, 'DKK range')
+assert.deepEqual(clean(10, 252, 45), { week52High: null, week52Low: null }, 'MXN-like range: the low must not stay alone')
+// A low exactly at 1.5x stays with its high, a hair above it drops the pair, and a missing high changes nothing for the low.
+assert.deepEqual(clean(100, 900, 150), { week52High: 900, week52Low: 150 })
+assert.deepEqual(clean(100, 900, 150.01), { week52High: null, week52Low: null })
+assert.deepEqual(clean(100, null, 600), { week52High: null, week52Low: null }, 'a low far above the price is dropped even when the high is missing')
+assert.deepEqual(clean(100, null, 150), { week52High: null, week52Low: 150 })
+// A low slightly above the price (stale data) is normal and stays.
+assert.deepEqual(clean(100, 300, 110), { week52High: 300, week52Low: 110 })
+// A low that is too small does not touch the high.
 assert.deepEqual(clean(100, 150, 4.99), { week52High: 150, week52Low: null }, 'a too small low is dropped alone')
 // A USD quote with a THB high (about 33x) is a unit error and is dropped, the sane low stays.
 assert.deepEqual(clean(40, 40 * 33.5, 35), { week52High: null, week52Low: 35 })
@@ -41,9 +54,9 @@ assert.equal(clean(10, 250.01, 5).week52High, null)
 // The low rules are unchanged: below 5% of the price or above 5x the price is dropped.
 assert.equal(clean(100, 150, 4.99).week52Low, null)
 assert.equal(clean(100, 150, 5).week52Low, 5)
-assert.equal(clean(100, 900, 501).week52Low, null)
-assert.equal(clean(100, 900, 500).week52Low, 500)
-assert.equal(clean(100, 900, 501).week52High, null, 'the high goes with a low above 5x')
+assert.equal(clean(100, 900, 151).week52Low, null)
+assert.equal(clean(100, 900, 150).week52Low, 150)
+assert.equal(clean(100, 900, 151).week52High, null, 'the high goes with a low above 1.5x')
 // Without a usable price nothing is judged and the values pass through.
 for (const price of [null, 0, -3]) assert.deepEqual(clean(price, 999, 0.001), { week52High: 999, week52Low: 0.001 })
 // Missing values stay missing.
@@ -81,6 +94,7 @@ assert.match(component, /Personal Investment Command Center · \{CURRENT_VERSION
 assert.doesNotMatch(component, /v1\.\d+\.\d+ RC/, 'the version label must not be hard-coded')
 assert.match(component, /limitRows\(allocationRows, ALLOCATION_ROW_LIMIT\)/)
 assert.doesNotMatch(component, /allocationRows\.slice\(/, 'allocation rows must not be cut silently')
+assert.match(component, /const allocationRows = snapshot\.sections\.allocations\.data \?\? \[\]\r?\n/, 'the allocation rows are taken whole from the snapshot')
 assert.match(component, /const ALLOCATION_ROW_LIMIT = 20\r?\n/, 'the Command Center shows up to 20 allocation targets (the old 8 hid SPCX and DIME)')
 assert.match(component, /\{allocationView\.shown\.map\(row => /, 'the card renders the limited list')
 assert.doesNotMatch(component, /allocationView\.shown\.slice\(/, 'the limited list must not be cut again')

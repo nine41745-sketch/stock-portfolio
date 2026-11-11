@@ -5,6 +5,12 @@
 
 /** A 52-week high above this multiple of the current price is treated as a unit error (USD/THB is about 33x). */
 export const WEEK52_HIGH_MAX_RATIO = 25
+/**
+ * A 52-week low above this multiple of the current price cannot be real: the low is the lowest price of the year, so it
+ * is never above the price except for a little stale data. It means the whole range is in another scale (DKK ~7x, SEK ~10x,
+ * BRL ~5x, MXN ~18x for an ADR), so the low and the high are dropped together. Same limit as the Stock Check range check.
+ */
+export const WEEK52_LOW_MAX_RATIO = 1.5
 
 export function sanitizeWeek52(
   price: number | null,
@@ -16,9 +22,7 @@ export function sanitizeWeek52(
   if (price && price > 0) {
     if (week52High && week52High > price * WEEK52_HIGH_MAX_RATIO) week52High = null
     if (week52Low && week52Low < price * 0.05) week52Low = null
-    // A low far ABOVE the price cannot be real (the low is never above the price), so the whole range is in another
-    // scale (DKK, SEK, BRL ... for an ADR); a high of that range at 5-25x would otherwise pass as a USD value.
-    if (week52Low && week52Low > price * 5) {
+    if (week52Low && week52Low > price * WEEK52_LOW_MAX_RATIO) {
       week52Low = null
       week52High = null
     }
