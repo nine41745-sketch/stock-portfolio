@@ -2,6 +2,7 @@ import { discoveryFetch, type DiscoveryProviderContext } from '@/lib/discovery-d
 import { resolveUpcomingEarningsStatus, type EarningsStatus } from '@/lib/earnings-status'
 import { FinnhubQuote } from '@/types'
 import { selectPe, type PeKind } from '@/lib/pe-kind'
+import { sanitizeWeek52 } from '@/lib/week52'
 
 const BASE = 'https://finnhub.io/api/v1'
 const KEY  = process.env.FINNHUB_API_KEY!
@@ -139,14 +140,8 @@ async function fetchOneWithMetrics(sym: string): Promise<QuoteWithMetrics> {
     const [q, m] = await Promise.all([getQuote(sym), getStockMetrics(sym)])
     const currentPrice = q?.c ?? null
 
-    // validate 52W: ถ้าค่าห่างจากราคาปัจจุบันเกิน 5 เท่า = ผิด currency
-    let week52High = m.week52High
-    let week52Low  = m.week52Low
-    if (currentPrice && currentPrice > 0) {
-      if (week52High && week52High > currentPrice * 5) week52High = null
-      if (week52Low  && week52Low  < currentPrice * 0.05) week52Low = null
-      if (week52Low  && week52Low  > currentPrice * 5) week52Low = null
-    }
+    // validate 52W: ค่าที่ห่างจากราคาปัจจุบันมากเกินไปถือว่าผิด currency (ดู lib/week52.ts)
+    const { week52High, week52Low } = sanitizeWeek52(currentPrice, m.week52High, m.week52Low)
 
     return {
       price: currentPrice,
