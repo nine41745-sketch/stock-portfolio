@@ -25,7 +25,7 @@ function isAbove(direction: string): boolean {
   return ABOVE.has(direction)
 }
 
-function consistent(direction: string, value: number, reference: number): boolean {
+export function consistent(direction: string, value: number, reference: number): boolean {
   return isAbove(direction)
     ? value >= reference * (1 - TOLERANCE)
     : value <= reference * (1 + TOLERANCE)
@@ -35,15 +35,15 @@ function finite(value: number | null): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
-function normalize(text: string): string {
+export function normalize(text: string): string {
   return text.replace(/[‐-―−]/g, '-').replace(/\s+/g, ' ')
 }
 
 const EMA_VS_EMA = /EMA\s*50\s*(?:อยู่)?\s*(เหนือ|สูงกว่า|ต่ำกว่า|ใต้)\s*EMA\s*200/gi
 const PRICE_VS_EMA = /ราคา[^|.;]{0,24}?(เหนือ|สูงกว่า|ต่ำกว่า|ใต้)\s*(?:เส้น\s*)?EMA\s*(50|200)(?:\s*(?:และ|กับ|,)\s*(?:เส้น\s*)?EMA\s*(50|200))?/gi
-const VS_52W = /(เหนือ|สูงกว่า|ต่ำกว่า|ใต้)\s*(?:ระดับ\s*)?52\s*-?\s*(?:W|Week|สัปดาห์)\s*-?\s*(High|Low|สูงสุด|ต่ำสุด)/gi
-const LOWER_PART_OF_RANGE = /(?:ด้านล่าง|ส่วนล่าง|ครึ่งล่าง|โซนล่าง)(?:ของ)?(?:ช่วง|กรอบ|ระยะ)\s*52/i
-const UPPER_PART_OF_RANGE = /(?:ด้านบน|ส่วนบน|ครึ่งบน|โซนบน)(?:ของ)?(?:ช่วง|กรอบ|ระยะ)\s*52/i
+export const VS_52W = /(เหนือ|สูงกว่า|ต่ำกว่า|ใต้)\s*(?:ระดับ\s*)?52\s*-?\s*(?:W|Week|สัปดาห์)\s*-?\s*(High|Low|สูงสุด|ต่ำสุด)/gi
+export const LOWER_PART_OF_RANGE = /(?:ด้านล่าง|ส่วนล่าง|ครึ่งล่าง|โซนล่าง)(?:ของ)?(?:ช่วง|กรอบ|ระยะ)\s*52/i
+export const UPPER_PART_OF_RANGE = /(?:ด้านบน|ส่วนบน|ครึ่งบน|โซนบน)(?:ของ)?(?:ช่วง|กรอบ|ระยะ)\s*52/i
 // "No earnings date in the next 60 days" says nothing about past results, and the window looks forward.
 const EARNINGS_WRONG_WINDOW = /(?:ไม่มี|ไม่พบ)(?:ข้อมูล|นัด)?\s*(?:earnings|ประกาศผล)[^|]{0,60}?(?:ล่าสุด|ที่ผ่านมา|ย้อนหลัง)/i
 const EARNINGS_DENIED = /(?:ไม่มี|ไม่พบ)(?:ข้อมูล|นัด)?\s*(?:earnings|ประกาศผล)/i

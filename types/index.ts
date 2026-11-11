@@ -79,6 +79,9 @@ export interface TechnicalSnapshot {
   support: number | null
   resistance: number | null
   volumeRatio: number | null
+  // Stored by the analysis routes together with the rest of the indicators (TechnicalIndicators); older rows may lack them.
+  week52High?: number | null
+  week52Low?: number | null
 }
 
 export interface EarningsInfo {
