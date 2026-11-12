@@ -350,15 +350,18 @@ assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native
 
 // Release metadata must match the verified deployment and the owner's scoped gate approval.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.41.34', 'Package version must match the v1.41.34 candidate')
+assert.equal(packageJson.version, '1.41.35', 'Package version must match the v1.41.35 candidate')
 const releasePackageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
 assert.equal(releasePackageLock.version, packageJson.version, 'Lockfile version must match package.json')
 assert.equal(releasePackageLock.packages?.['']?.version, packageJson.version, 'Lockfile root package version must match package.json')
 const releaseTsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14134'], 'Version badge must resolve to the v1.41.34 changelog')
-const currentVersionChangelog = fs.readFileSync('config/changelog-v14134.ts', 'utf8')
-assert.match(currentVersionChangelog, /version: 'v1\.41\.34'/, 'The changelog must document the current version')
-assert.ok(currentVersionChangelog.includes('52 สัปดาห์'), 'The changelog must describe the 52-week high fix')
+assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14135'], 'Version badge must resolve to the v1.41.35 changelog')
+const currentVersionChangelog = fs.readFileSync('config/changelog-v14135.ts', 'utf8')
+assert.match(currentVersionChangelog, /version: 'v1\.41\.35'/, 'The changelog must document the current version')
+assert.ok(currentVersionChangelog.includes('แท่งราคา'), 'The changelog must describe the 52-week fill from the price bars')
+const previousVersionChangelog34 = fs.readFileSync('config/changelog-v14134.ts', 'utf8')
+assert.match(previousVersionChangelog34, /version: 'v1\.41\.34'/, 'The previous version entry must remain documented')
+assert.ok(previousVersionChangelog34.includes('52 สัปดาห์'), 'The changelog must describe the 52-week high fix')
 const previousVersionChangelog33 = fs.readFileSync('config/changelog-v14133.ts', 'utf8')
 assert.match(previousVersionChangelog33, /version: 'v1\.41\.33'/, 'The previous version entry must remain documented')
 assert.ok(previousVersionChangelog33.includes('16.4.5'), 'The changelog must describe the Next.js security update')
@@ -643,7 +646,7 @@ for (const [file, expectedTime] of changelogReleaseTimes) {
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14134'], 'Current candidate must use the v1.41.34 version badge')
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14135'], 'Current candidate must use the v1.41.35 version badge')
 assert.match(releaseChangelog, /date: 'เวลาเดิมใน Changelog — 2026-10-14 03:05 ICT \(ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production\)'/, 'v1.34.0 must preserve its stored timestamp and disclose that Production timing is unverified')
 assert.match(latestReleaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.35.0 changelog must contain a timestamp in the repository format')
 

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getMultipleQuotesWithMetrics } from '@/lib/finnhub'
+import { getWeek52FromBars } from '@/lib/indicators'
+import { fillMissingWeek52 } from '@/lib/week52'
 import type { PeKind } from '@/lib/pe-kind'
 import { InputValidationError, parseSymbol } from '@/lib/portfolio-validation'
 
@@ -29,12 +31,16 @@ export async function GET(request: NextRequest) {
 
   const data = await getMultipleQuotesWithMetrics(symbols)
 
+  // A 52-week range the quote provider does not return is filled from the price bars (see lib/week52.ts for the limits).
+  const ranges = await fillMissingWeek52(data, sym => getWeek52FromBars(sym))
+
   const prices: Record<string, number> = {}
   const metrics: Record<string, { pe: number | null; peKind: PeKind | null; week52High: number | null; week52Low: number | null; dayChange: number | null }> = {}
 
   for (const [sym, d] of Object.entries(data)) {
     if (d.price !== null) prices[sym] = d.price
-    metrics[sym] = { pe: d.pe, peKind: d.peKind ?? null, week52High: d.week52High, week52Low: d.week52Low, dayChange: d.dayChange }
+    const range = ranges[sym]
+    metrics[sym] = { pe: d.pe, peKind: d.peKind ?? null, week52High: range.week52High, week52Low: range.week52Low, dayChange: d.dayChange }
   }
 
   return NextResponse.json({ prices, metrics })
