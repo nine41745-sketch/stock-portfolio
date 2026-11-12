@@ -1,5 +1,13 @@
 # Production Release Status
 
+## Version under preparation — v1.41.37
+
+- Scope: จัดหน้ากล่องวิเคราะห์ AI ให้อ่านง่ายขึ้นและแก้ป้ายเวลา (เจ้าของถามว่าหน้าที่แสดงอ่านง่ายพอไหม และอนุมัติแผนแล้ว): (1) แถวตัวเลขสำคัญใต้คำสรุป (ราคาที่ใช้วิเคราะห์ แนวรับ แนวต้าน; ราคาก่อนตลาดเปิดมีป้ายกำกับ) ดึงจากข้อมูลที่หน้ามีอยู่แล้ว (2) ป้ายตัวเลขเทคนิคถูกพับไว้ใต้ประโยคสรุปเทคนิค เพราะเป็นค่าชุดเดียวกับประโยค (3) รวม "ข้อควรระวัง/โอกาส/ความเสี่ยงหลัก" เป็นการ์ดเดียว "สิ่งที่ต้องจับตา" ไม่ตัดข้อความใดทิ้ง (4) ชื่อโมเดลและคำเตือนไปไว้ท้ายกล่อง (5) `fmtDateTime` ใช้ปี พ.ศ. สี่หลัก เดือนย่อ และ "น." แทน "ICT" (ใช้ที่เวลาอัปเดตของราคา เงินสด DIME และเงินลงทุน ด้วย) (6) คอลัมน์ตาราง "อัปเดต" เปลี่ยนเป็น "แก้ไขล่าสุด" เพราะเป็น `updated_at` ของแถวหุ้น ไม่ใช่เวลาของราคา
+- Development/Feature History: `Development History — Feature commit 2026-11-13 00:23:47 +07:00 (ไม่ใช่ Production)`.
+- Release state: Local Diff on branch `feature/v1.41.37-analysis-panel-readability`; ยังไม่มี PR ที่ merge ยังไม่ Stage ยังไม่ Promote. Security Gate และ Production Release Gate remain HOLD for v1.41.37. Production ยังเป็น v1.41.36 (`dpl_AYnzgETEdfcjwCh8CfEFExwyJgr8`).
+- Scope guard: แก้เฉพาะหน้าจอ (`components/portfolio/PortfolioDashboard.tsx`) ไม่แตะ prompt/`lib/groq.ts`, guard, `lib/finnhub.ts`, `app/api`, Cron, `vercel.json`, SQL, env หรือ dependency; ไม่มีค่าการเงินส่วนตัวในเอกสารนี้
+- Not verified: ยังไม่ได้ดูหน้าตาจริงหลังแก้ ยังไม่มีรีวิวอิสระ ยังไม่เห็นกล่องบนจอแคบและธีมสว่าง; ข้อความที่ AI เขียนว่าพูดถึง "ข่าว/ปัจจัยพื้นฐาน" ทั้งที่ไม่มีข้อมูลเป็นงานแยก (ไม่ได้แก้ในรุ่นนี้)
+
 ## Released — v1.41.36 (Production)
 
 - Scope: ปรับให้อ่านง่ายขึ้นระดับ 1 (ข้อเสนอจาก mockup ที่เจ้าของเลือกเริ่มก่อน): (1) ฟอนต์ไทย Noto Sans Thai ผ่าน `next/font/google` (ดาวน์โหลดตอน build ให้บริการจากโดเมนเรา) ผูกกับ `font-sans` ใน `tailwind.config.ts` และตัวแปรบน `<html>` ใน `app/layout.tsx`; (2) `app/globals.css`: ข้อความรอง `text-gray-500/600` บนธีมมืดเข้มขึ้น (#9ca3af / #8b93a1; เดิมความต่างสีบนการ์ด gray-900 ราว 3.7:1 และ 2.4:1 ต่ำกว่าเกณฑ์ 4.5:1) ใช้ `:where()` เพื่อให้สี hover/focus/`dark:` ยังชนะ ไม่ใช้ `!important`; `text-[10px]`→11px และ `text-[11px]`→12px; `font-variant-numeric: tabular-nums` ที่ body; คลาส `.skeleton`; (3) คอมโพเนนต์ใหม่ `Skeleton` แทน "กำลังโหลด…" ในการ์ดเงินสด/ผลตอบแทน 4 จุดและ Track Record ของ `PortfolioDashboard.tsx`; (4) `trendMark` (`lib/trend-mark.ts`) และ `TrendMark` แสดง ▲/▼ ข้างเปอร์เซ็นต์กำไร/ขาดทุนในตารางและการ์ดมือถือของหน้าแรก (ตามค่าที่แสดง 2 ตำแหน่ง; ไม่เปลี่ยนเครื่องหมาย +/− ของ `fmtPct`/`fmtPnl`). ไม่แตะ SQL, env, `vercel.json`, cron, `lib/finnhub.ts`, `proxy.ts`, dependency (`next/font` มากับ Next.js). ไม่มีค่าการเงินส่วนตัวของพอร์ตในไฟล์นี้.
