@@ -66,8 +66,8 @@ function fmtDate(iso: string) {
 }
 function fmtDateTime(iso: string) {
   const d = new Date(iso)
-  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'numeric', year: '2-digit', timeZone: BANGKOK_TIME_ZONE }) +
-    ' เวลา ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: BANGKOK_TIME_ZONE }) + ' ICT'
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: BANGKOK_TIME_ZONE }) +
+    ' เวลา ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: BANGKOK_TIME_ZONE }) + ' น.'
 }
 function fmtNewsTime(ts: number) {
   const diffH = Math.floor((Date.now() - ts * 1000) / 3600000)
@@ -779,6 +779,13 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       'openai/gpt-oss-20b': 'GPT-OSS 20B',
     }
     const modelLabel = analysis.usedModel ? (MODEL_LABELS[analysis.usedModel] ?? analysis.usedModel) : null
+    // key numbers shown right under the summary; they come from data the panel already has, nothing is generated
+    const isPremarketPrice = typeof analysis.priceSource === 'string' && /pre-?market/i.test(analysis.priceSource)
+    const keyFacts: Array<{ label: string; value: string }> = [
+      typeof analysis.usedPrice === 'number' ? { label: isPremarketPrice ? 'ราคาก่อนตลาดเปิด' : 'ราคาที่ใช้วิเคราะห์', value: `$${analysis.usedPrice.toFixed(2)}` } : null,
+      t.support != null ? { label: 'แนวรับ', value: `$${t.support}` } : null,
+      t.resistance != null ? { label: 'แนวต้าน', value: `$${t.resistance}` } : null,
+    ].filter((x): x is { label: string; value: string } => x !== null)
 
     return (
       <div className="rounded-xl border border-gray-800 bg-gray-950/80 p-4 text-gray-200">
@@ -787,7 +794,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             <span className={`inline-flex items-center whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-semibold ${SIGNAL_STYLE[action]}`}>
               {SIGNAL_LABEL[action]}
             </span>
-            {modelLabel && <span className="text-[10px] text-gray-600">{modelLabel}</span>}
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -804,7 +810,11 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
         </div>
 
         {analysis.summary && <p className="mt-3 text-sm font-medium leading-relaxed text-gray-100">{analysis.summary}</p>}
-        {analysis.disclaimer && <p className="mt-2 text-[11px] italic text-gray-600">⚠️ {analysis.disclaimer}</p>}
+        {keyFacts.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400" data-testid="analysis-key-facts">
+            {keyFacts.map(k => <span key={k.label}>{k.label}: <span className="font-semibold text-gray-100">{k.value}</span></span>)}
+          </div>
+        )}
 
         {analysis.analysisMode === 'PREMARKET_TRIGGER' && (
           <div className="mt-3 rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
@@ -832,30 +842,16 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             <p className="mb-1.5 text-xs font-semibold text-blue-300">📊 ภาพรวมเทคนิคัล</p>
             <p className="text-xs leading-relaxed text-gray-300">{analysis.technicalSummary}</p>
             {techChips.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {techChips.map((c, i) => (
-                  <span key={i} className="whitespace-nowrap rounded bg-gray-950/80 px-2 py-0.5 text-[10px] text-gray-400">
-                    {c.label}: <span className="font-medium text-gray-200">{c.value}</span>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {(analysis.risksAndOpportunities.caution || analysis.risksAndOpportunities.opportunity) && (
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {analysis.risksAndOpportunities.caution && (
-              <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
-                <p className="mb-1 text-xs font-semibold text-orange-300">⚠️ ข้อควรระวัง</p>
-                <p className="text-xs leading-relaxed text-gray-300">{analysis.risksAndOpportunities.caution}</p>
-              </div>
-            )}
-            {analysis.risksAndOpportunities.opportunity && (
-              <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-3">
-                <p className="mb-1 text-xs font-semibold text-green-300">🌱 โอกาส</p>
-                <p className="text-xs leading-relaxed text-gray-300">{analysis.risksAndOpportunities.opportunity}</p>
-              </div>
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] font-medium text-gray-500 hover:text-gray-300">ดูตัวเลขเทคนิคทั้งหมด ({techChips.length})</summary>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {techChips.map((c, i) => (
+                    <span key={i} className="whitespace-nowrap rounded bg-gray-950/80 px-2 py-0.5 text-[10px] text-gray-400">
+                      {c.label}: <span className="font-medium text-gray-200">{c.value}</span>
+                    </span>
+                  ))}
+                </div>
+              </details>
             )}
           </div>
         )}
@@ -868,12 +864,21 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
           </div>
         )}
 
-        {analysis.risks.length > 0 && (
-          <div className="mt-3 rounded-lg border border-red-500/15 bg-red-500/5 p-3">
-            <p className="mb-1.5 text-xs font-semibold text-red-300">🚩 ความเสี่ยงหลัก</p>
-            <ul className="space-y-1">
-              {analysis.risks.map((r, i) => <li key={i} className="flex gap-2 text-xs leading-relaxed text-gray-400"><span className="shrink-0">•</span><span>{r}</span></li>)}
-            </ul>
+        {(analysis.risksAndOpportunities.caution || analysis.risksAndOpportunities.opportunity || analysis.risks.length > 0) && (
+          <div className="mt-3 rounded-lg border border-gray-800 bg-gray-900/60 p-3" data-testid="analysis-watch-card">
+            <p className="mb-2 text-xs font-semibold text-gray-300">👀 สิ่งที่ต้องจับตา</p>
+            <div className="space-y-2">
+              {analysis.risksAndOpportunities.caution && <p className="text-xs leading-relaxed text-gray-300"><span className="font-medium text-orange-300">⚠️ ข้อควรระวัง: </span>{analysis.risksAndOpportunities.caution}</p>}
+              {analysis.risksAndOpportunities.opportunity && <p className="text-xs leading-relaxed text-gray-300"><span className="font-medium text-green-300">🌱 โอกาส: </span>{analysis.risksAndOpportunities.opportunity}</p>}
+              {analysis.risks.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-red-300">🚩 ความเสี่ยงหลัก</p>
+                  <ul className="mt-1 space-y-1">
+                    {analysis.risks.map((r, i) => <li key={i} className="flex gap-2 text-xs leading-relaxed text-gray-400"><span className="shrink-0">•</span><span>{r}</span></li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -911,6 +916,13 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             {analysis.analysedAt && <p className="text-[10px] text-gray-600">🕐 วิเคราะห์ล่าสุด {fmtDateTime(analysis.analysedAt)}</p>}
           </div>
         </details>
+
+        {(analysis.disclaimer || modelLabel) && (
+          <div className="mt-3 space-y-1 border-t border-gray-800 pt-3" data-testid="analysis-footer">
+            {analysis.disclaimer && <p className="text-[11px] italic text-gray-500">⚠️ {analysis.disclaimer}</p>}
+            {modelLabel && <p className="text-[10px] text-gray-600">วิเคราะห์โดย {modelLabel}</p>}
+          </div>
+        )}
       </div>
     )
   }
@@ -1185,7 +1197,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
                   <SortTh field="pe" label="P/E" tooltip="ใช้ประเมินความถูกหรือแพงของหุ้น เมื่อเทียบกับกำไรต่อหุ้น ค่าสูง = แพง" />
                   <SortTh field="week52High" label="52W High" tooltip="ราคาสูงสุดในรอบ 52 สัปดาห์ที่ผ่านมา" />
                   <SortTh field="week52Low" label="52W Low" tooltip="ราคาต่ำสุดในรอบ 52 สัปดาห์ที่ผ่านมา" />
-                  <th className="px-3 py-2.5 text-right">อัปเดต</th>
+                  <th className="px-3 py-2.5 text-right" title="วันที่แก้ไขรายการหุ้นนี้ล่าสุด (ไม่ใช่เวลาของราคา)">แก้ไขล่าสุด</th>
                   <th className="px-3 py-2.5 text-center">เครื่องมือ</th>
                 </tr>
               </thead>
