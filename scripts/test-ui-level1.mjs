@@ -32,6 +32,24 @@ assert.equal(trendMark(0.005), '▲', 'a value that shows as +0.01% has a mark')
 assert.equal(trendMark(-0.006), '▼')
 assert.equal(trendMark(0.01), '▲')
 assert.equal(trendMark(-0.01), '▼')
+// review of PR #168: toFixed rounds half away from zero, so -0.005 displays as "-0.01" and needs the mark (Math.round gave -0)
+assert.equal(trendMark(-0.005), '▼', 'a value that shows as -0.01% has a mark')
+assert.equal(trendMark(0.005), '▲')
+assert.equal(trendMark(-0.0049), '', 'shows as -0.00%')
+assert.equal(trendMark(-0), '')
+// the mark agrees with the text fmtPct builds (copy of fmtPct in PortfolioDashboard.tsx) for many values, including every half step
+const fmtPct = n => (n === null ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`)
+let seed = 987654321
+const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296 }
+const samples = []
+for (let k = -400; k <= 400; k++) samples.push(k / 1000, k / 100, k / 10)
+for (let i = 0; i < 20000; i++) samples.push((rnd() - 0.5) * 0.04, (rnd() - 0.5) * 40, (rnd() - 0.5) * 4000)
+for (const value of samples) {
+  const text = fmtPct(value)
+  const shown = Number(text.replace('%', ''))
+  const expected = shown > 0 ? '▲' : shown < 0 ? '▼' : ''
+  assert.equal(trendMark(value), expected, `mark for ${value} (shown as ${text})`)
+}
 
 // ---------- contrast of the dark-theme secondary text (WCAG) ----------
 const lum = hex => {
@@ -77,11 +95,14 @@ assert.doesNotMatch(readability, /!important/, 'the new rules must not override 
 // ---------- skeleton and trend mark components ----------
 const skeleton = read('components/portfolio/Skeleton.tsx')
 assert.match(skeleton, /role="status" aria-label=\{label\}/, 'screen readers are told that something is loading')
-assert.match(skeleton, /skeleton animate-pulse rounded/)
+assert.match(skeleton, /skeleton animate-pulse motion-reduce:animate-none rounded/, 'no pulsing for people who ask for reduced motion')
+assert.match(skeleton, /<span className="sr-only">\{label\}<\/span>/, 'the status region has a text screen readers can announce')
 assert.match(skeleton, /label = 'กำลังโหลดข้อมูล'/)
 const trendComponent = read('components/portfolio/TrendMark.tsx')
 assert.match(trendComponent, /aria-hidden="true"/, 'the mark is decorative: the sign in the text already carries the meaning')
 assert.match(trendComponent, /if \(!mark\) return null/)
+assert.match(trendComponent, /className="mr-0\.5 text-\[10px\]"/, 'the mark is small and sits close to the number')
+assert.match(tailwind, /\n {6}fontFamily: \{\r?\n {8}sans: \[/, 'the font family block is part of theme.extend and is not commented out')
 
 // ---------- dashboard ----------
 const dashboard = read('components/portfolio/PortfolioDashboard.tsx')
