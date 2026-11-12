@@ -14,7 +14,7 @@ async function importTsModule(filePath) {
   return import(`data:text/javascript;base64,${Buffer.from(compiled.outputText).toString('base64')}`)
 }
 
-const { sanitizeWeek52, WEEK52_HIGH_MAX_RATIO, WEEK52_LOW_MAX_RATIO } = await importTsModule('lib/week52.ts')
+const { sanitizeWeek52, WEEK52_HIGH_MAX_RATIO, WEEK52_LOW_MAX_RATIO, WEEK52_BARS, week52FromBars, fillWeek52 } = await importTsModule('lib/week52.ts')
 const { limitRows } = await importTsModule('lib/limit-rows.ts')
 
 // ---------- 52-week range ----------
@@ -68,6 +68,70 @@ const finnhub = fs.readFileSync('lib/finnhub.ts', 'utf8')
 assert.match(finnhub, /import \{ sanitizeWeek52 \} from '@\/lib\/week52'/)
 assert.match(finnhub, /sanitizeWeek52\(currentPrice, m\.week52High, m\.week52Low\)/)
 assert.doesNotMatch(finnhub, /week52High > currentPrice \* 5/, 'the old 5x rule must not come back')
+
+// ---------- 52-week range from price bars (v1.41.35) ----------
+assert.equal(WEEK52_BARS, 252)
+assert.deepEqual(week52FromBars([]), { week52High: null, week52Low: null })
+assert.deepEqual(week52FromBars([{ high: 10.126, low: 9.994 }]), { week52High: 10.13, week52Low: 9.99 }, 'rounded to 2 decimals')
+assert.deepEqual(week52FromBars([{ high: 12, low: 8 }, { high: 15, low: 9 }, { high: 11, low: 7 }]), { week52High: 15, week52Low: 7 })
+// only the last 252 bars count: older extremes are outside the 52 weeks
+const long = Array.from({ length: 300 }, (_, i) => ({ high: 50 + (i % 7), low: 40 + (i % 5) }))
+long[10] = { high: 999, low: 1 }
+long[47] = { high: 888, low: 2 }
+assert.deepEqual(week52FromBars(long), { week52High: 56, week52Low: 40 }, 'bars before the last 252 are ignored')
+// index 47 of 300 is the 253rd bar from the end (outside, ignored above); index 48 is the 252nd (inside)
+long[48] = { high: 777, low: 3 }
+assert.deepEqual(week52FromBars(long), { week52High: 777, week52Low: 3 }, 'the 252nd bar from the end is inside')
+// same result as the inline code it replaced (lib/indicators.ts calcWeek52Range) on seeded random bars
+const reference = bars => {
+  if (!bars.length) return { week52High: null, week52Low: null }
+  const recent = bars.slice(-252)
+  const r2 = n => Math.round(n * 100) / 100
+  return { week52High: r2(Math.max(...recent.map(b => b.high))), week52Low: r2(Math.min(...recent.map(b => b.low))) }
+}
+let seed = 12345
+const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296 }
+for (const n of [0, 1, 2, 50, 251, 252, 253, 400]) {
+  const bars = Array.from({ length: n }, () => { const base = 1 + rnd() * 500; return { high: base * (1 + rnd() * 0.1), low: base * (1 - rnd() * 0.1) } })
+  assert.deepEqual(week52FromBars(bars), reference(bars), `same as the old inline code for ${n} bars`)
+}
+const barsRange = { week52High: 70, week52Low: 40 }
+const none = { week52High: null, week52Low: null }
+// the provider wins; the bars only fill what is missing
+assert.deepEqual(fillWeek52(50, { week52High: 80, week52Low: 45 }, barsRange), { week52High: 80, week52Low: 45 }, 'a complete provider range is untouched')
+assert.deepEqual(fillWeek52(50, none, barsRange), { week52High: 70, week52Low: 40 }, 'both missing: both from the bars')
+assert.deepEqual(fillWeek52(50, { week52High: 80, week52Low: null }, barsRange), { week52High: 80, week52Low: 40 }, 'only the low is filled')
+assert.deepEqual(fillWeek52(50, { week52High: null, week52Low: 45 }, barsRange), { week52High: 70, week52Low: 45 }, 'only the high is filled')
+assert.deepEqual(fillWeek52(50, none, null), none, 'no bars: stays empty')
+assert.deepEqual(fillWeek52(50, { week52High: 80, week52Low: 45 }, null), { week52High: 80, week52Low: 45 }, 'no bars: provider values stay')
+assert.deepEqual(fillWeek52(50, none, none), none, 'bars without values: stays empty')
+// bars in another scale are dropped on their own and never take a good provider value with them
+assert.deepEqual(fillWeek52(50, none, { week52High: 600, week52Low: 240 }), none, 'bar range far above the price is dropped')
+assert.deepEqual(fillWeek52(50, { week52High: 80, week52Low: null }, { week52High: 600, week52Low: 240 }), { week52High: 80, week52Low: null }, 'the provider high survives a bad bar range')
+assert.deepEqual(fillWeek52(50, { week52High: null, week52Low: 45 }, { week52High: 600, week52Low: 240 }), { week52High: null, week52Low: 45 }, 'the provider low survives a bad bar range')
+// the merged range is checked once more: a provider value that does not fit a bar value from the other source
+assert.deepEqual(fillWeek52(50, { week52High: null, week52Low: 80 }, barsRange), { week52High: null, week52Low: null }, 'a low far above the price still drops the pair')
+// no usable price: nothing is judged
+assert.deepEqual(fillWeek52(null, none, barsRange), { week52High: 70, week52Low: 40 })
+assert.deepEqual(fillWeek52(0, none, barsRange), { week52High: 70, week52Low: 40 })
+
+// indicators.ts and the prices route use the helpers
+const indicators = fs.readFileSync('lib/indicators.ts', 'utf8')
+assert.match(indicators, /import \{ week52FromBars \} from '@\/lib\/week52'/)
+assert.match(indicators, /const range52 = week52FromBars\(bars\)/)
+assert.doesNotMatch(indicators, /function calcWeek52Range/, 'the inline range code must not come back')
+assert.match(indicators, /export async function getWeek52FromBars\(/)
+const pricesRoute = fs.readFileSync('app/api/prices/route.ts', 'utf8')
+assert.match(pricesRoute, /import \{ getWeek52FromBars \} from '@\/lib\/indicators'/)
+assert.match(pricesRoute, /import \{ fillWeek52 \} from '@\/lib\/week52'/)
+assert.match(pricesRoute, /const MAX_BARS_FILL = 5\r?\n/, 'at most 5 symbols per request are filled from the bars')
+assert.match(pricesRoute, /const BARS_FILL_TIMEOUT_MS = 4000\r?\n/)
+assert.match(pricesRoute, /\.slice\(0, MAX_BARS_FILL\)/)
+assert.match(pricesRoute, /AbortSignal\.timeout\(BARS_FILL_TIMEOUT_MS\)/)
+assert.match(pricesRoute, /Promise\.allSettled\(missing\.map/, 'one failed fetch must not fail the request')
+assert.match(pricesRoute, /fillWeek52\(d\.price, \{ week52High: d\.week52High, week52Low: d\.week52Low \}, fromBars\[sym\] \?\? null\)/)
+assert.match(pricesRoute, /\.filter\(\(\[, d\]\) => d\.week52High == null \|\| d\.week52Low == null\)/, 'only symbols with a missing value are fetched')
+assert.doesNotMatch(fs.readFileSync('lib/finnhub.ts', 'utf8'), /getWeek52FromBars|fillWeek52/, 'the provider module is not changed by this feature')
 
 // ---------- row limit ----------
 const rows = Array.from({ length: 11 }, (_, i) => ({ assetKey: `A${i}` }))

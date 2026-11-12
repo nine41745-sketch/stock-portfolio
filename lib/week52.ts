@@ -29,3 +29,38 @@ export function sanitizeWeek52(
   }
   return { week52High, week52Low }
 }
+
+/** Number of daily bars in a 52-week range (the same window the technical indicators use). */
+export const WEEK52_BARS = 252
+
+const round2 = (n: number): number => Math.round(n * 100) / 100
+
+/** 52-week high and low from daily bars (the last 252 bars); null for both when there are no bars. */
+export function week52FromBars(
+  bars: ReadonlyArray<{ high: number; low: number }>,
+): { week52High: number | null; week52Low: number | null } {
+  if (!bars.length) return { week52High: null, week52Low: null }
+  const recent = bars.slice(-WEEK52_BARS)
+  return {
+    week52High: round2(Math.max(...recent.map(b => b.high))),
+    week52Low: round2(Math.min(...recent.map(b => b.low))),
+  }
+}
+
+/**
+ * The provider range first; only the fields it is missing (null) are taken from the price bars. The bar range is checked with
+ * the current price on its own first (a bar value in another scale is dropped like a provider value and never takes a good
+ * provider value with it), then the merged range goes through the check once more.
+ */
+export function fillWeek52(
+  price: number | null,
+  provider: { week52High: number | null; week52Low: number | null },
+  bars: { week52High: number | null; week52Low: number | null } | null,
+): { week52High: number | null; week52Low: number | null } {
+  const checkedBars = bars ? sanitizeWeek52(price, bars.week52High, bars.week52Low) : null
+  return sanitizeWeek52(
+    price,
+    provider.week52High ?? checkedBars?.week52High ?? null,
+    provider.week52Low ?? checkedBars?.week52Low ?? null,
+  )
+}

@@ -15,6 +15,7 @@ import { getDiscoveryYahooChart } from '@/lib/discovery-yahoo'
 import { calculateImportantSupport } from '@/lib/important-support'
 import { isPartialUsSessionBar } from '@/lib/market-session'
 import { toHistorySymbol } from '@/lib/provider-symbol'
+import { week52FromBars } from '@/lib/week52'
 
 const yahooFinance = new YahooFinance()
 
@@ -306,13 +307,13 @@ function calcReturnPct(closes: number[], lookback: number): number | null {
   return round2(((current - previous) / previous) * 100)
 }
 
-function calcWeek52Range(bars: Bar[]): { week52High: number | null; week52Low: number | null } {
-  if (!bars.length) return { week52High: null, week52Low: null }
-  const recent = bars.slice(-252)
-  return {
-    week52High: round2(Math.max(...recent.map(b => b.high))),
-    week52Low: round2(Math.min(...recent.map(b => b.low))),
-  }
+/**
+ * 52-week range from the daily price bars only (Yahoo, Stooq as the fallback), for the dashboard when the quote provider has
+ * none. Returns nulls when no bars can be fetched (never throws: the fetchers swallow provider errors).
+ */
+export async function getWeek52FromBars(rawSymbol: string, signal?: AbortSignal): Promise<{ week52High: number | null; week52Low: number | null }> {
+  const { bars } = await fetchHistoricalBarsWithSource(rawSymbol, undefined, signal)
+  return week52FromBars(bars)
 }
 
 export async function getTechnicalIndicators(symbol: string, context?: DiscoveryProviderContext): Promise<TechnicalIndicators> {
@@ -369,7 +370,7 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
     bars.slice(0, -1).map(bar => bar.low),
     lastClose,
   )
-  const range52 = calcWeek52Range(bars)
+  const range52 = week52FromBars(bars)
 
   return {
     dataSource: source,
