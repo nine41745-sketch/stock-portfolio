@@ -7,6 +7,8 @@ import { HoldingWithPrice, DetailedAnalysisResult, HoldingFormData, NewsItem } f
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import HoldingModal from './HoldingModal'
+import Skeleton from './Skeleton'
+import TrendMark from './TrendMark'
 import TradingViewChart from './TradingViewChart'
 import { AUTO_LOGOUT_MS, AUTO_LOGOUT_WARN_MS, FALLBACK_USD_THB_RATE } from '@/lib/constants'
 import { getMarketStatus, MarketStatus } from '@/lib/market-status'
@@ -236,7 +238,7 @@ function TrackRecordCard() {
       </div>
 
       {loading ? (
-        <p className="text-gray-600 text-sm">กำลังโหลด...</p>
+        <Skeleton className="h-16 w-full" label="กำลังโหลด Track Record" />
       ) : loadError ? (
         <p className="text-red-400 text-sm">โหลด Track Record ไม่สำเร็จ — ข้อมูลเดิมไม่ได้ถูกลบ กรุณาลองใหม่ภายหลัง</p>
       ) : !data || data.overall.total === 0 ? (
@@ -1031,7 +1033,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
         <div className="relative min-h-[108px] rounded-xl border border-gray-800 bg-gray-900 p-4">
           <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">เงินในธนาคาร</p>
           {!settingsLoaded ? (
-            <p className="py-2 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
+            <Skeleton className="my-2 h-7 w-28" />
           ) : editingCash ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
@@ -1059,7 +1061,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
         <div className="relative min-h-[108px] rounded-xl border border-gray-800 bg-gray-900 p-4">
           <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">เงินสด DIME</p>
           {!settingsLoaded ? (
-            <p className="py-2 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
+            <Skeleton className="my-2 h-7 w-28" />
           ) : editingDime ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
@@ -1089,7 +1091,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
         <div className="relative min-h-[108px] rounded-xl border border-gray-800 bg-gray-900 p-4">
           <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">เงินลงทุนสะสม</p>
           {!settingsLoaded ? (
-            <p className="py-2 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
+            <Skeleton className="my-2 h-7 w-28" />
           ) : editingCapital ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
@@ -1124,7 +1126,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             <div className={`min-h-[108px] rounded-xl border bg-gray-900 p-4 ${realPnl === null ? 'border-gray-800' : pos ? 'border-green-500/25' : 'border-red-500/25'}`}>
               <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">ผลตอบแทนจากเงินลงทุน</p>
               {!settingsLoaded ? (
-                <p className="py-2 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
+                <Skeleton className="my-2 h-7 w-28" />
               ) : realPnl === null || realPct === null ? (
                 <>
                   <p className="text-lg font-bold text-gray-500">—</p>
@@ -1218,7 +1220,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
                         <td className="px-3 py-2.5 text-right text-gray-300">{h.shares > 0 ? h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—'}</td>
                         <td className="px-3 py-2.5 text-right text-gray-300 font-mono">{fmtAmt(h.market_value)}</td>
                         <td className={`px-3 py-2.5 text-right font-mono font-medium ${pnlColor}`}>{fmtPnl(h.pnl)}</td>
-                        <td className={`px-3 py-2.5 text-right font-medium ${pnlColor}`}>{fmtPct(h.pnl_pct)}</td>
+                        <td className={`px-3 py-2.5 text-right font-medium ${pnlColor}`}><TrendMark value={h.pnl_pct} />{fmtPct(h.pnl_pct)}</td>
                         <td className={`px-3 py-2.5 text-right font-mono font-medium ${h.dayChange == null ? 'text-gray-600' : h.dayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {h.dayChange != null ? `${h.dayChange >= 0 ? '+' : ''}${h.dayChange.toFixed(2)}%` : <span className="text-gray-600">N/A</span>}
                         </td>
@@ -1300,7 +1302,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
                     {h.notes && <span className="text-gray-500 text-xs ml-2">{h.notes}</span>}
                     <p className="text-gray-600 text-xs mt-0.5">แก้ไข {fmtDate(h.updated_at)}</p>
                   </div>
-                  <span className={`text-xs font-medium rounded-full border px-2 py-0.5 ${pctBadge}`}>{fmtPct(h.pnl_pct)}</span>
+                  <span className={`text-xs font-medium rounded-full border px-2 py-0.5 ${pctBadge}`}><TrendMark value={h.pnl_pct} />{fmtPct(h.pnl_pct)}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-3 mb-2">
                   <div><p className="text-gray-600 text-xs mb-0.5">ราคา</p><p className="text-white text-sm font-medium font-mono">{fmtAmt(h.current_price)}</p></div>
