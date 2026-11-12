@@ -15,7 +15,7 @@ import { getDiscoveryYahooChart } from '@/lib/discovery-yahoo'
 import { calculateImportantSupport } from '@/lib/important-support'
 import { isPartialUsSessionBar } from '@/lib/market-session'
 import { toHistorySymbol } from '@/lib/provider-symbol'
-import { week52FromBars } from '@/lib/week52'
+import { createRangeCache, week52FromBars, WEEK52_BARS_TIMEOUT_MS, WEEK52_CACHE_TTL_MS } from '@/lib/week52'
 
 const yahooFinance = new YahooFinance()
 
@@ -311,9 +311,17 @@ function calcReturnPct(closes: number[], lookback: number): number | null {
  * 52-week range from the daily price bars only (Yahoo, Stooq as the fallback), for the dashboard when the quote provider has
  * none. Returns nulls when no bars can be fetched (never throws: the fetchers swallow provider errors).
  */
-export async function getWeek52FromBars(rawSymbol: string, signal?: AbortSignal): Promise<{ week52High: number | null; week52Low: number | null }> {
+const week52BarsCache = createRangeCache(WEEK52_CACHE_TTL_MS)
+
+export async function getWeek52FromBars(rawSymbol: string, signal: AbortSignal = AbortSignal.timeout(WEEK52_BARS_TIMEOUT_MS)): Promise<{ week52High: number | null; week52Low: number | null }> {
+  const key = rawSymbol.trim().toUpperCase()
+  const cached = week52BarsCache.get(key)
+  if (cached) return cached
   const { bars } = await fetchHistoricalBarsWithSource(rawSymbol, undefined, signal)
-  return week52FromBars(bars)
+  const range = week52FromBars(bars)
+  // Only a result that has a value is kept: an empty one (provider error, abort) is tried again on the next request.
+  if (range.week52High !== null || range.week52Low !== null) week52BarsCache.set(key, range)
+  return range
 }
 
 export async function getTechnicalIndicators(symbol: string, context?: DiscoveryProviderContext): Promise<TechnicalIndicators> {
