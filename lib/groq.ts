@@ -204,6 +204,19 @@ export function summarizeOtherHoldings(
     .sort((a, b) => b.weightPct - a.weightPct)
 }
 
+// v1.41.39 (data basis): สิ่งที่ prompt วิเคราะห์ "ไม่ได้ส่ง" ให้ AI จริง ๆ — ใช้ทั้งในบล็อก "ข้อมูลที่ได้รับและไม่ได้รับ"
+// ของ prompt และบรรทัด "ข้อมูลที่ AI ได้รับ" ในหน้าจอ (ข้อความ NOT_PROVIDED ต้องตรงกับ PortfolioDashboard.tsx — มีเทสต์ล็อกไว้)
+// ข่าวที่ว่างไม่ได้แปลว่าไม่มีข่าว: ตัวดึงข่าวคืนรายการว่างทั้งตอนดึงไม่สำเร็จและตอนตัวกรองความเกี่ยวข้องตัดทิ้งหมด
+export const AI_INPUT_NOT_PROVIDED = 'งบการเงิน รายได้ กำไรสุทธิ หนี้สิน กระแสเงินสด'
+
+export function buildDataAvailabilityBlock(input: { newsCount: number; hasMetrics: boolean }): string {
+  const news = input.newsCount > 0
+    ? `ได้รับ ${input.newsCount} หัวข้อ (ตามรายการข้างต้น)`
+    : 'ไม่ได้รับข่าวล่าสุดในรอบนี้ (ระบบอาจดึงข่าวไม่สำเร็จหรือกรองออกหมด ไม่ได้แปลว่าบริษัทไม่มีข่าว)'
+  const metrics = input.hasMetrics ? 'ได้รับตามบรรทัด Valuation/Metrics ข้างต้น' : 'ไม่ได้รับ'
+  return `- ข่าว: ${news}\n- P/E และ 52W: ${metrics}\n- ไม่ได้รับ: ${AI_INPUT_NOT_PROVIDED}`
+}
+
 export async function analyzeHoldingDetailed(
   holding: HoldingWithPrice,
   technical: TechnicalSnapshot,
@@ -267,13 +280,16 @@ export async function analyzeHoldingDetailed(
   // TPM limit โดยไม่จำเป็น — ไม่กระทบ news relevance/classification logic เดิมเลย (ตัดเฉพาะความยาว ไม่ตัด
   // เนื้อหาสำคัญ/แหล่งข่าว/impact tag)
   const NEWS_HEADLINE_MAX_CHARS = 120
-  const newsSnippet = recentNews.slice(0, 4)
+  // the same list feeds the prompt, the data-availability block and usedNews (the screen line), so they can never disagree
+  const promptNews = recentNews.slice(0, 4)
+  const newsSnippet = promptNews
     .map((n, i) => {
       const headline = n.headlineTh ?? n.headline
       const truncated = headline.length > NEWS_HEADLINE_MAX_CHARS ? `${headline.slice(0, NEWS_HEADLINE_MAX_CHARS)}…` : headline
       return `${i + 1}. ${truncated}${n.impact ? ` [${n.impact}]` : ''}`
     })
     .join('\n') || 'ไม่มีข่าวล่าสุด'
+  const dataAvailability = buildDataAvailabilityBlock({ newsCount: promptNews.length, hasMetrics: metricsInfo !== '' })
 
   const earningsLine = earnings
     ? `⚠️ ประกาศงบในอีก ${earnings.daysUntil} วัน (${earnings.date}${earnings.hour ? `, ${earnings.hour}` : ''}) — ราคาอาจผันผวนแรง เทคนิคัลอาจไม่แม่นยำช่วงนี้`
@@ -313,6 +329,7 @@ export async function analyzeHoldingDetailed(
 เช็กตามลำดับข้อ 0 -> 1 -> 2 -> 3 -> 4 จากบนลงล่าง แต่ละข้อมีเงื่อนไขย่อยหลายข้อเชื่อมด้วย "หรือ" (OR) เสมอ (ยกเว้นข้อ 1 SELL_ALL ที่เข้มงวดกว่าข้ออื่นตามที่ระบุในข้อนั้น)
 กติกาสำคัญที่สุด: แค่เงื่อนไขย่อยข้อเดียวเป็นจริงก็เพียงพอให้เลือก action นั้นได้ทันที ห้ามหาเหตุผลอื่นมา "หักล้าง" หรือ "รอเงื่อนไขอื่นมายืนยันเพิ่ม" ก่อนตัดสินใจ (เช่น P&L ถึงเกณฑ์แล้วไม่ต้องรอ RSI ยืนยัน)
 กติกาสำคัญอีกข้อ: ถ้าข้อมูลบริบทพอร์ต (มูลค่าพอร์ตรวม/สัดส่วนหุ้นนี้ในพอร์ต) เป็น N/A ห้ามเดาตัวเลขหรือสมมติค่าขึ้นเองเด็ดขาด ให้ระบุตรงๆ ว่า portfolio context ไม่ครบ แล้วใช้ข้อมูลส่วนที่มีอยู่จริง (ราคา/ต้นทุน/เทคนิคัล/ข่าว) ตัดสินใจแทน
+กติกาการอ้างข้อมูล: ห้ามอ้างข่าว ผลประกอบการ ตัวเลขการเงิน หรือเหตุการณ์ของบริษัทที่ไม่ได้อยู่ในส่วน "ข้อมูลสำหรับวิเคราะห์ครั้งนี้" ด้านล่าง และห้ามใช้ความจำของโมเดลเรื่องบริษัทมาเติม ถ้าส่วน "ข้อมูลที่ได้รับและไม่ได้รับ" ระบุว่าไม่ได้รับ ให้เขียนตรงๆ ว่า "ไม่ได้รับข้อมูล…ในการวิเคราะห์นี้" ห้ามเขียนว่า "ไม่มีข่าวสำคัญ" หรือ "ไม่มีข่าวร้าย" เมื่อไม่ได้รับข่าว (ให้เขียนว่า "ระบบไม่ได้รับข่าวล่าสุด") และพูดถึง "พื้นฐาน" ได้เฉพาะจาก P/E กับ 52W ที่ให้มา พร้อมระบุว่าความเชื่อมั่นต่ำ
 
 0. ถ้าใกล้ประกาศงบภายใน 7 วัน — ยกระดับความเสี่ยงเป็น High Risk เสมอ ไม่ว่า action จะเป็นอะไร ต้องเตือนใน "caution" อย่างชัดเจนว่าใกล้ประกาศงบ ราคาอาจเหวี่ยงแรงเกินคาดจาก technical signal และควรพิจารณาลดขนาดโพซิชันหรือรอดูงบก่อนตัดสินใจซื้อเพิ่ม
 
@@ -392,7 +409,7 @@ sellAllEvidenceTypes (enum ที่อนุญาต) เป็นตัวต
   "newsImpact": ["สรุปผลกระทบข่าวข้อ 1 (ระบุด้วยว่าเป็นข่าวเฉพาะบริษัทหรือข่าวภาพรวมตลาด)", "สรุปผลกระทบข่าวข้อ 2"],
   "risksAndOpportunities": {
     "caution": "ข้อควรระวังหรือจุดเสี่ยงเชิงเทคนิค/พื้นฐาน/พอร์ต (รวมเตือน earnings ถ้าใกล้ภายใน 7 วัน และเตือน concentration risk ถ้ามี)",
-    "opportunity": "โอกาสหรือปัจจัยบวก"
+    "opportunity": "โอกาสหรือปัจจัยบวก (อ้างจากข้อมูลที่ได้รับเท่านั้น)"
   },
   "risks": ["ความเสี่ยงข้อ 1", "ความเสี่ยงข้อ 2"]
 
@@ -419,6 +436,9 @@ ${earningsLine}
 
 === ข่าวสารและปัจจัยกระทบล่าสุด ===
 ${newsSnippet}
+
+=== ข้อมูลที่ได้รับและไม่ได้รับในการวิเคราะห์นี้ ===
+${dataAvailability}
 
 }`
 // หมายเหตุ (นอก prompt): "thesisBroken" ต้องเป็น true และ "sellAllEvidenceTypes" ต้องมีอย่างน้อย 1 ค่าที่อยู่ใน
@@ -469,7 +489,7 @@ ${newsSnippet}
     business: meta.business ?? '',
     technical,
     usedPrice: current_price ?? null,
-    usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
+    usedNews: promptNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
     error,
     earnings,
   })
@@ -605,7 +625,7 @@ ${newsSnippet}
       business: stockMeta.business ?? '',
       technical,
       usedPrice: current_price ?? null,
-      usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
+      usedNews: promptNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
       earnings,
       usedModel: usedModel ?? undefined,
       thesisBroken,
