@@ -280,14 +280,16 @@ export async function analyzeHoldingDetailed(
   // TPM limit โดยไม่จำเป็น — ไม่กระทบ news relevance/classification logic เดิมเลย (ตัดเฉพาะความยาว ไม่ตัด
   // เนื้อหาสำคัญ/แหล่งข่าว/impact tag)
   const NEWS_HEADLINE_MAX_CHARS = 120
-  const newsSnippet = recentNews.slice(0, 4)
+  // the same list feeds the prompt, the data-availability block and usedNews (the screen line), so they can never disagree
+  const promptNews = recentNews.slice(0, 4)
+  const newsSnippet = promptNews
     .map((n, i) => {
       const headline = n.headlineTh ?? n.headline
       const truncated = headline.length > NEWS_HEADLINE_MAX_CHARS ? `${headline.slice(0, NEWS_HEADLINE_MAX_CHARS)}…` : headline
       return `${i + 1}. ${truncated}${n.impact ? ` [${n.impact}]` : ''}`
     })
     .join('\n') || 'ไม่มีข่าวล่าสุด'
-  const dataAvailability = buildDataAvailabilityBlock({ newsCount: Math.min(recentNews.length, 4), hasMetrics: metricsInfo !== '' })
+  const dataAvailability = buildDataAvailabilityBlock({ newsCount: promptNews.length, hasMetrics: metricsInfo !== '' })
 
   const earningsLine = earnings
     ? `⚠️ ประกาศงบในอีก ${earnings.daysUntil} วัน (${earnings.date}${earnings.hour ? `, ${earnings.hour}` : ''}) — ราคาอาจผันผวนแรง เทคนิคัลอาจไม่แม่นยำช่วงนี้`
@@ -487,7 +489,7 @@ ${dataAvailability}
     business: meta.business ?? '',
     technical,
     usedPrice: current_price ?? null,
-    usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
+    usedNews: promptNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
     error,
     earnings,
   })
@@ -623,7 +625,7 @@ ${dataAvailability}
       business: stockMeta.business ?? '',
       technical,
       usedPrice: current_price ?? null,
-      usedNews: recentNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
+      usedNews: promptNews.map(n => ({ headline: n.headline, headlineTh: n.headlineTh, impact: n.impact ?? 'LOW' })),
       earnings,
       usedModel: usedModel ?? undefined,
       thesisBroken,

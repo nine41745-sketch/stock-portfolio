@@ -34,6 +34,14 @@ for (const block of [noNews, someNews, buildDataAvailabilityBlock({ newsCount: 4
   assert.ok(block.length < 330, 'block stays short: ' + block.length)
 }
 
+// ---------- one list for the prompt, the availability block and the screen count ----------
+assert.equal(groq.split('const promptNews = recentNews.slice(0, 4)').length, 2, 'promptNews is the single capped list (4 headlines)')
+assert.match(groq, /const newsSnippet = promptNews\n/, 'the prompt news section uses promptNews')
+assert.ok(groq.includes('newsCount: promptNews.length'), 'the availability block counts the headlines actually sent')
+assert.equal(groq.split('usedNews: promptNews.map(').length, 3, 'both usedNews fields use the capped list')
+assert.ok(!/usedNews: recentNews/.test(groq), 'usedNews must not hold more headlines than were sent to the AI')
+assert.ok(!/recentNews\.slice\(0, 4\)/.test(groq.replace('const promptNews = recentNews.slice(0, 4)', '')), 'the 4-headline cap exists only once')
+
 // ---------- the prompt (source checks) ----------
 const dynamicMarker = '=== ข้อมูลสำหรับวิเคราะห์ครั้งนี้ (เปลี่ยนทุกครั้งตามคำขอ) ==='
 const dynamicAt = groq.indexOf(dynamicMarker)
@@ -56,8 +64,8 @@ assert.doesNotMatch(rule, /[`]|\$\{/, 'no template-literal hazards inside the pr
 const newsAt = groq.indexOf('=== ข่าวสารและปัจจัยกระทบล่าสุด ===\n${newsSnippet}')
 const blockAt = groq.indexOf('=== ข้อมูลที่ได้รับและไม่ได้รับในการวิเคราะห์นี้ ===\n${dataAvailability}')
 assert.ok(newsAt > dynamicAt && blockAt > newsAt, 'the availability block comes right after the news section, inside the per-request part')
-assert.match(groq, /const dataAvailability = buildDataAvailabilityBlock\(\{ newsCount: Math\.min\(recentNews\.length, 4\), hasMetrics: metricsInfo !== '' \}\)/, 'the count matches the 4 headlines the prompt can show, and metrics availability comes from the real metrics line')
-assert.match(groq, /recentNews\.slice\(0, 4\)/, 'the prompt shows at most 4 headlines (the count above depends on it)')
+assert.match(groq, /const dataAvailability = buildDataAvailabilityBlock\(\{ newsCount: promptNews\.length, hasMetrics: metricsInfo !== '' \}\)/, 'the count is the number of headlines actually sent, and metrics availability comes from the real metrics line')
+assert.match(groq, /promptNews = recentNews\.slice\(0, 4\)/, 'the prompt shows at most 4 headlines (the count above depends on it)')
 assert.match(groq, /"opportunity": "โอกาสหรือปัจจัยบวก \(อ้างจากข้อมูลที่ได้รับเท่านั้น\)"/)
 // the decision framework is not touched by this change
 for (const pinned of [
