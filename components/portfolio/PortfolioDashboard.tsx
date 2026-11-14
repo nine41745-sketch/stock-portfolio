@@ -60,6 +60,8 @@ const IMPACT_LABEL: Record<string, string> = {
 }
 
 const BANGKOK_TIME_ZONE = 'Asia/Bangkok'
+// v1.41.38: ต้องตรงกับ AI_INPUT_NOT_PROVIDED ใน lib/groq.ts (ไม่ import มาเพราะไฟล์นั้นเป็นโค้ดฝั่งเซิร์ฟเวอร์; มีเทสต์ล็อกไว้)
+const AI_INPUT_NOT_PROVIDED = 'งบการเงิน รายได้ กำไรสุทธิ หนี้สิน กระแสเงินสด'
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: BANGKOK_TIME_ZONE })
@@ -780,6 +782,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
     }
     const modelLabel = analysis.usedModel ? (MODEL_LABELS[analysis.usedModel] ?? analysis.usedModel) : null
     // key numbers shown right under the summary; they come from data the panel already has, nothing is generated
+    const usedNewsCount = analysis.usedNews?.length ?? 0
+    const dataBasisNews = usedNewsCount > 0 ? `ข่าว ${usedNewsCount} ชิ้น` : 'ไม่ได้รับข่าวล่าสุด (อาจดึงไม่สำเร็จ ไม่ได้แปลว่าไม่มีข่าว)'
     const isPremarketPrice = typeof analysis.priceSource === 'string' && /pre-?market/i.test(analysis.priceSource)
     const keyFacts: Array<{ label: string; value: string }> = [
       typeof analysis.usedPrice === 'number' ? { label: isPremarketPrice ? 'ราคาก่อนตลาดเปิด' : 'ราคาที่ใช้วิเคราะห์', value: `$${analysis.usedPrice.toFixed(2)}` } : null,
@@ -815,6 +819,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             {keyFacts.map(k => <span key={k.label}>{k.label}: <span className="font-semibold text-gray-100">{k.value}</span></span>)}
           </div>
         )}
+        <p className="mt-1 text-[11px] leading-relaxed text-gray-500" data-testid="analysis-data-basis">
+          ข้อมูลที่ AI ได้รับ: ราคา · ตัวชี้วัดเทคนิค · P/E และ 52W (ถ้ามี) · {dataBasisNews} | ไม่ได้รับ: {AI_INPUT_NOT_PROVIDED}
+        </p>
 
         {analysis.analysisMode === 'PREMARKET_TRIGGER' && (
           <div className="mt-3 rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
