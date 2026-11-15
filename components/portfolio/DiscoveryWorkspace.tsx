@@ -24,7 +24,7 @@ type Result = {
   items: Item[]; trending: Item[]; warnings: string[]; truncated: boolean
 }
 const THEME_NAMES: Record<DiscoveryTheme,string> = {
-  ai: 'AI / Mega Tech', semis: 'Semiconductors', growth: 'Growth Technology', quality: 'Quality',
+  ai: 'AI และเทคโนโลยียักษ์ใหญ่ (AI / Mega Tech)', semis: 'เซมิคอนดักเตอร์ (Semiconductors)', growth: 'เทคโนโลยีเติบโต (Growth Technology)', quality: 'หุ้นคุณภาพ (Quality)',
 }
 function dateLabel(value: string | null): string {
   if (!value || Number.isNaN(Date.parse(value))) return 'เวลาไม่ทราบ'
