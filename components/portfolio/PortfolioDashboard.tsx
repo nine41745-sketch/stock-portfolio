@@ -374,7 +374,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null)
   const [expandedAnalysisSymbol, setExpandedAnalysisSymbol] = useState<string | null>(null)
   const [inactiveWarn, setInactiveWarn] = useState(false)
-  const [sortField, setSortField] = useState<string | null>(null)
+  // v1.41.40: default order is biggest position (market value) first; clicking a column header still changes it
+  const [sortField, setSortField] = useState<string | null>('market_value')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [showChangelog, setShowChangelog] = useState(false)
   const router = useRouter()
@@ -1299,7 +1300,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       {viewMode === 'mobile' && (
         <div className="space-y-3">
           {holdings.length === 0 && <div className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต</div>}
-          {holdings.map(h => {
+          {sortedHoldings.map(h => {
             const pnlPos = (h.pnl ?? 0) >= 0
             const pnlColor = pnlPos ? 'text-green-400' : 'text-red-400'
             const pctBadge = pnlPos ? 'bg-green-500/15 text-green-400 border-green-500/20' : 'bg-red-500/15 text-red-400 border-red-500/20'
