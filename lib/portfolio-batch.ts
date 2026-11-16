@@ -348,6 +348,7 @@ export async function analyzePortfolioBatch(
 4) HOLD เมื่อไม่เข้าเงื่อนไขข้างต้นหรือ technical อ่อนแต่ thesis ยังไม่เสีย
 
 แยกข่าว company-specific กับ macro/sector; P/E เป็น trailing/normalized และไม่มี freshness timestamp; ห้ามเดาราคา/forward P/E
+กติกาการอ้างข้อมูล (v1.41.41): อ้างเฉพาะข้อมูลใน INPUT เท่านั้น ห้ามใช้ความจำของโมเดลเติมข่าว ผลประกอบการ หรือตัวเลขการเงินของบริษัท; INPUT ไม่มีงบการเงิน รายได้ กำไรสุทธิ หนี้สิน กระแสเงินสด จึงห้ามอ้างถึง และพูดถึงพื้นฐานได้เฉพาะจาก pe/hi/lo ที่ให้มา; ถ้า news ว่างให้ถือว่า "ไม่ได้รับข่าวในรอบนี้" (ไม่ได้แปลว่าบริษัทไม่มีข่าว) ห้ามเขียนว่า "ไม่มีข่าวสำคัญ" หรือ "ไม่มีข่าวร้าย"
 พอร์ต: stockValue=${totalPortfolioValue == null ? 'N/A' : totalPortfolioValue.toFixed(2)},cash=${cashBalance.toFixed(2)},cashPct=${cashRatio == null ? 'N/A' : cashRatio.toFixed(1)},weights=${portfolioWeights}
 
 สำคัญมาก: ตอบเป็น JSONL เท่านั้น = 1 JSON object ต่อ 1 บรรทัด, ไม่มี markdown, ไม่มี code fence, ไม่มี outer array/object, ต้องตอบหุ้นทุกตัว exactly once และแต่ละบรรทัดต้อง parse ได้เอง
