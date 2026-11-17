@@ -350,15 +350,18 @@ assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native
 
 // Release metadata must match the verified deployment and the owner's scoped gate approval.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.41.44', 'Package version must match the v1.41.44 candidate')
+assert.equal(packageJson.version, '1.41.45', 'Package version must match the v1.41.45 candidate')
 const releasePackageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
 assert.equal(releasePackageLock.version, packageJson.version, 'Lockfile version must match package.json')
 assert.equal(releasePackageLock.packages?.['']?.version, packageJson.version, 'Lockfile root package version must match package.json')
 const releaseTsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14144'], 'Version badge must resolve to the v1.41.44 changelog')
-const currentVersionChangelog = fs.readFileSync('config/changelog-v14144.ts', 'utf8')
-assert.match(currentVersionChangelog, /version: 'v1\.41\.44'/, 'The changelog must document the current version')
-assert.ok(currentVersionChangelog.includes('picomatch') && currentVersionChangelog.includes('GHSA-fc5q-39xc-vjpf') && currentVersionChangelog.includes('2026-12-17'), 'The changelog must describe the time-boxed picomatch audit exception and its expiry')
+assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14145'], 'Version badge must resolve to the v1.41.45 changelog')
+const currentVersionChangelog = fs.readFileSync('config/changelog-v14145.ts', 'utf8')
+assert.match(currentVersionChangelog, /version: 'v1\.41\.45'/, 'The changelog must document the current version')
+assert.ok(currentVersionChangelog.includes('picomatch') && currentVersionChangelog.includes('นาฬิกาจริง') && currentVersionChangelog.includes('2026-12-17'), 'The changelog must describe the audit classifier tests added after the v1.41.44 review')
+const previousVersionChangelog44 = fs.readFileSync('config/changelog-v14144.ts', 'utf8')
+assert.match(previousVersionChangelog44, /version: 'v1\.41\.44'/, 'The previous version entry must remain documented')
+assert.ok(previousVersionChangelog44.includes('picomatch') && previousVersionChangelog44.includes('GHSA-fc5q-39xc-vjpf') && previousVersionChangelog44.includes('2026-12-17'), 'The changelog must describe the time-boxed picomatch audit exception and its expiry')
 const previousVersionChangelog43 = fs.readFileSync('config/changelog-v14143.ts', 'utf8')
 assert.match(previousVersionChangelog43, /version: 'v1\.41\.43'/, 'The previous version entry must remain documented')
 assert.ok(previousVersionChangelog43.includes('atomic') && previousVersionChangelog43.includes('ไม่ทำงานเอง'), 'The changelog must describe the opt-in atomic correction catalog QA profile')
@@ -673,7 +676,7 @@ for (const [file, expectedTime] of changelogReleaseTimes) {
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14144'], 'Current candidate must use the v1.41.44 version badge')
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14145'], 'Current candidate must use the v1.41.45 version badge')
 assert.match(releaseChangelog, /date: 'เวลาเดิมใน Changelog — 2026-10-14 03:05 ICT \(ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production\)'/, 'v1.34.0 must preserve its stored timestamp and disclose that Production timing is unverified')
 assert.match(latestReleaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.35.0 changelog must contain a timestamp in the repository format')
 
