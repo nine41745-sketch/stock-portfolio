@@ -155,43 +155,36 @@ function makeMinimatchAudit({ extraAdvisory = false, productionNode = false, non
   }
 }
 
+// The minimatch exception (GHSA-g3hv-75wg-m249) was removed in v1.41.42 after the ESLint toolchain moved to
+// minimatch 11.0.1 or later. Every formerly accepted minimatch-shaped report must now fail closed.
 const minimatchOnly = makeMinimatchAudit()
-const minimatchAccepted = renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Full', now: '2026-12-15' })
-assert.equal(minimatchAccepted.status, 'PASS_WITH_EXCEPTION')
-assert.match(minimatchAccepted.markdown, /GHSA-g3hv-75wg-m249/i)
-assert.match(minimatchAccepted.markdown, /แพ็กเกจที่ได้รับผลกระทบ 2 รายการ/)
-assert.match(minimatchAccepted.markdown, /dev-only/i)
-assert.match(minimatchAccepted.markdown, /2026-12-15/)
-assert.match(minimatchAccepted.markdown, /ลบข้อยกเว้นนี้เมื่อ ESLint toolchain ปล่อยรุ่นที่ใช้ minimatch 11\.0\.1 ขึ้นไป/)
-assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ extraAdvisory: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
-assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ productionNode: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
-assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ nonDevAncestor: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
-assert.equal(renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Full', now: '2026-12-16' }).status, 'FINDINGS')
-assert.equal(renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Production-only', now: '2026-12-15' }).status, 'FINDINGS')
-
-// npm audit now spells the same advisory range as '7.0.0 - 11.0.0' (package) and '>=7.0.0 <11.0.1' (advisory).
-const minimatchCurrentShape = makeMinimatchAudit({ packageRange: '7.0.0 - 11.0.0', advisoryRange: '>=7.0.0 <11.0.1' })
-assert.equal(renderAuditSummary({ ...minimatchCurrentShape, exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'PASS_WITH_EXCEPTION')
-// Every other condition still applies to the new spelling.
-assert.equal(renderAuditSummary({ ...minimatchCurrentShape, exitCode: 0, mode: 'Full', now: '2026-12-16' }).status, 'FINDINGS')
-assert.equal(renderAuditSummary({ ...minimatchCurrentShape, exitCode: 0, mode: 'Production-only', now: '2026-12-15' }).status, 'FINDINGS')
-assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ packageRange: '7.0.0 - 11.0.0', advisoryRange: '>=7.0.0 <11.0.1', extraAdvisory: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
-assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ packageRange: '7.0.0 - 11.0.0', advisoryRange: '>=7.0.0 <11.0.1', productionNode: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
-assert.equal(renderAuditSummary({ ...makeMinimatchAudit({ packageRange: '7.0.0 - 11.0.0', advisoryRange: '>=7.0.0 <11.0.1', nonDevAncestor: true }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
-assert.equal(renderAuditSummary({ ...minimatchCurrentShape, exitCode: 1, mode: 'Full', now: '2026-12-15' }).status, 'FINDINGS')
-// Any other range spelling fails closed, whichever side is changed.
+const minimatchFormerlyAccepted = renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Full', now: '2026-12-15' })
+assert.equal(minimatchFormerlyAccepted.status, 'FINDINGS')
+assert.match(minimatchFormerlyAccepted.markdown, /GHSA-g3hv-75wg-m249/i)
+assert.ok(!/ข้อยกเว้นที่ยอมรับ/.test(minimatchFormerlyAccepted.markdown), 'A minimatch report must not be reported as an accepted exception')
+assert.equal(renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Full', now: '2026-11-01' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...minimatchOnly, exitCode: 1, mode: 'Full' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Production-only' }).status, 'FINDINGS')
 for (const [packageRange, advisoryRange] of [
-  ['7.0.0 - 11.0.0', '>=7.0.0 <12.0.0'],
-  ['7.0.0 - 11.0.0', '*'],
-  ['7.0.0 - 12.0.0', '>=7.0.0 <11.0.1'],
-  ['*', '>=7.0.0 <11.0.1'],
-  ['>=7.0.0', '>=7.0.0 <11.0.1'],
-  ['7.0.0 - 11.0.0', '>=6.0.0 <11.0.1'],
+  ['<11.0.1', '<11.0.1'],
+  ['7.0.0 - 11.0.0', '>=7.0.0 <11.0.1'],
+  ['*', '*'],
 ]) {
-  assert.equal(
-    renderAuditSummary({ ...makeMinimatchAudit({ packageRange, advisoryRange }), exitCode: 0, mode: 'Full', now: '2026-12-15' }).status,
-    'FINDINGS',
-    `Unrecognized minimatch range spelling must fail closed (${packageRange} / ${advisoryRange})`,
-  )
+  for (const mode of ['Full', 'Production-only']) {
+    assert.equal(
+      renderAuditSummary({ ...makeMinimatchAudit({ packageRange, advisoryRange }), exitCode: 0, mode, now: '2026-12-15' }).status,
+      'FINDINGS',
+      `minimatch-shaped report must fail closed (${mode}: ${packageRange} / ${advisoryRange})`,
+    )
+  }
 }
-console.log('✓ minimatch audit exception accepts only the exact known range spellings and keeps every other condition')
+
+const summarizerSource = readFileSync('scripts/qa/summarize-npm-audit.mjs', 'utf8')
+assert.ok(!/PASS_WITH_EXCEPTION|minimatch|GHSA-/i.test(summarizerSource), 'The audit classifier must not define any accepted exception')
+const installedLock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
+for (const [lockPath, entry] of Object.entries(installedLock.packages)) {
+  if (!lockPath.endsWith('node_modules/minimatch')) continue
+  const major = Number(String(entry.version).split('.')[0])
+  assert.ok(major < 7 || major > 11 || (major === 11 && entry.version !== '11.0.0'), `${lockPath}@${entry.version} is inside the GHSA-g3hv-75wg-m249 range (>=7.0.0 <11.0.1)`)
+}
+console.log('✓ Audit classifier no longer accepts the minimatch advisory and the lockfile holds no affected minimatch version')
