@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { renderAuditSummary } from './qa/summarize-npm-audit.mjs'
 
 const bracesAdvisory = {
@@ -195,6 +199,8 @@ const PICOMATCH_ADVISORY_URL = 'https://github.com/advisories/GHSA-fc5q-39xc-vjp
 function makePicomatchAudit({
   extraAdvisory = false, extraModerate = false, orphanCycle = false, productionNode = false, nonDevAncestor = false,
   packageRange = '*', advisoryRange = '<=4.0.7', advisorySeverity = 'high', advisoryUrl = PICOMATCH_ADVISORY_URL, withLock = true,
+  secondAdvisoryOnPicomatch = false, foreignViaObject = false, viaOutsideSet = false, emptyTree = false, duplicateNonDevLock = false,
+  nodesEmpty = false, unknownNodePath = false, picomatchDevMissing = false, totalMismatch = false,
 } = {}) {
   const links = {
     micromatch: ['picomatch'],
@@ -281,8 +287,20 @@ function makePicomatchAudit({
     tree.dependencies.lodash = { version: '4.17.20' }
     packages['node_modules/lodash'] = { version: '4.17.20', dev: true }
   }
+  if (secondAdvisoryOnPicomatch) {
+    vulnerabilities.picomatch.via.push({ source: 9999, name: 'picomatch', url: 'https://github.com/advisories/GHSA-zzzz-yyyy-xxxx', severity: 'high', range: '*' })
+  }
+  if (foreignViaObject) {
+    vulnerabilities.micromatch.via.push({ name: 'micromatch', url: 'https://github.com/advisories/GHSA-other-5555-6666', severity: 'high', range: '*' })
+  }
+  if (viaOutsideSet) vulnerabilities.micromatch.via.push('left-pad')
+  if (emptyTree) tree.dependencies = {}
+  if (duplicateNonDevLock) packages['node_modules/other/node_modules/micromatch'] = { version: '4.0.8', dev: false }
+  if (nodesEmpty) vulnerabilities.fdir.nodes = []
+  if (unknownNodePath) vulnerabilities.fdir.nodes = ['vendor/fdir']
+  if (picomatchDevMissing) delete packages['node_modules/picomatch'].dev
   return {
-    report: { metadata: { vulnerabilities: { info: 0, low: 0, moderate, high, critical: 0, total: high + moderate } }, vulnerabilities },
+    report: { metadata: { vulnerabilities: { info: 0, low: 0, moderate, high, critical: 0, total: high + moderate + (totalMismatch ? 1 : 0) } }, vulnerabilities },
     npmTree: tree,
     ...(withLock ? { packageLock: { packages } } : {}),
   }
@@ -323,6 +341,84 @@ assert.equal(renderAuditSummary({
   report: { metadata: { vulnerabilities: { critical: 0, high: 0, moderate: 0, low: 0, info: 0 } }, vulnerabilities: {} },
   npmTree: picomatchOnly.npmTree, exitCode: 0, mode: 'Full',
 }).status, 'PASS')
+
+// v1.41.45 (review of PR #189): fail-closed cases that had no test of their own, each already rejected by the classifier.
+failClosed('a second advisory on picomatch', makePicomatchAudit({ secondAdvisoryOnPicomatch: true }))
+failClosed('an advisory object in the via of a dependent package', makePicomatchAudit({ foreignViaObject: true }))
+failClosed('a via entry pointing outside the vulnerable set', makePicomatchAudit({ viaOutsideSet: true }))
+failClosed('empty dependency tree (the CI fallback when npm ls fails)', makePicomatchAudit({ emptyTree: true }))
+failClosed('a duplicate lockfile entry with the same name and version that is not dev-only', makePicomatchAudit({ duplicateNonDevLock: true }))
+failClosed('no affected nodes reported for a package', makePicomatchAudit({ nodesEmpty: true }))
+failClosed('an unrecognized affected node path', makePicomatchAudit({ unknownNodePath: true }))
+failClosed('picomatch lockfile entry without a dev flag', makePicomatchAudit({ picomatchDevMissing: true }))
+failClosed('metadata total that does not match the report', makePicomatchAudit({ totalMismatch: true }))
+
+// The advisory id is taken only from the exact GitHub advisory URL npm audit reports.
+for (const advisoryUrl of [
+  'https://evil.example/GHSA-fc5q-39xc-vjpf',
+  'https://evil.example/advisories/GHSA-fc5q-39xc-vjpf',
+  'https://github.com.evil.example/advisories/GHSA-fc5q-39xc-vjpf',
+  'http://github.com/advisories/GHSA-fc5q-39xc-vjpf',
+  'https://github.com/advisories/notGHSA-fc5q-39xc-vjpf',
+  'https://github.com/advisories/GHSA-fc5q-39xc-vjpf?ref=x',
+  'https://github.com/advisories/GHSA-fc5q-39xc-vjpf/extra',
+  'https://github.com/other/GHSA-fc5q-39xc-vjpf',
+]) {
+  failClosed(`advisory URL is not the exact GitHub advisory (${advisoryUrl})`, makePicomatchAudit({ advisoryUrl }))
+}
+for (const advisoryUrl of ['https://github.com/advisories/GHSA-fc5q-39xc-vjpf/', 'https://github.com/advisories/GHSA-FC5Q-39XC-VJPF']) {
+  assert.equal(renderAuditSummary({ ...makePicomatchAudit({ advisoryUrl }), ...picomatchOptions }).status, 'PASS_WITH_EXCEPTION', `advisory URL spelling must stay accepted (${advisoryUrl})`)
+}
+
+// The expiry must come from the real clock when the caller supplies no `now` (the CLI never does).
+function withFakeNow(iso, fn) {
+  const RealDate = globalThis.Date
+  const fixed = new RealDate(iso).getTime()
+  class FakeDate extends RealDate {
+    constructor(...args) { if (args.length === 0) super(fixed); else super(...args) }
+    static now() { return fixed }
+  }
+  globalThis.Date = FakeDate
+  try { return fn() } finally { globalThis.Date = RealDate }
+}
+const statusAtClock = iso => withFakeNow(iso, () => renderAuditSummary({ ...picomatchOnly, exitCode: 1, mode: 'Full' }).status)
+assert.equal(statusAtClock('2026-11-17T00:00:00Z'), 'PASS_WITH_EXCEPTION')
+assert.equal(statusAtClock('2026-12-17T23:59:59Z'), 'PASS_WITH_EXCEPTION', 'The exception lasts until the end of 2026-12-17 (UTC)')
+assert.equal(statusAtClock('2026-12-18T00:00:00Z'), 'FINDINGS', 'The exception must expire at the start of 2026-12-18 (UTC)')
+assert.equal(statusAtClock('2027-06-01T00:00:00Z'), 'FINDINGS')
+
+// The CLI path used by CI: real files, real argv, a faked clock, and a package-lock.json read from the working directory.
+const cliScript = fileURLToPath(new URL('./qa/summarize-npm-audit.mjs', import.meta.url))
+const cliDir = mkdtempSync(join(tmpdir(), 'audit-cli-'))
+try {
+  writeFileSync(join(cliDir, 'audit.json'), JSON.stringify(picomatchOnly.report))
+  writeFileSync(join(cliDir, 'tree.json'), JSON.stringify(picomatchOnly.npmTree))
+  writeFileSync(join(cliDir, 'package-lock.json'), JSON.stringify(picomatchOnly.packageLock))
+  writeFileSync(join(cliDir, 'preload.cjs'), [
+    "const RealDate = Date, fixed = new RealDate(process.env.FAKE_NOW).getTime()",
+    "globalThis.Date = class extends RealDate { constructor(...a) { if (a.length === 0) super(fixed); else super(...a) } static now() { return fixed } }",
+  ].join('\n'))
+  const runCli = ({ mode = 'Full', exit = '1', now, cwd = cliDir } = {}) => {
+    const result = spawnSync(process.execPath, ['--require', join(cliDir, 'preload.cjs'), cliScript, mode, join(cliDir, 'audit.json'), join(cliDir, 'tree.json'), exit, join(cliDir, 'out.md')], {
+      cwd, env: { ...process.env, FAKE_NOW: now }, encoding: 'utf8',
+    })
+    assert.equal(result.status, 0, `CLI must exit 0 (stderr: ${result.stderr})`)
+    return result.stdout.trim()
+  }
+  assert.equal(runCli({ now: '2026-12-17T23:59:59Z' }), 'PASS_WITH_EXCEPTION')
+  assert.equal(runCli({ now: '2026-12-18T00:00:00Z' }), 'FINDINGS')
+  assert.equal(runCli({ now: '2026-11-17T00:00:00Z', mode: 'Production-only' }), 'FINDINGS')
+  assert.equal(runCli({ now: '2026-11-17T00:00:00Z', exit: '0' }), 'FINDINGS')
+  assert.equal(runCli({ now: '2026-11-17T00:00:00Z', exit: '2' }), 'FINDINGS')
+  const noLockDir = mkdtempSync(join(tmpdir(), 'audit-cli-nolock-'))
+  try {
+    assert.equal(runCli({ now: '2026-11-17T00:00:00Z', cwd: noLockDir }), 'FINDINGS', 'The CLI must fail closed when package-lock.json cannot be read')
+  } finally {
+    rmSync(noLockDir, { recursive: true, force: true })
+  }
+} finally {
+  rmSync(cliDir, { recursive: true, force: true })
+}
 
 // The classifier must define exactly one accepted advisory and nothing about the withdrawn braces or fixed minimatch ones.
 const summarizerSource = readFileSync('scripts/qa/summarize-npm-audit.mjs', 'utf8')
