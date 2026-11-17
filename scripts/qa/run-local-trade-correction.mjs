@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import net from 'node:net'
 import { openLoopbackProxy } from './supabase-loopback-proxy.mjs'
 import { assertLocalDockerEndpoint } from './database-lp-safety.mjs'
+import { prepareCorrectionCatalog } from './correction-catalog-lifecycle.mjs'
 
 assert.equal(process.versions.node.split('.')[0],'22')
 const root=fileURLToPath(new URL('../../',import.meta.url)), out=path.join(root,'.local-artifacts/atomic-trade-correction'), run=randomUUID(), project=`stock-lp-${run.slice(0,12)}`, network=`supabase_network_${project}`
@@ -31,7 +32,9 @@ function command(exe,args,{cwd=root,extra={},input,timeout=180000,allowFailure=f
       if(code!==0&&!allowFailure)reject(new Error(`${path.basename(exe)} ${args[0]} failed (exit ${code})`));else resolve(result)})
   })
 }
-let endpoint, proxy, app, dbId, failed=false, stage='preflight', checks=[]
+let endpoint, proxy, app, dbId, finishCatalog, failed=false, stage='preflight', checks=[]
+const catalogProfile=process.env.QA_CORRECTION_CATALOG_PROFILE
+assert(catalogProfile===undefined || catalogProfile==='1','Only the explicit local catalog QA profile is supported')
 const docker=(args,options={})=>command('docker',['--host',endpoint,...args],options)
 const inspect=async(id)=>JSON.parse((await docker(['inspect',id])).stdout)[0]
 function assertOwned(item){assert.equal(item.Config.Labels['com.supabase.cli.project'],project);assert.deepEqual(Object.keys(item.NetworkSettings.Networks),[network])}
@@ -74,7 +77,26 @@ try {
   await command('C:/Program Files/Git/bin/bash.exe',['scripts/qa/bootstrap-local-supabase.sh'],{extra:localEnv,timeout:180000,outputFile:path.join(work,'bootstrap.log')})
   pass('Unchanged repository bootstrap and least-privilege verification on actual disposable Supabase')
   stage='candidate-correction-migration'
-  await docker(['exec','-i',dbId,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],{input:await readFile(path.join(root,'supabase/20261023074534_atomic_trade_correction.sql'),'utf8'),outputFile:path.join(work,'correction-migration.log')})
+  const candidate=await readFile(path.join(root,'supabase/20261023074534_atomic_trade_correction.sql'),'utf8')
+  if(catalogProfile){
+    const sql=async(input,allowFailure=false)=>{
+      const result=await docker(['exec','-i',dbId,'psql','-XqAt','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],{input,allowFailure:true})
+      if(result.code!==0&&!allowFailure){
+        await writeFile(path.join(work,'catalog-sql-failure.log'),result.stderr)
+        throw new Error(result.stderr.split(/\r?\n/).filter(line=>/ERROR:|DETAIL:/.test(line)).join(' ').slice(0,1000)||'Local catalog SQL failed')
+      }
+      return result
+    }
+    finishCatalog=await prepareCorrectionCatalog({sql,candidate,endpoint,container:`supabase_db_${project}`,pass,
+      fixture:await readFile(path.join(root,'scripts/qa/fixtures/production-correction-catalog.sql'),'utf8')})
+    const decimalResult=await sql(await readFile(path.join(root,'scripts/qa/fixtures/correction-decimal-null.sql'),'utf8'))
+    await writeFile(path.join(work,'catalog-decimal-null.log'),decimalResult.stderr)
+    assert.equal((decimalResult.stderr.match(/NOTICE:  PASS /g)??[]).length,9)
+    process.stdout.write(decimalResult.stderr)
+    pass('Nine exact-decimal/NULL/account-deletion characterization groups passed on the scoped catalog profile')
+  }else{
+    await docker(['exec','-i',dbId,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],{input:candidate,outputFile:path.join(work,'correction-migration.log')})
+  }
   pass('Candidate correction migration applied only to the owned disposable database')
   stage='app-start'
   app=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--hostname','127.0.0.1','--port',String(appPort)],{cwd:root,env:{...env,...localEnv},windowsHide:true,stdio:['ignore','pipe','pipe']})
@@ -89,6 +111,7 @@ try {
   stage='browser-execution'
   const result=await command(process.execPath,['scripts/qa/trade-correction-browser.mjs'],{extra:{...localEnv,EXECUTION_EVIDENCE_DIR:work},timeout:240000,allowFailure:true,outputFile:path.join(work,'browser.log')})
   process.stdout.write(result.stdout);assert.equal(result.code,0,'Execution E2E failed; inspect synthetic browser evidence')
+  if(finishCatalog){stage='post-use-rollback';await finishCatalog()}
 } catch(error){failed=true;console.log(`FAIL ${stage}: ${error.message}`)}
 finally {
   try {
@@ -106,6 +129,6 @@ finally {
     }
   }catch(error){failed=true;console.log('FAIL cleanup: '+error.message)}
   await proxy?.close()
-  await writeFile(path.join(work,'platform-report.json'),JSON.stringify({status:failed?'FAIL':'PASS',run,project,stage,checks,syntheticOnly:true,externalGuard:true,sourceSha:(await command('git',['rev-parse','HEAD'])).stdout.trim(),dirtyTree:true},null,2))
+  await writeFile(path.join(work,'platform-report.json'),JSON.stringify({status:failed?'FAIL':'PASS',run,project,stage,checks,syntheticOnly:true,externalGuard:true,catalogProfile:catalogProfile?'observed-scoped-2026-10-23':'repository-bootstrap',sourceSha:(await command('git',['rev-parse','HEAD'])).stdout.trim(),dirtyTree:true},null,2))
   console.log('EVIDENCE '+work);process.exitCode=failed?1:0
 }
