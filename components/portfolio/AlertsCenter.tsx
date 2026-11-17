@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import type { AlertItem, AlertKind, AlertSeverity } from '@/lib/alerts'
+import { evaluationTime, levelLabel } from '@/lib/alert-presentation'
 
 interface AlertsResponse {
   generatedAt: string
@@ -171,10 +172,13 @@ export default function AlertsCenter() {
                 </div>
                 <p className="mt-2 text-sm text-gray-300">{alert.detail}</p>
               </div>
-              <div className="text-right text-xs text-gray-400">
-                {alert.price !== null ? <p>ราคา ${alert.price.toFixed(2)}</p> : null}
-                {alert.level !== null ? <p>ระดับ ${alert.level.toFixed(2)}</p> : null}
-                {alert.eventDate ? <p>{alert.eventDate}</p> : null}
+              <div className="text-left text-xs text-gray-300 sm:text-right">
+                <p>ราคาที่ใช้อ้างอิง {alert.price !== null ? `$${alert.price.toFixed(2)}` : 'ไม่มีข้อมูล'}</p>
+                <p>{levelLabel(alert.kind)} {alert.level !== null ? `$${alert.level.toFixed(2)}` : 'ไม่มีข้อมูล'}</p>
+                <p>ระยะห่าง {alert.distancePct !== null && Number.isFinite(alert.distancePct) ? `${alert.distancePct.toFixed(2)}%` : 'ไม่มีข้อมูล'}</p>
+                <p>ประเมินล่าสุด {evaluationTime(data.generatedAt)}</p>
+                <p>เวลาประเมิน ไม่ใช่เวลาเกิดเหตุการณ์ครั้งแรก</p>
+                {alert.eventDate ? <p>วันประกาศผลประกอบการ {alert.eventDate}</p> : null}
               </div>
             </div>
           </article>

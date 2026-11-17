@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
   const portfolio = await resolveActivePortfolio(user.id, supabase)
   if (portfolio.mode === 'empty') return noPortfolioResponse()
 
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const transactionArgs = portfolio.mode === 'portfolio'
     ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
     : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }

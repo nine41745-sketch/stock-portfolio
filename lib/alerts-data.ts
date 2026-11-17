@@ -72,7 +72,7 @@ export async function loadAlertsCalendarData(
   userId: string,
   portfolioId: string | null = null,
 ): Promise<AlertsCalendarPayload> {
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const holdingArgs = portfolioId
     ? { p_user_id: userId, p_portfolio_id: portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
     : { p_user_id: userId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }

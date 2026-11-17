@@ -21,6 +21,229 @@ async function importTsModule(filePath) {
 
 const stockCheck = await importTsModule('lib/stock-check.ts')
 const stockScanner = await importTsModule('lib/stock-scanner.ts')
+const stockCheckPresentation = await importTsModule('lib/stock-check-presentation.ts')
+const todayCandidates = await importTsModule('lib/today-candidates.ts')
+const earningsStatus = await importTsModule('lib/earnings-status.ts')
+assert.equal(stockScanner.MAX_SCAN_SYMBOLS, 12, 'Scanner requests must be capped at 12 unique symbols')
+const allScannerSymbols = stockScanner.dedupeScannerSymbols(Object.values(stockScanner.SCANNER_UNIVERSES))
+assert.equal(allScannerSymbols.length, 29, 'All scanner groups should still expose 29 unique symbols')
+const scannerBatches = stockScanner.chunkScannerSymbols(allScannerSymbols)
+assert.deepEqual(scannerBatches.map(batch => batch.length), [8, 8, 8, 5], 'Today Opportunity must split 29 unique symbols into batches of at most 8')
+assert.deepEqual(scannerBatches.flat(), allScannerSymbols, 'Batching must retain each unique scanner ticker in stable order')
+assert.ok(scannerBatches.every(batch => batch.length <= 8), 'No Today Opportunity client batch may exceed 8 symbols')
+assert.equal(stockScanner.MAX_SCAN_SYMBOLS, 12, 'The server route request cap must remain 12')
+const scoreInput = {
+  trend: 'UPTREND', rsi14: 55, weeklyRsi14: 57, macdHistogram: 0.4,
+  lastClose: 100, ema50: 98, support: 95, resistance: 110, volumeRatio: 1.2,
+  week52High: 120, week52Low: 70, relativeStrength20: 3, relativeStrength60: 5,
+}
+
+assert.equal(stockScanner.EARNINGS_UNKNOWN_SCORE_PENALTY, 0, 'Unknown earnings penalty must be a named, explicit constant')
+const scoreWithEarnings = stockScanner.scoreScannerCandidate({ ...scoreInput, earningsStatus: 'found', earningsDays: 30 })
+const scoreWithoutEarnings = stockScanner.scoreScannerCandidate({ ...scoreInput, earningsStatus: 'none', earningsDays: null })
+const scoreUnknownEarnings = stockScanner.scoreScannerCandidate({ ...scoreInput, earningsStatus: 'unknown', earningsDays: null })
+assert.equal(scoreWithEarnings.score, scoreWithoutEarnings.score, 'A confirmed empty calendar and a distant known event should not incur the unknown-data penalty')
+assert.equal(scoreUnknownEarnings.score, Math.max(0, Object.values(scoreUnknownEarnings.categoryScores).reduce((sum, value) => sum + value, 0) - stockScanner.EARNINGS_UNKNOWN_SCORE_PENALTY), 'Unknown earnings must reduce the six-category total by the named penalty')
+assert.match(scoreUnknownEarnings.reasons.join(' '), /วันประกาศงบยังไม่ทราบ/, 'Unknown earnings must be disclosed in score reasons')
+assert.equal(scoreUnknownEarnings.categoryScores.riskCatalyst, 5, 'Known EMA50 distance retains its risk points when earnings are unknown')
+assert.equal(scoreWithoutEarnings.categoryScores.riskCatalyst - scoreUnknownEarnings.categoryScores.riskCatalyst, 5, 'Only the earnings portion differs from a confirmed empty calendar')
+for (const category of ['trend', 'momentum', 'volume', 'priceLocation', 'relativeStrength']) {
+  assert.equal(scoreUnknownEarnings.categoryScores[category], scoreWithoutEarnings.categoryScores[category], `${category} must not change with earnings status`)
+}
+assert.equal(scoreWithoutEarnings.score - scoreUnknownEarnings.score, 5)
+const scoreMissingStatus = stockScanner.scoreScannerCandidate({ ...scoreInput, earningsDays: 30 })
+assert.equal(scoreMissingStatus.score, scoreUnknownEarnings.score, 'Missing status must be scored as unknown even when a date is supplied')
+assert.deepEqual(scoreMissingStatus.categoryScores, scoreUnknownEarnings.categoryScores)
+
+assert.equal(todayCandidates.trendStrengthLabel('น่าสนใจ'), 'แนวโน้มแข็ง')
+assert.equal(todayCandidates.trendStrengthLabel('เฝ้าดู'), 'แนวโน้มกลางๆ')
+assert.equal(todayCandidates.trendStrengthLabel('ยังไม่เด่น'), 'แนวโน้มอ่อน')
+assert.equal(todayCandidates.PULLBACK_LONG_WAIT_DISTANCE_PCT, 5, 'Long pullback wait warning must use the configured 5% threshold')
+assert.equal(todayCandidates.pullbackDistanceWarning(100, { low: 90, high: 94.9 }), 'ต้องรอราคาลงมากกว่า 5% ตั้งแจ้งเตือนที่ขอบบนโซนแทน', 'A pullback requiring more than 5% decline must suggest an alert at the zone edge')
+assert.equal(todayCandidates.pullbackDistanceWarning(100, { low: 90, high: 95 }), null, 'Exactly 5% distance must not trigger a greater-than-5% warning')
+assert.equal(todayCandidates.pullbackDistanceWarning(100, { low: 96, high: 101 }), null, 'A price inside the pullback zone must not trigger a long-wait warning')
+assert.equal(todayCandidates.pullbackDistanceWarning(null, { low: 90, high: 95 }), null, 'Missing current price must not produce a distance warning')
+assert.equal(todayCandidates.pullbackDistanceWarning(100, null), null, 'Missing Entry Zone must not produce a distance warning')
+assert.equal(todayCandidates.scoreTrendSummary(66, 'เฝ้าดู', 'SIDEWAYS'), 'คะแนนแนวโน้ม 66/100 (กลางๆ) · ทิศทางราคา: ออกข้าง', 'Score and price direction must be separate and readable')
+assert.equal(todayCandidates.scoreTrendSummary(82, 'น่าสนใจ', 'UPTREND'), 'คะแนนแนวโน้ม 82/100 (แข็ง) · ทิศทางราคา: ขาขึ้น')
+assert.equal(todayCandidates.scoreTrendSummary(30, 'ยังไม่เด่น', 'DOWNTREND'), 'คะแนนแนวโน้ม 30/100 (อ่อน) · ทิศทางราคา: ขาลง')
+assert.deepEqual(todayCandidates.countBuyLabels([
+  { decision: 'BUY_NOW', buyMode: 'STANDARD', price: 100, entryZone: { low: 98, high: 102 }, rrAtEntry: 2, riskRewardNow: 2 },
+  { decision: 'BUY_NOW', buyMode: 'FIRST_TRANCHE', price: 103, entryZone: { low: 98, high: 102 }, rrAtEntry: 2, riskRewardNow: 2 },
+  { decision: 'BUY_NOW', buyMode: 'FIRST_TRANCHE', price: 100, entryZone: { low: 98, high: 102 }, rrAtEntry: 2, riskRewardNow: 2 },
+  { decision: 'BUY_ON_PULLBACK', buyMode: null, price: 100, entryZone: { low: 98, high: 102 }, rrAtEntry: 2, riskRewardNow: 2 },
+]), { buyNowCount: 2, firstTrancheCount: 1 }, 'Headline counts must match the two distinct buy labels')
+assert.equal(todayCandidates.hasPurchasePlan('BUY_NOW'), true)
+assert.equal(todayCandidates.hasPurchasePlan('BUY_ON_PULLBACK'), true)
+assert.equal(todayCandidates.hasPurchasePlan('WAIT_FOR_BREAKOUT'), false)
+assert.equal(todayCandidates.hasPurchasePlan('WATCH'), false)
+assert.equal(todayCandidates.hasPurchasePlan('SKIP_POOR_RR'), false)
+
+const missingCategoryScore = stockScanner.scoreScannerCandidate({
+  ...scoreInput, trend: 'UNKNOWN', rsi14: null, weeklyRsi14: null, macdHistogram: null,
+  volumeRatio: null, support: null, resistance: null, week52High: null, week52Low: null,
+  relativeStrength20: null, relativeStrength60: null, ema50: null, earningsStatus: 'unknown', earningsDays: null,
+})
+assert.deepEqual(missingCategoryScore.categoryScores, {
+  trend: 0, momentum: 0, volume: 0, priceLocation: 0, relativeStrength: 0, riskCatalyst: 0,
+}, 'A score category with missing required inputs must contribute zero rather than a baseline')
+
+const earningsNone = earningsStatus.resolveUpcomingEarningsStatus({ ok: true, earningsCalendar: [] }, new Date('2026-10-01T00:00:00.000Z'))
+const earningsFound = earningsStatus.resolveUpcomingEarningsStatus({ ok: true, earningsCalendar: [{ date: '2026-10-12', hour: 'bmo' }] }, new Date('2026-10-01T00:00:00.000Z'))
+const earningsUnknown = earningsStatus.resolveUpcomingEarningsStatus({ ok: false, earningsCalendar: [] }, new Date('2026-10-01T00:00:00.000Z'))
+assert.equal(earningsNone.status, 'none', 'A successful empty earnings calendar must mean none')
+assert.deepEqual(earningsFound, { status: 'found', earnings: { date: '2026-10-12', daysUntil: 11, hour: 'bmo' } })
+assert.equal(earningsUnknown.status, 'unknown', 'A failed provider response must remain unknown, not none')
+
+const duplicateSymbols = stockScanner.dedupeScannerSymbols([['NVDA', 'MSFT', 'AAA'], ['NVDA', 'AVGO'], ['MSFT', 'JPM']])
+assert.deepEqual(duplicateSymbols, ['NVDA', 'MSFT', 'AAA', 'AVGO', 'JPM'], 'Scanner symbols must be deduplicated before provider calls while retaining stable order')
+
+for (const fixture of [
+  { symbol: 'COST', rr: 0.9 },
+  { symbol: 'V', rr: 0.96 },
+  { symbol: 'JPM', rr: 0.17 },
+]) {
+  const decision = stockCheck.normalizeDecisionForRiskReward('BUY_ON_PULLBACK', fixture.rr)
+  assert.equal(decision, 'SKIP_POOR_RR', `${fixture.symbol} with screenshot R:R @ Entry must be skipped`)
+  assert.equal(todayCandidates.isTodayOpportunityEligible(decision, fixture.rr), false, `${fixture.symbol} must not remain in opportunity results`)
+  assert.equal(todayCandidates.opportunityLabel({ decision, buyMode: null, price: 100, entryZone: { low: 90, high: 95 }, rrAtEntry: fixture.rr }), 'ข้าม · ไม่คุ้มเสี่ยง')
+}
+for (const fixture of [
+  { symbol: 'MSFT', rr: 3.25 },
+  { symbol: 'CRWD', rr: 1.51 },
+]) {
+  const decision = stockCheck.normalizeDecisionForRiskReward('BUY_ON_PULLBACK', fixture.rr)
+  assert.equal(decision, 'BUY_ON_PULLBACK', `${fixture.symbol} must keep the pullback decision at or above 1.5`)
+  assert.equal(todayCandidates.isTodayOpportunityEligible(decision, fixture.rr), true)
+  assert.match(todayCandidates.opportunityLabel({ decision, buyMode: null, price: 100, entryZone: { low: 90, high: 95 }, rrAtEntry: fixture.rr }), /รอย่อ · ราคาต้องลดลง 5\.00% ถึงขอบบนช่วงราคาเข้าซื้อ/)
+}
+assert.equal(stockCheck.BREAKOUT_MAX_DISTANCE_PCT, 3, 'Breakout waiting distance must be a named 3% constant')
+const breakoutDistancePlan = resistance => stockCheck.buildStockCheck({
+  trend: 'DOWNTREND', setup: 'WAIT', score: 60,
+  price: 100, ema50: 90, ema200: 110, atr14: 2,
+  support: 80, resistance, rsi14: 50, weeklyRsi14: 52,
+  macdHistogram: 0.2, volumeRatio: 1, relativeStrength20: 1,
+  relativeStrength60: 2, week52High: 160, week52Low: 70,
+  earningsDays: 20, pe: 20,
+})
+for (const fixture of [
+  { distancePct: 0.9, resistance: 100.9 },
+  { distancePct: 3, resistance: 103 },
+]) {
+  assert.equal(breakoutDistancePlan(fixture.resistance).decision, 'WAIT_FOR_BREAKOUT', `${fixture.distancePct}% resistance distance should remain a breakout wait`)
+}
+for (const fixture of [
+  { name: '3.1%', resistance: 103.1, expectedDistance: '3.1%' },
+  { name: 'ARM-like 39%', resistance: 139, expectedDistance: '39.0%' },
+]) {
+  const plan = breakoutDistancePlan(fixture.resistance)
+  assert.equal(plan.decision, 'WATCH', `${fixture.name} resistance distance should be watch-only`)
+  assert.match(plan.summary, new RegExp(`ห่างแนวต้าน ${fixture.expectedDistance}`), `${fixture.name} watch summary must explain the resistance distance`)
+}
+assert.equal(todayCandidates.trendLabel('UPTREND'), 'แนวโน้มขาขึ้น')
+assert.equal(todayCandidates.setupLabel('BREAKOUT'), 'ราคาทะลุแนวต้าน')
+assert.deepEqual(todayCandidates.breakoutCardDetails(100, 100.9), { triggerPrice: 100.9, distancePct: 0.9 }, 'Breakout card details must preserve the trigger and percent distance from current price')
+assert.deepEqual(todayCandidates.breakoutCardDetails(100, 103), { triggerPrice: 103, distancePct: 3 }, 'Breakout card details must show the full distance at the configured limit')
+assert.equal(todayCandidates.breakoutCardDetails(100, null), null, 'Missing breakout resistance must not invent a trigger price')
+assert.deepEqual(todayCandidates.pullbackPlanDetails(110, { low: 100.01, high: 104 }, 95), {
+  upper: 104, midpoint: 102.005, distancePct: (110 - 104) / 110 * 100, position: 'above', atOrBelowStop: false,
+}, 'Pullback display must distinguish upper edge and the exact midpoint used for entry R:R')
+assert.equal(todayCandidates.pullbackPlanDetails(102, { low: 100, high: 104 }, 95)?.position, 'inside')
+assert.equal(todayCandidates.pullbackPlanDetails(98, { low: 100, high: 104 }, 98)?.atOrBelowStop, true)
+assert.equal(todayCandidates.pullbackPlanDetails(null, { low: 100, high: 104 }, 95)?.position, 'unknown')
+assert.equal(todayCandidates.pullbackPlanDetails(100, null, 95), null)
+assert.equal(todayCandidates.pullbackPlanDetails(100, { low: 104, high: 100 }, 95), null)
+assert.equal(todayCandidates.pullbackPlanDetails(100, { low: 100, high: Infinity }, 95), null)
+assert.equal(todayCandidates.formatBangkokTimestamp(null), 'ไม่ทราบเวลา')
+assert.equal(todayCandidates.formatBangkokTimestamp('not-a-date'), 'ไม่ทราบเวลา')
+assert.match(todayCandidates.formatBangkokTimestamp('2026-10-30T00:00:00.000Z'), /07:00:00.*เวลาไทย/, 'A UTC timestamp must be rendered in Asia/Bangkok')
+const todayOpportunitySource = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'utf8')
+assert.match(todayOpportunitySource, /ขอบบนของช่วงเข้าซื้อ/, 'Pullback card must name its upper zone edge')
+assert.match(todayOpportunitySource, /ราคากลางที่ใช้คำนวณ R:R/, 'Pullback card must identify the midpoint used for R:R')
+assert.match(todayOpportunitySource, /แตะช่วงราคาไม่ได้ยืนยันว่าจะซื้อได้ที่ราคากลาง/, 'Touching the zone must not promise a midpoint fill')
+assert.match(todayOpportunitySource, /ค่าธรรมเนียม.*slippage.*gap/, 'R:R limitations must disclose fees, slippage and gap')
+assert.match(todayOpportunitySource, /formatPriceTimeLabel\(item\.priceAsOf, item\.priceSourceLabel\)/, 'Source price time must remain visible')
+assert.match(todayCandidates.formatPriceTimeLabel('2026-11-02T16:00:00Z', 'Finnhub'), /^ราคา ณ เวลา /, 'Finnhub quotes keep the provider clock time')
+assert.match(todayCandidates.formatPriceTimeLabel('2026-11-02T14:30:00Z', 'Yahoo'), /^ราคาแท่งวันล่าสุด \(วันซื้อขาย /, 'Historical fallback must show the trading day, not the bar-open clock time')
+assert.match(todayOpportunitySource, /ตรวจแผนเมื่อ.*checkedAt/, 'Assessment time must remain separate from price time')
+assert.match(todayOpportunitySource, /pullbackDistanceWarning\(item\.price, item\.plan\.entryZone\)/, 'Only a pullback card should render the long-wait distance warning from its current price and zone')
+assert.ok((todayOpportunitySource.match(/scoreTrendSummary\(item\.score, item\.label, item\.trend\)/g) ?? []).length >= 2, 'Preliminary and confirmed stock summaries must both separate score strength from price direction')
+const todayOpportunityAst = ts.createSourceFile('TodayOpportunities.tsx', todayOpportunitySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+const breakoutCardBranches = (() => {
+  const matches = []
+  const visit = node => {
+    if (ts.isConditionalExpression(node) && node.condition.getText(todayOpportunityAst).includes("item.plan.decision === 'WAIT_FOR_BREAKOUT'")) matches.push(node)
+    ts.forEachChild(node, visit)
+  }
+  visit(todayOpportunityAst)
+  return matches
+})()
+assert.ok(breakoutCardBranches.length >= 2, 'Opportunity card must have dedicated WAIT_FOR_BREAKOUT render branches for plan and metadata rows')
+const breakoutCardSource = breakoutCardBranches.map(branch => branch.whenTrue.getText(todayOpportunityAst)).join('\n')
+const nonBreakoutCardSource = breakoutCardBranches.map(branch => branch.whenFalse.getText(todayOpportunityAst)).join('\n')
+assert.match(breakoutCardSource, /breakoutCardDetails/, 'Breakout card must render trigger details')
+assert.match(breakoutCardSource, /fmtPrice\(breakout\.triggerPrice\)/, 'Breakout card must format the trigger price')
+assert.match(breakoutCardSource, /breakout\.distancePct\.toFixed\(1\)/, 'Breakout card must render the percent distance to the trigger')
+assert.match(breakoutCardSource, /ยืนยันเมื่อราคาปิดเหนือจุดทะลุ พร้อม volume ≥ 1\.2 เท่าของค่าเฉลี่ย 20 วัน/, 'Breakout card must show the close and volume confirmation rule')
+assert.match(breakoutCardSource, /ยังไม่มีแผนซื้อ จะคำนวณเมื่อทะลุ/, 'Breakout card must explain that no buy plan exists until breakout')
+for (const field of ['entryZone', 'stopLoss', 'target1', 'riskRewardNow', 'riskRewardAtEntry']) {
+  assert.doesNotMatch(breakoutCardSource, new RegExp(`plan\\.${field}`), `Breakout card must not render purchase-plan field ${field}`)
+  assert.match(nonBreakoutCardSource, new RegExp(`plan\\.${field}`), `Other opportunity cards must retain purchase-plan field ${field}`)
+}
+assert.equal(todayCandidates.shouldShowEarningsUnknownBanner([]), false, 'No validated stocks must not show an earnings warning banner')
+assert.equal(todayCandidates.shouldShowEarningsUnknownBanner([{ earningsStatus: 'unknown' }, { earningsStatus: 'found' }]), true, 'Exactly half unknown must show the earnings warning banner')
+assert.equal(todayCandidates.shouldShowEarningsUnknownBanner([{ earningsStatus: 'unknown' }, { earningsStatus: 'none' }, { earningsStatus: 'found' }]), false, 'Less than half unknown must not show the earnings warning banner')
+assert.equal(todayCandidates.shouldShowEarningsUnknownBanner([{ earningsStatus: 'unknown' }, { earningsStatus: 'unknown' }, { earningsStatus: 'none' }, { earningsStatus: 'found' }]), true, 'At least half unknown must show the earnings warning banner')
+assert.equal(stockCheckPresentation.providerQuoteTimestamp(1793289600), '2026-10-29T16:00:00.000Z', 'Provider epoch seconds should be preserved as an ISO timestamp')
+assert.equal(stockCheckPresentation.providerQuoteTimestamp(null), null, 'Missing provider timestamp must remain unavailable')
+assert.equal(stockCheckPresentation.providerQuoteTimestamp(Number.NaN), null, 'Invalid provider timestamp must fail closed')
+
+const malformedAi = stockCheckPresentation.parseStockCheckAiResponse(
+  '{"summary": "synthetic unfinished JSON',
+  'สรุปจาก Stock Check แบบสังเคราะห์',
+)
+assert.equal(malformedAi.summary, 'สรุปจาก Stock Check แบบสังเคราะห์', 'Malformed model output must fall back to deterministic summary, not show raw JSON')
+assert.deepEqual(malformedAi.reasons, [], 'Malformed model output must not create synthetic reasons')
+
+const validAi = stockCheckPresentation.parseStockCheckAiResponse(
+  '{"summary":"สรุปสังเคราะห์","reasons":["เหตุผลสังเคราะห์"],"risks":["ความเสี่ยงสังเคราะห์"],"action":"การกระทำตามแผนเดิม"}',
+  'fallback',
+)
+assert.equal(validAi.summary, 'สรุปสังเคราะห์', 'Valid structured model response should preserve its summary')
+assert.deepEqual(validAi.reasons, ['เหตุผลสังเคราะห์'], 'Valid structured model response should preserve reason strings')
+const matchingAiSummary = stockCheckPresentation.parseStockCheckAiResponse(
+  '{"summary":"same text","reasons":[],"risks":[],"action":"same text"}',
+  'same text',
+)
+assert.equal(matchingAiSummary.usedFallbackSummary, false, 'A valid AI summary equal to the deterministic summary must not be mislabeled as fallback')
+
+const freshQuoteText = stockCheckPresentation.formatStockCheckFreshness({
+  checkedAt: '2026-10-29T16:02:00.000Z',
+  priceSource: 'finnhub',
+  quoteTimestamp: '2026-10-29T16:00:00.000Z',
+})
+assert.match(freshQuoteText, /2026-10-29 23:00:00 ICT/, 'Provider quote time must be shown in Asia/Bangkok')
+assert.match(freshQuoteText, /อายุ 2 นาที/, 'Quote age must be measured against checkedAt, not the machine clock')
+
+const missingQuoteTimeText = stockCheckPresentation.formatStockCheckFreshness({
+  checkedAt: '2026-10-29T16:02:00.000Z',
+  priceSource: 'finnhub',
+  quoteTimestamp: null,
+})
+assert.match(missingQuoteTimeText, /ไม่ได้รับเวลาราคาจากผู้ให้บริการ/, 'Missing provider timestamp must be explicit')
+assert.match(missingQuoteTimeText, /2026-10-29 23:02:00 ICT/, 'Request/check time may be displayed only as a separately labeled time')
+
+const historicalPriceText = stockCheckPresentation.formatStockCheckFreshness({
+  checkedAt: '2026-10-29T16:02:00.000Z',
+  priceSource: 'historical',
+  quoteTimestamp: null,
+})
+assert.match(historicalPriceText, /ข้อมูลย้อนหลัง/, 'Historical fallback must be identified as historical')
+assert.match(historicalPriceText, /ไม่ใช่ราคาเรียลไทม์/, 'Historical fallback must not imply live pricing')
+
+assert.match(stockCheckPresentation.formatTarget2Context('historical-52w-high'), /จุดสูงสุดย้อนหลัง 52 สัปดาห์/)
+assert.match(stockCheckPresentation.formatTarget2Context('historical-52w-high'), /ไม่ใช่ราคาเป้าหมายคาดการณ์/)
+assert.match(stockCheckPresentation.formatTarget2Context('plan-extension'), /ระดับอ้างอิงจากแผน/)
 
 const buyNow = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 82,
@@ -28,12 +251,87 @@ const buyNow = stockCheck.buildStockCheck({
   support: 100, resistance: 115, rsi14: 55, weeklyRsi14: 58,
   macdHistogram: 1, volumeRatio: 1.3, relativeStrength20: 5,
   relativeStrength60: 12, week52High: 120, week52Low: 70,
-  earningsDays: 20, pe: 25,
+  earningsDays: 20, earningsStatus: 'found', pe: 25,
 })
 assert.equal(buyNow.decision, 'BUY_NOW', 'Strong near-support setup should permit BUY_NOW')
 assert.equal(buyNow.buyMode, 'STANDARD', 'Classic in-zone BUY_NOW must remain the standard buy mode')
+const unknownStandard = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 82, price: 100.5, ema50: 99.5, ema200: 90, atr14: 2,
+  support: 100, resistance: 115, rsi14: 55, weeklyRsi14: 58, macdHistogram: 1, volumeRatio: 1.3,
+  relativeStrength20: 5, relativeStrength60: 12, week52High: 120, week52Low: 70, earningsDays: null, earningsStatus: 'unknown', pe: 25,
+})
+assert.equal(unknownStandard.decision, 'WATCH')
+assert.equal(unknownStandard.buyMode, null)
+assert.equal(unknownStandard.summary, 'รอตรวจ Earnings ก่อนซื้อ')
+const missingStatusStandard = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 82, price: 100.5, ema50: 99.5, ema200: 90, atr14: 2,
+  support: 100, resistance: 115, rsi14: 55, weeklyRsi14: 58, macdHistogram: 1, volumeRatio: 1.3,
+  relativeStrength20: 5, relativeStrength60: 12, week52High: 120, week52Low: 70, earningsDays: 20, pe: 25,
+})
+assert.equal(missingStatusStandard.decision, 'WATCH', 'Missing status must be unknown even when earningsDays is provided')
+assert.equal(missingStatusStandard.summary, 'รอตรวจ Earnings ก่อนซื้อ')
 assert.ok((buyNow.riskRewardAtEntry ?? 0) >= 1.5, 'Standard BUY_NOW plan must have acceptable R:R')
 assert.ok((buyNow.stopLoss ?? 999) < (buyNow.entryZone?.low ?? 0), 'Stop must stay below planned entry')
+assert.equal(buyNow.target2Basis, 'historical-52w-high', 'Target 2 should identify the historical high when that value supplies the final level')
+const buyNowPlannedEntry = (buyNow.entryZone.low + buyNow.entryZone.high) / 2
+const buyNowRisk = buyNowPlannedEntry - buyNow.stopLoss
+assert.equal(buyNow.target1, 115, 'Target 1 should use the eligible structural resistance without a stop-risk floor')
+assert.ok(buyNow.stopLoss < buyNow.entryZone.low, 'Stop must remain below the entire Entry Zone')
+assert.equal(buyNow.riskRewardAtEntry, Number(((buyNow.target1 - buyNowPlannedEntry) / buyNowRisk).toFixed(2)), 'Entry R:R must use the exact planned entry, stop and Target 1 displayed')
+assert.equal(buyNow.riskRewardNow, Number(((buyNow.target1 - 100.5) / (100.5 - buyNow.stopLoss)).toFixed(2)), 'Current-price R:R must use the same stop and Target 1')
+
+const stopPlan = overrides => stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'BREAKOUT', score: 80,
+  price: 400, ema50: null, ema200: null, atr14: 4,
+  support: null, resistance: 100, rsi14: 55, weeklyRsi14: 58,
+  macdHistogram: 1, volumeRatio: 1.2, relativeStrength20: 3,
+  relativeStrength60: 5, week52High: 500, week52Low: 70,
+  earningsDays: null, pe: null, ...overrides,
+})
+const closestStop = stopPlan({ swingLow: 97 })
+assert.deepEqual(closestStop.entryZone, { low: 100, high: 104 })
+assert.equal(closestStop.stopLoss, 94, 'Stop must preserve max(1 ATR, 2% of price) planned-entry risk')
+assert.ok(closestStop.stopLoss < closestStop.entryZone.low)
+assert.ok(102 - closestStop.stopLoss >= Math.max(4 * stockCheck.ATR_STOP_MIN_MULT, 400 * stockCheck.MIN_RISK_PCT), 'Stop must never be closer than the configured minimum risk')
+assert.equal(closestStop.riskRewardAtEntry, Number(((closestStop.target1 - 102) / (102 - closestStop.stopLoss)).toFixed(2)), 'Entry R:R must use the selected stop')
+assert.equal(closestStop.riskRewardNow, Number(((closestStop.target1 - 400) / (400 - closestStop.stopLoss)).toFixed(2)), 'NOW R:R must use the same selected stop')
+const targetWithWiderStop = stopPlan({ swingLow: 90 })
+assert.equal(targetWithWiderStop.target1, closestStop.target1, 'Target 1 must not change when only Stop risk changes')
+
+const cappedStop = stopPlan({ swingLow: 102 })
+assert.equal(cappedStop.stopLoss, 94, 'The minimum-risk floor must take precedence when it is below the Entry Zone cap')
+assert.ok(cappedStop.stopLoss < cappedStop.entryZone.low)
+
+const noSwingLowStop = stopPlan({ swingLow: null })
+assert.equal(noSwingLowStop.stopLoss, 94, 'Missing swing low should fall back while preserving minimum risk')
+assert.ok(noSwingLowStop.stopLoss < noSwingLowStop.entryZone.low)
+
+const strictEntryCap = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'BREAKOUT', score: 80,
+  price: 120, ema50: null, ema200: null, atr14: 1,
+  support: null, resistance: 100, rsi14: 55, weeklyRsi14: 58,
+  macdHistogram: 1, volumeRatio: 1.2, relativeStrength20: 3,
+  relativeStrength60: 5, week52High: 500, week52Low: 70,
+  earningsDays: null, pe: null, swingLow: 110,
+})
+const strictEntryCapPlannedEntry = (strictEntryCap.entryZone.low + strictEntryCap.entryZone.high) / 2
+assert.equal(strictEntryCap.stopLoss, Number((strictEntryCapPlannedEntry - Math.max(1 * stockCheck.ATR_STOP_MIN_MULT, 120 * stockCheck.MIN_RISK_PCT)).toFixed(2)), 'Stop must preserve minRisk when swing and ATR candidates sit above the Entry Zone cap')
+assert.ok(strictEntryCap.stopLoss <= strictEntryCap.entryZone.low - 0.01, 'Stop must remain at least one cent below Entry Zone')
+assert.ok(Number((strictEntryCapPlannedEntry - strictEntryCap.stopLoss).toFixed(2)) >= Math.max(1 * stockCheck.ATR_STOP_MIN_MULT, 120 * stockCheck.MIN_RISK_PCT), 'Stop must never be closer than minRisk')
+assert.equal(stockCheck.calculateStockCheckStopLoss({
+  swingLowStop: 105, atrStop: 106, entryLow: 100, plannedEntry: 102, minRisk: 1,
+}), 99.99, 'When swing and ATR stops exceed the cap and minRisk permits it, Stop must cap at entryLow - 0.01')
+
+const poorRrPullback = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 80,
+  price: 120, ema50: 100, ema200: 80, atr14: 10,
+  support: 100, resistance: 107, rsi14: 55, weeklyRsi14: 58,
+  macdHistogram: 1, volumeRatio: 1.2, relativeStrength20: 3,
+  relativeStrength60: 5, week52High: 108, week52Low: 70,
+  earningsDays: null, pe: null,
+})
+assert.ok((poorRrPullback.riskRewardAtEntry ?? Infinity) < 1.5, 'A close structural target must be able to produce R:R below 1.5')
+assert.equal(poorRrPullback.decision, 'SKIP_POOR_RR', 'A pullback with R:R below 1.5 must be skipped')
 
 const firstTranche = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'PULLBACK', score: 80,
@@ -41,12 +339,34 @@ const firstTranche = stockCheck.buildStockCheck({
   support: 98, resistance: 120, rsi14: 56, weeklyRsi14: 59,
   macdHistogram: 0.8, volumeRatio: 1.1, relativeStrength20: 4,
   relativeStrength60: 9, week52High: 125, week52Low: 72,
-  earningsDays: 20, pe: 26,
+  earningsDays: 20, earningsStatus: 'found', pe: 26,
 })
 assert.equal(firstTranche.decision, 'BUY_NOW', 'Strong uptrend slightly above entry may permit a first tranche')
 assert.equal(firstTranche.buyMode, 'FIRST_TRANCHE', 'First-tranche BUY_NOW must be explicitly labeled')
+const unknownFirstTranche = stockCheck.buildStockCheck({
+  trend: 'UPTREND', setup: 'PULLBACK', score: 80, price: 103, ema50: 100, ema200: 90, atr14: 2,
+  support: 98, resistance: 120, rsi14: 56, weeklyRsi14: 59, macdHistogram: 0.8, volumeRatio: 1.1,
+  relativeStrength20: 4, relativeStrength60: 9, week52High: 125, week52Low: 72, earningsDays: null, earningsStatus: 'unknown', pe: 26,
+})
+assert.equal(unknownFirstTranche.decision, 'WATCH')
+assert.equal(unknownFirstTranche.buyMode, null)
+assert.equal(unknownFirstTranche.summary, 'รอตรวจ Earnings ก่อนซื้อ')
 assert.match(firstTranche.decisionLabel, /ไม้แรก/, 'First-tranche label must be visible to the user')
 assert.ok((firstTranche.riskRewardNow ?? 0) >= 1.25, 'First tranche must use acceptable R:R from the live price')
+const firstTrancheLabelInput = (overrides = {}) => ({
+  decision: 'BUY_NOW', buyMode: 'FIRST_TRANCHE', price: 100,
+  entryZone: { low: 98, high: 99.3 }, rrAtEntry: 2, riskRewardNow: 1.8,
+  ...overrides,
+})
+const ddogLikeLabelInput = firstTrancheLabelInput({ price: 100.7, entryZone: { low: 98, high: 100 } })
+assert.equal(todayCandidates.opportunityLabel(ddogLikeLabelInput), 'ซื้อไม้แรก', 'First tranche above Entry Zone must use the separate first-buy label')
+assert.equal(todayCandidates.firstTrancheLabelReason(ddogLikeLabelInput), 'ราคาเหนือ Entry Zone', 'Out-of-zone first tranche must explain the price location')
+const maLikeLabelInput = firstTrancheLabelInput({ price: 99, entryZone: { low: 98, high: 100 }, riskRewardNow: 1.44 })
+assert.equal(todayCandidates.opportunityLabel(maLikeLabelInput), 'ซื้อไม้แรก', 'First tranche with live R:R below 1.5 must use the separate first-buy label')
+assert.equal(todayCandidates.firstTrancheLabelReason(maLikeLabelInput), 'R:R NOW ต่ำกว่า 1.5', 'Low live R:R first tranche must explain the label')
+const standardFirstTrancheLabelInput = firstTrancheLabelInput({ price: 99, entryZone: { low: 98, high: 100 }, riskRewardNow: 1.5 })
+assert.equal(todayCandidates.opportunityLabel(standardFirstTrancheLabelInput), 'ซื้อได้ตอนนี้', 'In-zone first tranche with live R:R >= 1.5 may use the standard buy-now label')
+assert.equal(todayCandidates.firstTrancheLabelReason(standardFirstTrancheLabelInput), null, 'In-zone first tranche with live R:R >= 1.5 needs no qualification')
 
 const structuralDipFirstTranche = stockCheck.buildStockCheck({
   trend: 'SIDEWAYS', setup: 'NEAR_SUPPORT', score: 64,
@@ -54,7 +374,7 @@ const structuralDipFirstTranche = stockCheck.buildStockCheck({
   support: 95, resistance: 115, rsi14: 52, weeklyRsi14: 55,
   macdHistogram: -0.1, volumeRatio: 0.9, relativeStrength20: 1,
   relativeStrength60: 8, week52High: 120, week52Low: 70,
-  earningsDays: 20, pe: 24,
+  earningsDays: 20, earningsStatus: 'found', pe: 24,
 })
 assert.equal(structuralDipFirstTranche.decision, 'BUY_NOW', 'Controlled dip under EMA50 with intact support should permit a first tranche')
 assert.equal(structuralDipFirstTranche.buyMode, 'FIRST_TRANCHE', 'Controlled structural dip must be labeled as first tranche, never standard BUY_NOW')
@@ -73,14 +393,15 @@ assert.notEqual(brokenSupportDip.decision, 'BUY_NOW', 'A dip below support must 
 
 const insideButPoorRr = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'NEAR_SUPPORT', score: 77,
-  price: 100, ema50: 99.5, ema200: 90, atr14: 2,
-  support: 99, resistance: 103, rsi14: 54, weeklyRsi14: 57,
+  price: 100.25, ema50: 99.5, ema200: 90, atr14: 2,
+  support: 99, resistance: 102, rsi14: 54, weeklyRsi14: 57,
   macdHistogram: 0.4, volumeRatio: 1.1, relativeStrength20: 3,
-  relativeStrength60: 7, week52High: 110, week52Low: 75,
+  relativeStrength60: 7, week52High: 102, week52Low: 75,
   earningsDays: 20, pe: 24,
 })
 assert.equal(insideButPoorRr.decision, 'WATCH', 'Being inside Entry Zone with poor live R:R must not say wait for a pullback')
 assert.match(insideButPoorRr.summary, /Entry Zone/, 'In-zone WATCH should explain that price is already in the Entry Zone')
+assert.equal(insideButPoorRr.target2Basis, 'plan-extension', 'Target 2 should identify a plan extension when the 52-week high is below its modeled floor')
 
 const chasedTarget = stockCheck.buildStockCheck({
   trend: 'UPTREND', setup: 'MOMENTUM', score: 82,
@@ -111,7 +432,8 @@ const ordinaryDowntrend = stockCheck.buildStockCheck({
   earningsDays: 20, pe: 23,
 })
 assert.notEqual(ordinaryDowntrend.decision, 'AVOID', 'A normal downtrend without breakdown/severe weakness must not be auto-AVOID')
-assert.equal(ordinaryDowntrend.decision, 'WAIT_FOR_BREAKOUT', 'Downtrend with intact support should wait for confirmation')
+assert.equal(ordinaryDowntrend.decision, 'WATCH', 'Downtrend with resistance more than 3% away should be watch-only')
+assert.match(ordinaryDowntrend.summary, /ห่างแนวต้าน 8\.0%/, 'Distant-breakout WATCH must include the exact distance')
 
 const slightSupportDip = stockCheck.buildStockCheck({
   trend: 'DOWNTREND', setup: 'WAIT', score: 50,
@@ -208,6 +530,7 @@ assert.match(data, /scannerSupport/, 'Stock Check must use scanner-safe support'
 assert.match(data, /scannerVolumeRatio/, 'Stock Check must use scanner-safe volume ratio')
 assert.match(data, /getAtr14/, 'Stock Check must use ATR14 for volatility-aware planning')
 assert.match(data, /sanitizeWeek52Range/, 'Stock Check must sanitize 52W range before scoring or target planning')
+assert.match(data, /providerQuoteTimestamp\(quote\?\.t\)/, 'Stock Check must carry the provider quote timestamp without substituting request time')
 
 const atr = fs.readFileSync('lib/atr.ts', 'utf8')
 assert.match(atr, /ATR\.calculate/, 'ATR14 must use the technical indicator implementation')
@@ -226,11 +549,33 @@ assert.match(workspace, /🔥 โอกาสวันนี้/, 'Scanner works
 assert.match(workspace, /TodayOpportunities/, 'Today Opportunity Radar must be wired into Scanner workspace')
 
 const today = fs.readFileSync('components/portfolio/TodayOpportunities.tsx', 'utf8')
-assert.match(today, /const UNIVERSES = \['ai', 'semis', 'growth', 'quality'\]/, 'Today radar must scan all four built-in universes')
+assert.match(today, /item\.earningsStatus === 'unknown'[^\n]*ตรวจ Earnings ไม่สำเร็จ/, 'Each card must disclose unknown earnings')
+assert.match(today, /chunkScannerSymbols\(uniqueSymbols\)/, 'Today radar must chunk the combined deduplicated universe')
+assert.match(today, /shouldShowEarningsUnknownBanner\(results\)/, 'Today radar must decide the banner from validated results only')
+assert.match(today, /ข้อมูล Earnings ใช้ไม่ได้ ผลต่อคะแนนแนวโน้มลดลง/, 'Today radar must show the Thai unknown-earnings warning banner')
+assert.match(today, /firstTrancheLabelReason\(/, 'Today radar must show a reason beneath qualified first-tranche labels')
+assert.match(today, /new URLSearchParams\(\{ universe: 'all', symbols: batch\.join\(','\) \}\)/, 'Each Today radar scanner request must contain only one bounded symbol batch')
+assert.match(today, /for \(const batch of batches\)/, 'Today radar batches must be requested sequentially to preserve provider concurrency')
+assert.doesNotMatch(today, /ใกล้ซื้อ/, 'Today radar must not collapse decisions into the old near-buy label')
+assert.match(today, /earningsUnknownPenalty/, 'Today radar must disclose the penalty when the earnings provider is unknown')
+assert.match(today, /priceAsOf/, 'Today radar must show per-ticker price time separately from scan completion')
+assert.match(today, /categoryScores\.relativeStrength/, 'Today radar must show all six score categories')
+assert.match(today, /คะแนนแนวโน้ม/, 'Today radar must label visible scores as trend strength')
+assert.match(today, /scoreTrendSummary\(item\.score, item\.label, item\.trend\)/, 'Today radar must render score strength separately from price direction')
+const todayCandidatesSource = fs.readFileSync('lib/today-candidates.ts', 'utf8')
+assert.match(todayCandidatesSource, /แนวโน้มแข็ง/)
+assert.match(todayCandidatesSource, /แนวโน้มกลางๆ/)
+assert.match(todayCandidatesSource, /แนวโน้มอ่อน/)
+assert.match(today, /คะแนนวัดความแข็งของแนวโน้มตามกฎ ยังไม่มีหลักฐานจาก backtest ว่าคะแนนสูงให้ผลตอบแทนดีกว่า ใช้เป็นตัวกรองและวางแผนความเสี่ยงเท่านั้น/, 'Today radar must disclose that score performance is not validated by backtest')
+assert.match(today, /ถ้าราคาเปิด gap ต่ำกว่า Stop ขาดทุนจริงอาจเกินที่วางแผนไว้/, 'Buy plan cards must warn about gap risk')
+assert.match(today, /ซื้อได้ตอนนี้ \{buyNowCount\} ตัว/)
+assert.match(today, /ซื้อไม้แรก \{firstTrancheCount\} ตัว/)
+assert.doesNotMatch(today, /คะแนน \{item\.score\}|Score \{item\.score\}/, 'Today radar must not expose the old score label')
 assert.match(today, /FINALIST_LIMIT = 6/, 'Today radar must cap live Stock Check validation to six finalists')
-assert.match(today, /\/api\/scanner\?universe=/, 'Today radar must reuse deterministic scanner data')
 assert.match(today, /\/api\/stock-check\?symbol=/, 'Today radar finalists must be revalidated with live Stock Check')
-assert.match(today, /isStructuralPullback/, 'Today radar must surface controlled EMA50 pullback candidates')
+assert.match(fs.readFileSync('lib/today-candidates.ts', 'utf8'), /isStructuralPullback/, 'Today radar must surface controlled EMA50 pullback candidates')
+const scannerRoute = fs.readFileSync('app/api/scanner/route.ts', 'utf8')
+assert.match(scannerRoute, /dedupeScannerSymbols\(Object\.values\(SCANNER_UNIVERSES\)\)/, 'Combined scanner route must deduplicate symbols before scanOne provider calls')
 
 const scannerPage = fs.readFileSync('app/scanner/page.tsx', 'utf8')
 assert.match(scannerPage, /ScannerWorkspace/, 'Dedicated scanner page must render the combined workspace')
@@ -247,4 +592,73 @@ assert.match(ai, /model === PRIMARY_MODEL \? 'high' : 'medium'/, 'Deep Stock Che
 assert.match(ai, /const PRIMARY_MODEL = 'openai\/gpt-oss-120b'/, 'Deep Stock Check primary model must remain GPT-OSS 120B')
 assert.match(ai, /temperature: 0\.2/, 'Deep Stock Check should keep analysis temperature conservative')
 
-console.log('✓ Stock Check v1.26.0 regression tests passed')
+const stockCheckUi = fs.readFileSync('components/portfolio/StockCheckPanel.tsx', 'utf8')
+assert.match(stockCheckUi, /formatStockCheckFreshness\(/, 'Stock Check must label provider quote time separately from check time')
+assert.match(stockCheckUi, /result\.scannerReasons/, 'Stock Check must expose the existing scanner scoring reasons')
+assert.match(stockCheckUi, /เหตุผล\/ข้อสังเกตจาก Stock Scanner/, 'Scanner reasons and warnings must be visually distinguished from plan reasons')
+assert.match(stockCheckUi, /formatTarget2Context\(/, 'Target 2 must explain its reference basis')
+assert.match(stockCheckUi, /R:R คำนวณถึง Target 1/, 'R:R display must say it is measured to Target 1')
+assert.match(stockCheckUi, /AI ส่งรูปแบบที่อ่านไม่ได้ จึงใช้สรุปจาก Stock Check แทน/, 'AI parse fallback must be disclosed to the user')
+
+// AI claim guard: sentences below are the wrong/right wordings seen in real Stock Check AI output on 2026-11-03.
+const aiGuard = await importTsModule('lib/stock-check-ai-guard.ts')
+const aaplFacts = { price: 330.99, ema50: 334.24, ema200: 302.85, week52High: 351.73, week52Low: 243.42, earningsFound: false }
+const msftFacts = { price: 516.12, ema50: 509.56, ema200: 465.25, week52High: 551.15, week52Low: 349.2, earningsFound: false }
+const nvdaFacts = { price: 208.29, ema50: 218.42, ema200: 205.64, week52High: 243.37, week52Low: 164.27, earningsFound: true }
+assert.equal(aiGuard.findAiClaimViolation('ราคาอยู่ในช่วง 52\u2011Week Low 36% และสูงกว่า 52\u2011Week High 5.9%', aaplFacts), 'price-vs-52w-high', 'Price below the 52W High must not be described as above it')
+assert.equal(aiGuard.findAiClaimViolation('ราคาอยู่ 6.4% ต่ำกว่า 52W High และ 47.8% สูงกว่า 52W Low', msftFacts), null, 'Correct 52W directions must pass')
+assert.equal(aiGuard.findAiClaimViolation('ราคาต่ำกว่า 52W Low', msftFacts), 'price-vs-52w-low', 'Price above the 52W Low must not be described as below it')
+assert.equal(aiGuard.findAiClaimViolation('ราคาอยู่ที่เหนือ 52W High', { ...msftFacts, price: 551.15 }), null, 'Price at the 52W High may be described as at or above it')
+assert.equal(aiGuard.findAiClaimViolation('อยู่ในช่วงด้านล่างของช่วง 52\u2011สัปดาห์', nvdaFacts), 'range-position-lower', 'A mid-range price must not be described as the lower part of the 52W range')
+assert.equal(aiGuard.findAiClaimViolation('อยู่ในช่วงด้านล่างของช่วง 52 สัปดาห์', { ...nvdaFacts, price: 170 }), null, 'A genuinely low price may be described as the lower part of the range')
+assert.equal(aiGuard.findAiClaimViolation('อยู่ในส่วนบนของช่วง 52 สัปดาห์', nvdaFacts), 'range-position-upper', 'A mid-range price must not be described as the upper part of the range')
+assert.equal(aiGuard.findAiClaimViolation('EMA50 อยู่เหนือ EMA200 และราคาเหนือ EMA50 แสดงโครงสร้างขาขึ้น', msftFacts), null, 'Correct EMA wording must pass')
+assert.equal(aiGuard.findAiClaimViolation('ราคาอยู่เหนือ EMA50 และ EMA200', msftFacts), null, 'A shared direction over both EMAs must pass when both hold')
+assert.equal(aiGuard.findAiClaimViolation('ราคาอยู่เหนือ EMA50 และ EMA200', nvdaFacts), 'price-vs-ema50', 'Price below EMA50 must not be described as above both EMAs')
+assert.equal(aiGuard.findAiClaimViolation('ราคายังคงต่ำกว่า EMA50', msftFacts), 'price-vs-ema50', 'Price above EMA50 must not be described as below it')
+assert.equal(aiGuard.findAiClaimViolation('EMA50 อยู่ต่ำกว่า EMA200', msftFacts), 'ema50-vs-ema200', 'EMA50 above EMA200 must not be described as below it')
+assert.equal(aiGuard.findAiClaimViolation('ไม่มีข้อมูล earnings ใน 60 วันล่าสุด', aaplFacts), 'earnings-window', 'The earnings window looks forward, never "recent"')
+assert.equal(aiGuard.findAiClaimViolation('ไม่มีข้อมูล earnings ใน 60 วัน ทำให้ไม่สามารถตรวจสอบผลประกอบการล่าสุดได้', msftFacts), 'earnings-window', 'No upcoming date must not be turned into "cannot check recent results"')
+assert.equal(aiGuard.findAiClaimViolation('ไม่พบนัดประกาศผลใน 60 วันข้างหน้า', aaplFacts), null, 'The forward-looking wording must pass')
+assert.equal(aiGuard.findAiClaimViolation('ไม่พบนัดประกาศผลใน 60 วันข้างหน้า', nvdaFacts), 'earnings-denied', 'Denying an earnings date the engine found must be blocked')
+assert.equal(aiGuard.findAiClaimViolation('ราคาสูงกว่า 52W High', { ...aaplFacts, price: null }), null, 'Without a price the guard must not guess')
+
+const guardedFields = aiGuard.guardAiClaims({
+  summary: 'สรุปที่ราคาอยู่สูงกว่า 52W High',
+  reasons: ['เหตุผลปกติ', 'ราคาต่ำกว่า EMA200 ชัดเจน'],
+  risks: ['ความเสี่ยงปกติ'],
+  action: 'รอย่อเข้า Entry Zone',
+}, aaplFacts, 'สรุปจาก engine')
+assert.equal(guardedFields.removed, 2, 'Contradicting summary and list items must be counted')
+assert.equal(guardedFields.fields.summary, 'สรุปจาก engine', 'A contradicting summary must be replaced with the engine summary')
+assert.deepEqual(guardedFields.fields.reasons, ['เหตุผลปกติ'], 'A contradicting list item must be dropped, others kept')
+assert.deepEqual(guardedFields.fields.risks, ['ความเสี่ยงปกติ'])
+assert.equal(guardedFields.fields.action, 'รอย่อเข้า Entry Zone')
+
+let fallbackCalls = 0
+const usableJson = text => text.includes('"summary"')
+const goodReply = { text: '{"summary":"ok"}', truncated: false }
+const firstGood = await aiGuard.runModelChain([async () => goodReply, async () => { fallbackCalls += 1; return goodReply }], usableJson)
+assert.deepEqual([firstGood.index, firstGood.usable, fallbackCalls], [0, true, 0], 'A usable primary reply must not trigger the fallback model')
+const emptyThenGood = await aiGuard.runModelChain([async () => ({ text: '', truncated: false }), async () => goodReply], usableJson)
+assert.deepEqual([emptyThenGood.index, emptyThenGood.usable], [1, true], 'An empty primary reply must use the fallback model')
+const cutThenGood = await aiGuard.runModelChain([async () => ({ text: '{"summary":"cut', truncated: true }), async () => goodReply], usableJson)
+assert.deepEqual([cutThenGood.index, cutThenGood.usable], [1, true], 'A reply cut off at the token limit must use the fallback model')
+const unparseableThenGood = await aiGuard.runModelChain([async () => ({ text: 'ไม่ใช่ JSON', truncated: false }), async () => goodReply], usableJson)
+assert.deepEqual([unparseableThenGood.index, unparseableThenGood.usable], [1, true], 'An unparseable primary reply must use the fallback model')
+const bothUnusable = await aiGuard.runModelChain([async () => ({ text: 'ไม่ใช่ JSON', truncated: false }), async () => ({ text: '{"x":1}', truncated: false })], usableJson)
+assert.deepEqual([bothUnusable.text, bothUnusable.usable], ['{"x":1}', false], 'When no reply is usable the last non-empty one is returned for the engine-summary fallback')
+const bothEmpty = await aiGuard.runModelChain([async () => ({ text: '', truncated: false }), async () => ({ text: '', truncated: false })], usableJson)
+assert.equal(bothEmpty, null, 'No reply from any model must stay an AI-unavailable error')
+
+const aiRunSource = fs.readFileSync('lib/stock-check-ai.ts', 'utf8')
+assert.match(aiRunSource, /const PRIMARY_OUTPUT_LIMIT = 4000/, 'The 120B model needs room for hidden reasoning')
+assert.match(aiRunSource, /AbortSignal\.timeout\(timeoutMs\)/, 'Each model call must time out so both attempts fit inside maxDuration')
+assert.ok(25_000 + 15_000 < 45_000, 'Primary + fallback timeouts must stay under the 45s route limit')
+assert.match(aiRunSource, /finish_reason === 'length'/, 'A reply cut at the token limit must be detected')
+assert.match(aiRunSource, /guardAiClaims\(initial/, 'AI text must pass the claim guard before it is returned')
+assert.match(aiRunSource, /ไม่พบนัดประกาศผลใน 60 วันข้างหน้า/, 'The prompt must state the earnings window looks forward')
+assert.match(aiRunSource, /ตำแหน่งของราคาในช่วง 52W/, 'The prompt facts must include the computed 52W range position')
+assert.match(fs.readFileSync('components/portfolio/StockCheckPanel.tsx', 'utf8'), /ตัดข้อความ AI ที่ขัดกับข้อมูลที่ระบบคำนวณแล้ว/, 'Removed AI claims must be disclosed to the user')
+
+console.log('✓ Stock Check synthetic regression tests passed')

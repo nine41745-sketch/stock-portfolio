@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v1340: ChangelogEntry = {
   version: 'v1.34.0',
-  date: '2026-10-14 03:05 ICT',
+  date: 'เวลาเดิมใน Changelog — 2026-10-14 03:05 ICT (ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production)',
   changes: [
     'Fundamental Analysis: แสดง Finnhub Metrics และ Company Profile พร้อมแหล่งข้อมูล งวด หน่วย สกุลเงิน สถานะข้อมูล และเวลาที่ระบบรับข้อมูล',
     'Stock Comparison: เปรียบเทียบได้สูงสุด 4 หุ้น; SEC Annual GAAP EPS ตรวจ Basic/Diluted หน่วย สกุลเงิน งวด และ Share Class ก่อนยืนยันว่าเทียบกันได้',

@@ -150,13 +150,13 @@ assert.ok(fs.readFileSync('app/api/performance/route.ts', 'utf8').includes('summ
 
 const changelog = fs.readFileSync('config/changelog-v1380.ts', 'utf8')
 assert.match(changelog, /v1\.38\.0/)
-assert.match(changelog, /Unreleased — Release Candidate/)
+assert.match(changelog, /date: 'Development History — Feature commit 2026-10-18 02:48 ICT \(ไม่ใช่ Production\)'/)
 assert.ok(changelog.includes("from './changelog-v1370'"))
-assert.match(changelog, /FX Profit Attribution/, 'v1.38.0 candidate history must be preserved')
+assert.match(changelog, /FX Profit Attribution/, 'v1.38.0 development history must be preserved')
 const tsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(tsconfig.compilerOptions.paths['@/config/changelog'], ['./config/changelog-v1400'])
+assert.deepEqual(tsconfig.compilerOptions.paths['@/config/changelog'], ['./config/changelog-v14142'])
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(pkg.version, '1.40.0')
+assert.equal(pkg.version, '1.41.42')
 assert.match(pkg.scripts['test:critical'], /test-journal-performance\.mjs/)
 
 console.log('✓ Trading Journal / Statistics / FX regression tests passed')

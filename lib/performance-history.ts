@@ -5,6 +5,7 @@ import {
   type PerformanceCurvePoint,
   type PerformanceTransaction,
 } from '@/lib/performance'
+import { toHistorySymbol } from '@/lib/provider-symbol'
 
 const yahooFinance = new YahooFinance()
 const MAX_HISTORY_YEARS = 5
@@ -51,7 +52,7 @@ async function fetchDailyCloses(symbol: string, startDate: string, signal: Abort
     const period2 = new Date()
     period2.setUTCDate(period2.getUTCDate() + 1)
 
-    const result = await yahooFinance.chart(symbol, {
+    const result = await yahooFinance.chart(toHistorySymbol(symbol), {
       period1,
       period2,
       interval: '1d',

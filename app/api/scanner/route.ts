@@ -3,16 +3,16 @@ import { createClient } from '@/lib/supabase/server'
 import { PhaseAError, phaseAErrorResponse, requirePhaseAPortfolio } from '@/lib/phase-a-context'
 import { isPortfolioFoundationMissing } from '@/lib/portfolio-context'
 import { selectPortfolioMineSymbols } from '@/lib/scanner-universe'
-import { getUpcomingEarnings } from '@/lib/finnhub'
+import { getUpcomingEarningsStatus } from '@/lib/finnhub'
 import { getTechnicalIndicators, TechnicalIndicators } from '@/lib/indicators'
-import { SCANNER_UNIVERSES, ScannerUniverseKey, scoreScannerCandidate } from '@/lib/stock-scanner'
+import { dedupeScannerSymbols, MAX_SCAN_SYMBOLS, SCANNER_UNIVERSES, ScannerUniverseKey, scoreScannerCandidate } from '@/lib/stock-scanner'
 import { getAllTimeHigh } from '@/lib/all-time-high'
 import { getAthState } from '@/lib/ath'
+import { calcRiskReward } from '@/lib/risk-reward'
 
 export const maxDuration = 45
 
-const MAX_SCAN_SYMBOLS = 12
-const VALID_UNIVERSES = new Set<ScannerUniverseKey>(['ai', 'semis', 'growth', 'quality', 'mine'])
+const VALID_UNIVERSES = new Set<ScannerUniverseKey | 'all'>(['ai', 'semis', 'growth', 'quality', 'mine', 'all'])
 
 function diffOrNull(a: number | null, b: number | null): number | null {
   if (a === null || b === null) return null
@@ -22,10 +22,7 @@ function diffOrNull(a: number | null, b: number | null): number | null {
 function riskReward(price: number | null, support: number | null, resistance: number | null): number | null {
   if (price === null || support === null || resistance === null) return null
   if (!(support < price && price < resistance)) return null
-  const risk = price - support
-  const reward = resistance - price
-  if (risk <= 0 || reward <= 0) return null
-  return Math.round((reward / risk) * 100) / 100
+  return calcRiskReward(price, support, resistance)
 }
 
 async function getMineSymbols(
@@ -75,11 +72,12 @@ async function getMineSymbols(
 async function scanOne(symbol: string, spy: TechnicalIndicators) {
   // Price/day-change/52W are derived from the same historical feed as Technicals so scanner does not
   // consume Finnhub quote/metric quota. Finnhub is reserved here for earnings catalyst risk only.
-  const [technical, earnings, athSnapshot] = await Promise.all([
+  const [technical, earningsResult, athSnapshot] = await Promise.all([
     getTechnicalIndicators(symbol),
-    getUpcomingEarnings(symbol),
+    getUpcomingEarningsStatus(symbol),
     getAllTimeHigh(symbol),
   ])
+  const earnings = earningsResult.status === 'found' ? earningsResult.earnings : null
 
   const relativeStrength20 = diffOrNull(technical.return20dPct, spy.return20dPct)
   const relativeStrength60 = diffOrNull(technical.return60dPct, spy.return60dPct)
@@ -93,12 +91,15 @@ async function scanOne(symbol: string, spy: TechnicalIndicators) {
     ema50: technical.ema50,
     support: technical.scannerSupport,
     resistance: technical.scannerResistance,
+    importantSupport: technical.importantSupport,
     volumeRatio: technical.scannerVolumeRatio,
+    volumeBasis: technical.scannerVolumeBasis,
     week52High: technical.week52High,
     week52Low: technical.week52Low,
     relativeStrength20,
     relativeStrength60,
     earningsDays: earnings?.daysUntil ?? null,
+    earningsStatus: earningsResult.status,
   })
 
   const price = technical.lastClose
@@ -113,7 +114,11 @@ async function scanOne(symbol: string, spy: TechnicalIndicators) {
     setup: scored.setup,
     reasons: scored.reasons,
     categoryScores: scored.categoryScores,
+    earningsUnknownPenalty: scored.earningsUnknownPenalty,
+    earningsStatus: earningsResult.status,
     price,
+    priceAsOf: technical.lastBarAt,
+    priceSource: technical.dataSource === 'Yahoo Finance' ? 'Yahoo' : technical.dataSource === 'Stooq' ? 'Stooq' : 'ไม่ทราบแหล่งข้อมูล',
     dayChangePct: technical.return1dPct,
     trend: technical.trend,
     ema50: technical.ema50,
@@ -145,9 +150,13 @@ export async function GET(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const requested = (request.nextUrl.searchParams.get('universe') ?? 'ai') as ScannerUniverseKey
+  const requested = (request.nextUrl.searchParams.get('universe') ?? 'ai') as ScannerUniverseKey | 'all'
   if (!VALID_UNIVERSES.has(requested)) {
     return NextResponse.json({ error: 'กลุ่มสแกนไม่ถูกต้อง' }, { status: 400 })
+  }
+  const symbolsParam = request.nextUrl.searchParams.get('symbols')
+  if (symbolsParam !== null && requested !== 'all') {
+    return NextResponse.json({ error: 'ส่งรายชื่อหุ้นได้เฉพาะการสแกนทุกกลุ่ม' }, { status: 400 })
   }
 
   try {
@@ -156,8 +165,26 @@ export async function GET(request: NextRequest) {
       const portfolio = await requirePhaseAPortfolio()
       if (portfolio.userId !== user.id) throw new PhaseAError('Unauthorized', 401)
       symbols = await getMineSymbols(portfolio.supabase, portfolio.userId, portfolio.portfolioId)
+    } else if (requested === 'all') {
+      const allSymbols = dedupeScannerSymbols(Object.values(SCANNER_UNIVERSES))
+      if (symbolsParam === null) {
+        symbols = allSymbols
+      } else {
+        const requestedSymbols = symbolsParam.split(',').map(symbol => symbol.trim().toUpperCase()).filter(Boolean)
+        const allowedSymbols = new Set(allSymbols)
+        if (requestedSymbols.some(symbol => !allowedSymbols.has(symbol))) {
+          return NextResponse.json({ error: 'มีหุ้นที่ไม่ได้อยู่ในกลุ่มสแกน' }, { status: 400 })
+        }
+        symbols = dedupeScannerSymbols([requestedSymbols])
+      }
     } else {
       symbols = [...SCANNER_UNIVERSES[requested]]
+    }
+    symbols = [...new Set(symbols.map(symbol => symbol.trim().toUpperCase()).filter(Boolean))]
+
+    // จำกัดจำนวนหุ้นต่อคำขอเพื่อลดความเสี่ยง timeout และ rate limit ของผู้ให้บริการ
+    if (symbols.length > MAX_SCAN_SYMBOLS) {
+      return NextResponse.json({ error: `คำขอสแกนได้ไม่เกิน ${MAX_SCAN_SYMBOLS} หุ้น` }, { status: 413 })
     }
 
     if (!symbols.length) {

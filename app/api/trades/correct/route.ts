@@ -13,7 +13,8 @@ export async function POST(request: NextRequest) {
   let input
   try { input = parseTradeCorrection(await request.json()) }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'ข้อมูลไม่ถูกต้อง' }, { status: 400 }) }
-  const { data, error } = await createServiceClient().rpc('correct_latest_synced_trade', {
+  const serviceClient = await createServiceClient()
+  const { data, error } = await serviceClient.rpc('correct_latest_synced_trade', {
     p_user_id: user.id, p_portfolio_id: portfolio.portfolioId,
     p_transaction_id: input.transaction_id, p_expected_revision: input.expected_revision,
     p_shares: input.shares, p_price: input.price, p_fee: input.fee, p_reason: input.reason,

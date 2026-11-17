@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Auto Sync รองรับเฉพาะ BUY และ SELL' }, { status: 400 })
   }
 
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const { data, error } = await serviceClient.rpc('record_synced_trade', {
     p_user_id: user.id,
     p_portfolio_id: portfolio.portfolioId,

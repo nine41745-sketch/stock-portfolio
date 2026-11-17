@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'PIN และ PIN ยืนยันไม่ตรงกัน' }, { status: 400 })
   }
 
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
 
   // ห้าม setup ซ้ำถ้ามี PIN อยู่แล้ว — กัน endpoint นี้ถูกใช้เป็นช่องทาง "ตั้ง PIN ใหม่ทับของเดิมโดยไม่ต้อง
   // รู้ PIN เก่า" ซึ่งเท่ากับ bypass การยืนยันตัวตนของ /api/pin/change — การเปลี่ยน PIN ต้องผ่าน

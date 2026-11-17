@@ -13,6 +13,9 @@ import YahooFinance from 'yahoo-finance2'
 import { discoveryFetch, type DiscoveryProviderContext } from '@/lib/discovery-deadline'
 import { getDiscoveryYahooChart } from '@/lib/discovery-yahoo'
 import { calculateImportantSupport } from '@/lib/important-support'
+import { isPartialUsSessionBar } from '@/lib/market-session'
+import { toHistorySymbol } from '@/lib/provider-symbol'
+import { createRangeCache, week52FromBars, WEEK52_BARS_TIMEOUT_MS, WEEK52_CACHE_TTL_MS } from '@/lib/week52'
 
 const yahooFinance = new YahooFinance()
 
@@ -44,8 +47,11 @@ export interface TechnicalIndicators {
   volumeRatio: number | null
   // Scanner-only values deliberately exclude today's bar from support/resistance and average volume.
   scannerSupport: number | null
+  scannerSwingLow: number | null
   scannerResistance: number | null
   scannerVolumeRatio: number | null
+  // 'last-completed-session' while the US session is open (today's bar holds only part of the day's volume).
+  scannerVolumeBasis: 'latest-session' | 'last-completed-session'
   importantSupport: number | null
   importantSupportTouches: number
   return1dPct: number | null
@@ -69,8 +75,10 @@ const EMPTY_INDICATORS: TechnicalIndicators = {
   resistance: null,
   volumeRatio: null,
   scannerSupport: null,
+  scannerSwingLow: null,
   scannerResistance: null,
   scannerVolumeRatio: null,
+  scannerVolumeBasis: 'latest-session',
   importantSupport: null,
   importantSupportTouches: 0,
   return1dPct: null,
@@ -187,7 +195,8 @@ async function fetchHistoricalBars(symbol: string): Promise<Bar[]> {
   return (await fetchHistoricalBarsWithSource(symbol)).bars
 }
 
-async function fetchHistoricalBarsWithSource(symbol: string, context?: DiscoveryProviderContext, signal?: AbortSignal): Promise<{ bars: Bar[]; source: 'Yahoo Finance' | 'Stooq' | 'unavailable' }> {
+async function fetchHistoricalBarsWithSource(rawSymbol: string, context?: DiscoveryProviderContext, signal?: AbortSignal): Promise<{ bars: Bar[]; source: 'Yahoo Finance' | 'Stooq' | 'unavailable' }> {
+  const symbol = toHistorySymbol(rawSymbol)
   const yahoo = await fetchFromYahoo(symbol, context, signal)
   if (yahoo.length >= 200) return { bars: yahoo, source: 'Yahoo Finance' }
 
@@ -197,7 +206,8 @@ async function fetchHistoricalBarsWithSource(symbol: string, context?: Discovery
   return { bars: [], source: 'unavailable' }
 }
 
-async function fetchHistoricalWeeklyBars(symbol: string, context?: DiscoveryProviderContext): Promise<Bar[]> {
+async function fetchHistoricalWeeklyBars(rawSymbol: string, context?: DiscoveryProviderContext): Promise<Bar[]> {
+  const symbol = toHistorySymbol(rawSymbol)
   const yahoo = await fetchFromYahooWeekly(symbol, context)
   if (yahoo.length >= 15) return yahoo
 
@@ -247,6 +257,17 @@ function calcScannerSupportResistance(bars: Bar[], window = 20): { support: numb
   }
 }
 
+function calcLatestScannerSwingLow(bars: Bar[], window = 20): number | null {
+  const recent = bars.slice(0, -1).slice(-window)
+  if (recent.length < 5) return null
+  for (let index = recent.length - 3; index >= 2; index--) {
+    const low = recent[index].low
+    if (low <= recent[index - 1].low && low <= recent[index - 2].low &&
+      low <= recent[index + 1].low && low <= recent[index + 2].low) return round2(low)
+  }
+  return round2(Math.min(...recent.map(bar => bar.low)))
+}
+
 // Existing AI-facing ratio stays unchanged for backward compatibility.
 function calcVolumeRatio(bars: Bar[], window = 20): number | null {
   if (bars.length < window + 1) return null
@@ -258,7 +279,10 @@ function calcVolumeRatio(bars: Bar[], window = 20): number | null {
 }
 
 // Scanner compares today's volume with the previous 20 completed sessions, excluding today from denominator.
-function calcScannerVolumeRatio(bars: Bar[], window = 20): number | null {
+function calcScannerVolumeRatio(allBars: Bar[], window: number, partialSession: boolean): number | null {
+  // While the US session is still open the newest bar holds only part of the day's volume; compare the
+  // last completed session instead of a half-day against full-day averages.
+  const bars = partialSession ? allBars.slice(0, -1) : allBars
   if (bars.length < window + 1) return null
   const priorWindow = bars.slice(-(window + 1), -1)
   if (priorWindow.length !== window) return null
@@ -283,13 +307,21 @@ function calcReturnPct(closes: number[], lookback: number): number | null {
   return round2(((current - previous) / previous) * 100)
 }
 
-function calcWeek52Range(bars: Bar[]): { week52High: number | null; week52Low: number | null } {
-  if (!bars.length) return { week52High: null, week52Low: null }
-  const recent = bars.slice(-252)
-  return {
-    week52High: round2(Math.max(...recent.map(b => b.high))),
-    week52Low: round2(Math.min(...recent.map(b => b.low))),
-  }
+/**
+ * 52-week range from the daily price bars only (Yahoo, Stooq as the fallback), for the dashboard when the quote provider has
+ * none. Returns nulls when no bars can be fetched (never throws: the fetchers swallow provider errors).
+ */
+const week52BarsCache = createRangeCache(WEEK52_CACHE_TTL_MS)
+
+export async function getWeek52FromBars(rawSymbol: string, signal: AbortSignal = AbortSignal.timeout(WEEK52_BARS_TIMEOUT_MS)): Promise<{ week52High: number | null; week52Low: number | null }> {
+  const key = rawSymbol.trim().toUpperCase()
+  const cached = week52BarsCache.get(key)
+  if (cached) return cached
+  const { bars } = await fetchHistoricalBarsWithSource(rawSymbol, undefined, signal)
+  const range = week52FromBars(bars)
+  // Only a result that has a value is kept: an empty one (provider error, abort) is tried again on the next request.
+  if (range.week52High !== null || range.week52Low !== null) week52BarsCache.set(key, range)
+  return range
 }
 
 export async function getTechnicalIndicators(symbol: string, context?: DiscoveryProviderContext): Promise<TechnicalIndicators> {
@@ -298,6 +330,7 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
     fetchHistoricalWeeklyBars(symbol, context),
   ])
   const lastBarAt = bars.at(-1)?.date ?? null
+  const partialSession = isPartialUsSessionBar(lastBarAt)
 
   const weeklyRsi14 = calcWeeklyRsi(weeklyBars)
 
@@ -340,11 +373,12 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
   const bbLast = last(bbArr)
   const { support, resistance } = calcSupportResistance(bars)
   const scannerLevels = calcScannerSupportResistance(bars)
+  const scannerSwingLow = calcLatestScannerSwingLow(bars)
   const importantSupport = calculateImportantSupport(
     bars.slice(0, -1).map(bar => bar.low),
     lastClose,
   )
-  const range52 = calcWeek52Range(bars)
+  const range52 = week52FromBars(bars)
 
   return {
     dataSource: source,
@@ -371,8 +405,10 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
     resistance,
     volumeRatio: calcVolumeRatio(bars),
     scannerSupport: scannerLevels.support,
+    scannerSwingLow,
     scannerResistance: scannerLevels.resistance,
-    scannerVolumeRatio: calcScannerVolumeRatio(bars),
+    scannerVolumeRatio: calcScannerVolumeRatio(bars, 20, partialSession),
+    scannerVolumeBasis: partialSession ? 'last-completed-session' : 'latest-session',
     importantSupport: importantSupport.level,
     importantSupportTouches: importantSupport.touches,
     return1dPct: calcReturnPct(closes, 1),

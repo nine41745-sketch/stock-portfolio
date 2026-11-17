@@ -184,3 +184,20 @@
 /* Muted Risk dashboard copy must remain legible against the dark card surfaces. */
 [data-theme="dark"] .risk-dashboard .text-gray-500,
 [data-theme="dark"] .risk-dashboard .text-gray-600 { color: #9ca3af !important; }
+
+/* ===== Readability (v1.41.36) ===== */
+/* Digits keep one width, so columns of numbers line up. */
+body { font-variant-numeric: tabular-nums; }
+
+/* Secondary text on the dark theme was too faint (gray-600 about 2.4:1 and gray-500 about 3.7:1 on the gray-900 cards). :where() keeps
+   the specificity at one class, so hover/focus and dark: variants still win (many buttons go from gray-500 to gray-300 on hover). */
+[data-theme="dark"] :where(.text-gray-500) { color: #9ca3af; }
+[data-theme="dark"] :where(.text-gray-600) { color: #8b93a1; }
+
+/* The two smallest text sizes move up by about one step (10 to 11 px, 11 to 12 px). */
+.text-\[10px\] { font-size: 11px; }
+.text-\[11px\] { font-size: 12px; }
+
+/* Loading placeholder (components/portfolio/Skeleton.tsx). */
+.skeleton { background-color: rgba(75, 85, 99, 0.55); }
+[data-theme="light"] .skeleton { background-color: #e2e8f0; }

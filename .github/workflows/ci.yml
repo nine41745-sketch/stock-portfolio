@@ -133,5 +133,5 @@ jobs:
             exit 1
           fi
           if [ "$FULL_AUDIT_STATUS" = "PASS_WITH_EXCEPTION" ]; then
-            echo "Full audit accepted its sole documented exception; production-only audit passed. See docs/security-audit-exception-braces-ghsa-vfj7-8cjw-p6xm.md."
+            echo "Full audit accepted its time-boxed dev-only exception defined in scripts/qa/summarize-npm-audit.mjs; production-only audit passed."
           fi

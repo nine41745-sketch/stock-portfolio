@@ -117,7 +117,9 @@ function fmtPct(value: number | null, digits = 1): string {
 }
 
 function fmtRatio(value: number | null): string {
-  return value === null ? '—' : `${value.toFixed(2)}:1`
+  if (value === null) return '—'
+  // Scanner R:R is capped at 10 (lib/risk-reward.ts); show the cap as "10+" instead of an exact-looking value.
+  return value >= 10 ? '10+:1' : `${value.toFixed(2)}:1`
 }
 
 function supportDistance(item: ScannerItem): number | null {

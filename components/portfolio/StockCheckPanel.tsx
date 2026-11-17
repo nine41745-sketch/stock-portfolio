@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { FormEvent, useMemo, useState } from 'react'
 import StockCommandCenter from './StockCommandCenter'
+import { formatStockCheckFreshness, formatTarget2Context } from '@/lib/stock-check-presentation'
 
 type Decision = 'BUY_NOW' | 'BUY_ON_PULLBACK' | 'WAIT_FOR_BREAKOUT' | 'WATCH' | 'AVOID'
 type Setup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'AVOID'
@@ -10,6 +11,7 @@ type Setup = 'BREAKOUT' | 'PULLBACK' | 'NEAR_SUPPORT' | 'MOMENTUM' | 'WAIT' | 'A
 type StockCheckResult = {
   symbol: string
   checkedAt: string
+  quoteTimestamp: string | null
   price: number | null
   priceSource: 'finnhub' | 'historical'
   dayChangePct: number | null
@@ -44,6 +46,7 @@ type StockCheckResult = {
     stopLoss: number | null
     target1: number | null
     target2: number | null
+    target2Basis: 'historical-52w-high' | 'plan-extension' | null
     breakoutTrigger: number | null
     riskRewardAtEntry: number | null
     riskRewardNow: number | null
@@ -59,6 +62,8 @@ type AiResult = {
   action: string
   news: Array<{ headline: string; source: string; datetime: number }>
   usedModel: string | null
+  usedFallbackSummary: boolean
+  removedClaims?: number
 }
 
 function fmtPrice(value: number | null): string {
@@ -276,7 +281,8 @@ export default function StockCheckPanel({
                   <span className={`rounded-full border px-3 py-1 text-sm font-bold ${decisionStyle(result.plan.decision)}`}>{result.plan.decisionLabel}</span>
                 </div>
                 <p className="mt-2 max-w-3xl text-sm leading-relaxed text-gray-300">{result.plan.summary}</p>
-                <p className="mt-1 text-xs text-gray-600">Score {result.score}/100 · {setupLabel(result.setup)} · ราคา {result.priceSource === 'finnhub' ? 'Finnhub live/near-live' : 'Historical fallback'}</p>
+                <p className="mt-1 text-xs text-gray-500">Score {result.score}/100 · {setupLabel(result.setup)}</p>
+                <p className="mt-1 text-xs text-gray-500">{formatStockCheckFreshness(result)}</p>
               </div>
               <div className="text-right">
                 <p className="text-2xl font-bold text-white">{fmtPrice(result.price)}</p>
@@ -289,23 +295,28 @@ export default function StockCheckPanel({
             <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3"><p className="text-[10px] uppercase text-gray-500">Entry Zone</p><p className="mt-1 font-bold text-blue-400">{result.plan.entryZone ? `${fmtPrice(result.plan.entryZone.low)} – ${fmtPrice(result.plan.entryZone.high)}` : '—'}</p></div>
             <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3"><p className="text-[10px] uppercase text-gray-500">Stop Loss</p><p className="mt-1 font-bold text-red-400">{fmtPrice(result.plan.stopLoss)}</p></div>
             <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3"><p className="text-[10px] uppercase text-gray-500">Target 1</p><p className="mt-1 font-bold text-green-400">{fmtPrice(result.plan.target1)}</p></div>
-            <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3"><p className="text-[10px] uppercase text-gray-500">Target 2</p><p className="mt-1 font-bold text-green-400">{fmtPrice(result.plan.target2)}</p></div>
-            <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3"><p className="text-[10px] uppercase text-gray-500">R:R @ Entry</p><p className="mt-1 font-bold text-white">{result.plan.riskRewardAtEntry === null ? '—' : `${result.plan.riskRewardAtEntry.toFixed(2)}:1`}</p></div>
+            <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3"><p className="text-[10px] uppercase text-gray-500">Target 2</p><p className="mt-1 font-bold text-green-400">{fmtPrice(result.plan.target2)}</p><p className="mt-1 text-[10px] leading-relaxed text-gray-500">{formatTarget2Context(result.plan.target2Basis)}</p></div>
+            <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3"><p className="text-[10px] uppercase text-gray-500">R:R @ Entry</p><p className="mt-1 font-bold text-white">{result.plan.riskRewardAtEntry === null ? '—' : result.plan.riskRewardAtEntry >= 10 ? '10+:1' : `${result.plan.riskRewardAtEntry.toFixed(2)}:1`}</p><p className="mt-1 text-[10px] text-gray-500">R:R คำนวณถึง Target 1</p></div>
             <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3"><p className="text-[10px] uppercase text-gray-500">Breakout Trigger</p><p className="mt-1 font-bold text-yellow-400">{fmtPrice(result.plan.breakoutTrigger)}</p></div>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">Trend</p><p className="mt-1 font-bold text-white">{result.trend}</p><p className="text-xs text-gray-500">EMA50 {fmtPrice(result.ema50)} · EMA200 {fmtPrice(result.ema200)}</p></div>
+            <details className="rounded-xl border border-gray-700 bg-gray-900 p-3 text-xs text-gray-300"><summary className="cursor-pointer font-semibold text-white">วิธีอ่านตัวชี้วัดและความเสี่ยง</summary><p className="mt-2 leading-relaxed">Score คือคะแนนตามเกณฑ์ระบบ · Trend คือทิศทางแนวโน้ม · Momentum คือความเร็วของการเคลื่อนไหว · RSI วัดแรงราคา · MACD แสดงความสัมพันธ์ของค่าเฉลี่ยราคา · Entry คือช่วงเข้าที่ระบบประเมิน · Stop คือระดับจำกัดความเสี่ยง · Target คือเป้าหมายตามแบบจำลอง · R:R เปรียบเทียบผลตอบแทนกับความเสี่ยง · Volume คือปริมาณซื้อขาย · ATR วัดความผันผวน ข้อมูลเหล่านี้ไม่รับประกันผลตอบแทน</p></details>
             <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">Momentum</p><p className="mt-1 font-bold text-white">RSI {result.rsi14?.toFixed(1) ?? '—'} / W {result.weeklyRsi14?.toFixed(1) ?? '—'}</p><p className="text-xs text-gray-500">MACD Hist {result.macdHistogram?.toFixed(2) ?? '—'}</p></div>
             <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">Volume / ATR</p><p className="mt-1 font-bold text-white">Vol {result.volumeRatio === null ? '—' : `${result.volumeRatio.toFixed(2)}x`}</p><p className="text-xs text-gray-500">ATR14 {fmtPrice(result.atr14)}</p></div>
             <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">Relative Strength</p><p className={`mt-1 font-bold ${(result.relativeStrength20 ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>RS20 {fmtPct(result.relativeStrength20)}</p><p className="text-xs text-gray-500">RS60 {fmtPct(result.relativeStrength60)} vs SPY</p></div>
             <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">แนวรับ / แนวต้าน</p><p className="mt-1 font-bold text-white">S {fmtPrice(result.support)}</p><p className="text-xs text-gray-500">R {fmtPrice(result.resistance)}</p></div>
             <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">52 สัปดาห์</p><p className="mt-1 font-bold text-white">High {fmtPrice(result.week52High)}</p><p className="text-xs text-gray-500">Low {fmtPrice(result.week52Low)}</p></div>
-            <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">มูลค่าเชิงพื้นฐาน</p><p className="mt-1 font-bold text-white">P/E {result.pe === null ? '—' : result.pe.toFixed(1)}</p><p className="text-xs text-gray-500">ใช้เป็นบริบท ไม่ใช้ฟันธงลำพัง</p></div>
+            <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">มูลค่าเชิงพื้นฐาน</p><p className="mt-1 font-bold text-white">P/E {result.pe === null ? '—' : result.pe.toFixed(1)}</p><p className="text-xs text-gray-500">ค่าจาก Finnhub (ชนิดอาจเป็นรายปีปรับค่าหรือ TTM ตามข้อมูลที่มี) ใช้เป็นบริบท ไม่ใช้ฟันธงลำพัง</p></div>
             <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3"><p className="text-xs font-semibold text-gray-400">ความเสี่ยงงบ</p><p className={`mt-1 font-bold ${result.earnings && result.earnings.daysUntil <= 7 ? 'text-orange-400' : 'text-white'}`}>{result.earnings ? `${result.earnings.daysUntil} วัน` : 'ไม่พบใน 60 วัน'}</p><p className="text-xs text-gray-500">{result.earnings?.date ?? '—'}</p></div>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-3">
+            <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">เหตุผล/ข้อสังเกตจาก Stock Scanner (สูงสุด 4 รายการ)</p>
+              {result.scannerReasons.length ? <ul className="space-y-1.5 text-sm text-gray-300">{result.scannerReasons.map(reason => <li key={reason}>• {reason}</li>)}</ul> : <p className="text-sm text-gray-500">ไม่มีเหตุผลเฉพาะจากคะแนนที่จะแสดง</p>}
+            </div>
             <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">✅ จุดสนับสนุน</p>
               {result.plan.reasons.length ? <ul className="space-y-1.5 text-sm text-gray-300">{result.plan.reasons.map(reason => <li key={reason}>• {reason}</li>)}</ul> : <p className="text-sm text-gray-500">ยังไม่มีสัญญาณบวกเด่นพอ</p>}
@@ -352,6 +363,8 @@ export default function StockCheckPanel({
           {aiResult && (
             <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="font-bold text-purple-300">✨ AI Deep Analysis</p><span className="text-[10px] text-gray-600">{aiResult.usedModel ?? 'model unknown'}</span></div>
+              {aiResult.usedFallbackSummary && <p className="mb-2 text-xs text-amber-300">AI ส่งรูปแบบที่อ่านไม่ได้ จึงใช้สรุปจาก Stock Check แทน</p>}
+              {(aiResult.removedClaims ?? 0) > 0 && <p className="mb-2 text-xs text-amber-300">ตัดข้อความ AI ที่ขัดกับข้อมูลที่ระบบคำนวณแล้ว {aiResult.removedClaims} รายการ</p>}
               <p className="text-sm leading-relaxed text-gray-300">{aiResult.summary}</p>
               <div className="mt-3 grid gap-3 lg:grid-cols-2">
                 <div><p className="mb-1 text-xs font-semibold text-gray-400">เหตุผลเพิ่มเติม</p><ul className="space-y-1 text-xs text-gray-400">{aiResult.reasons.map(item => <li key={item}>• {item}</li>)}</ul></div>

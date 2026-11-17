@@ -50,8 +50,8 @@ function makeAudit({ extraAdvisory = false, critical = 0, nonMajorFix = false, i
       } },
     },
   }
-  if (includeEslint) tree.dependencies['eslint-config-next'] = { version: '16.4.1', dependencies: {
-    '@next/eslint-plugin-next': { version: '16.4.1', dependencies: {
+  if (includeEslint) tree.dependencies['eslint-config-next'] = { version: '16.4.5', dependencies: {
+    '@next/eslint-plugin-next': { version: '16.4.5', dependencies: {
       'fast-glob': { version: '3.3.1', dependencies: {
           // npm ls --json can omit a deduped child edge although audit.via reports
           // fast-glob -> micromatch -> braces and the installed tree resolves it.
@@ -69,19 +69,22 @@ function makeAudit({ extraAdvisory = false, critical = 0, nonMajorFix = false, i
   }
 }
 
+// GHSA-vfj7-8cjw-p6xm was withdrawn by GitHub on 2026-10-23 and its CI exception was removed in v1.41.26.
+// The old braces-shaped report must now fail closed instead of being accepted.
 const describedRealShape = makeAudit()
-const accepted = renderAuditSummary({ ...describedRealShape, exitCode: 1, mode: 'Full', commit: 'synthetic-shape' })
-assert.equal(accepted.status, 'PASS_WITH_EXCEPTION')
-assert.match(accepted.markdown, /GHSA-vfj7-8cjw-p6xm/)
-assert.match(accepted.markdown, /tailwindcss@3\.4\.19 > chokidar@3\.6\.0 > braces@3\.0\.3/)
-assert.match(accepted.markdown, /eslint-config-next@16\.4\.1 > @next\/eslint-plugin-next@16\.4\.1 > fast-glob@3\.3\.1/)
+const formerlyAccepted = renderAuditSummary({ ...describedRealShape, exitCode: 1, mode: 'Full', commit: 'synthetic-shape' })
+assert.equal(formerlyAccepted.status, 'FINDINGS')
+assert.ok(!/Accepted exception/i.test(formerlyAccepted.markdown), 'A braces report must not be reported as an accepted exception')
+assert.match(formerlyAccepted.markdown, /GHSA-vfj7-8cjw-p6xm/)
+assert.match(formerlyAccepted.markdown, /tailwindcss@3\.4\.19 > chokidar@3\.6\.0 > braces@3\.0\.3/)
+assert.equal(renderAuditSummary({ ...describedRealShape, exitCode: 0, mode: 'Full' }).status, 'FINDINGS')
 
 assert.equal(renderAuditSummary({ ...makeAudit({ extraAdvisory: true }), exitCode: 1, mode: 'Full' }).status, 'FINDINGS')
 assert.equal(renderAuditSummary({ ...makeAudit({ critical: 1 }), exitCode: 1, mode: 'Full' }).status, 'FINDINGS')
 assert.equal(renderAuditSummary({ ...makeAudit({ nonMajorFix: true }), exitCode: 1, mode: 'Full' }).status, 'FINDINGS')
 assert.equal(renderAuditSummary({ ...makeAudit({ invalidPath: true }), exitCode: 1, mode: 'Full' }).status, 'FINDINGS')
 assert.equal(renderAuditSummary({ ...describedRealShape, exitCode: 1, mode: 'Production-only' }).status, 'FINDINGS')
-assert.equal(renderAuditSummary({ ...makeAudit({ includeEslint: false }), exitCode: 1, mode: 'Full' }).status, 'PASS_WITH_EXCEPTION')
+assert.equal(renderAuditSummary({ ...makeAudit({ includeEslint: false }), exitCode: 1, mode: 'Full' }).status, 'FINDINGS')
 
 const clean = renderAuditSummary({
   report: { metadata: { vulnerabilities: { critical: 0, high: 0, moderate: 0, low: 0, info: 0 } }, vulnerabilities: {} },
@@ -97,4 +100,91 @@ assert.match(ciWorkflow, /npm audit --omit=dev --audit-level=high --json/)
 assert.match(ciWorkflow, /\[ "\$PRODUCTION_AUDIT_STATUS" != "PASS" \]/)
 assert.match(ciWorkflow, /\[ "\$FULL_AUDIT_STATUS" != "PASS_WITH_EXCEPTION" \]/)
 
-console.log('✓ Audit exception classifier covers the owner-provided npm audit JSON shape and fails closed on unrelated findings')
+console.log('✓ Audit classifier no longer accepts the withdrawn braces advisory and fails closed on every braces-shaped report')
+
+function makeMinimatchAdvisory(range) {
+  return {
+    source: 9999999,
+    name: 'minimatch',
+    dependency: 'minimatch',
+    url: 'https://github.com/advisories/GHSA-g3hv-75wg-m249',
+    severity: 'moderate',
+    range,
+  }
+}
+
+function makeMinimatchAudit({ extraAdvisory = false, productionNode = false, nonDevAncestor = false, packageRange = '<11.0.1', advisoryRange = '<11.0.1' } = {}) {
+  const vulnerabilities = {
+    minimatch: {
+      name: 'minimatch', severity: 'moderate', isDirect: false, range: packageRange,
+      via: [makeMinimatchAdvisory(advisoryRange)], effects: ['eslint'], nodes: ['node_modules/minimatch'], fixAvailable: true,
+    },
+    eslint: {
+      name: 'eslint', severity: 'moderate', isDirect: false, range: '*',
+      via: ['minimatch', 'eslint'], effects: [], nodes: ['node_modules/eslint'], fixAvailable: true,
+    },
+  }
+  const tree = {
+    name: 'stock-portfolio',
+    dependencies: {
+      eslint: { version: '9.39.5', dependencies: { minimatch: { version: '10.2.6' } } },
+    },
+  }
+  const packages = {
+    '': { name: 'stock-portfolio', version: '1.41.17' },
+    'node_modules/eslint': { version: '9.39.5', dev: !nonDevAncestor },
+    'node_modules/minimatch': { version: '10.2.6', dev: !productionNode },
+  }
+  if (extraAdvisory) {
+    vulnerabilities.glob = {
+      name: 'glob', severity: 'moderate', isDirect: false, range: '<11',
+      via: [{ name: 'glob', url: 'https://github.com/advisories/GHSA-other-1111-2222', severity: 'moderate', range: '<11' }],
+      effects: [], nodes: ['node_modules/glob'], fixAvailable: true,
+    }
+    tree.dependencies.glob = { version: '10.4.5' }
+    packages['node_modules/glob'] = { version: '10.4.5', dev: true }
+  }
+  const count = Object.keys(vulnerabilities).length
+  return {
+    report: {
+      metadata: { vulnerabilities: { info: 0, low: 0, moderate: count, high: 0, critical: 0, total: count } },
+      vulnerabilities,
+    },
+    npmTree: tree,
+    packageLock: { packages },
+  }
+}
+
+// The minimatch exception (GHSA-g3hv-75wg-m249) was removed in v1.41.42 after the ESLint toolchain moved to
+// minimatch 11.0.1 or later. Every formerly accepted minimatch-shaped report must now fail closed.
+const minimatchOnly = makeMinimatchAudit()
+const minimatchFormerlyAccepted = renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Full', now: '2026-12-15' })
+assert.equal(minimatchFormerlyAccepted.status, 'FINDINGS')
+assert.match(minimatchFormerlyAccepted.markdown, /GHSA-g3hv-75wg-m249/i)
+assert.ok(!/ข้อยกเว้นที่ยอมรับ/.test(minimatchFormerlyAccepted.markdown), 'A minimatch report must not be reported as an accepted exception')
+assert.equal(renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Full', now: '2026-11-01' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...minimatchOnly, exitCode: 1, mode: 'Full' }).status, 'FINDINGS')
+assert.equal(renderAuditSummary({ ...minimatchOnly, exitCode: 0, mode: 'Production-only' }).status, 'FINDINGS')
+for (const [packageRange, advisoryRange] of [
+  ['<11.0.1', '<11.0.1'],
+  ['7.0.0 - 11.0.0', '>=7.0.0 <11.0.1'],
+  ['*', '*'],
+]) {
+  for (const mode of ['Full', 'Production-only']) {
+    assert.equal(
+      renderAuditSummary({ ...makeMinimatchAudit({ packageRange, advisoryRange }), exitCode: 0, mode, now: '2026-12-15' }).status,
+      'FINDINGS',
+      `minimatch-shaped report must fail closed (${mode}: ${packageRange} / ${advisoryRange})`,
+    )
+  }
+}
+
+const summarizerSource = readFileSync('scripts/qa/summarize-npm-audit.mjs', 'utf8')
+assert.ok(!/PASS_WITH_EXCEPTION|minimatch|GHSA-/i.test(summarizerSource), 'The audit classifier must not define any accepted exception')
+const installedLock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
+for (const [lockPath, entry] of Object.entries(installedLock.packages)) {
+  if (!lockPath.endsWith('node_modules/minimatch')) continue
+  const major = Number(String(entry.version).split('.')[0])
+  assert.ok(major < 7 || major > 11 || (major === 11 && entry.version !== '11.0.0'), `${lockPath}@${entry.version} is inside the GHSA-g3hv-75wg-m249 range (>=7.0.0 <11.0.1)`)
+}
+console.log('✓ Audit classifier no longer accepts the minimatch advisory and the lockfile holds no affected minimatch version')

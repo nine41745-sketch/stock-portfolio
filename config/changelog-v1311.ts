@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const v1311: ChangelogEntry = {
   version: 'v1.31.1',
-  date: '2026-10-07 01:40 ICT',
+  date: 'เวลาเดิมใน Changelog — 2026-10-07 01:40 ICT (ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production)',
   changes: [
     'UI/UX Polish: จัดลำดับ Header, KPI, Cards, Tables และ Action hierarchy ให้กระชับ อ่านง่าย และสม่ำเสมอทั้งระบบ',
     'Copy System: ปรับถ้อยคำไทย/อังกฤษ ป้ายสถานะ หัวข้อ ปุ่ม และข้อความช่วยเหลือให้ใช้รูปแบบเดียวกัน โดยคงศัพท์ตลาดหุ้นที่จำเป็น',

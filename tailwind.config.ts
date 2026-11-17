@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss'
+import defaultTheme from 'tailwindcss/defaultTheme'
 
 const config: Config = {
   darkMode: ['selector', '[data-theme="dark"]'],
@@ -8,7 +9,11 @@ const config: Config = {
     './app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        sans: ['var(--font-noto-sans-thai)', ...defaultTheme.fontFamily.sans],
+      },
+    },
   },
   plugins: [],
 }

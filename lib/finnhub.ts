@@ -1,5 +1,8 @@
 import { discoveryFetch, type DiscoveryProviderContext } from '@/lib/discovery-deadline'
+import { resolveUpcomingEarningsStatus, type EarningsStatus } from '@/lib/earnings-status'
 import { FinnhubQuote } from '@/types'
+import { selectPe, type PeKind } from '@/lib/pe-kind'
+import { sanitizeWeek52 } from '@/lib/week52'
 
 const BASE = 'https://finnhub.io/api/v1'
 const KEY  = process.env.FINNHUB_API_KEY!
@@ -16,15 +19,19 @@ function normalizeSymbols(symbols: string[]): string[] {
 
 export interface StockMetrics {
   pe: number | null
+  peKind?: PeKind | null
   week52High: number | null
   week52Low: number | null
 }
 
-export async function getQuote(symbol: string, signal?: AbortSignal): Promise<FinnhubQuote | null> {
+// `fresh` skips the Next data cache. The default 60s revalidate is stale-while-revalidate, so the first
+// request after a long idle period (e.g. a weekend) can still be served the previous session's price.
+// Buy-decision paths (Stock Check / Today Opportunities) must pass fresh: true.
+export async function getQuote(symbol: string, signal?: AbortSignal, options?: { fresh?: boolean }): Promise<FinnhubQuote | null> {
   if (!KEY) return null
   try {
-    const res = await fetch(`${BASE}/quote?symbol=${symbol}&token=${KEY}`, {
-      next: { revalidate: 60 },
+    const res = await fetch(`${BASE}/quote?symbol=${encodeURIComponent(symbol)}&token=${KEY}`, {
+      ...(options?.fresh ? { cache: 'no-store' as const } : { next: { revalidate: 60 } }),
       ...(signal ? { signal } : {}),
     })
     if (!res.ok) return null
@@ -82,18 +89,18 @@ export async function getQuoteObservations(symbols: string[], options?: { signal
   return result
 }
 
-async function getBasicMetrics(symbol: string): Promise<{ pe: number | null; week52High: number | null; week52Low: number | null }> {
+async function getBasicMetrics(symbol: string): Promise<{ pe: number | null; peKind: PeKind | null; week52High: number | null; week52Low: number | null }> {
   try {
     const res = await fetch(`${BASE}/stock/metric?symbol=${symbol}&metric=all&token=${KEY}`, { next: { revalidate: 1800 } })
-    if (!res.ok) return { pe: null, week52High: null, week52Low: null }
+    if (!res.ok) return { pe: null, peKind: null, week52High: null, week52Low: null }
     const d = await res.json()
     const m = d?.metric ?? {}
     return {
-      pe: m.peNormalizedAnnual ?? m.peTTM ?? m.peBasicExclExtraTTM ?? m.peExclExtraTTM ?? null,
+      ...selectPe(m),
       week52High: m['52WeekHigh'] ?? null,
       week52Low:  m['52WeekLow']  ?? null,
     }
-  } catch { return { pe: null, week52High: null, week52Low: null } }
+  } catch { return { pe: null, peKind: null, week52High: null, week52Low: null } }
 }
 
 export async function getStockMetrics(symbol: string): Promise<StockMetrics> {
@@ -133,24 +140,19 @@ async function fetchOneWithMetrics(sym: string): Promise<QuoteWithMetrics> {
     const [q, m] = await Promise.all([getQuote(sym), getStockMetrics(sym)])
     const currentPrice = q?.c ?? null
 
-    // validate 52W: ถ้าค่าห่างจากราคาปัจจุบันเกิน 5 เท่า = ผิด currency
-    let week52High = m.week52High
-    let week52Low  = m.week52Low
-    if (currentPrice && currentPrice > 0) {
-      if (week52High && week52High > currentPrice * 5) week52High = null
-      if (week52Low  && week52Low  < currentPrice * 0.05) week52Low = null
-      if (week52Low  && week52Low  > currentPrice * 5) week52Low = null
-    }
+    // validate 52W: ค่าที่ห่างจากราคาปัจจุบันมากเกินไปถือว่าผิด currency (ดู lib/week52.ts)
+    const { week52High, week52Low } = sanitizeWeek52(currentPrice, m.week52High, m.week52Low)
 
     return {
       price: currentPrice,
       dayChange: q?.dp ?? null,
       pe: m.pe,
+      peKind: m.peKind ?? null,
       week52High,
       week52Low,
     }
   } catch {
-    return { price: null, dayChange: null, pe: null, week52High: null, week52Low: null }
+    return { price: null, dayChange: null, pe: null, peKind: null, week52High: null, week52Low: null }
   }
 }
 
@@ -206,6 +208,11 @@ function toUpcomingEarnings(row: EarningsCalendarRow, today: Date): UpcomingEarn
 // เช็ควันประกาศผลประกอบการที่ใกล้ที่สุด — ใช้เตือนความเสี่ยงก่อน AI วิเคราะห์
 // (technical indicators ไม่มีความหมายถ้าราคาจะเหวี่ยงแรงจากงบที่กำลังจะออก)
 export async function getUpcomingEarnings(symbol: string, context?: DiscoveryProviderContext): Promise<UpcomingEarnings | null> {
+  const result = await getUpcomingEarningsStatus(symbol, context)
+  return result.status === 'found' ? result.earnings : null
+}
+
+export async function getUpcomingEarningsStatus(symbol: string, context?: DiscoveryProviderContext): Promise<EarningsStatus> {
   try {
     const today = new Date()
     const to = new Date(today)
@@ -213,18 +220,16 @@ export async function getUpcomingEarnings(symbol: string, context?: DiscoveryPro
 
     const url = `${BASE}/calendar/earnings?from=${fmtDate(today)}&to=${fmtDate(to)}&symbol=${symbol}&token=${KEY}`
     const res = context ? null : await fetch(url, { next: { revalidate: 21600 } })
-    if (res && !res.ok) return null
+    if (res && !res.ok) return { status: 'unknown', earnings: null }
 
-    const data = context ? await discoveryFetch(context, url, response => response.json()) : await res!.json()
-    const list: EarningsCalendarRow[] = data?.earningsCalendar ?? []
-    if (!list.length) return null
-
-    const sorted = [...list].sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')))
-    return toUpcomingEarnings(sorted[0], today)
+    const data = context
+      ? await discoveryFetch(context, url, async response => ({ ok: response.ok, earningsCalendar: await response.json().then(body => body?.earningsCalendar) }))
+      : { ok: res!.ok, ...(await res!.json()) }
+    return resolveUpcomingEarningsStatus(data, today)
   } catch (e) {
     if (!context) console.error(`[finnhub] getUpcomingEarnings error for ${symbol}:`, e)
     if (context) throw e
-    return null
+    return { status: 'unknown', earnings: null }
   }
 }
 

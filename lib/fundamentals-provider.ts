@@ -1,8 +1,11 @@
 import {
+  EARNINGS_WINDOW_DAYS,
   metricStatusFromHttp,
   normalizeFinnhubMetrics,
+  normalizeAdditionalMetrics,
   normalizeSymbols,
   type FundamentalObservation,
+  type AdditionalMetric,
   type ProviderStatus,
 } from '@/lib/fundamentals'
 import { getCompanyProfileResults } from '@/lib/company-profile'
@@ -14,7 +17,6 @@ const KEY = process.env.FINNHUB_API_KEY
 const METRICS_REVALIDATE_SECONDS = 1800
 const EARNINGS_REVALIDATE_SECONDS = 21600
 const REQUEST_TIMEOUT_MS = 8000
-const EARNINGS_WINDOW_DAYS = 60
 const SYMBOL_CHUNK_SIZE = 2
 const SYMBOL_CHUNK_DELAY_MS = 250
 
@@ -36,6 +38,7 @@ export interface FundamentalSymbolResult {
   providerStatus: ProviderStatus
   fetchedAt: string | null
   observations: FundamentalObservation[]
+  additionalMetrics: AdditionalMetric[]
   earnings: EarningsIntelligence
   earningsResultsStatus: 'unverified'
   sec: SecFinancialResult
@@ -175,6 +178,7 @@ export async function loadFundamentals(symbols: string[]): Promise<FundamentalSy
       // Company Profile currency describes the listing/profile; the metrics response
       // does not prove the financial statement currency, so EPS currency stays unknown.
       observations: normalizeFinnhubMetrics(metricResult.metric, metricResult.fetchedAt ?? new Date().toISOString()),
+      additionalMetrics: normalizeAdditionalMetrics(metricResult.metric),
       earnings: earnings[symbol] ?? emptyEarnings('provider_error'),
       earningsResultsStatus: 'unverified',
       sec: secResults[symbol],

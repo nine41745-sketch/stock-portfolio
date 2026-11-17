@@ -1,0 +1,40 @@
+name: PR Guard Bootstrap
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-guard-bootstrap-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard-bootstrap:
+    name: guard-bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout PR head for bootstrap validation
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Test proposed guard rules
+        run: node --test scripts/test-pr-guard.mjs
+      - name: Enforce proposed guard rules
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GUARD_OVERRIDE_APPROVED: 'false'
+          GUARD_CODE_UPDATE_APPROVED: 'false'
+        run: node scripts/qa/check-pr-guard.mjs

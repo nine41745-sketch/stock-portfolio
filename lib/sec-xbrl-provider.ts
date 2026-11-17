@@ -1,6 +1,6 @@
 import 'server-only'
 import {
-  emptySecResult, fetchSecJson, normalizeSecCompanyFacts, resolveSecIdentity, validSecUserAgent,
+  emptySecResult, fetchSecJson, normalizeSecCompanyFacts, resolveSecIdentity, validSecUserAgent, issuerOnlySecEps,
   type SecFinancialResult,
 } from '@/lib/sec-xbrl'
 
@@ -42,7 +42,7 @@ export async function loadSecAnnualEps(symbols: string[]): Promise<Record<string
       results[symbol] = emptySecResult('unverified', 'ไม่พบ Ticker–CIK mapping ที่ไม่กำกวม')
       continue
     }
-    if (identity.status === 'unsupported') {
+    if (identity.status === 'unsupported' && (!identity.multipleTickerIssuer || !/^(Nasdaq|NYSE|NYSE American)$/i.test(identity.exchange))) {
       results[symbol] = { ...emptySecResult('unsupported', identity.reason), identity }
       continue
     }
@@ -54,6 +54,20 @@ export async function loadSecAnnualEps(symbols: string[]): Promise<Record<string
     const facts = await fetchSecJson(`${FACTS_BASE}CIK${identity.cik}.json`, userAgent, fetch, wait, { deadlineAt })
     if (facts.status !== 'available') {
       results[symbol] = { ...emptySecResult(facts.status, 'โหลด SEC CompanyFacts ไม่สำเร็จ'), identity }
+      continue
+    }
+    if (identity.status === 'unsupported') {
+      const fetchedAt = new Date().toISOString()
+      const normalized = normalizeSecCompanyFacts(symbol, identity, facts.body, fetchedAt)
+      const issuerEps = issuerOnlySecEps(symbol, identity, facts.body, fetchedAt)
+      results[symbol] = {
+        ...emptySecResult('unsupported', identity.reason), identity,
+        issuerIdentityStatus: normalized.issuerIdentityStatus,
+        companyFactsEntityName: normalized.companyFactsEntityName,
+        issuerNameMatch: normalized.issuerNameMatch,
+        fetchedAt: normalized.fetchedAt,
+        ...(issuerEps ? { issuerEps } : {}),
+      }
       continue
     }
     results[symbol] = normalizeSecCompanyFacts(symbol, identity, facts.body, new Date().toISOString())

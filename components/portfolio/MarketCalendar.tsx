@@ -41,6 +41,83 @@ function thaiDate(date: string): string {
   }).format(parsed)
 }
 
+// v1.41.40 (thai labels): Thai text for the calendar is made here, at display time. The data in lib/market-calendar.ts stays English
+// (its tests pin it); text that is not recognised is shown exactly as it came, so nothing is ever hidden.
+const TYPE_LABEL_TH: Record<CalendarEventType, string> = {
+  FOMC: 'ประชุมนโยบายดอกเบี้ยเฟด',
+  CPI: 'ดัชนีราคาผู้บริโภค (เงินเฟ้อสหรัฐ)',
+  EARNINGS: 'ประกาศงบ',
+}
+
+const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const MONTHS_TH = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
+
+const NOTE_TH: Record<string, string> = {
+  'Official BLS release schedule; schedule may change.': 'ตารางประกาศอย่างเป็นทางการของ BLS ซึ่งอาจเปลี่ยนแปลงได้',
+  'Two-day meeting; SEP meeting.': 'ประชุมสองวัน และเป็นรอบที่เฟดประกาศประมาณการเศรษฐกิจ (SEP)',
+  'Two-day meeting.': 'ประชุมสองวัน',
+  'Tentative until confirmed by the preceding meeting.': 'วันประชุมยังไม่ยืนยัน จะยืนยันในการประชุมครั้งก่อนหน้า',
+  'SEP meeting; tentative until confirmed.': 'รอบที่เฟดประกาศประมาณการเศรษฐกิจ (SEP) วันประชุมยังไม่ยืนยัน',
+  'Tentative until confirmed.': 'วันประชุมยังไม่ยืนยัน',
+  'Company earnings calendar; verify close to the event because schedules can change.': 'วันประกาศงบจากปฏิทินบริษัท ควรตรวจอีกครั้งใกล้วันจริง เพราะตารางอาจเปลี่ยน',
+  'Macro dates are a static snapshot of official published schedules; re-check official sources before acting.': 'วันที่ FOMC และ CPI เป็นภาพที่บันทึกไว้จากตารางทางการ ควรตรวจแหล่งทางการอีกครั้งก่อนตัดสินใจ',
+}
+
+const EARNINGS_TIMING_TH: Record<string, string> = {
+  'Before market open': 'ก่อนตลาดเปิด',
+  'After market close': 'หลังตลาดปิด',
+  'During market hours': 'ระหว่างตลาดเปิด',
+}
+
+function noteTh(note: string | null): string | null {
+  if (!note) return null
+  return NOTE_TH[note] ?? note
+}
+
+function eventTitleTh(event: { type: string; title: string }): string {
+  if (event.type === 'EARNINGS') return 'ประกาศงบ'
+  if (event.type === 'FOMC') return 'ประชุม FOMC (นโยบายดอกเบี้ยของเฟด)'
+  const cpi = /^US CPI — ([A-Za-z]+) (\d{4})$/.exec(event.title)
+  const monthIndex = cpi ? MONTHS_EN.indexOf(cpi[1]) : -1
+  if (cpi && monthIndex >= 0) return `ดัชนีราคาผู้บริโภคสหรัฐ (CPI) เดือน${MONTHS_TH[monthIndex]} ${Number(cpi[2]) + 543}`
+  return event.title
+}
+
+function newYorkOffsetMinutes(utcMs: number): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).formatToParts(new Date(utcMs))
+  const part = (type: string) => Number(parts.find(p => p.type === type)?.value)
+  const wallAsUtc = Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'))
+  return Math.round((wallAsUtc - Math.floor(utcMs / 60000) * 60000) / 60000)
+}
+
+// New York wall-clock time (daylight saving aware) -> Thai time (UTC+7, no daylight saving)
+function newYorkToThai(date: string, hour: number, minute: number): { date: string; time: string } {
+  const [year, month, day] = date.split('-').map(Number)
+  const wall = Date.UTC(year, month - 1, day, hour, minute)
+  const utc = wall - newYorkOffsetMinutes(wall - newYorkOffsetMinutes(wall) * 60000) * 60000
+  const thai = new Date(utc + 7 * 3600000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return {
+    date: `${thai.getUTCFullYear()}-${pad(thai.getUTCMonth() + 1)}-${pad(thai.getUTCDate())}`,
+    time: `${pad(thai.getUTCHours())}:${pad(thai.getUTCMinutes())}`,
+  }
+}
+
+function timingTh(event: { type: string; date: string; endDate: string | null; timing: string | null }): string | null {
+  if (!event.timing) return null
+  if (EARNINGS_TIMING_TH[event.timing]) return EARNINGS_TIMING_TH[event.timing]
+  const match = /(\d{1,2}):(\d{2}) ET/.exec(event.timing)
+  if (!match) return event.timing
+  // for FOMC the decision is announced on the last day of the meeting
+  const eventDate = event.type === 'FOMC' ? (event.endDate ?? event.date) : event.date
+  const thai = newYorkToThai(eventDate, Number(match[1]), Number(match[2]))
+  const label = event.timing.startsWith('Decision') ? 'ประกาศผลเวลา' : 'เวลา'
+  return `${label} ${match[1].padStart(2, '0')}:${match[2]} น. ตามเวลานิวยอร์ก (ET) ตรงกับ ${thaiDate(thai.date)} เวลา ${thai.time} น. ตามเวลาไทย`
+}
+// end v1.41.40 (thai labels)
+
 export default function MarketCalendar() {
   const [data, setData] = useState<CalendarResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -147,13 +224,13 @@ export default function MarketCalendar() {
                   </div>
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${typeStyle(event.type)}`}>{event.type}</span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${typeStyle(event.type)}`}>{event.type} · {TYPE_LABEL_TH[event.type]}</span>
                       {event.symbol ? <span className="font-bold text-white">{event.symbol}</span> : null}
-                      <h2 className="font-semibold text-gray-200">{event.title}</h2>
+                      <h2 className="font-semibold text-gray-200">{eventTitleTh(event)}</h2>
                     </div>
                     {event.endDate ? <p className="mt-1 text-xs text-gray-500">ถึง {thaiDate(event.endDate)}</p> : null}
-                    {event.timing ? <p className="mt-1 text-sm text-gray-400">{event.timing}</p> : null}
-                    {event.note ? <p className="mt-1 text-xs text-gray-500">{event.note}</p> : null}
+                    {timingTh(event) ? <p className="mt-1 text-sm text-gray-400">{timingTh(event)}</p> : null}
+                    {noteTh(event.note) ? <p className="mt-1 text-xs text-gray-500">{noteTh(event.note)}</p> : null}
                   </div>
                 </div>
                 <p className="text-xs text-gray-500">Source: {event.source}</p>
@@ -173,7 +250,7 @@ export default function MarketCalendar() {
         <p className="font-semibold text-gray-300">แหล่งข้อมูลปฏิทิน</p>
         <p className="mt-2">Earnings: Finnhub · CPI: BLS · FOMC: Federal Reserve</p>
         <p className="mt-1">Macro schedule snapshot ตรวจล่าสุด {data.calendarMetadata.macroScheduleVerifiedAt}; CPI ครอบคลุมถึง {data.calendarMetadata.cpiCoverageThrough}, FOMC ถึง {data.calendarMetadata.fomcCoverageThrough}</p>
-        <p className="mt-1">{data.calendarMetadata.note}</p>
+        <p className="mt-1">{noteTh(data.calendarMetadata.note)}</p>
         <p className="mt-1">หน้าปฏิทินเป็นแบบอ่านอย่างเดียว และไม่สร้างคำสั่งซื้อขายอัตโนมัติ</p>
       </section>
     </main>

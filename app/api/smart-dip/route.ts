@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
       getSupportResistanceLadder(params.symbol, { signal }).catch(() => null),
       (async () => {
         try {
-          const service = createServiceClient()
+          const service = await createServiceClient()
           return await service.rpc('get_decrypted_trade_plans', {
             p_user_id: context.userId,
             p_portfolio_id: context.portfolioId,

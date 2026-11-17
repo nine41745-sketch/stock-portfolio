@@ -1,8 +1,10 @@
-import { getQuote, getStockMetrics, getUpcomingEarnings } from '@/lib/finnhub'
+import { getQuote, getStockMetrics, getUpcomingEarningsStatus } from '@/lib/finnhub'
 import { getTechnicalIndicators } from '@/lib/indicators'
 import { getAtr14 } from '@/lib/atr'
 import { scoreScannerCandidate } from '@/lib/stock-scanner'
 import { buildStockCheck, sanitizeWeek52Range, StockCheckPlan, StockCheckSetup } from '@/lib/stock-check'
+import { providerQuoteTimestamp } from '@/lib/stock-check-presentation'
+import { isQuoteUsable } from '@/lib/quote-freshness'
 
 function diffOrNull(a: number | null, b: number | null): number | null {
   if (a === null || b === null) return null
@@ -12,8 +14,11 @@ function diffOrNull(a: number | null, b: number | null): number | null {
 export interface StockCheckSnapshot {
   symbol: string
   checkedAt: string
+  quoteTimestamp: string | null
   price: number | null
   priceSource: 'finnhub' | 'historical'
+  priceAsOf: string | null
+  priceSourceLabel: 'Finnhub' | 'Yahoo' | 'Stooq' | 'ไม่ทราบแหล่งข้อมูล'
   dayChangePct: number | null
   score: number
   label: 'น่าสนใจ' | 'เฝ้าดู' | 'ยังไม่เด่น'
@@ -37,19 +42,26 @@ export interface StockCheckSnapshot {
   relativeStrength60: number | null
   pe: number | null
   earnings: { date: string; daysUntil: number; hour: string | null } | null
+  earningsStatus: 'found' | 'none' | 'unknown'
+  categoryScores: ReturnType<typeof scoreScannerCandidate>['categoryScores']
+  earningsUnknownPenalty: number
   plan: StockCheckPlan
 }
 
 export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot> {
-  const [technical, spy, quote, metrics, earnings, atr14] = await Promise.all([
+  const [technical, spy, rawQuote, metrics, earningsResult, atr14] = await Promise.all([
     getTechnicalIndicators(symbol),
     getTechnicalIndicators('SPY'),
-    getQuote(symbol),
+    getQuote(symbol, undefined, { fresh: true }),
     getStockMetrics(symbol),
-    getUpcomingEarnings(symbol),
+    getUpcomingEarningsStatus(symbol),
     getAtr14(symbol),
   ])
+  const earnings = earningsResult.status === 'found' ? earningsResult.earnings : null
 
+  // A quote whose own timestamp is older than the latest historical bar is stale; never let it override
+  // fresher data when deciding a buy.
+  const quote = isQuoteUsable(rawQuote, technical.lastBarAt) ? rawQuote : null
   const price = quote?.c ?? technical.lastClose
   const dayChangePct = quote?.dp ?? technical.return1dPct
   const relativeStrength20 = diffOrNull(technical.return20dPct, spy.return20dPct)
@@ -77,12 +89,15 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     ema50: technical.ema50,
     support: technical.scannerSupport,
     resistance: technical.scannerResistance,
+    importantSupport: technical.importantSupport,
     volumeRatio: technical.scannerVolumeRatio,
+    volumeBasis: technical.scannerVolumeBasis,
     week52High,
     week52Low,
     relativeStrength20,
     relativeStrength60,
     earningsDays: earnings?.daysUntil ?? null,
+    earningsStatus: earningsResult.status,
   })
 
   const plan = buildStockCheck({
@@ -94,6 +109,7 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     ema200: technical.ema200,
     atr14,
     support: technical.scannerSupport,
+    swingLow: technical.scannerSwingLow,
     resistance: technical.scannerResistance,
     rsi14: technical.rsi14,
     weeklyRsi14: technical.weeklyRsi14,
@@ -105,13 +121,17 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     week52Low,
     earningsDays: earnings?.daysUntil ?? null,
     pe: metrics.pe,
+    earningsStatus: earningsResult.status,
   })
 
   return {
     symbol,
     checkedAt: new Date().toISOString(),
+    quoteTimestamp: providerQuoteTimestamp(quote?.t),
     price,
     priceSource: quote?.c ? 'finnhub' : 'historical',
+    priceAsOf: quote?.c ? providerQuoteTimestamp(quote.t) : technical.lastBarAt ?? null,
+    priceSourceLabel: quote?.c ? 'Finnhub' : technical.dataSource === 'Yahoo Finance' ? 'Yahoo' : technical.dataSource === 'Stooq' ? 'Stooq' : 'ไม่ทราบแหล่งข้อมูล',
     dayChangePct,
     score: scored.score,
     label: scored.label,
@@ -135,6 +155,9 @@ export async function loadStockCheck(symbol: string): Promise<StockCheckSnapshot
     relativeStrength60,
     pe: metrics.pe,
     earnings,
+    earningsStatus: earningsResult.status,
+    categoryScores: scored.categoryScores,
+    earningsUnknownPenalty: scored.earningsUnknownPenalty,
     plan,
   }
 }

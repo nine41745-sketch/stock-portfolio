@@ -1,15 +1,20 @@
 'use client'
 
+import { formatChangelogDate } from '@/lib/changelog-date'
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { HoldingWithPrice, DetailedAnalysisResult, HoldingFormData, NewsItem } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import HoldingModal from './HoldingModal'
+import Skeleton from './Skeleton'
+import TrendMark from './TrendMark'
 import TradingViewChart from './TradingViewChart'
 import { AUTO_LOGOUT_MS, AUTO_LOGOUT_WARN_MS, FALLBACK_USD_THB_RATE } from '@/lib/constants'
 import { getMarketStatus, MarketStatus } from '@/lib/market-status'
 import { changelog, CURRENT_VERSION } from '@/config/changelog'
 import { getAthState } from '@/lib/ath'
+import { peKindHint, peKindLabel } from '@/lib/pe-kind'
 import { getImportantSupportState } from '@/lib/important-support'
 
 interface Props {
@@ -55,14 +60,16 @@ const IMPACT_LABEL: Record<string, string> = {
 }
 
 const BANGKOK_TIME_ZONE = 'Asia/Bangkok'
+// v1.41.39: ต้องตรงกับ AI_INPUT_NOT_PROVIDED ใน lib/groq.ts (ไม่ import มาเพราะไฟล์นั้นเป็นโค้ดฝั่งเซิร์ฟเวอร์; มีเทสต์ล็อกไว้)
+const AI_INPUT_NOT_PROVIDED = 'งบการเงิน รายได้ กำไรสุทธิ หนี้สิน กระแสเงินสด'
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: BANGKOK_TIME_ZONE })
 }
 function fmtDateTime(iso: string) {
   const d = new Date(iso)
-  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'numeric', year: '2-digit', timeZone: BANGKOK_TIME_ZONE }) +
-    ' เวลา ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: BANGKOK_TIME_ZONE }) + ' ICT'
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: BANGKOK_TIME_ZONE }) +
+    ' เวลา ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: BANGKOK_TIME_ZONE }) + ' น.'
 }
 function fmtNewsTime(ts: number) {
   const diffH = Math.floor((Date.now() - ts * 1000) / 3600000)
@@ -233,7 +240,7 @@ function TrackRecordCard() {
       </div>
 
       {loading ? (
-        <p className="text-gray-600 text-sm">กำลังโหลด...</p>
+        <Skeleton className="h-16 w-full" label="กำลังโหลด Track Record" />
       ) : loadError ? (
         <p className="text-red-400 text-sm">โหลด Track Record ไม่สำเร็จ — ข้อมูลเดิมไม่ได้ถูกลบ กรุณาลองใหม่ภายหลัง</p>
       ) : !data || data.overall.total === 0 ? (
@@ -367,11 +374,11 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null)
   const [expandedAnalysisSymbol, setExpandedAnalysisSymbol] = useState<string | null>(null)
   const [inactiveWarn, setInactiveWarn] = useState(false)
-  const [sortField, setSortField] = useState<string | null>(null)
+  // v1.41.40: default order is biggest position (market value) first; clicking a column header still changes it
+  const [sortField, setSortField] = useState<string | null>('market_value')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [showChangelog, setShowChangelog] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
   const holdingSymbolsKey = useMemo(
     () => holdings.map(h => h.symbol.toUpperCase()).sort().join(','),
     [holdings],
@@ -392,6 +399,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       logoutTimer = setTimeout(async () => {
         // PIN Lock: auto-logout จาก inactivity ต้องลบ PIN session ด้วยเหมือนปุ่ม "ออกจากระบบ" ปกติ
         try { await fetch('/api/pin/lock', { method: 'POST' }) } catch { /* best-effort */ }
+        const supabase = createClient()
         await supabase.auth.signOut()
         router.push('/login')
       }, TIMEOUT)
@@ -585,7 +593,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
         const m = metrics?.[h.symbol] ?? {}
         return { ...h, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct,
           dayChange: m.dayChange !== undefined ? m.dayChange : h.dayChange,
-          pe: m.pe !== undefined ? m.pe : h.pe, week52High: m.week52High !== undefined ? m.week52High : h.week52High, week52Low: m.week52Low !== undefined ? m.week52Low : h.week52Low }
+          pe: m.pe !== undefined ? m.pe : h.pe, peKind: m.peKind !== undefined ? m.peKind : h.peKind, week52High: m.week52High !== undefined ? m.week52High : h.week52High, week52Low: m.week52Low !== undefined ? m.week52Low : h.week52Low }
       }))
       setLastUpdate(new Date().toISOString())
     } catch {
@@ -704,8 +712,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       setHoldings(prev => {
         const exists = prev.find(h => h.symbol === payload.symbol)
         const nm = metrics?.[payload.symbol] ?? {}
-        if (exists) return prev.map(h => h.symbol === payload.symbol ? { ...h, ...payload, cost_basis: payload.cost_basis ?? null, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null } : h)
-        return [...prev, { id: realId ?? Date.now().toString(), user_id: '', symbol: payload.symbol, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null }]
+        if (exists) return prev.map(h => h.symbol === payload.symbol ? { ...h, ...payload, cost_basis: payload.cost_basis ?? null, current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, peKind: nm.peKind ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null } : h)
+        return [...prev, { id: realId ?? Date.now().toString(), user_id: '', symbol: payload.symbol, shares: payload.shares, cost_basis: payload.cost_basis ?? null, notes: payload.notes, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), current_price: cp, market_value: mv, total_cost: tc, pnl, pnl_pct, dayChange: nm.dayChange ?? null, pe: nm.pe ?? null, peKind: nm.peKind ?? null, week52High: nm.week52High ?? null, week52Low: nm.week52Low ?? null }]
       })
     } else {
       // v1.8.2: แก้บั๊ก market_value ค้างค่าเก่า — เดิมแก้ shares แล้วยังใช้ h.market_value ตัวเก่ามาคำนวณ P&L
@@ -774,6 +782,15 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       'openai/gpt-oss-20b': 'GPT-OSS 20B',
     }
     const modelLabel = analysis.usedModel ? (MODEL_LABELS[analysis.usedModel] ?? analysis.usedModel) : null
+    // key numbers shown right under the summary; they come from data the panel already has, nothing is generated
+    const usedNewsCount = analysis.usedNews?.length ?? 0
+    const dataBasisNews = usedNewsCount > 0 ? `ข่าว ${usedNewsCount} ชิ้น` : 'ไม่ได้รับข่าวล่าสุด (อาจดึงไม่สำเร็จ ไม่ได้แปลว่าไม่มีข่าว)'
+    const isPremarketPrice = typeof analysis.priceSource === 'string' && /pre-?market/i.test(analysis.priceSource)
+    const keyFacts: Array<{ label: string; value: string }> = [
+      typeof analysis.usedPrice === 'number' ? { label: isPremarketPrice ? 'ราคาก่อนตลาดเปิด' : 'ราคาที่ใช้วิเคราะห์', value: `$${analysis.usedPrice.toFixed(2)}` } : null,
+      t.support != null ? { label: 'แนวรับ', value: `$${t.support}` } : null,
+      t.resistance != null ? { label: 'แนวต้าน', value: `$${t.resistance}` } : null,
+    ].filter((x): x is { label: string; value: string } => x !== null)
 
     return (
       <div className="rounded-xl border border-gray-800 bg-gray-950/80 p-4 text-gray-200">
@@ -782,7 +799,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             <span className={`inline-flex items-center whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-semibold ${SIGNAL_STYLE[action]}`}>
               {SIGNAL_LABEL[action]}
             </span>
-            {modelLabel && <span className="text-[10px] text-gray-600">{modelLabel}</span>}
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -799,7 +815,14 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
         </div>
 
         {analysis.summary && <p className="mt-3 text-sm font-medium leading-relaxed text-gray-100">{analysis.summary}</p>}
-        {analysis.disclaimer && <p className="mt-2 text-[11px] italic text-gray-600">⚠️ {analysis.disclaimer}</p>}
+        {keyFacts.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400" data-testid="analysis-key-facts">
+            {keyFacts.map(k => <span key={k.label}>{k.label}: <span className="font-semibold text-gray-100">{k.value}</span></span>)}
+          </div>
+        )}
+        <p className="mt-1 text-[11px] leading-relaxed text-gray-500" data-testid="analysis-data-basis">
+          ข้อมูลที่ AI ได้รับ: ราคา · ตัวชี้วัดเทคนิค · P/E และ 52W (ถ้ามี) · {dataBasisNews} | ไม่ได้รับ: {AI_INPUT_NOT_PROVIDED}
+        </p>
 
         {analysis.analysisMode === 'PREMARKET_TRIGGER' && (
           <div className="mt-3 rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
@@ -827,30 +850,16 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             <p className="mb-1.5 text-xs font-semibold text-blue-300">📊 ภาพรวมเทคนิคัล</p>
             <p className="text-xs leading-relaxed text-gray-300">{analysis.technicalSummary}</p>
             {techChips.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {techChips.map((c, i) => (
-                  <span key={i} className="whitespace-nowrap rounded bg-gray-950/80 px-2 py-0.5 text-[10px] text-gray-400">
-                    {c.label}: <span className="font-medium text-gray-200">{c.value}</span>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {(analysis.risksAndOpportunities.caution || analysis.risksAndOpportunities.opportunity) && (
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {analysis.risksAndOpportunities.caution && (
-              <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
-                <p className="mb-1 text-xs font-semibold text-orange-300">⚠️ ข้อควรระวัง</p>
-                <p className="text-xs leading-relaxed text-gray-300">{analysis.risksAndOpportunities.caution}</p>
-              </div>
-            )}
-            {analysis.risksAndOpportunities.opportunity && (
-              <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-3">
-                <p className="mb-1 text-xs font-semibold text-green-300">🌱 โอกาส</p>
-                <p className="text-xs leading-relaxed text-gray-300">{analysis.risksAndOpportunities.opportunity}</p>
-              </div>
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] font-medium text-gray-500 hover:text-gray-300">ดูตัวเลขเทคนิคทั้งหมด ({techChips.length})</summary>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {techChips.map((c, i) => (
+                    <span key={i} className="whitespace-nowrap rounded bg-gray-950/80 px-2 py-0.5 text-[10px] text-gray-400">
+                      {c.label}: <span className="font-medium text-gray-200">{c.value}</span>
+                    </span>
+                  ))}
+                </div>
+              </details>
             )}
           </div>
         )}
@@ -863,12 +872,21 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
           </div>
         )}
 
-        {analysis.risks.length > 0 && (
-          <div className="mt-3 rounded-lg border border-red-500/15 bg-red-500/5 p-3">
-            <p className="mb-1.5 text-xs font-semibold text-red-300">🚩 ความเสี่ยงหลัก</p>
-            <ul className="space-y-1">
-              {analysis.risks.map((r, i) => <li key={i} className="flex gap-2 text-xs leading-relaxed text-gray-400"><span className="shrink-0">•</span><span>{r}</span></li>)}
-            </ul>
+        {(analysis.risksAndOpportunities.caution || analysis.risksAndOpportunities.opportunity || analysis.risks.length > 0) && (
+          <div className="mt-3 rounded-lg border border-gray-800 bg-gray-900/60 p-3" data-testid="analysis-watch-card">
+            <p className="mb-2 text-xs font-semibold text-gray-300">👀 สิ่งที่ต้องจับตา</p>
+            <div className="space-y-2">
+              {analysis.risksAndOpportunities.caution && <p className="text-xs leading-relaxed text-gray-300"><span className="font-medium text-orange-300">⚠️ ข้อควรระวัง: </span>{analysis.risksAndOpportunities.caution}</p>}
+              {analysis.risksAndOpportunities.opportunity && <p className="text-xs leading-relaxed text-gray-300"><span className="font-medium text-green-300">🌱 โอกาส: </span>{analysis.risksAndOpportunities.opportunity}</p>}
+              {analysis.risks.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-red-300">🚩 ความเสี่ยงหลัก</p>
+                  <ul className="mt-1 space-y-1">
+                    {analysis.risks.map((r, i) => <li key={i} className="flex gap-2 text-xs leading-relaxed text-gray-400"><span className="shrink-0">•</span><span>{r}</span></li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -906,6 +924,13 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             {analysis.analysedAt && <p className="text-[10px] text-gray-600">🕐 วิเคราะห์ล่าสุด {fmtDateTime(analysis.analysedAt)}</p>}
           </div>
         </details>
+
+        {(analysis.disclaimer || modelLabel) && (
+          <div className="mt-3 space-y-1 border-t border-gray-800 pt-3" data-testid="analysis-footer">
+            {analysis.disclaimer && <p className="text-[11px] italic text-gray-500">⚠️ {analysis.disclaimer}</p>}
+            {modelLabel && <p className="text-[10px] text-gray-600">วิเคราะห์โดย {modelLabel}</p>}
+          </div>
+        )}
       </div>
     )
   }
@@ -1028,7 +1053,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
         <div className="relative min-h-[108px] rounded-xl border border-gray-800 bg-gray-900 p-4">
           <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">เงินในธนาคาร</p>
           {!settingsLoaded ? (
-            <p className="py-2 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
+            <Skeleton className="my-2 h-7 w-28" />
           ) : editingCash ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
@@ -1056,7 +1081,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
         <div className="relative min-h-[108px] rounded-xl border border-gray-800 bg-gray-900 p-4">
           <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">เงินสด DIME</p>
           {!settingsLoaded ? (
-            <p className="py-2 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
+            <Skeleton className="my-2 h-7 w-28" />
           ) : editingDime ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
@@ -1086,7 +1111,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
         <div className="relative min-h-[108px] rounded-xl border border-gray-800 bg-gray-900 p-4">
           <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">เงินลงทุนสะสม</p>
           {!settingsLoaded ? (
-            <p className="py-2 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
+            <Skeleton className="my-2 h-7 w-28" />
           ) : editingCapital ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
@@ -1121,7 +1146,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             <div className={`min-h-[108px] rounded-xl border bg-gray-900 p-4 ${realPnl === null ? 'border-gray-800' : pos ? 'border-green-500/25' : 'border-red-500/25'}`}>
               <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">ผลตอบแทนจากเงินลงทุน</p>
               {!settingsLoaded ? (
-                <p className="py-2 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
+                <Skeleton className="my-2 h-7 w-28" />
               ) : realPnl === null || realPct === null ? (
                 <>
                   <p className="text-lg font-bold text-gray-500">—</p>
@@ -1180,7 +1205,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
                   <SortTh field="pe" label="P/E" tooltip="ใช้ประเมินความถูกหรือแพงของหุ้น เมื่อเทียบกับกำไรต่อหุ้น ค่าสูง = แพง" />
                   <SortTh field="week52High" label="52W High" tooltip="ราคาสูงสุดในรอบ 52 สัปดาห์ที่ผ่านมา" />
                   <SortTh field="week52Low" label="52W Low" tooltip="ราคาต่ำสุดในรอบ 52 สัปดาห์ที่ผ่านมา" />
-                  <th className="px-3 py-2.5 text-right">อัปเดต</th>
+                  <th className="px-3 py-2.5 text-right" title="วันที่แก้ไขรายการหุ้นนี้ล่าสุด (ไม่ใช่เวลาของราคา)">แก้ไขล่าสุด</th>
                   <th className="px-3 py-2.5 text-center">เครื่องมือ</th>
                 </tr>
               </thead>
@@ -1215,11 +1240,11 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
                         <td className="px-3 py-2.5 text-right text-gray-300">{h.shares > 0 ? h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—'}</td>
                         <td className="px-3 py-2.5 text-right text-gray-300 font-mono">{fmtAmt(h.market_value)}</td>
                         <td className={`px-3 py-2.5 text-right font-mono font-medium ${pnlColor}`}>{fmtPnl(h.pnl)}</td>
-                        <td className={`px-3 py-2.5 text-right font-medium ${pnlColor}`}>{fmtPct(h.pnl_pct)}</td>
+                        <td className={`px-3 py-2.5 text-right font-medium ${pnlColor}`}><TrendMark value={h.pnl_pct} />{fmtPct(h.pnl_pct)}</td>
                         <td className={`px-3 py-2.5 text-right font-mono font-medium ${h.dayChange == null ? 'text-gray-600' : h.dayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {h.dayChange != null ? `${h.dayChange >= 0 ? '+' : ''}${h.dayChange.toFixed(2)}%` : <span className="text-gray-600">N/A</span>}
                         </td>
-                        <td className="px-3 py-2.5 text-right text-gray-300 font-mono">{h.pe != null ? h.pe.toFixed(1) : <span className="text-gray-600">N/A</span>}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-300 font-mono">{h.pe != null ? <span title={peKindHint(h.peKind)}>{h.pe.toFixed(1)}{peKindLabel(h.peKind) && <span className="ml-1 text-[10px] text-gray-500">{peKindLabel(h.peKind)}</span>}</span> : <span className="text-gray-600">N/A</span>}</td>
                         <td className="px-3 py-2.5 text-right text-gray-400 font-mono text-xs">{h.week52High != null ? `$${h.week52High.toFixed(2)}` : <span className="text-gray-600">N/A</span>}</td>
                         <td className="px-3 py-2.5 text-right text-gray-400 font-mono text-xs">{h.week52Low  != null ? `$${h.week52Low.toFixed(2)}`  : <span className="text-gray-600">N/A</span>}</td>
                         <td className="px-3 py-2.5 text-right text-gray-600 text-xs">{fmtDate(h.updated_at)}</td>
@@ -1275,7 +1300,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       {viewMode === 'mobile' && (
         <div className="space-y-3">
           {holdings.length === 0 && <div className="text-center py-12 text-gray-600">ยังไม่มีหุ้นในพอร์ต</div>}
-          {holdings.map(h => {
+          {sortedHoldings.map(h => {
             const pnlPos = (h.pnl ?? 0) >= 0
             const pnlColor = pnlPos ? 'text-green-400' : 'text-red-400'
             const pctBadge = pnlPos ? 'bg-green-500/15 text-green-400 border-green-500/20' : 'bg-red-500/15 text-red-400 border-red-500/20'
@@ -1297,7 +1322,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
                     {h.notes && <span className="text-gray-500 text-xs ml-2">{h.notes}</span>}
                     <p className="text-gray-600 text-xs mt-0.5">แก้ไข {fmtDate(h.updated_at)}</p>
                   </div>
-                  <span className={`text-xs font-medium rounded-full border px-2 py-0.5 ${pctBadge}`}>{fmtPct(h.pnl_pct)}</span>
+                  <span className={`text-xs font-medium rounded-full border px-2 py-0.5 ${pctBadge}`}><TrendMark value={h.pnl_pct} />{fmtPct(h.pnl_pct)}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-3 mb-2">
                   <div><p className="text-gray-600 text-xs mb-0.5">ราคา</p><p className="text-white text-sm font-medium font-mono">{fmtAmt(h.current_price)}</p></div>
@@ -1305,7 +1330,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
                   <div><p className="text-gray-600 text-xs mb-0.5">{pnlPos ? 'กำไร' : 'ขาดทุน'}</p><p className={`text-sm font-medium font-mono ${pnlColor}`}>{fmtPnl(h.pnl)}</p></div>
                 </div>
                 <div className="grid grid-cols-3 gap-3 mb-3">
-                  <div><p className="text-gray-600 text-xs mb-0.5">P/E</p><p className="text-gray-300 text-xs font-mono">{h.pe != null ? h.pe.toFixed(1) : 'N/A'}</p></div>
+                  <div><p className="text-gray-600 text-xs mb-0.5">P/E</p><p className="text-gray-300 text-xs font-mono" title={peKindHint(h.peKind)}>{h.pe != null ? h.pe.toFixed(1) : 'N/A'}{h.pe != null && peKindLabel(h.peKind) && <span className="ml-1 text-[10px] text-gray-500">{peKindLabel(h.peKind)}</span>}</p></div>
                   <div><p className="text-gray-600 text-xs mb-0.5">52W</p><p className="text-gray-500 text-xs font-mono">{h.week52Low != null ? `$${h.week52Low.toFixed(0)}` : '—'}–{h.week52High != null ? `$${h.week52High.toFixed(0)}` : '—'}</p></div>
                 </div>
                 <div className="flex gap-2">
@@ -1410,7 +1435,7 @@ function ChangelogModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             <div key={entry.version} className="border-l-2 border-purple-600/40 pl-3">
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-sm font-bold text-purple-300">{entry.version}</span>
-                <span className="text-xs text-gray-600">{entry.date}</span>
+                <span className="text-xs text-gray-600">{formatChangelogDate(entry.date)}</span>
               </div>
               <ul className="space-y-1">
                 {entry.changes.map((c, i) => (

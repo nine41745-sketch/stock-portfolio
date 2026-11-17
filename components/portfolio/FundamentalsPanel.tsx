@@ -4,12 +4,15 @@ import { useState } from 'react'
 import {
   calculatePEScenarios,
   checkComparisonCompatibility,
+  additionalMetricLabel,
+  additionalMetricGroup,
+  earningsCalendarLabel,
   normalizeSymbols,
   type FundamentalObservation,
   type ProviderStatus,
 } from '@/lib/fundamentals'
 import type { FundamentalSymbolResult } from '@/lib/fundamentals-provider'
-import { compareSecEps, issuerIdentityPresentation, secValuationGuard, type EpsDefinition } from '@/lib/sec-xbrl'
+import { compareSecEps, issuerIdentityPresentation, historicalSecurityTypeEvidence, secValuationGuard, type EpsDefinition, type SecStatus } from '@/lib/sec-xbrl'
 
 interface FundamentalsResponse {
   requestedAt: string
@@ -22,6 +25,13 @@ const METRIC_LABELS: Record<FundamentalObservation['id'], string> = {
   ps: 'P/S',
   pb: 'P/B',
   ev_ebitda: 'EV/EBITDA',
+}
+const METRIC_DESCRIPTIONS: Record<FundamentalObservation['id'], string> = {
+  eps: 'กำไรหรือขาดทุนต่อหุ้น',
+  pe: 'ราคาต่อกำไร',
+  ps: 'ราคาต่อรายได้',
+  pb: 'ราคาต่อมูลค่าทางบัญชี',
+  ev_ebitda: 'มูลค่ากิจการเทียบ EBITDA',
 }
 const PERIOD_LABELS = { TTM: 'TTM', ANNUAL: 'รายปี', QUARTERLY: 'รายไตรมาส' } as const
 const METRIC_ROWS: Array<{ id: FundamentalObservation['id']; period: FundamentalObservation['period'] }> = [
@@ -38,11 +48,16 @@ const STATUS_LABELS: Record<ProviderStatus, string> = {
   rate_limited: 'เกินโควตาผู้ให้บริการ',
   provider_error: 'ผู้ให้บริการขัดข้อง',
 }
+const SEC_STATUS_LABELS: Record<SecStatus, string> = {
+  available: 'มีข้อมูล', missing: 'ไม่พบข้อมูล', unverified: 'ยังยืนยันไม่ได้',
+  unsupported: 'ยังไม่รองรับหลักทรัพย์นี้', unavailable: 'ไม่พร้อมใช้งาน',
+  rate_limited: 'ถูกจำกัดการเรียก', provider_error: 'ผู้ให้บริการขัดข้อง',
+}
 
 function formatTimestamp(value: string | null): string {
   if (!value) return 'ไม่ทราบเวลาอัปเดตจากผู้ให้บริการ'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? 'ไม่ทราบเวลาอัปเดตจากผู้ให้บริการ' : date.toLocaleString('th-TH')
+  return Number.isNaN(date.getTime()) ? 'ไม่ทราบเวลาอัปเดตจากผู้ให้บริการ' : date.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) + ' ICT'
 }
 
 function formatValue(observation: FundamentalObservation): string {
@@ -150,23 +165,42 @@ export default function FundamentalsPanel() {
       {loading && <p role="status" className="text-sm text-blue-800 dark:text-blue-200">กำลังขอข้อมูลสาธารณะจากผู้ให้บริการ</p>}
 
       {results.length > 0 && <>
-        <p className="text-xs text-gray-500 dark:text-gray-400">ผลที่ระบบรับเมื่อ {formatTimestamp(requestedAt)} · Metrics อาจไม่มี period-end timestamp จากผู้ให้บริการ จึงแสดง period ตามชื่อ metric และไม่อ้างวันรายงานที่ไม่มี</p>
+        <p className="text-sm text-gray-700 dark:text-gray-300">เวลาที่ระบบรับข้อมูล: {formatTimestamp(requestedAt)} · เวลาอัปเดตต้นทางของ Metrics: ไม่ทราบ · วันสิ้นงวดแสดงเฉพาะเมื่อมีหลักฐานจากผู้ให้บริการ</p>
+        <section aria-labelledby="fundamentals-overview" className="space-y-2">
+          <h3 id="fundamentals-overview" className="font-bold">ภาพรวมข้อมูลที่ได้รับ</h3>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {results.map(result => <article key={`${result.symbol}-overview`} className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm dark:border-gray-700 dark:bg-gray-900">
+              <h4 className="font-semibold">{result.symbol}{result.companyName ? ` · ${result.companyName}` : ''}</h4>
+              <p className="mt-1">ตัวชี้วัดหลัก: {result.observations.filter(item => item.value !== null).length}/{METRIC_ROWS.length} รายการ</p>
+              <p>Finnhub: {STATUS_LABELS[result.providerStatus]} · SEC: {SEC_STATUS_LABELS[result.sec.status]}</p>
+              <dl className="mt-3 grid grid-cols-2 gap-2">
+                {(['eps', 'pe', 'ps', 'pb'] as const).map(id => {
+                  const item = result.observations.find(observation => observation.id === id && observation.period === 'TTM')
+                  return <div key={id} className="rounded-lg bg-white p-2 dark:bg-gray-950"><dt className="text-xs text-gray-600 dark:text-gray-300">{METRIC_LABELS[id]} · TTM</dt><dd className="break-words font-medium">{item ? formatValue(item) : '—'}</dd><span className="text-xs text-gray-600 dark:text-gray-300">{item?.value != null ? 'Finnhub' : STATUS_LABELS[result.providerStatus === 'available' ? 'missing' : result.providerStatus]}</span></div>
+                })}
+              </dl>
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">ตัวเลขที่ไม่พบจะแสดงเป็นขีด ไม่ใช่ศูนย์ · เวลาต้นทางของ Metrics ยังไม่ทราบ</p>
+            </article>)}
+          </div>
+        </section>
         {results.length > 1 && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">การจัดแนวงวดเป็น Unverified: Finnhub Metrics ที่ได้รับไม่มี Fiscal Period End จึงยังยืนยันไม่ได้ว่าตัวเลขของหุ้นแต่ละตัวเป็นงวดสิ้นสุดวันเดียวกัน</p>}
-        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-          <table className="min-w-[720px] w-full border-collapse text-left text-sm">
+        {results.length > 1 && <p className="text-xs text-gray-600 dark:text-gray-300">บนมือถือเลื่อนตารางซ้าย–ขวาเพื่อดูหุ้นแต่ละตัว โดยชื่อตัวชี้วัดจะอยู่ด้านซ้าย</p>}
+        <div role="region" aria-label="ตารางตัวชี้วัดพื้นฐาน เลื่อนซ้ายขวาได้" tabIndex={0} className="overflow-x-auto rounded-xl border border-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-gray-800">
+          <table style={{ minWidth: `${144 + results.length * 144}px` }} className="w-full border-separate border-spacing-0 text-left text-sm">
             <caption className="sr-only">ตารางเปรียบเทียบตัวชี้วัดพื้นฐานของหุ้นที่เลือก</caption>
             <thead className="bg-gray-100 text-xs uppercase text-gray-700 dark:bg-gray-900 dark:text-gray-300">
-              <tr><th scope="col" className="p-3">ตัวชี้วัด / งวด</th>{results.map(result => <th scope="col" key={result.symbol} className="p-3">{result.symbol}</th>)}</tr>
+              <tr><th scope="col" className="sticky left-0 z-10 min-w-[9rem] bg-gray-100 p-3 dark:bg-gray-900">ตัวชี้วัด / งวด</th>{results.map(result => <th scope="col" key={result.symbol} className="min-w-[9rem] p-3">{result.symbol}</th>)}</tr>
             </thead>
             <tbody>
               {METRIC_ROWS.map(({ id, period }) => {
                 const observations = results.map(result => result.observations.find(item => item.id === id && item.period === period))
                 const issue = comparisonIssue(observations)
-                return <tr key={`${id}-${period}`} className="border-t border-gray-200 align-top dark:border-gray-800">
-                  <th scope="row" className="p-3 font-medium">{METRIC_LABELS[id]}<span className="block text-xs font-normal text-gray-500 dark:text-gray-400">{PERIOD_LABELS[period]}</span></th>
-                  {observations.map((item, index) => <td key={results[index].symbol} className="p-3">
+                return <tr key={`${id}-${period}`} className="border-t border-gray-200 align-top even:bg-gray-50 dark:border-gray-800 dark:even:bg-gray-900/50">
+                  <th scope="row" className="sticky left-0 z-10 min-w-[9rem] bg-white p-3 font-medium dark:bg-gray-950">{METRIC_LABELS[id]}<span className="block text-xs font-normal text-gray-500 dark:text-gray-400">{METRIC_DESCRIPTIONS[id]} · {PERIOD_LABELS[period]}</span></th>
+                  {observations.map((item, index) => <td key={results[index].symbol} className="min-w-[9rem] p-3">
                     <span>{item ? formatValue(item) : '—'}</span>
-                    {!item || item.value === null ? <span className="block text-xs text-gray-500 dark:text-gray-400">ไม่มีข้อมูล</span> : null}
+                    {item?.sourceField && item.value !== null ? <span className="block text-xs text-gray-500 dark:text-gray-400">Finnhub · {item.sourceField}</span> : null}
+                    {!item || item.value === null ? <span className="block text-xs text-gray-500 dark:text-gray-400">{STATUS_LABELS[results[index].providerStatus === 'available' ? 'missing' : results[index].providerStatus]}</span> : null}
                     {issue && observations.length > 1 ? <span className="block text-xs text-amber-800 dark:text-amber-200">{issue}</span> : null}
                   </td>)}
                 </tr>
@@ -174,6 +208,26 @@ export default function FundamentalsPanel() {
             </tbody>
           </table>
         </div>
+
+        <section aria-labelledby="additional-metrics-title" className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/70">
+          <h3 id="additional-metrics-title" className="font-semibold">ข้อมูลเพิ่มเติมจาก Finnhub</h3>
+          <p className="text-xs text-gray-700 dark:text-gray-300">แสดงชื่อช่องและตัวเลขตามที่ผู้ให้บริการส่งมา สูงสุด 200 รายการต่อหุ้น ไม่สรุปหน่วย สกุลเงิน งวด หรือความสดที่ยังไม่มีหลักฐาน และไม่ใช้ข้อมูลส่วนนี้คำนวณราคาเป้าหมาย</p>
+          {results.map(result => <details key={`${result.symbol}-additional`} className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950">
+            <summary className="cursor-pointer font-medium">{result.symbol} · ข้อมูลเพิ่มเติม {(result.additionalMetrics ?? []).length} รายการ</summary>
+            {(result.additionalMetrics ?? []).length ? <div className="mt-3 space-y-4">
+              {['กำไรและรายได้', 'ผลตอบแทนต่อทุน', 'กระแสเงินสดและเงินปันผล', 'สภาพคล่อง', 'หนี้และส่วนผู้ถือหุ้น', 'มูลค่า', 'ราคาและความผันผวน', 'อื่น ๆ'].map(group => {
+                const metrics = (result.additionalMetrics ?? []).filter(metric => additionalMetricGroup(metric.field) === group)
+                if (!metrics.length) return null
+                return <section key={group} aria-label={`${result.symbol} ${group}`}><h5 className="mb-2 text-sm font-semibold">{group}</h5><dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {metrics.map(metric => <div key={metric.field} className="min-w-0 rounded border border-gray-200 p-2 dark:border-gray-700">
+                <dt className="text-xs text-gray-600 dark:text-gray-300">{additionalMetricLabel(metric.field)}<span className="block break-all">ชื่อจาก Finnhub: {metric.field}</span></dt>
+                <dd className="font-medium">{String(metric.value)}</dd>
+              </div>)}
+                </dl></section>
+              })}
+            </div> : <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">ไม่มีตัวเลขเพิ่มเติมที่แสดงได้ · สถานะผู้ให้บริการ: {STATUS_LABELS[result.providerStatus]}</p>}
+          </details>)}
+        </section>
 
         <section className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/70" aria-labelledby="sec-eps-title">
           <div>
@@ -188,11 +242,12 @@ export default function FundamentalsPanel() {
             </p>
           })}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {results.map(result => <article key={`${result.symbol}-sec`} className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 text-xs dark:border-gray-700 dark:bg-gray-950">
-              <h4 className="text-sm font-semibold">{result.symbol} · SEC {result.sec.status}</h4>
+            {results.map(result => <article key={`${result.symbol}-sec`} className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+              <h4 className="text-sm font-semibold">{result.symbol} · SEC {SEC_STATUS_LABELS[result.sec.status]}</h4>
               <p className="mt-1 text-amber-900 dark:text-amber-200">{result.sec.reason}</p>
               {(() => {
                 const issuer = issuerIdentityPresentation(result.sec)
+                const securityEvidence = historicalSecurityTypeEvidence(result.sec.identity)
                 return <section aria-label={`ข้อมูลผู้ออกหลักทรัพย์ SEC ${result.symbol}`} className="mt-2 rounded-md border border-gray-200 bg-gray-50 p-2 text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
                   <h5 className="font-semibold">Issuer Identity · การจับคู่ผู้ออกหลักทรัพย์</h5>
                   <dl className="mt-1 grid min-w-0 gap-2 sm:grid-cols-2">
@@ -202,6 +257,7 @@ export default function FundamentalsPanel() {
                     <div><dt className="text-gray-600 dark:text-gray-400">CIK / Exchange</dt><dd className="break-words">{result.sec.identity ? `${result.sec.identity.cik} / ${result.sec.identity.exchange}` : 'ไม่มีข้อมูล'}</dd></div>
                     <div className="sm:col-span-2"><dt className="text-gray-600 dark:text-gray-400">การจับคู่ issuer</dt><dd>{issuer.issuerStatusLabel}</dd></div>
                   </dl>
+                  {securityEvidence && <p className="mt-2 text-xs">ประเภทตามหลักฐานย้อนหลัง: {securityEvidence.label} · ยื่น {securityEvidence.filed} · วันที่รายงาน {securityEvidence.reportDate} · <a href={securityEvidence.sourceUrl} target="_blank" rel="noreferrer" className="underline">เอกสาร SEC 8-K</a><br />{securityEvidence.limitation}</p>}
                   {issuer.warning && <p role="status" className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">คำเตือน: {issuer.warning}</p>}
                   <dl className="mt-2 grid gap-2 border-t border-gray-200 pt-2 dark:border-gray-700 sm:grid-cols-2">
                     <div><dt className="text-gray-600 dark:text-gray-400">Security Type</dt><dd>{issuer.securityTypeLabel}</dd></div>
@@ -210,6 +266,15 @@ export default function FundamentalsPanel() {
                   <p className="mt-2 text-gray-600 dark:text-gray-400">การจับคู่ด้วย CIK และ Symbol ระบุข้อมูลระดับบริษัทเท่านั้น ไม่ได้ยืนยันประเภทหลักทรัพย์หรือ Share Class</p>
                 </section>
               })()}
+              {result.sec.issuerEps && <section aria-label={`EPS ระดับบริษัท ${result.symbol}`} className="mt-3 rounded border border-amber-300 p-2 dark:border-amber-700">
+                <p className="font-semibold">Annual EPS ระดับบริษัท · ยังไม่ยืนยันกับหลักทรัพย์ที่เลือก</p>
+                <p>ไม่ใช่หลักฐาน Share Class หรือราคาหุ้น และไม่ใช้คำนวณ Scenario</p>
+                {(['basic', 'diluted'] as EpsDefinition[]).map(definition => {
+                  const item = result.sec.issuerEps![definition]
+                  const fact = item.fact
+                  return <div key={definition}><p>{definition === 'basic' ? 'Basic' : 'Diluted'}: {fact ? `${fact.value.toLocaleString('en-US')} ${fact.unit}` : item.status}</p>{fact ? <><p>FY {fact.fiscalYear} · {fact.periodStart} ถึง {fact.periodEnd} · {fact.form} · ยื่น {fact.filed} · {fact.accession} · {fact.freshness}</p><a href={fact.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">SEC filing directory</a></> : <p>{item.reason}</p>}</div>
+                })}
+              </section>}
               {(['basic', 'diluted'] as EpsDefinition[]).map(definition => {
                 const selection = result.sec[definition]
                 const fact = selection.fact
@@ -235,7 +300,7 @@ export default function FundamentalsPanel() {
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">สกุลเงินจาก Company Profile: {result.profileCurrency ?? 'ไม่ทราบ'} · ยังไม่มีหลักฐานยืนยันว่านี่คือสกุลเงินของ EPS</p>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">สกุลเงินของ EPS: ไม่ได้ระบุใน Metrics response · Fiscal Period End: ไม่ทราบ</p>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">เวลาอัปเดตต้นทาง: ไม่ได้ระบุใน metric response</p>
-            <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Earnings Calendar: {STATUS_LABELS[result.earnings.status]}{result.earnings.date ? ` · ${result.earnings.date}${result.earnings.hour ? ` (${result.earnings.hour.toUpperCase()})` : ''}` : ''}</p>
+            <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Earnings Calendar: {earningsCalendarLabel(result.earnings, STATUS_LABELS[result.earnings.status])}</p>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Actual vs Estimate: ยังไม่ยืนยันสิทธิ์ Endpoint ของ Finnhub</p>
           </article>)}
         </div>
@@ -244,12 +309,6 @@ export default function FundamentalsPanel() {
           <div>
             <h3 id="valuation-title" className="font-bold">P/E Scenario Range</h3>
             <p className="text-xs text-gray-700 dark:text-gray-300">ราคาสมมติ = SEC Annual GAAP Diluted EPS × P/E ที่ผู้ใช้กำหนด · ค่าเริ่มต้น Bear/Base/Bull 10/15/20x เป็นเพียงสมมติฐานตัวอย่าง ไม่ใช่ Fair Value หรือ Target Price ที่ยืนยันแล้ว · ต้องยืนยันสกุลเงินราคา, Listing, Share Class และ Split Basis ก่อนแสดงผลราคา</p>
-          </div>
-          <div className="grid grid-cols-3 gap-2 sm:max-w-lg">
-            {(['bear', 'base', 'bull'] as const).map(key => <label key={key} className="text-xs font-medium capitalize">
-              {key} P/E (x) · สมมติฐาน
-              <input type="number" min="0.1" max="100" step="0.5" value={multiples[key]} onChange={event => setMultiples(previous => ({ ...previous, [key]: event.target.value }))} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
-            </label>)}
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {results.map(result => {
@@ -267,6 +326,15 @@ export default function FundamentalsPanel() {
               </article>
             })}
           </div>
+          <details className="rounded-lg border border-blue-200 p-3 dark:border-blue-900">
+            <summary className="cursor-pointer text-sm font-medium">สมมติฐาน P/E — ปรับเมื่อมีหลักฐานเพียงพอ</summary>
+          <div className="grid grid-cols-3 gap-2 sm:max-w-lg">
+            {(['bear', 'base', 'bull'] as const).map(key => <label key={key} className="text-xs font-medium capitalize">
+              {key} P/E (x) · สมมติฐาน
+              <input type="number" min="0.1" max="100" step="0.5" value={multiples[key]} onChange={event => setMultiples(previous => ({ ...previous, [key]: event.target.value }))} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
+            </label>)}
+          </div>
+          </details>
         </section>
       </>}
     </section>

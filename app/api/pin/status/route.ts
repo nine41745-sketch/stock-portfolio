@@ -10,7 +10,7 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const { data, error } = await serviceClient
     .from('user_pin_security')
     .select('locked_until')

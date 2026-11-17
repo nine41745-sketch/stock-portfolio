@@ -1,6 +1,7 @@
 import YahooFinance from 'yahoo-finance2'
 import type { DiscoveryProviderContext } from '@/lib/discovery-deadline'
 import { getDiscoveryYahooChart } from '@/lib/discovery-yahoo'
+import { toHistorySymbol } from '@/lib/provider-symbol'
 
 const yahooFinance = new YahooFinance()
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000
@@ -33,7 +34,8 @@ async function fetchAllTimeHigh(symbol: string, context?: DiscoveryProviderConte
   try {
     // period1=0 requests Yahoo's maximum available history. Monthly bars keep each month's
     // actual High, so max(high) is an ATH level without downloading thousands of daily rows.
-    const result = context ? await getDiscoveryYahooChart(symbol, 0, '1mo', context) : await yahooFinance.chart(symbol, {
+    const historySymbol = toHistorySymbol(symbol)
+    const result = context ? await getDiscoveryYahooChart(historySymbol, 0, '1mo', context) : await yahooFinance.chart(historySymbol, {
       period1: 0,
       interval: '1mo',
       includePrePost: false,

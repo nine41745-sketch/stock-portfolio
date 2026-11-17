@@ -16,6 +16,49 @@ async function importTsModule(filePath) {
 
 const fundamentals = await importTsModule('lib/fundamentals.ts')
 const validation = await importTsModule('lib/portfolio-validation.ts')
+assert.equal(fundamentals.additionalMetricGroup('grossMarginTTM'), 'กำไรและรายได้')
+assert.equal(fundamentals.additionalMetricGroup('totalDebt/totalEquityAnnual'), 'หนี้และส่วนผู้ถือหุ้น')
+assert.equal(fundamentals.additionalMetricGroup('marketCapitalization'), 'มูลค่า')
+assert.equal(fundamentals.additionalMetricGroup('52WeekHigh'), 'ราคาและความผันผวน')
+assert.equal(fundamentals.additionalMetricGroup('unknownMetric'), 'อื่น ๆ')
+const groupFixture = [
+  { field: 'grossMarginTTM', value: 0 }, { field: '52WeekHigh', value: 4 },
+  { field: 'unknownMetric', value: -7 },
+]
+const groupedFixture = ['กำไรและรายได้', 'ผลตอบแทนต่อทุน', 'กระแสเงินสดและเงินปันผล', 'สภาพคล่อง', 'หนี้และส่วนผู้ถือหุ้น', 'มูลค่า', 'ราคาและความผันผวน', 'อื่น ๆ']
+  .flatMap(group => groupFixture.filter(metric => fundamentals.additionalMetricGroup(metric.field) === group))
+assert.deepEqual(groupedFixture.map(item => item.field).sort(), groupFixture.map(item => item.field).sort(), 'Grouping must keep each source field exactly once')
+assert.equal(fundamentals.additionalMetricLabel('grossMarginTTM'), 'อัตรากำไรขั้นต้น · TTM')
+assert.equal(fundamentals.additionalMetricLabel('revenueGrowthTTMYoy'), 'การเติบโตรายได้ TTM เทียบปีก่อน')
+assert.equal(fundamentals.additionalMetricLabel('unknownMetric'), 'ข้อมูลเพิ่มเติมจากผู้ให้บริการ', 'Unknown field names must not acquire an invented meaning')
+// Synthetic EOSE-shaped fixture: these values are not market data.
+const extra = fundamentals.normalizeAdditionalMetrics({ revenueGrowthTTMYoy: 0, grossMarginTTM: -12.5, '52WeekHigh': 4, 'totalDebt/totalEquityAnnual': 2, peTTM: 5, invalid: Infinity, token: 123, note: 'not a number' })
+assert.deepEqual(extra, [{ field: '52WeekHigh', value: 4 }, { field: 'grossMarginTTM', value: -12.5 }, { field: 'revenueGrowthTTMYoy', value: 0 }, { field: 'totalDebt/totalEquityAnnual', value: 2 }], 'Preserve finite source values, exclude known table metrics and sensitive or invalid fields')
+assert.deepEqual(fundamentals.normalizeAdditionalMetrics(null), [], 'Missing provider data produces no fabricated metrics')
+assert.equal(fundamentals.normalizeAdditionalMetrics(Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`metric${i}`, i]))).length, 100, 'A realistic Finnhub response (~130 fields) must not be truncated')
+assert.equal(fundamentals.normalizeAdditionalMetrics(Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`metric${i}`, i]))).length, fundamentals.MAX_ADDITIONAL_METRICS, 'Extra metrics must stay bounded')
+// Fields sorted after the old 60-item cut must survive (regression: ROE and debt ratios were hidden).
+const lateFields = fundamentals.normalizeAdditionalMetrics({ ...Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`aMetric${String(i).padStart(3, '0')}`, i])), roeTTM: 30, 'totalDebt/totalEquityAnnual': 1.5, pfcfShareTTM: 9 })
+assert.ok(['roeTTM', 'totalDebt/totalEquityAnnual', 'pfcfShareTTM'].every(field => lateFields.some(item => item.field === field)), 'Late-sorted fields must not be dropped')
+assert.equal(fundamentals.additionalMetricGroup('roeTTM'), 'ผลตอบแทนต่อทุน')
+assert.equal(fundamentals.additionalMetricGroup('pfcfShareTTM'), 'กระแสเงินสดและเงินปันผล')
+assert.equal(fundamentals.additionalMetricGroup('currentEv/freeCashFlowTTM'), 'กระแสเงินสดและเงินปันผล')
+assert.equal(fundamentals.additionalMetricGroup('dividendPerShareTTM'), 'กระแสเงินสดและเงินปันผล')
+assert.equal(fundamentals.additionalMetricGroup('roi5Y'), 'ผลตอบแทนต่อทุน')
+assert.equal(fundamentals.additionalMetricGroup('currentRatioQuarterly'), 'สภาพคล่อง')
+assert.equal(fundamentals.additionalMetricLabel('roeTTM'), 'ผลตอบแทนต่อส่วนของผู้ถือหุ้น (ROE) · TTM')
+assert.equal(fundamentals.additionalMetricLabel('roeTTMx'), 'ข้อมูลเพิ่มเติมจากผู้ให้บริการ', 'Near-miss field names stay unlabelled')
+// P/E kind shown on the portfolio must follow the same field order as before.
+const { selectPe, peKindLabel } = await importTsModule('lib/pe-kind.ts')
+assert.deepEqual(selectPe({ peNormalizedAnnual: 62.4, peTTM: 75.5 }), { pe: 62.4, peKind: 'ANNUAL' })
+assert.deepEqual(selectPe({ peTTM: 75.5 }), { pe: 75.5, peKind: 'TTM' })
+assert.deepEqual(selectPe({ peExclExtraTTM: 12 }), { pe: 12, peKind: 'TTM' })
+assert.deepEqual(selectPe({ peNormalizedAnnual: 'x', peTTM: Number.NaN }), { pe: null, peKind: null })
+assert.deepEqual(selectPe(null), { pe: null, peKind: null })
+assert.equal(peKindLabel('ANNUAL'), 'รายปี')
+assert.equal(peKindLabel(null), null)
+
+assert.ok(!fundamentals.normalizeAdditionalMetrics({ apiKey: 123, accessToken: 456, secretCode: 789 }).length, 'Never surface credential-like field names')
 assert.deepEqual(fundamentals.normalizeSymbols([' aapl ', 'AAPL', '', 'msft']), ['AAPL', 'MSFT'])
 assert.equal(validation.parseSymbol(' aapl '), 'AAPL')
 assert.throws(() => validation.parseSymbol('AAPL,MSFT'), /Symbol ไม่ถูกต้อง/)
@@ -96,8 +139,20 @@ assert.match(provider, /earningsResultsStatus: 'unverified'/, 'Actual-vs-estimat
 assert.doesNotMatch(provider, /console\.(log|error|warn).*KEY/, 'Provider logs must not print the API key')
 assert.match(provider, /profileCurrency: profile\?\.currency/, 'Keep Company Profile currency separate from financial metric currency')
 assert.match(provider, /normalizeFinnhubMetrics\(metricResult\.metric, metricResult\.fetchedAt/, 'Normalize metrics without injecting Company Profile currency')
+assert.match(provider, /additionalMetrics: normalizeAdditionalMetrics\(metricResult\.metric\)/, 'Additional values must come from the same provider response')
 
 const panel = fs.readFileSync('components/portfolio/FundamentalsPanel.tsx', 'utf8')
+assert.match(panel, /ภาพรวมข้อมูลที่ได้รับ/, 'Explain data coverage before the metrics table')
+assert.match(panel, /กำไรหรือขาดทุนต่อหุ้น/, 'Explain EPS in plain Thai')
+assert.match(panel, /ราคาต่อกำไร/, 'Explain P/E in plain Thai')
+assert.match(panel, /ข้อมูลเพิ่มเติมจาก Finnhub/, 'Show additional provider values with provenance')
+assert.match(panel, /additionalMetricLabel\(metric\.field\)/, 'Translate known fields without hiding the source name')
+assert.match(panel, /ชื่อจาก Finnhub: \{metric\.field\}/, 'Preserve source field names for verification')
+assert.match(panel, /sticky left-0/, 'Keep metric labels visible while the comparison table scrolls')
+assert.match(panel, /ตารางตัวชี้วัดพื้นฐาน เลื่อนซ้ายขวาได้/, 'Scrollable region needs an accessible label')
+assert.match(panel, /ไม่สรุปหน่วย สกุลเงิน งวด หรือความสด/, 'Do not infer missing metadata')
+assert.match(panel, /ไม่ใช้ข้อมูลส่วนนี้คำนวณราคาเป้าหมาย/, 'Unverified raw data must not enter valuation')
+assert.match(panel, /ไม่มีตัวเลขเพิ่มเติมที่แสดงได้/, 'Explain missing or unavailable additional data')
 assert.match(panel, /Period End|Fiscal Period End|Fiscal Period End/i, 'UI must disclose the missing fiscal period end')
 assert.match(panel, /10\/15\/20x เป็นเพียงสมมติฐานตัวอย่าง/, 'Default multiples must be labeled example assumptions')
 assert.match(panel, /ไม่แสดงราคา Scenario/, 'UI must suppress valuation prices when currency evidence is incomplete')
@@ -125,3 +180,22 @@ assert.match(scannerWorkspace, /bg-gray-50.*dark:bg-gray-900/, 'Scanner tabs mus
 assert.match(scannerWorkspace, /text-gray-700.*dark:text-gray-400/, 'Inactive Scanner tabs must use readable light and dark text')
 
 console.log('✓ Fundamentals normalization, comparison, valuation, status and API guard tests passed')
+
+// Portfolio P/E kind wiring: Finnhub -> /api/prices -> dashboard label.
+const finnhubSource = fs.readFileSync('lib/finnhub.ts', 'utf8')
+assert.match(finnhubSource, /\.\.\.selectPe\(m\)/, 'Portfolio P/E must come from selectPe so the kind travels with the value')
+assert.match(fs.readFileSync('app/api/prices/route.ts', 'utf8'), /peKind: d\.peKind \?\? null/, '/api/prices must return the P/E kind')
+assert.match(fs.readFileSync('app/dashboard/page.tsx', 'utf8'), /peKind: d\?\.peKind \?\? null/, 'Server-rendered holdings must carry the P/E kind')
+const dashboardSource = fs.readFileSync('components/portfolio/PortfolioDashboard.tsx', 'utf8')
+assert.ok(dashboardSource.includes('peKindLabel(h.peKind)') && dashboardSource.includes('peKindHint(h.peKind)'), 'Dashboard must label the P/E kind in table and card views')
+assert.equal(fundamentals.EARNINGS_WINDOW_DAYS, 60, 'The earnings window constant must be shared by the provider and the label')
+assert.match(fundamentals.earningsCalendarLabel({ status: 'missing', date: null, hour: null }, 'ไม่มีข้อมูลในแหล่งนี้'), /ไม่พบนัดประกาศผลใน 60 วันข้างหน้า/, 'An empty calendar window must not read as missing data')
+assert.doesNotMatch(fundamentals.earningsCalendarLabel({ status: 'missing', date: null, hour: null }, 'ไม่มีข้อมูลในแหล่งนี้'), /^ไม่มีข้อมูลในแหล่งนี้/)
+assert.equal(fundamentals.earningsCalendarLabel({ status: 'available', date: '2027-01-28', hour: 'amc' }, 'มีข้อมูล'), 'มีข้อมูล · 2027-01-28 (AMC)')
+assert.equal(fundamentals.earningsCalendarLabel({ status: 'available', date: '2027-01-28', hour: null }, 'มีข้อมูล'), 'มีข้อมูล · 2027-01-28')
+for (const status of ['provider_error', 'rate_limited', 'unavailable', 'stale']) {
+  assert.equal(fundamentals.earningsCalendarLabel({ status, date: null, hour: null }, `label-${status}`), `label-${status}`, 'Real provider failures must keep their own status label')
+}
+assert.ok(provider.includes('EARNINGS_WINDOW_DAYS,') && !/const EARNINGS_WINDOW_DAYS/.test(provider), 'Provider must use the shared window constant')
+assert.ok(fs.readFileSync('components/portfolio/FundamentalsPanel.tsx', 'utf8').includes('earningsCalendarLabel(result.earnings'), 'Panel must render the earnings calendar through the shared label')
+console.log('✓ P/E kind and additional metric coverage tests passed')

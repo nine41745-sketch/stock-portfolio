@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { resolveActivePortfolio } from '@/lib/portfolio-context'
 import { getMultipleQuotesWithMetrics } from '@/lib/finnhub'
+import { getWeek52FromBars } from '@/lib/indicators'
+import { fillMissingWeek52 } from '@/lib/week52'
 import PortfolioDashboard from '@/components/portfolio/PortfolioDashboard'
 import AppTabs from '@/components/navigation/AppTabs'
 import InvestingSinceBadge from '@/components/portfolio/InvestingSinceBadge'
@@ -25,7 +27,7 @@ export default async function DashboardPage() {
   )
 
   // Decrypt holdings ผ่าน service_role และ scope ตาม active portfolio หลัง migration v1.27.0
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const rpcArgs = portfolio.mode === 'portfolio'
     ? { p_user_id: user.id, p_portfolio_id: portfolio.portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
     : { p_user_id: user.id, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
@@ -39,6 +41,8 @@ export default async function DashboardPage() {
   const holdings = rows ?? []
   const symbols: string[] = holdings.map((h: any) => h.symbol)
   const priceData = symbols.length > 0 ? await getMultipleQuotesWithMetrics(symbols) : {}
+  // A 52-week range the quote provider does not return is filled from the price bars (see lib/week52.ts for the limits).
+  const week52Ranges = await fillMissingWeek52(priceData, sym => getWeek52FromBars(sym))
 
   const holdingsWithPrices: HoldingWithPrice[] = holdings.map((h: any) => {
     const d = priceData[h.symbol]
@@ -64,8 +68,9 @@ export default async function DashboardPage() {
       pnl_pct,
       dayChange: d?.dayChange ?? null,
       pe: d?.pe ?? null,
-      week52High: d?.week52High ?? null,
-      week52Low: d?.week52Low ?? null,
+      peKind: d?.peKind ?? null,
+      week52High: week52Ranges[h.symbol]?.week52High ?? null,
+      week52Low: week52Ranges[h.symbol]?.week52Low ?? null,
     }
   })
 

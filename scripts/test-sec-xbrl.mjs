@@ -25,6 +25,26 @@ assert.equal(sec.resolveSecIdentity('MISS', mapping), null)
 assert.equal(sec.resolveSecIdentity('SYN', { ...mapping, data: [...mapping.data, mapping.data[0]] }), null)
 assert.equal(sec.resolveSecIdentity('SYN', { fields: [], data: mapping.data }), null)
 
+const eoseIdentity = { ticker: 'EOSE', cik: '0001805077', exchange: 'Nasdaq', entityName: 'SYNTHETIC', mappingUrl: 'synthetic', status: 'unsupported', reason: 'multiple tickers' }
+assert.equal(sec.historicalSecurityTypeEvidence(eoseIdentity).label, 'หุ้นสามัญ')
+assert.equal(sec.historicalSecurityTypeEvidence(eoseIdentity).filed, '2026-09-14')
+assert.equal(sec.historicalSecurityTypeEvidence(eoseIdentity).reportDate, '2026-09-10')
+assert.match(sec.historicalSecurityTypeEvidence(eoseIdentity).limitation, /ไม่ปลด guard/)
+assert.equal(sec.historicalSecurityTypeEvidence({ ...eoseIdentity, ticker: 'EOSEW' }).label, 'Warrant สำหรับซื้อหุ้นสามัญ')
+assert.equal(sec.historicalSecurityTypeEvidence({ ...eoseIdentity, ticker: 'OTHER' }), null)
+assert.equal(sec.historicalSecurityTypeEvidence({ ...eoseIdentity, cik: '0000000001' }), null)
+assert.equal(sec.historicalSecurityTypeEvidence({ ...eoseIdentity, exchange: 'NYSE' }), null)
+assert.equal(sec.historicalSecurityTypeEvidence(null), null)
+assert.equal(eoseIdentity.status, 'unsupported', 'Historical display evidence must not loosen identity guard')
+
+const eoseMapping = { fields: ['cik', 'name', 'ticker', 'exchange'], data: [[1805077, 'SYNTHETIC', 'EOSE', 'Nasdaq'], [1805077, 'SYNTHETIC', 'EOSEW', 'Nasdaq']] }
+for (const ticker of ['EOSE', 'EOSEW']) {
+  const mapped = sec.resolveSecIdentity(ticker, eoseMapping)
+  assert.equal(mapped.status, 'unsupported', 'Historical type evidence must not bypass the multiple-ticker guard')
+  assert.ok(sec.historicalSecurityTypeEvidence(mapped))
+  assert.equal(sec.secValuationGuard({ status: 'unsupported', reason: 'unverified class', fact: null }, { priceCurrency: 'USD', listingIdentityVerified: true, shareClassVerified: true, splitBasisVerified: true }).allowed, false)
+}
+
 const current = { start: '2025-01-01', end: '2025-12-31', val: 4.5, accn: '0000001234-26-000001', fy: 2025, fp: 'FY', form: '10-K', filed: '2026-02-01' }
 const prior = { ...current, start: '2024-01-01', end: '2024-12-31', val: 3.8, accn: '0000001234-25-000001', fy: 2024, filed: '2025-02-01' }
 const facts = (basic = [prior, current], diluted = [{ ...current, val: 4.1 }], unit = 'USD/shares') => ({
@@ -33,7 +53,34 @@ const facts = (basic = [prior, current], diluted = [{ ...current, val: 4.1 }], u
     EarningsPerShareDiluted: { units: { [unit]: diluted } },
   } },
 })
+for (const ticker of ['EOSE', 'EOSEW']) {
+  const mapped = sec.resolveSecIdentity(ticker, eoseMapping)
+  const guarded = { ...sec.emptySecResult('unsupported', mapped.reason), identity: mapped }
+  assert.equal(guarded.basic.fact, null)
+  assert.equal(guarded.diluted.fact, null)
+  assert.equal(sec.secValuationGuard(guarded.diluted, { priceCurrency: 'USD', listingIdentityVerified: true, shareClassVerified: true, splitBasisVerified: true }).allowed, false)
+}
+
 const fetchedAt = '2026-10-14T00:00:00.000Z'
+const issuerIdentity = { ticker: 'SYN', cik: '0000001234', entityName: 'SYNTHETIC CORP', exchange: 'Nasdaq', mappingUrl: 'synthetic', status: 'unsupported', reason: 'multiple tickers', multipleTickerIssuer: true }
+const issuerEps = sec.issuerOnlySecEps('SYN', issuerIdentity, facts(), fetchedAt)
+assert.equal(issuerEps.basic.fact.value, 4.5)
+assert.equal(issuerEps.diluted.fact.value, 4.1)
+assert.equal(sec.issuerOnlySecEps('OTHER', issuerIdentity, facts(), fetchedAt), null)
+assert.equal(sec.issuerOnlySecEps('SYN', issuerIdentity, { ...facts(), cik: 9876 }, fetchedAt), null)
+assert.equal(sec.issuerOnlySecEps('SYN', issuerIdentity, { ...facts(), entityName: 'OTHER' }, fetchedAt), null)
+assert.equal(sec.issuerOnlySecEps('SYN', { ...issuerIdentity, multipleTickerIssuer: false }, facts(), fetchedAt), null)
+assert.equal(sec.issuerOnlySecEps('SYN', { ...issuerIdentity, exchange: 'OTC' }, facts(), fetchedAt), null)
+const conflictedIssuer = sec.issuerOnlySecEps('SYN', issuerIdentity, facts([current, current]), fetchedAt)
+assert.equal(conflictedIssuer.basic.status, 'unverified')
+assert.equal(conflictedIssuer.basic.fact, null)
+const staleIssuer = sec.issuerOnlySecEps('SYN', issuerIdentity, facts(), '2030-10-14T00:00:00.000Z')
+assert.equal(staleIssuer.basic.status, 'unverified')
+assert.equal(staleIssuer.basic.fact, null)
+const blockedSelection = sec.emptySecResult('unsupported', 'multiple tickers')
+assert.equal(blockedSelection.diluted.fact, null)
+assert.equal(sec.secValuationGuard(blockedSelection.diluted, { priceCurrency: 'USD', listingIdentityVerified: true, shareClassVerified: true, splitBasisVerified: true }).allowed, false)
+
 const result = sec.normalizeSecCompanyFacts('SYN', identity, facts(), fetchedAt)
 assert.equal(result.status, 'available')
 assert.equal(result.basic.fact.value, 4.5, 'Comparative prior year must not replace latest fiscal year')
@@ -207,6 +254,49 @@ assert.match(provider, /REQUEST_GAP_MS = 1100/)
 assert.match(provider, /process\.env\.SEC_USER_AGENT/)
 assert.match(provider, /if \(!validSecUserAgent\(userAgent\)\)/, 'Do not call SEC without real contact')
 assert.doesNotMatch(provider, /portfolio_id|service_role|console\.(log|error).*userAgent/)
+// Exercise the real provider with synthetic mapping/facts and mocked network only.
+const providerJs = ts.transpileModule(provider, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+const providerModule = { exports: {} }
+const testMapping = { fields: ['cik', 'name', 'ticker', 'exchange'], data: [[1234, 'SYNTHETIC CORP', 'SYN', 'Nasdaq'], [1234, 'SYNTHETIC CORP', 'SYNW', 'Nasdaq']] }
+const mockCalls = []
+const mockFetch = async url => { mockCalls.push(String(url)); return new Response(JSON.stringify(String(url).includes('company_tickers_exchange') ? testMapping : facts()), { status: 200 }) }
+const fakeRequire = name => name === 'server-only' ? {} : name === '@/lib/sec-xbrl' ? sec : (() => { throw new Error('Unexpected import') })()
+// Freeze provider observation time; retain the real deadline clock used by fetchSecJson.
+class ProviderFixtureDate extends Date {
+  constructor(...args) { super(...(args.length ? args : [fetchedAt])) }
+}
+new Function('require', 'module', 'exports', 'process', 'fetch', 'setTimeout', 'Date', providerJs)(fakeRequire, providerModule, providerModule.exports, { env: { SEC_USER_AGENT: 'Synthetic Research qa@private.invalid' } }, mockFetch, fn => { fn(); return 0 }, ProviderFixtureDate)
+const providerResult = await providerModule.exports.loadSecAnnualEps(['SYN', 'SYNW'])
+for (const ticker of ['SYN', 'SYNW']) {
+  assert.equal(providerResult[ticker].status, 'unsupported')
+  assert.equal(providerResult[ticker].basic.fact, null)
+  assert.equal(providerResult[ticker].diluted.fact, null)
+  assert.equal(providerResult[ticker].issuerEps.basic.fact.value, 4.5)
+  assert.equal(providerResult[ticker].issuerIdentityStatus, 'matched')
+  assert.equal(providerResult[ticker].companyFactsEntityName, 'SYNTHETIC CORP')
+  assert.equal(providerResult[ticker].issuerNameMatch, 'exact')
+  assert.equal(sec.issuerIdentityPresentation(providerResult[ticker]).issuerStatusLabel, 'จับคู่ด้วย CIK และ Symbol ตาม Mapping')
+  assert.equal(sec.secValuationGuard(providerResult[ticker].diluted, { priceCurrency: 'USD', listingIdentityVerified: true, shareClassVerified: true, splitBasisVerified: true }).allowed, false)
+}
+assert.equal(mockCalls.length, 3, 'Mock mapping plus one CompanyFacts per synthetic symbol only')
+
+for (const [body, expectedStatus, expectedNameMatch] of [
+  [{ ...facts(), entityName: 'OTHER' }, 'matched', 'different'],
+  [{ ...facts(), entityName: undefined }, 'unverified', 'unavailable'],
+  [{ ...facts(), cik: 9876 }, 'unverified', 'exact'],
+]) {
+  const mismatchModule = { exports: {} }
+  const mismatchFetch = async url => new Response(JSON.stringify(String(url).includes('company_tickers_exchange') ? testMapping : body), { status: 200 })
+  new Function('require', 'module', 'exports', 'process', 'fetch', 'setTimeout', 'Date', providerJs)(fakeRequire, mismatchModule, mismatchModule.exports, { env: { SEC_USER_AGENT: 'Synthetic Research qa@private.invalid' } }, mismatchFetch, fn => { fn(); return 0 }, ProviderFixtureDate)
+  const mismatch = (await mismatchModule.exports.loadSecAnnualEps(['SYN'])).SYN
+  assert.equal(mismatch.issuerIdentityStatus, expectedStatus)
+  assert.equal(mismatch.issuerNameMatch, expectedNameMatch)
+  assert.equal(mismatch.status, 'unsupported')
+  assert.equal(mismatch.issuerEps, undefined)
+  assert.equal(mismatch.diluted.fact, null)
+  assert.equal(sec.secValuationGuard(mismatch.diluted, { priceCurrency: 'USD', listingIdentityVerified: true, shareClassVerified: true, splitBasisVerified: true }).allowed, false)
+}
+
 const route = fs.readFileSync('app/api/fundamentals/route.ts', 'utf8')
 assert.match(route, /supabase\.auth\.getUser\(\)/)
 assert.match(route, /sources: \{ fundamentals: 'Finnhub', earnings: 'Finnhub', annualEps: 'SEC EDGAR' \}/)

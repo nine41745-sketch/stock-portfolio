@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'PIN ต้องเป็นตัวเลข 6 หลักเท่านั้น' }, { status: 400 })
   }
 
-  const serviceClient = createServiceClient()
+  const serviceClient = await createServiceClient()
   const { data: row, error } = await serviceClient
     .from('user_pin_security')
     .select('pin_hash, pin_salt, locked_until')

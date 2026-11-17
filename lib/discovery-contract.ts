@@ -29,6 +29,7 @@ export interface DiscoveryCandidate {
   trend: string | null
   relativeStrength20: number | null
   earningsDays: number | null
+  earningsStatus?: 'found' | 'none' | 'unknown'
   status: 'available' | 'unavailable'
 }
 export interface DiscoveryTotals {
@@ -100,6 +101,7 @@ export function rankDiscoveryTrending<T extends DiscoveryCandidate>(rows: readon
     && item.score !== null && Number.isFinite(item.score) && item.score >= 58
     && item.setup !== 'AVOID' && item.trend === 'UPTREND'
     && item.relativeStrength20 !== null && Number.isFinite(item.relativeStrength20) && item.relativeStrength20 > 0
+    && item.earningsStatus !== 'unknown'
     && (item.earningsDays === null || item.earningsDays > 7))
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.symbol.localeCompare(b.symbol))
     .slice(0, DISCOVERY_TREND_LIMIT)

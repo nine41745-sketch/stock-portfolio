@@ -3,6 +3,11 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { CURRENT_VERSION } from '@/config/changelog'
+import { limitRows } from '@/lib/limit-rows'
+
+/** Allocation targets shown before the list says how many more exist (the Risk page shows all of them). */
+const ALLOCATION_ROW_LIMIT = 20
 
 type Status = 'READY' | 'PARTIAL' | 'STALE' | 'UNAVAILABLE' | 'ERROR' | 'NOT_REQUESTED'
 type Quote = { price: number | null; source: string; fetchedAt: string; providerTimestamp: string | null; freshness: string }
@@ -174,6 +179,7 @@ export default function InvestmentCommandCenter() {
   }
 
   const allocationRows = snapshot.sections.allocations.data ?? []
+  const allocationView = limitRows(allocationRows, ALLOCATION_ROW_LIMIT)
   const watchlistRows = snapshot.sections.watchlist.data ?? []
   const holdingsRows = snapshot.sections.holdings.data ?? []
 
@@ -182,7 +188,7 @@ export default function InvestmentCommandCenter() {
       <header className="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-blue-400">Personal Investment Command Center · v1.40.0 RC</p>
+            <p className="text-sm font-semibold text-blue-400">Personal Investment Command Center · {CURRENT_VERSION}</p>
             <h1 className="mt-1 break-words text-2xl font-bold text-white sm:text-3xl">ศูนย์รวมการลงทุน · {snapshot.portfolio.name}</h1>
             <p className="mt-2 break-all text-xs text-gray-400">Portfolio ID: {snapshot.portfolio.id}</p>
             <p className="mt-1 text-xs text-gray-400">สร้าง Snapshot: {formatTime(snapshot.generatedAt)} · เวลานี้ไม่ยืนยันความสดของข้อมูลตลาด</p>
@@ -235,7 +241,7 @@ export default function InvestmentCommandCenter() {
         </SectionCard>
 
         <SectionCard title="Allocation Targets" status={snapshot.sections.allocations.status} source="portfolio_allocation_targets" observedAt={snapshot.sections.allocations.observedAt} fetchedAt={snapshot.sections.allocations.fetchedAt}>
-          {allocationRows.length ? <ul className="space-y-2">{allocationRows.slice(0, 8).map(row => <li key={row.assetKey} className="flex justify-between gap-2 text-sm"><span className="min-w-0 break-all text-gray-200">{row.assetKey}</span><span className="shrink-0 text-gray-300">เป้า {row.targetPct}%</span></li>)}</ul> : <p className="text-sm text-gray-400">ไม่มี Target ที่ยืนยันได้</p>}
+          {allocationRows.length ? <ul className="space-y-2">{allocationView.shown.map(row => <li key={row.assetKey} className="flex justify-between gap-2 text-sm"><span className="min-w-0 break-all text-gray-200">{row.assetKey}</span><span className="shrink-0 text-gray-300">เป้า {row.targetPct}%</span></li>)}{allocationView.hidden > 0 && <li className="text-xs text-gray-400">และอีก {allocationView.hidden} รายการ — ดูทั้งหมดที่หน้าความเสี่ยง</li>}</ul> : <p className="text-sm text-gray-400">ไม่มี Target ที่ยืนยันได้</p>}
           <Link className="mt-3 inline-flex min-h-10 items-center text-sm font-semibold text-blue-400 underline underline-offset-4" href="/risk">ดู Risk และ Allocation</Link>
         </SectionCard>
 

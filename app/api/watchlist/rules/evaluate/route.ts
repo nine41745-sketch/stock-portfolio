@@ -53,7 +53,7 @@ export async function POST() {
   }
 
   if (needsHoldings) {
-    const service = createServiceClient()
+    const service = await createServiceClient()
     const { data, error } = await service.rpc('get_decrypted_holdings', {
       p_user_id: context.userId,
       p_portfolio_id: context.portfolioId,

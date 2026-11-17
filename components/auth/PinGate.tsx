@@ -22,7 +22,6 @@ export default function PinGate({ userEmail }: { userEmail: string }) {
   const [lockedUntil, setLockedUntil] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const router = useRouter()
-  const supabase = createClient()
 
   useEffect(() => {
     let cancelled = false
@@ -81,6 +80,7 @@ export default function PinGate({ userEmail }: { userEmail: string }) {
     } catch {
       // best-effort: session binding + Supabase signOut ยังทำให้ cookie เก่าใช้ต่อกับ login session ใหม่ไม่ได้
     }
+    const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()

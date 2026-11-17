@@ -1,10 +1,10 @@
-# v1.40.0 — Personal Investment Command Center Release Candidate
+# v1.40.0 — Personal Investment Command Center Candidate (Historical)
 
 **Production Release Gate: HOLD.**
 
-**Status checkpoint — 2026-10-23: PR #85 follow-up is Draft and unmerged at review. Backup/Recovery/Security/Release Gates: HOLD.** Remote `main` is `ae88fe8afe7c42e678c772a5e327bbd32ad78db7`; the reviewed [PR #85](https://github.com/nine41745-sketch/stock-portfolio/pull/85) implementation HEAD is `03b22f74debadfe512d86a456abf26dcd367da64`. Existing source release metadata still identifies v1.40.0 as Unreleased / Release Candidate. This handoff does not publish a release, change a tag or assert the current Production version. Earlier PR #73 evidence below is historical, not the current review target.
+**Historical candidate record.** PR #85 has since merged to `main` at `4121f7cd45ddd7aab5b5837c2c2354cad6d40031`. Its follow-up fixes are tracked in [the v1.40.1 release candidate](release-v1401.md). This file preserves the original command-center review evidence and is not a statement of current Production version or behavior. Backup/Recovery/Security/Release Gates remain HOLD unless separately changed by the owner.
 
-## Current PR #85 scope and evidence
+## Historical PR #85 scope and evidence — at its reviewed HEAD
 
 - The reviewed PR contains 20 changed files: the original PIN heading, signal-accuracy label, transaction-history scrolling, six-decimal cost entry and toast improvements; `ip-address` 10.7.3 to 10.7.4 in the lockfile; and the later guarded atomic-correction implementation with its tests and manual SQL candidate. No audit exception, deployment policy or CI workflow changed in this implementation.
 - Manual Ledger edits remain separate from Holdings/DIME accounting. Synced real trades cannot be edited/deleted directly; rejected direct changes return 409. The optional correction form instead updates shares, cost, DIME and linked plan status in one database transaction, retaining the original Ledger identity/date and an immutable encrypted-reason audit. See [implementation and evidence](superpowers/plans/2026-10-23-atomic-trade-correction.md).
@@ -14,7 +14,7 @@
 - The integration checks covered BUY, partial/full SELL, linked-plan reopen, repeated and concurrent corrections, stale/legacy/state/identity/portfolio/PIN denials, direct-write/session-flag rejection, private RPC/schema access, forced post-write audit-failure rollback, exact six-decimal readback/reopen, manual CRUD and 375/768/1440px UI. Run-owned resources were removed and empty inventory verified. No new database QA was run for this documentation update.
 - Automatic Preview `dpl_8tfM2DXyXBgTRzKXUVNNHskFqbAH` was owner-approved once and READY on `03b22f7`; it does not establish database integration or Production readiness. Read-only project inspection on 2026-10-23 confirmed `productionBranch=main`, `git.deploymentEnabled.main=false`, Ignored Build Step `if [ "$VERCEL_GIT_COMMIT_REF" = "main" ]; then exit 0; else exit 1; fi`, and `autoAssignCustomDomains=false`. Branch Preview remains enabled. This update authorizes no new push, Preview, migration or deployment.
 
-## Current rollout limitations
+## Historical rollout limitations at the PR #85 review
 
 `supabase/20261023074534_atomic_trade_correction.sql` is outside `supabase/migrations` and has only been applied to disposable synthetic QA. Neither merging the PR nor an application build applies it. With the existing AutoSync schema but without this candidate, missing capability RPC leaves synced rows locked and correction requests return 503. Support for databases predating the AutoSync schema is not established.
 
@@ -58,9 +58,9 @@ v1.39.0 limitations remain: Windows Turbopack/PostCSS child-process failure, npm
 
 The existing external-data adapters still have their own rate limits and data freshness limitations. The command center deliberately does not aggregate the Risk/Alerts provider-heavy endpoints on load. Market-value completeness depends on the existing Finnhub observations and bounded refresh coverage; no market refresh was run with real credentials as part of development tests.
 
-## Version and release status
+## Version and release status at the v1.40.0 candidate checkpoint
 
-`package.json`, the lockfile root metadata, `tsconfig.json` alias, and `config/changelog-v1400.ts` identify v1.40.0 as `Unreleased — Release Candidate`, chained to `changelog-v1390.ts`. Earlier changelog history is preserved. No prior v1.35.1–v1.39.0 candidate is marked released here.
+At this candidate checkpoint, `package.json`, the lockfile root metadata, `tsconfig.json` alias, and `config/changelog-v1400.ts` identified v1.40.0 as `Unreleased — Release Candidate`, chained to `changelog-v1390.ts`. The current v1.40.1 release-candidate metadata is documented in [release-v1401.md](release-v1401.md). Earlier changelog history is preserved.
 
 ## Historical local validation evidence
 
