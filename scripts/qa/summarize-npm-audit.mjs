@@ -32,8 +32,9 @@ function fixLabel(value) {
 
 function advisoryId(item) {
   if (!item || typeof item !== 'object' || typeof item.url !== 'string') return null
-  const match = item.url.match(/GHSA-[a-z0-9-]+\/?$/i)
-  return match?.[0]?.replace(/\/$/, '').toUpperCase() ?? null
+  // Only the exact GitHub advisory URL that npm audit reports is accepted: no other host, scheme, prefix, query or suffix.
+  const match = item.url.match(/^https:\/\/github\.com\/advisories\/(GHSA-[a-z0-9-]+)\/?$/i)
+  return match ? match[1].toUpperCase() : null
 }
 
 const acceptedPicomatchAdvisory = 'GHSA-FC5Q-39XC-VJPF'
