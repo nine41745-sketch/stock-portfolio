@@ -30,7 +30,108 @@ function fixLabel(value) {
   return 'npm metadata fix availability is unknown'
 }
 
-export function renderAuditSummary({ report, npmTree, exitCode, mode, commit = 'not supplied' }) {
+function advisoryId(item) {
+  if (!item || typeof item !== 'object' || typeof item.url !== 'string') return null
+  const match = item.url.match(/GHSA-[a-z0-9-]+\/?$/i)
+  return match?.[0]?.replace(/\/$/, '').toUpperCase() ?? null
+}
+
+const acceptedPicomatchAdvisory = 'GHSA-FC5Q-39XC-VJPF'
+// This advisory has no patched picomatch release (latest 4.0.7 is inside the affected range). Accept only the exact
+// strings npm audit reported on 2026-11-17; any other range spelling still fails closed.
+const acceptedPicomatchPackageRanges = new Set(['*'])
+const acceptedPicomatchAdvisoryRanges = new Set(['<=4.0.7'])
+const acceptedPicomatchExpiry = '2026-12-17'
+const picomatchReviewCondition = 'ลบข้อยกเว้นนี้เมื่อมี picomatch รุ่นที่แก้ GHSA-fc5q-39xc-vjpf (สูงกว่า 4.0.7) และ toolchain ใช้รุ่นนั้นแล้ว'
+
+function packageNameFromLockPath(path) {
+  const segments = path.split('/')
+  const marker = segments.lastIndexOf('node_modules')
+  if (marker < 0 || marker + 1 >= segments.length) return null
+  const first = segments[marker + 1]
+  return first.startsWith('@') ? `${first}/${segments[marker + 2] ?? ''}` : first
+}
+
+function isDevOnlyPicomatchChain({ vulnerabilities, names, npmTree, packageLock }) {
+  const lockPackages = packageLock?.packages
+  if (!lockPackages || typeof lockPackages !== 'object' || npmTree?.name !== 'stock-portfolio') return false
+
+  function lockNodesAreDevOnly(name, version) {
+    const candidates = Object.entries(lockPackages).filter(([path, entry]) =>
+      packageNameFromLockPath(path) === name && entry?.version === version)
+    return candidates.length > 0 && candidates.every(([, entry]) => entry.dev === true)
+  }
+
+  const pathsByName = collectDependencyPaths(npmTree, new Set(names))
+  for (const name of names) {
+    const vulnerability = vulnerabilities[name]
+    const affectedNodes = vulnerability?.nodes
+    if (!Array.isArray(affectedNodes) || affectedNodes.length === 0) return false
+    for (const nodePath of affectedNodes) {
+      const lockEntry = lockPackages[nodePath]
+      if (!lockEntry || lockEntry.dev !== true || packageNameFromLockPath(nodePath) !== name) return false
+    }
+
+    const dependencyPaths = pathsByName.get(name) ?? []
+    if (dependencyPaths.length === 0) return false
+    for (const dependencyPath of dependencyPaths) {
+      const segments = dependencyPath.split(' > ')
+      if (segments[0] !== 'stock-portfolio') return false
+      for (const segment of segments.slice(1)) {
+        const separator = segment.startsWith('@') ? segment.indexOf('@', 1) : segment.indexOf('@')
+        if (separator < 1) return false
+        const packageName = segment.slice(0, separator)
+        const version = segment.slice(separator + 1)
+        if (!lockNodesAreDevOnly(packageName, version)) return false
+      }
+    }
+  }
+  return true
+}
+
+function hasOnlyAcceptedPicomatchFinding({ vulnerabilities, metadata, npmTree, packageLock, exitCode, now }) {
+  // `npm audit --audit-level=high` exits 1 when a high advisory is present; any other exit code (0 or an npm error) fails closed.
+  if (exitCode !== 1 || !metadata || Number(metadata.critical) !== 0 || Number(metadata.moderate) !== 0 ||
+      Number(metadata.low) !== 0 || Number(metadata.info) !== 0) return false
+  const today = now instanceof Date ? now.toISOString().slice(0, 10) : String(now ?? '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today) || today > acceptedPicomatchExpiry) return false
+
+  const entries = Object.entries(vulnerabilities)
+  if (!entries.length || Number(metadata.high) !== entries.length) return false
+  if (metadata.total !== undefined && Number(metadata.total) !== entries.length) return false
+  for (const [, vulnerability] of entries) {
+    if (vulnerability?.severity !== 'high' || !Array.isArray(vulnerability.via) || vulnerability.via.length === 0) return false
+  }
+
+  const picomatch = vulnerabilities.picomatch
+  if (!picomatch || !acceptedPicomatchPackageRanges.has(picomatch.range) || picomatch.via.length !== 1) return false
+  const [advisory] = picomatch.via
+  if (typeof advisory === 'string' || advisoryId(advisory) !== acceptedPicomatchAdvisory ||
+      advisory.severity !== 'high' || !acceptedPicomatchAdvisoryRanges.has(advisory.range)) return false
+
+  for (const [name, vulnerability] of entries) {
+    if (name === 'picomatch') continue
+    if (!vulnerability.via.every(item => typeof item === 'string' && vulnerabilities[item])) return false
+  }
+
+  // npm audit's via graph can contain dependency cycles (for example eslint ↔ eslint-utils).
+  // Start at the exact advisory package and accept only packages with a path to that root.
+  const reachesPicomatch = new Set(['picomatch'])
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const [name, vulnerability] of entries) {
+      if (name !== 'picomatch' && !reachesPicomatch.has(name) && vulnerability.via.some(item => reachesPicomatch.has(item))) {
+        reachesPicomatch.add(name)
+        changed = true
+      }
+    }
+  }
+  if (!entries.every(([name]) => reachesPicomatch.has(name))) return false
+  return isDevOnlyPicomatchChain({ vulnerabilities, names: entries.map(([name]) => name), npmTree, packageLock })
+}
+
+export function renderAuditSummary({ report, npmTree, packageLock, exitCode, mode, commit = 'not supplied', now = new Date() }) {
   const meta = report?.metadata?.vulnerabilities
   const vulnerabilities = report?.vulnerabilities
   if (report?.error || !report || typeof vulnerabilities !== 'object' || !meta) {
@@ -42,7 +143,8 @@ export function renderAuditSummary({ report, npmTree, exitCode, mode, commit = '
   const paths = collectDependencyPaths(npmTree ?? {}, new Set(names))
   const counts = severityOrder.map(severity => `${severity}: ${Number(meta[severity] ?? 0)}`).join(', ')
   const clean = names.length === 0 && exitCode === 0 && severityOrder.every(severity => Number(meta[severity] ?? 0) === 0)
-  const status = clean ? 'PASS' : names.length > 0 || severityOrder.some(severity => Number(meta[severity] ?? 0) > 0) ? 'FINDINGS' : 'BLOCKED'
+  const picomatchExceptionAccepted = mode === 'Full' && hasOnlyAcceptedPicomatchFinding({ vulnerabilities, metadata: meta, npmTree, packageLock, exitCode, now })
+  const status = clean ? 'PASS' : picomatchExceptionAccepted ? 'PASS_WITH_EXCEPTION' : names.length > 0 || severityOrder.some(severity => Number(meta[severity] ?? 0) > 0) ? 'FINDINGS' : 'BLOCKED'
   const lines = [
     `# ${mode} npm audit`, '',
     `- Status: ${status}`,
@@ -52,6 +154,7 @@ export function renderAuditSummary({ report, npmTree, exitCode, mode, commit = '
     `- Severity counts: ${counts}`,
     '',
   ]
+  if (picomatchExceptionAccepted) lines.push(`- ข้อยกเว้นที่ยอมรับ: ${acceptedPicomatchAdvisory}; แพ็กเกจที่ได้รับผลกระทบ ${names.length} รายการ; เหตุผล: ทุกแพ็กเกจและทุกโหนดใน dependency chain เป็น dev-only ตาม package-lock.json; หมดอายุวันที่ ${acceptedPicomatchExpiry}; เงื่อนไขทบทวน: ${picomatchReviewCondition}`)
   if (names.length) {
     lines.push('## Affected packages, advisories, dependency paths, and npm fix metadata', '')
     for (const name of names) {
@@ -80,7 +183,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const auditText = await readFile(auditPath, 'utf8').catch(() => '')
   const report = await parse(auditPath)
   const npmTree = await parse(treePath)
-  const result = renderAuditSummary({ report: report ?? (auditText ? { error: { code: 'INVALID_JSON' } } : null), npmTree, exitCode: Number(exitCodeText), mode, commit: process.env.GITHUB_SHA ?? 'not supplied' })
+  const packageLock = await parse('package-lock.json')
+  const result = renderAuditSummary({ report: report ?? (auditText ? { error: { code: 'INVALID_JSON' } } : null), npmTree, packageLock, exitCode: Number(exitCodeText), mode, commit: process.env.GITHUB_SHA ?? 'not supplied' })
   await writeFile(outputPath, result.markdown, 'utf8')
   console.log(result.status)
 }

@@ -179,8 +179,6 @@ for (const [packageRange, advisoryRange] of [
   }
 }
 
-const summarizerSource = readFileSync('scripts/qa/summarize-npm-audit.mjs', 'utf8')
-assert.ok(!/PASS_WITH_EXCEPTION|minimatch|GHSA-/i.test(summarizerSource), 'The audit classifier must not define any accepted exception')
 const installedLock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
 for (const [lockPath, entry] of Object.entries(installedLock.packages)) {
   if (!lockPath.endsWith('node_modules/minimatch')) continue
@@ -188,3 +186,149 @@ for (const [lockPath, entry] of Object.entries(installedLock.packages)) {
   assert.ok(major < 7 || major > 11 || (major === 11 && entry.version !== '11.0.0'), `${lockPath}@${entry.version} is inside the GHSA-g3hv-75wg-m249 range (>=7.0.0 <11.0.1)`)
 }
 console.log('✓ Audit classifier no longer accepts the minimatch advisory and the lockfile holds no affected minimatch version')
+
+// v1.41.44: time-boxed dev-only exception for picomatch GHSA-fc5q-39xc-vjpf (high, ReDoS, affected <= 4.0.7). npm has no
+// patched picomatch release (latest is 4.0.7). The report below mirrors the structure of the real `npm audit --json`
+// output (one advisory root, other packages reaching it through string `via` links, npm audit exit code 1).
+const PICOMATCH_ADVISORY_URL = 'https://github.com/advisories/GHSA-fc5q-39xc-vjpf'
+
+function makePicomatchAudit({
+  extraAdvisory = false, extraModerate = false, orphanCycle = false, productionNode = false, nonDevAncestor = false,
+  packageRange = '*', advisoryRange = '<=4.0.7', advisorySeverity = 'high', advisoryUrl = PICOMATCH_ADVISORY_URL, withLock = true,
+} = {}) {
+  const links = {
+    micromatch: ['picomatch'],
+    'fast-glob': ['micromatch'],
+    tailwindcss: ['micromatch', 'fast-glob'],
+    fdir: ['picomatch'],
+    tinyglobby: ['fdir', 'picomatch'],
+    '@typescript-eslint/typescript-estree': ['tinyglobby'],
+    'typescript-eslint': ['@typescript-eslint/typescript-estree'],
+    'eslint-config-next': ['typescript-eslint'],
+  }
+  const nodesOf = {
+    picomatch: ['node_modules/picomatch', 'node_modules/tinyglobby/node_modules/picomatch'],
+    fdir: ['node_modules/tinyglobby/node_modules/fdir'],
+  }
+  const vulnerabilities = {
+    picomatch: {
+      name: 'picomatch', severity: 'high', isDirect: false, range: packageRange, effects: ['micromatch', 'fdir', 'tinyglobby'],
+      via: [{ source: 1241234, name: 'picomatch', dependency: 'picomatch', title: 'picomatch vulnerable to ReDoS', url: advisoryUrl, severity: advisorySeverity, range: advisoryRange }],
+      nodes: nodesOf.picomatch, fixAvailable: { name: 'tailwindcss', version: '4.3.5', isSemVerMajor: true },
+    },
+  }
+  for (const [name, via] of Object.entries(links)) {
+    vulnerabilities[name] = {
+      name, severity: 'high', isDirect: name === 'tailwindcss' || name === 'eslint-config-next', range: '*', via, effects: [],
+      nodes: nodesOf[name] ?? ['node_modules/' + name], fixAvailable: true,
+    }
+  }
+  const tree = {
+    name: 'stock-portfolio',
+    dependencies: {
+      tailwindcss: { version: '3.4.19', dependencies: {
+        micromatch: { version: '4.0.8', dependencies: { picomatch: { version: '2.3.2' } } },
+        'fast-glob': { version: '3.3.3', dependencies: { micromatch: { version: '4.0.8', dependencies: { picomatch: { version: '2.3.2' } } } } },
+      } },
+      'eslint-config-next': { version: '16.4.5', dependencies: {
+        'typescript-eslint': { version: '8.73.0', dependencies: {
+          '@typescript-eslint/typescript-estree': { version: '8.73.0', dependencies: {
+            tinyglobby: { version: '0.2.17', dependencies: { fdir: { version: '6.5.0', dependencies: { picomatch: { version: '4.0.7' } } }, picomatch: { version: '4.0.7' } } },
+          } },
+        } },
+      } },
+    },
+  }
+  const dev = !nonDevAncestor
+  const packages = {
+    '': { name: 'stock-portfolio', version: '1.41.44' },
+    'node_modules/tailwindcss': { version: '3.4.19', dev },
+    'node_modules/micromatch': { version: '4.0.8', dev: true },
+    'node_modules/fast-glob': { version: '3.3.3', dev: true },
+    'node_modules/picomatch': { version: '2.3.2', dev: !productionNode },
+    'node_modules/eslint-config-next': { version: '16.4.5', dev: true },
+    'node_modules/typescript-eslint': { version: '8.73.0', dev: true },
+    'node_modules/@typescript-eslint/typescript-estree': { version: '8.73.0', dev: true },
+    'node_modules/tinyglobby': { version: '0.2.17', dev: true },
+    'node_modules/tinyglobby/node_modules/fdir': { version: '6.5.0', dev: true },
+    'node_modules/tinyglobby/node_modules/picomatch': { version: '4.0.7', dev: true },
+  }
+  if (extraAdvisory) {
+    vulnerabilities.glob = {
+      name: 'glob', severity: 'high', isDirect: false, range: '<11',
+      via: [{ name: 'glob', url: 'https://github.com/advisories/GHSA-other-1111-2222', severity: 'high', range: '<11' }],
+      effects: [], nodes: ['node_modules/glob'], fixAvailable: true,
+    }
+    tree.dependencies.glob = { version: '10.4.5' }
+    packages['node_modules/glob'] = { version: '10.4.5', dev: true }
+  }
+  if (orphanCycle) {
+    vulnerabilities.alpha = { name: 'alpha', severity: 'high', isDirect: false, range: '*', via: ['beta'], effects: [], nodes: ['node_modules/alpha'], fixAvailable: true }
+    vulnerabilities.beta = { name: 'beta', severity: 'high', isDirect: false, range: '*', via: ['alpha'], effects: [], nodes: ['node_modules/beta'], fixAvailable: true }
+    tree.dependencies.alpha = { version: '1.0.0' }
+    tree.dependencies.beta = { version: '1.0.0' }
+    packages['node_modules/alpha'] = { version: '1.0.0', dev: true }
+    packages['node_modules/beta'] = { version: '1.0.0', dev: true }
+  }
+  const high = Object.keys(vulnerabilities).length
+  const moderate = extraModerate ? 1 : 0
+  if (extraModerate) {
+    vulnerabilities.lodash = {
+      name: 'lodash', severity: 'moderate', isDirect: false, range: '<4.17.21',
+      via: [{ name: 'lodash', url: 'https://github.com/advisories/GHSA-other-3333-4444', severity: 'moderate', range: '<4.17.21' }],
+      effects: [], nodes: ['node_modules/lodash'], fixAvailable: true,
+    }
+    tree.dependencies.lodash = { version: '4.17.20' }
+    packages['node_modules/lodash'] = { version: '4.17.20', dev: true }
+  }
+  return {
+    report: { metadata: { vulnerabilities: { info: 0, low: 0, moderate, high, critical: 0, total: high + moderate } }, vulnerabilities },
+    npmTree: tree,
+    ...(withLock ? { packageLock: { packages } } : {}),
+  }
+}
+
+const picomatchOnly = makePicomatchAudit()
+const picomatchOptions = { exitCode: 1, mode: 'Full', now: '2026-12-17' }
+const picomatchAccepted = renderAuditSummary({ ...picomatchOnly, ...picomatchOptions })
+assert.equal(picomatchAccepted.status, 'PASS_WITH_EXCEPTION')
+assert.match(picomatchAccepted.markdown, /GHSA-FC5Q-39XC-VJPF/)
+assert.match(picomatchAccepted.markdown, /แพ็กเกจที่ได้รับผลกระทบ 9 รายการ/)
+assert.match(picomatchAccepted.markdown, /dev-only/i)
+assert.match(picomatchAccepted.markdown, /2026-12-17/)
+assert.match(picomatchAccepted.markdown, /ลบข้อยกเว้นนี้เมื่อมี picomatch รุ่นที่แก้/)
+
+// Every other condition must keep failing closed.
+const failClosed = (label, audit, options = picomatchOptions) =>
+  assert.equal(renderAuditSummary({ ...audit, ...options }).status, 'FINDINGS', `picomatch exception must fail closed: ${label}`)
+failClosed('expired one day after the expiry date', picomatchOnly, { ...picomatchOptions, now: '2026-12-18' })
+failClosed('invalid date', picomatchOnly, { ...picomatchOptions, now: 'not-a-date' })
+failClosed('npm audit exit code 0 with findings', picomatchOnly, { ...picomatchOptions, exitCode: 0 })
+failClosed('npm error exit code 2', picomatchOnly, { ...picomatchOptions, exitCode: 2 })
+failClosed('Production-only audit', picomatchOnly, { ...picomatchOptions, mode: 'Production-only' })
+failClosed('another advisory in the report', makePicomatchAudit({ extraAdvisory: true }))
+failClosed('a moderate finding in the report', makePicomatchAudit({ extraModerate: true }))
+failClosed('a vulnerable package that does not reach picomatch', makePicomatchAudit({ orphanCycle: true }))
+failClosed('picomatch installed as a production dependency', makePicomatchAudit({ productionNode: true }))
+failClosed('a non-dev ancestor in the dependency chain', makePicomatchAudit({ nonDevAncestor: true }))
+failClosed('advisory severity critical', makePicomatchAudit({ advisorySeverity: 'critical' }))
+failClosed('different advisory id on picomatch', makePicomatchAudit({ advisoryUrl: 'https://github.com/advisories/GHSA-aaaa-bbbb-cccc' }))
+failClosed('missing package-lock.json data', makePicomatchAudit({ withLock: false }))
+for (const [packageRange, advisoryRange] of [
+  ['*', '<=4.0.8'], ['*', '*'], ['*', '<4.0.7'], ['*', '>=2.0.0'], ['<=4.0.7', '<=4.0.7'], ['>=2.0.0', '<=4.0.7'], ['<5', '<=4.0.7'],
+]) {
+  failClosed(`unrecognized range spelling (${packageRange} / ${advisoryRange})`, makePicomatchAudit({ packageRange, advisoryRange }))
+}
+assert.equal(renderAuditSummary({
+  report: { metadata: { vulnerabilities: { critical: 0, high: 0, moderate: 0, low: 0, info: 0 } }, vulnerabilities: {} },
+  npmTree: picomatchOnly.npmTree, exitCode: 0, mode: 'Full',
+}).status, 'PASS')
+
+// The classifier must define exactly one accepted advisory and nothing about the withdrawn braces or fixed minimatch ones.
+const summarizerSource = readFileSync('scripts/qa/summarize-npm-audit.mjs', 'utf8')
+assert.ok(!/minimatch|braces|vfj7|g3hv/i.test(summarizerSource), 'The audit classifier must not mention the removed minimatch or braces exceptions')
+const advisoryIds = new Set((summarizerSource.match(/GHSA-[A-Za-z0-9]+-[A-Za-z0-9]+-[A-Za-z0-9]+/g) ?? []).map(id => id.toUpperCase()))
+assert.deepEqual([...advisoryIds], ['GHSA-FC5Q-39XC-VJPF'], 'Exactly one advisory may be accepted')
+assert.match(summarizerSource, /acceptedPicomatchExpiry = '2026-12-17'/, 'The exception must carry its expiry date')
+assert.match(summarizerSource, /exitCode !== 1/, 'Only npm audit exit code 1 may be accepted')
+console.log('✓ picomatch GHSA-fc5q-39xc-vjpf exception is time-boxed, dev-only, Full-mode only and fails closed on every other condition')
