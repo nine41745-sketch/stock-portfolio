@@ -1,14 +1,17 @@
 # Atomic correction: scoped catalog rehearsal
 
-Owner scope: local disposable Supabase, synthetic data only. No Production access,
-Commit/Push, migration Apply on Production, or deployment is authorized.
+This PR's test scope is a local disposable Supabase with synthetic data only. The
+catalog metadata came from a separately authorized read-only inspection; this PR
+does not authorize Production access, another Commit/Push, migration Apply on
+Production, or deployment.
 Backup/Recovery/Security/Release Gates remain HOLD.
 
 ## Source and catalog provenance
 
 Base/main: `4121f7cd45ddd7aab5b5837c2c2354cad6d40031`, verified against remote
-main before this work. PR #85 is already merged; this uncommitted follow-up is on
-`codex/atomic-correction-catalog-qa`.
+main before this work. PR #85 is already merged; this follow-up is commit
+`1760751e9318b8d704ca7458c367bf3894971a8b` on
+`codex/atomic-correction-catalog-qa` and is proposed in Draft PR #86.
 
 The 2026-10-23 catalog inspection from the preceding separately authorized task
 supplied metadata only. This rehearsal makes no new Production connection and
@@ -82,8 +85,9 @@ Production deployment each still require explicit separate approval.
 
 ## Results
 
-Final run: `26970d7c-149f-458e-99a0-75dec301c7f7`, base SHA above with this
-uncommitted QA diff (`dirtyTree=true`), Node 22. Local evidence is under
+Final local run: `26970d7c-149f-458e-99a0-75dec301c7f7` used the base SHA above
+plus the exact six-file diff later committed as `1760751e…` (`dirtyTree=true`),
+Node 22. Local evidence is under
 `.local-artifacts/atomic-trade-correction/26970d7c-149f-458e-99a0-75dec301c7f7/`.
 
 - PASS: nine SQL decimal/NULL/deletion characterization groups in
@@ -100,7 +104,15 @@ uncommitted QA diff (`dirtyTree=true`), Node 22. Local evidence is under
   committed regression runners and build) with CI placeholders only.
 - Lint has the same three existing warnings, zero errors. Installation reports
   existing ESLint lifecycle and pending install-script notices; no install policy
-  was changed. No Full audit or hosted CI run is claimed for this unpushed diff.
+  was changed. Hosted CI run `39942645887` passed for PR HEAD `1760751e…`.
+- Hosted audit artifacts record production-only audit PASS (zero findings) and
+  full audit PASS_WITH_EXCEPTION (seven High from the existing braces exception;
+  raw npm audit exit 1). No exception was expanded. This is the audit state at
+  that time (2026-10-23); the braces exception was removed in v1.41.26 and the
+  remaining minimatch exception in v1.41.42, so current `main` has none.
+- The one authorized Automatic Preview `dpl_47kmywQc19KzTU9tY8yYXD7PTUbC` is
+  READY for this PR HEAD. This does not claim authenticated database QA or
+  Production behavior; the opt-in catalog profile is not run by hosted CI.
 - Initial ordinary-sandbox CI failed two loopback HTTP security tests with fetch
   failures. The unchanged six-test security suite then passed with authorized
   local execution; the full CI command passed in that same execution context
