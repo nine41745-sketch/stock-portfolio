@@ -11,6 +11,7 @@ import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
 import { applyPortfolioAiClaimGuard } from '@/lib/portfolio-ai-claim-guard'
 import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
 import { getUsMarketClock } from '@/lib/market-status'
+import { resolveBuyingPower } from '@/lib/buying-power'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -140,14 +141,14 @@ export async function GET(request: NextRequest) {
 
       const alreadyAnalyzedSymbols = new Set((existingToday ?? []).map((r: any) => r.symbol as string))
 
-      let settingsQuery = supabase.from('user_settings').select('dime_balance').eq('user_id', userId)
+      let settingsQuery = supabase.from('user_settings').select('dime_balance, cash_balance').eq('user_id', userId)
       if (portfolioId) settingsQuery = settingsQuery.eq('portfolio_id', portfolioId)
       const [settingsResponse, quotes] = await Promise.all([
         settingsQuery.maybeSingle(),
         getMultipleQuotesWithMetrics(symbols),
       ])
       if (settingsResponse.error) throw new Error(`load user settings: ${settingsResponse.error.message}`)
-      const buyingPower = Number(settingsResponse.data?.dime_balance ?? 0)
+      const buyingPower = resolveBuyingPower(settingsResponse.data?.dime_balance, settingsResponse.data?.cash_balance)
 
       const holdings: HoldingWithPrice[] = rawHoldings.map((h: any) => {
         const q = quotes[h.symbol]

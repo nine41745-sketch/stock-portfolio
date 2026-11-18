@@ -57,7 +57,7 @@ assert.match(dashboard, /portfolio\.portfolio\.name/, 'Dashboard title must foll
 assert.match(dashboard, /--active-portfolio-title/, 'Dynamic portfolio title must replace the old hardcoded visual title')
 
 const analyzeRoute = fs.readFileSync('app/api/analyze/route.ts', 'utf8')
-assert.match(analyzeRoute, /select\('dime_balance'\)/, 'Manual analysis must use Dime as investable buying power')
+assert.match(analyzeRoute, /select\('dime_balance, cash_balance'\)/, 'Manual analysis must use Dime plus the bank balance as investable buying power')
 assert.doesNotMatch(analyzeRoute, /select\('cash_balance'\)/, 'Manual analysis must not use bank cash as stock buying power')
 assert.match(analyzeRoute, /loadLatestSyncedTrades/, 'Manual analysis must load the real latest Auto Sync trade through the shared loader')
 assert.match(analyzeRoute, /applyRecentTradeExecutionGuard/, 'Manual analysis must use the shared execution guard')
@@ -224,7 +224,7 @@ assert.equal(
 )
 
 const cronRoute = fs.readFileSync('app/api/cron/daily-analyze/route.ts', 'utf8')
-assert.match(cronRoute, /select\('dime_balance'\)/, 'Daily analysis must use Dime as investable buying power')
+assert.match(cronRoute, /select\('dime_balance, cash_balance'\)/, 'Daily analysis must use Dime plus the bank balance as investable buying power')
 assert.doesNotMatch(cronRoute, /select\('cash_balance'\)/, 'Daily analysis must not use bank cash as stock buying power')
 assert.match(cronRoute, /analyzePortfolioBatch\(batchInputs, buyingPower, totalPortfolioValue\)/, 'Daily portfolio review must pass Dime buying power to the model')
 assert.match(cronRoute, /loadLatestSyncedTrades/, 'Daily analysis must load the real latest Auto Sync trades through the shared loader')

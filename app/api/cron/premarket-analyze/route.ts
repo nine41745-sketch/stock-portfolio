@@ -12,6 +12,7 @@ import { getResultTimestamp } from '@/lib/latest-analysis'
 import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
 import { applyPortfolioAiClaimGuard } from '@/lib/portfolio-ai-claim-guard'
 import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
+import { resolveBuyingPower } from '@/lib/buying-power'
 import { DetailedAnalysisResult, HoldingWithPrice, NewsItem } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -108,7 +109,7 @@ export async function GET(request: NextRequest) {
       const holdingArgs = portfolioId
         ? { p_user_id: userId, p_portfolio_id: portfolioId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
         : { p_user_id: userId, p_enc_key: process.env.SUPABASE_ENCRYPTION_KEY! }
-      let settingsQuery = supabase.from('user_settings').select('dime_balance').eq('user_id', userId)
+      let settingsQuery = supabase.from('user_settings').select('dime_balance, cash_balance').eq('user_id', userId)
       let baselineQuery = supabase.from('daily_analyses').select('symbol, result, analysis_date').eq('user_id', userId).is('error', null).order('analysis_date', { ascending: false }).limit(500)
       if (portfolioId) {
         settingsQuery = settingsQuery.eq('portfolio_id', portfolioId)
@@ -155,7 +156,7 @@ export async function GET(request: NextRequest) {
           await new Promise(resolve => setTimeout(resolve, 250))
         }
       }
-      const buyingPower = Number(settingsResponse.data?.dime_balance ?? 0)
+      const buyingPower = resolveBuyingPower(settingsResponse.data?.dime_balance, settingsResponse.data?.cash_balance)
 
       const priceMap = new Map<string, number | null>()
       const sourceMap = new Map<string, 'Finnhub' | 'Yahoo Finance' | 'Yahoo Finance Pre-Market'>()

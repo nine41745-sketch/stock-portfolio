@@ -13,6 +13,7 @@ import { HoldingWithPrice, DetailedAnalysisResult, NewsItem } from '@/types'
 import { applyRecentTradeExecutionGuard, recentTradeFingerprint, type RecentSyncedTrade } from '@/lib/analysis-execution-guard'
 import { applyPortfolioAiClaimGuard } from '@/lib/portfolio-ai-claim-guard'
 import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
+import { resolveBuyingPower } from '@/lib/buying-power'
 
 interface RawNewsItem {
   symbol: string
@@ -184,7 +185,7 @@ export async function POST(request: NextRequest) {
       serviceClient.rpc('get_decrypted_holdings', holdingArgs),
       supabase
         .from('user_settings')
-        .select('dime_balance')
+        .select('dime_balance, cash_balance')
         .match(portfolio.mode === 'portfolio'
           ? { user_id: user.id, portfolio_id: portfolio.portfolioId }
           : { user_id: user.id })
@@ -209,7 +210,7 @@ export async function POST(request: NextRequest) {
 
     const allSymbols = (allHoldings ?? []).map((h: { symbol: string }) => h.symbol)
     const otherSymbols = allSymbols.filter((s: string) => s !== symbol)
-    const buyingPower = Number(settings?.dime_balance ?? 0)
+    const buyingPower = resolveBuyingPower(settings?.dime_balance, settings?.cash_balance)
 
     const quoteData = await getMultipleQuotesWithMetrics([symbol])
     const q = quoteData[symbol]
