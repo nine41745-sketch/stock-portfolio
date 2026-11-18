@@ -362,7 +362,7 @@ assert.ok(currentVersionChangelog.includes('เงินในธนาคาร
 const previousVersionChangelog46 = fs.readFileSync('config/changelog-v14146.ts', 'utf8')
 assert.match(previousVersionChangelog46, /version: 'v1\.41\.46'/, 'The previous version entry must remain documented')
 assert.ok(previousVersionChangelog46.includes('16.4.6') && previousVersionChangelog46.includes('2.119.0') && previousVersionChangelog46.includes('4.14.0'), 'The changelog must describe the Next.js, supabase-js and axe-core dependency updates')
-const previousVersionChangelog45 =fs.readFileSync('config/changelog-v14145.ts', 'utf8')
+const previousVersionChangelog45 = fs.readFileSync('config/changelog-v14145.ts', 'utf8')
 assert.match(previousVersionChangelog45, /version: 'v1\.41\.45'/, 'The previous version entry must remain documented')
 assert.ok(previousVersionChangelog45.includes('picomatch') && previousVersionChangelog45.includes('นาฬิกาจริง') && previousVersionChangelog45.includes('2026-12-17'), 'The changelog must describe the audit classifier tests added after the v1.41.44 review')
 const previousVersionChangelog44 = fs.readFileSync('config/changelog-v14144.ts', 'utf8')

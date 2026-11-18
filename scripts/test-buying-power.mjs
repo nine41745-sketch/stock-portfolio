@@ -3,10 +3,10 @@ import fs from 'node:fs'
 import { resolveBuyingPower } from '../lib/buying-power.ts'
 
 // v1.41.47: งบซื้อ = เงินสด DIME + เงินในธนาคาร
-assert.equal(resolveBuyingPower(7.57, 1000), 1007.57, 'Buying power must add the DIME and bank balances')
-assert.equal(resolveBuyingPower(7.57, 0), 7.57, 'DIME alone must still work')
+assert.equal(resolveBuyingPower(12.34, 1000), 1012.34, 'Buying power must add the DIME and bank balances')
+assert.equal(resolveBuyingPower(12.34, 0), 12.34, 'DIME alone must still work')
 assert.equal(resolveBuyingPower(0, 250.5), 250.5, 'Bank balance alone must count')
-assert.equal(resolveBuyingPower('7.57', '1000'), 1007.57, 'Numeric strings from the database must be accepted')
+assert.equal(resolveBuyingPower('12.34', '1000'), 1012.34, 'Numeric strings from the database must be accepted')
 assert.equal(resolveBuyingPower(null, undefined), 0, 'Missing balances must be zero')
 assert.equal(resolveBuyingPower(Number.NaN, 100), 100, 'NaN must be ignored without poisoning the sum')
 assert.equal(resolveBuyingPower(Infinity, 100), 100, 'Infinity must be ignored')
@@ -26,6 +26,12 @@ for (const file of routes) {
   assert.match(source, /from '@\/lib\/buying-power'/, `${file} must import the shared buying power helper`)
   assert.match(source, /\.select\('dime_balance, cash_balance'\)/, `${file} must load both the DIME and bank balances`)
   assert.match(source, /const buyingPower = resolveBuyingPower\(/, `${file} must derive buying power through the helper`)
+  // ต้องส่ง dime_balance เป็นอาร์กิวเมนต์แรกและ cash_balance เป็นอาร์กิวเมนต์ที่สอง จากแถวเดียวกัน (กัน 0 หรือ dime ซ้ำสองครั้ง)
+  assert.match(
+    source,
+    /const buyingPower = resolveBuyingPower\(\s*(\w+(?:\?)?\.(?:data\??\.)?)?dime_balance\s*,\s*\1cash_balance\s*\)/,
+    `${file} must pass the DIME balance first and the bank balance second from the same settings row`,
+  )
   assert.ok(!/const buyingPower = Number\(/.test(source), `${file} must not read buying power from the DIME balance alone`)
 }
 

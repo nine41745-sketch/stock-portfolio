@@ -58,7 +58,7 @@ assert.match(dashboard, /--active-portfolio-title/, 'Dynamic portfolio title mus
 
 const analyzeRoute = fs.readFileSync('app/api/analyze/route.ts', 'utf8')
 assert.match(analyzeRoute, /select\('dime_balance, cash_balance'\)/, 'Manual analysis must use Dime plus the bank balance as investable buying power')
-assert.doesNotMatch(analyzeRoute, /select\('cash_balance'\)/, 'Manual analysis must not use bank cash as stock buying power')
+assert.doesNotMatch(analyzeRoute, /select\('dime_balance'\)/, 'Manual analysis must not fall back to the DIME-only balance as stock buying power')
 assert.match(analyzeRoute, /loadLatestSyncedTrades/, 'Manual analysis must load the real latest Auto Sync trade through the shared loader')
 assert.match(analyzeRoute, /applyRecentTradeExecutionGuard/, 'Manual analysis must use the shared execution guard')
 assert.match(analyzeRoute, /recentTradeFingerprint/, 'Analysis cache must vary when the latest executed trade changes')
@@ -225,7 +225,7 @@ assert.equal(
 
 const cronRoute = fs.readFileSync('app/api/cron/daily-analyze/route.ts', 'utf8')
 assert.match(cronRoute, /select\('dime_balance, cash_balance'\)/, 'Daily analysis must use Dime plus the bank balance as investable buying power')
-assert.doesNotMatch(cronRoute, /select\('cash_balance'\)/, 'Daily analysis must not use bank cash as stock buying power')
+assert.doesNotMatch(cronRoute, /select\('dime_balance'\)/, 'Daily analysis must not fall back to the DIME-only balance as stock buying power')
 assert.match(cronRoute, /analyzePortfolioBatch\(batchInputs, buyingPower, totalPortfolioValue\)/, 'Daily portfolio review must pass Dime buying power to the model')
 assert.match(cronRoute, /loadLatestSyncedTrades/, 'Daily analysis must load the real latest Auto Sync trades through the shared loader')
 assert.match(cronRoute, /recentTradeBySymbol/, 'Daily analysis must map the latest executed trade per symbol')
