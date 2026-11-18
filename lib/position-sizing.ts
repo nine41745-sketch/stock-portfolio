@@ -172,7 +172,7 @@ export function applyPositionSizing(
           && positionCapacityCash + 0.000001 < minimumBuyCash
         const cashNote = capacityBlocked
           ? `ระบบปรับ BUY เป็น HOLD: capacity ก่อนชนเพดาน concentration ${MAX_POSITION_WEIGHT_PCT}% ไม่พอสำหรับไม้ขั้นต่ำ 5% ของจำนวนหุ้นที่ถือ`
-          : `ระบบปรับ BUY เป็น HOLD: เงินใน Dime ที่พร้อมใช้ $${Math.max(0, availableBuyCash).toFixed(2)} ไม่พอช้อนขั้นต่ำ 5% ของจำนวนหุ้นที่ถือ`
+          : `ระบบปรับ BUY เป็น HOLD: เงินที่พร้อมใช้ (Dime + เงินในธนาคาร) $${Math.max(0, availableBuyCash).toFixed(2)} ไม่พอช้อนขั้นต่ำ 5% ของจำนวนหุ้นที่ถือ`
         analysis = {
           ...analysis,
           risksAndOpportunities: {
