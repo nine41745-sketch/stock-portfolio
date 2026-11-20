@@ -2,6 +2,7 @@ import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { StockCheckSnapshot } from '@/lib/stock-check-data'
 import { parseStockCheckAiResponse } from '@/lib/stock-check-presentation'
 import { guardAiClaims, runModelChain, type ModelReply } from '@/lib/stock-check-ai-guard'
+import { sanitizeUntrustedText, UNTRUSTED_NEWS_RULE } from '@/lib/untrusted-text'
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const PRIMARY_MODEL = 'openai/gpt-oss-120b'
@@ -133,7 +134,7 @@ export async function analyzeStockCheckWithAi(snapshot: StockCheckSnapshot): Pro
   const news = await fetchRelevantNews(snapshot.symbol)
   const p = snapshot.plan
   const newsText = news.length
-    ? news.map((item, index) => `${index + 1}. ${item.headline} (${item.source || 'unknown'})`).join('\n')
+    ? news.map((item, index) => `${index + 1}. ${sanitizeUntrustedText(item.headline, 200)} (${sanitizeUntrustedText(item.source, 60) || 'unknown'})`).join('\n')
     : 'ไม่มีข่าวสำคัญที่ผ่านตัวกรองใน 3 วันล่าสุด'
 
   const prompt = `คุณเป็นนักวิเคราะห์หุ้น US ระดับสถาบัน ช่วยอธิบายผล Stock Check ของ ${snapshot.symbol} เป็นภาษาไทยแบบกระชับ แม่นยำ และตรวจสอบได้
@@ -172,6 +173,7 @@ ${buildStockCheckFacts(snapshot).map(fact => `- ${fact}`).join('\n')}
 - Target1/2: ${p.target1 ?? 'N/A'} / ${p.target2 ?? 'N/A'}
 - R:R at Entry: ${p.riskRewardAtEntry ?? 'N/A'}
 
+${UNTRUSTED_NEWS_RULE}
 ข่าวล่าสุด:
 ${newsText}
 

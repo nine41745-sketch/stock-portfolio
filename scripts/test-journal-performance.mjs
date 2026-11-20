@@ -154,9 +154,9 @@ assert.match(changelog, /date: 'Development History — Feature commit 2026-10-1
 assert.ok(changelog.includes("from './changelog-v1370'"))
 assert.match(changelog, /FX Profit Attribution/, 'v1.38.0 development history must be preserved')
 const tsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(tsconfig.compilerOptions.paths['@/config/changelog'], ['./config/changelog-v14147'])
+assert.deepEqual(tsconfig.compilerOptions.paths['@/config/changelog'], ['./config/changelog-v14148'])
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(pkg.version, '1.41.47')
+assert.equal(pkg.version, '1.41.48')
 assert.match(pkg.scripts['test:critical'], /test-journal-performance\.mjs/)
 
 console.log('✓ Trading Journal / Statistics / FX regression tests passed')

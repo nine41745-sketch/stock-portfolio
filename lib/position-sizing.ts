@@ -1,5 +1,5 @@
 import { DetailedAnalysisResult, EarningsInfo, HoldingWithPrice, TechnicalSnapshot } from '@/types'
-import { MAX_POSITION_WEIGHT_PCT } from '@/lib/analysis-execution-guard'
+import { MAX_POSITION_WEIGHT_PCT, appendDecisionStep } from '@/lib/analysis-execution-guard'
 
 const PARTIAL_LEVELS = [5, 10, 15, 20, 25, 33, 50] as const
 
@@ -137,6 +137,8 @@ export function applyPositionSizing(
   const recommendation = { ...analysis.recommendation }
   let finalAction: Action = action
   let buyCashUsed = 0
+  let downgradeGuard: 'BUY_CASH' | 'BUY_CAPACITY' | null = null
+  let downgradeNote = ''
   const sizingPortfolioValue = investablePortfolioValue ?? totalPortfolioValue
 
   if (action === 'BUY') {
@@ -173,6 +175,8 @@ export function applyPositionSizing(
         const cashNote = capacityBlocked
           ? `ระบบปรับ BUY เป็น HOLD: capacity ก่อนชนเพดาน concentration ${MAX_POSITION_WEIGHT_PCT}% ไม่พอสำหรับไม้ขั้นต่ำ 5% ของจำนวนหุ้นที่ถือ`
           : `ระบบปรับ BUY เป็น HOLD: เงินที่พร้อมใช้ (Dime + เงินในธนาคาร) $${Math.max(0, availableBuyCash).toFixed(2)} ไม่พอช้อนขั้นต่ำ 5% ของจำนวนหุ้นที่ถือ`
+        downgradeGuard = capacityBlocked ? 'BUY_CAPACITY' : 'BUY_CASH'
+        downgradeNote = cashNote
         analysis = {
           ...analysis,
           risksAndOpportunities: {
@@ -215,11 +219,15 @@ export function applyPositionSizing(
     recommendation.buyConditions += ` · ระวังประกาศงบในอีก ${earnings.daysUntil} วัน`
   }
 
+  const sized: DetailedAnalysisResult = {
+    ...analysis,
+    recommendation: { ...recommendation, action: finalAction },
+  }
+
   return {
-    result: {
-      ...analysis,
-      recommendation: { ...recommendation, action: finalAction },
-    },
+    result: downgradeGuard
+      ? appendDecisionStep(sized, { guard: downgradeGuard, from: action, to: finalAction, note: downgradeNote })
+      : sized,
     buyCashUsed,
   }
 }

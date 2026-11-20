@@ -1,5 +1,7 @@
 import { DetailedAnalysisResult, EarningsInfo, HoldingWithPrice, NewsItem, TechnicalSnapshot } from '@/types'
 import { getStockMeta } from './stock-meta'
+import { appendDecisionStep, withAiProposedAction } from './analysis-execution-guard'
+import { sanitizeUntrustedText, UNTRUSTED_NEWS_RULE } from './untrusted-text'
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const GROQ_MODEL = 'openai/gpt-oss-120b'
@@ -248,7 +250,7 @@ function compactInput(
       vol: safeNumber(t.volumeRatio, 2),
     },
     earn: earnings ? { d: earnings.daysUntil, date: earnings.date } : null,
-    news: news.slice(0, 2).map(n => n.headline.slice(0, 90)),
+    news: news.slice(0, 2).map(n => sanitizeUntrustedText(n.headline, 90)),
     ctx: input.context?.mode === 'PREMARKET_TRIGGER'
       ? {
           m: 'PREMARKET_TRIGGER',
@@ -349,6 +351,7 @@ export async function analyzePortfolioBatch(
 
 แยกข่าว company-specific กับ macro/sector; P/E เป็น trailing/normalized และไม่มี freshness timestamp; ห้ามเดาราคา/forward P/E
 กติกาการอ้างข้อมูล (v1.41.41): อ้างเฉพาะข้อมูลใน INPUT เท่านั้น ห้ามใช้ความจำของโมเดลเติมข่าว ผลประกอบการ หรือตัวเลขการเงินของบริษัท; INPUT ไม่มีงบการเงิน รายได้ กำไรสุทธิ หนี้สิน กระแสเงินสด จึงห้ามอ้างถึง และพูดถึงพื้นฐานได้เฉพาะจาก pe/hi/lo ที่ให้มา; ถ้า news ว่างให้ถือว่า "ไม่ได้รับข่าวในรอบนี้" (ไม่ได้แปลว่าบริษัทไม่มีข่าว) ห้ามเขียนว่า "ไม่มีข่าวสำคัญ" หรือ "ไม่มีข่าวร้าย"
+${UNTRUSTED_NEWS_RULE}
 พอร์ต: stockValue=${totalPortfolioValue == null ? 'N/A' : totalPortfolioValue.toFixed(2)},cash=${cashBalance.toFixed(2)},cashPct=${cashRatio == null ? 'N/A' : cashRatio.toFixed(1)},weights=${portfolioWeights}
 
 สำคัญมาก: ตอบเป็น JSONL เท่านั้น = 1 JSON object ต่อ 1 บรรทัด, ไม่มี markdown, ไม่มี code fence, ไม่มี outer array/object, ต้องตอบหุ้นทุกตัว exactly once และแต่ละบรรทัดต้อง parse ได้เอง
@@ -431,7 +434,7 @@ INPUT=${JSON.stringify(payload)}`
     const summary = trimText(item.summary, 420) || `Daily Portfolio Review: ${finalAction} โดยอิงข้อมูลพอร์ตและตัวชี้วัดล่าสุด`
     const meta = metas[index]
 
-    results[symbol] = {
+    const built: DetailedAnalysisResult = {
       symbol,
       disclaimer: 'บทวิเคราะห์นี้สร้างโดย AI เพื่อประกอบการตัดสินใจเท่านั้น ไม่ใช่คำแนะนำการลงทุน',
       technicalSummary: technicalSummary(holding, technical),
@@ -464,6 +467,13 @@ INPUT=${JSON.stringify(payload)}`
       baselineAction: input.context?.baselineAction,
       baselineAnalysedAt: input.context?.baselineAnalysedAt,
     }
+    // v1.41.48 (decision trace): เก็บ action ดิบของ AI และบันทึกถ้า SELL_ALL ถูกลดระดับ
+    results[symbol] = appendDecisionStep(withAiProposedAction(built, rawAction), {
+      guard: 'SELL_ALL_EVIDENCE',
+      from: rawAction,
+      to: finalAction,
+      note: downgradeNote.trim(),
+    })
   })
 
   if (Object.keys(results).length < inputs.length) {
