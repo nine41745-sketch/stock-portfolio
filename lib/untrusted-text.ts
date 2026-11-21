@@ -4,9 +4,12 @@
 
 // อักขระควบคุม C0/C1 และ DEL
 const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g
-// zero-width, ตัวควบคุมทิศทางข้อความ (bidi) และ BOM ที่ใช้ซ่อนข้อความได้
-const INVISIBLE_CHARS = /[​-‏‪-‮⁠-⁤⁦-⁩﻿]/g
-const HTML_TAGS = /<[^>]{0,200}>/g
+// อักขระที่มองไม่เห็นซึ่งใช้ซ่อนข้อความได้: soft hyphen, Arabic letter mark, Mongolian vowel separator,
+// zero-width/ตัวควบคุมทิศทาง (bidi), word joiner/invisible operators, BOM และ Unicode tag characters (U+E0000–E007F)
+// เขียนเป็น escape ทั้งหมดเพื่อไม่ให้ editor/formatter ลบทิ้งโดยไม่รู้ตัว
+const INVISIBLE_CHARS = /[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]/gu
+// เฉพาะสิ่งที่หน้าตาเป็นแท็ก HTML (< ตามด้วยตัวอักษร, / หรือ !) ไม่ลบข้อความเปรียบเทียบอย่าง "EPS < 1 and margin > 5"
+const HTML_TAGS = /<!--[\s\S]{0,200}?-->|<[/!]?[A-Za-z][^<>]{0,200}>/g
 const BACKTICKS = /`+/g
 const WHITESPACE_RUNS = /\s+/g
 

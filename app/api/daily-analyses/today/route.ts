@@ -49,6 +49,7 @@ export async function GET() {
     return NextResponse.json({
       analyses: {},
       analysisDates: {},
+      latestDailyAnalysisDate: null,
       analysisDate: getThaiDateString(),
       staleSymbols: [],
       latestPortfolioChangeAt: null,
@@ -100,12 +101,15 @@ export async function GET() {
   const analyses: Record<string, DetailedAnalysisResult> = {}
   const analysisDates: Record<string, string> = {}
   const latestTimes: Record<string, number> = {}
+  // v1.41.48: วันที่ล่าสุดของรอบ cron รายวันเท่านั้น (ไม่รวม premarket/วิเคราะห์เอง) ใช้เป็นเกณฑ์แบนเนอร์ "ผลยังเป็นของรอบก่อน"
+  let latestDailyAnalysisDate: string | null = null
 
   for (const row of dailyResponse.data ?? []) {
     const symbol = row.symbol as string
     if (!activeSet.has(symbol)) continue
     const result = row.result as DetailedAnalysisResult
     const analysisDate = row.analysis_date as string
+    if (analysisDate && (!latestDailyAnalysisDate || analysisDate > latestDailyAnalysisDate)) latestDailyAnalysisDate = analysisDate
     const timestamp = getResultTimestamp(result, `${analysisDate}T00:00:00+07:00`)
     if (!shouldReplaceAnalysis(latestTimes[symbol], timestamp)) continue
     analyses[symbol] = result
@@ -148,6 +152,7 @@ export async function GET() {
   return NextResponse.json({
     analyses,
     analysisDates,
+    latestDailyAnalysisDate,
     analysisDate: getThaiDateString(),
     staleSymbols,
     latestPortfolioChangeAt: latestChangeMs > 0 ? new Date(latestChangeMs).toISOString() : null,

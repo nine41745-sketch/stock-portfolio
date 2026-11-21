@@ -360,6 +360,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
   // v1.41.48: วันที่ของผลวิเคราะห์ล่าสุดต่อหุ้น และสถานะโหลดไม่สำเร็จ เพื่อไม่ให้ผลเก่าแสดงเงียบๆ
   const [analysisDates, setAnalysisDates] = useState<Record<string, string>>({})
   const [analysisLoadFailed, setAnalysisLoadFailed] = useState(false)
+  const [latestDailyAnalysisDate, setLatestDailyAnalysisDate] = useState<string | null>(null)
   const [loadingSymbol, setLoadingSymbol] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [modalHolding, setModalHolding] = useState<HoldingWithPrice | null | undefined>(undefined)
@@ -535,15 +536,17 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       return r.json()
     }).then(d => {
       setAnalysisLoadFailed(false)
-      if (d.analysisDates && typeof d.analysisDates === 'object') setAnalysisDates(d.analysisDates)
+      if (d.analysisDates && typeof d.analysisDates === 'object') setAnalysisDates(prev => ({ ...d.analysisDates, ...prev })) // วันที่ของผลที่กดวิเคราะห์เองระหว่าง session ทับเหมือน analyses
+      if (typeof d.latestDailyAnalysisDate === 'string') setLatestDailyAnalysisDate(d.latestDailyAnalysisDate)
       if (d.analyses && Object.keys(d.analyses).length) {
         setAnalyses(prev => ({ ...d.analyses, ...prev })) // ผลที่กดวิเคราะห์เองระหว่าง session สดกว่า ให้ทับ cron
       }
     }).catch(() => setAnalysisLoadFailed(true))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // หุ้นที่ผลวิเคราะห์เก่ากว่าวันที่ล่าสุดที่หุ้นตัวอื่นมี = รอบล่าสุดอาจวิเคราะห์ตัวนั้นไม่สำเร็จ (ไม่ใช้ปฏิทินตลาด จึงไม่เตือนผิดวันหยุด)
-  const latestAnalysisDate = Object.values(analysisDates).filter(Boolean).sort().at(-1) ?? null
+  // หุ้นที่ผลที่แสดงอยู่เก่ากว่ารอบ cron รายวันล่าสุดที่หุ้นตัวอื่นมี = รอบล่าสุดอาจวิเคราะห์ตัวนั้นไม่สำเร็จ
+  // เกณฑ์ใช้วันที่ของ cron รายวันเท่านั้น (ผล premarket/วิเคราะห์เองที่ใหม่กว่าไม่ทำให้ตัวอื่นถูกเตือน) และไม่ใช้ปฏิทินตลาด จึงไม่เตือนผิดวันหยุด
+  const latestAnalysisDate = latestDailyAnalysisDate
   const staleAnalysisSymbols = latestAnalysisDate
     ? Object.entries(analysisDates).filter(([, date]) => date && date < latestAnalysisDate).map(([symbol]) => symbol).sort()
     : []
@@ -645,6 +648,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       await requireOk(res, 'วิเคราะห์ไม่สำเร็จ')
       const result: DetailedAnalysisResult = await res.json()
       setAnalyses(prev => ({ ...prev, [holding.symbol]: result }))
+      // ผลใหม่ของวันนี้ (เวลาไทย) ต้องไม่ถูกเตือนว่าเป็นของรอบก่อน
+      setAnalysisDates(prev => ({ ...prev, [holding.symbol]: new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10) }))
       setExpandedAnalysisSymbol(holding.symbol)
       setExpandedSymbol(null)
     } catch {
@@ -1063,7 +1068,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
           )}
           {staleAnalysisSymbols.length > 0 && (
             <p className="mt-1 text-xs text-amber-300" data-testid="analysis-stale-banner">
-              ⚠️ ผลวิเคราะห์ของ {staleAnalysisSymbols.join(', ')} ยังเป็นของรอบก่อน (ตัวอื่นเป็นของ {latestAnalysisDate}) อาจเพราะรอบล่าสุดวิเคราะห์ตัวนี้ไม่สำเร็จ
+              ⚠️ ผลวิเคราะห์ของ {staleAnalysisSymbols.join(', ')} ยังเป็นของรอบก่อน (รอบวิเคราะห์รายวันล่าสุดคือ {latestAnalysisDate}) อาจเพราะรอบล่าสุดวิเคราะห์ตัวนี้ไม่สำเร็จ
             </p>
           )}
         </div>
