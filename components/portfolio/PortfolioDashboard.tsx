@@ -40,6 +40,19 @@ const SIGNAL_STYLE: Record<string, string> = {
 const SIGNAL_LABEL: Record<string, string> = {
   BUY: '🟢 ซื้อเพิ่ม', HOLD: '🟡 ถือต่อ', SELL_PARTIAL: '🟠 ขายบางส่วน', SELL_ALL: '🔴 ขายทั้งหมด',
 }
+// v1.41.48 (decision trace): ป้ายบอกว่า guard ตัวไหนเปลี่ยนคำแนะนำของ AI
+const DECISION_GUARD_LABEL: Record<string, string> = {
+  SELL_ALL_EVIDENCE: 'ไม่มีหลักฐานว่าพื้นฐานบริษัทเสียจริง (กฎ SELL_ALL)',
+  BUY_CASH: 'เงินที่พร้อมใช้ไม่พอไม้ขั้นต่ำ',
+  BUY_CAPACITY: 'ชนเพดานสัดส่วนหุ้นในพอร์ต',
+  EXECUTION_GUARD: 'เพิ่งขายไปใน 24 ชั่วโมง (Execution Guard)',
+  SCALE_IN_GUARD: 'ด่านกันซื้อซ้ำ (Scale-in Guard)',
+}
+const ANALYSIS_MODE_LABEL: Record<string, string> = {
+  DAILY_POST_CLOSE: 'รอบหลังตลาดปิด',
+  PREMARKET_TRIGGER: 'รอบก่อนตลาดเปิด',
+  MANUAL: 'วิเคราะห์เอง',
+}
 const IMPACT_BADGE: Record<string, string> = {
   NEGATIVE: 'bg-red-500/20 text-red-400 border border-red-500/30',
   POSITIVE: 'bg-green-500/20 text-green-400 border border-green-500/30',
@@ -344,6 +357,10 @@ function DCACalculator({ holding }: { holding: HoldingWithPrice }) {
 export default function PortfolioDashboard({ holdings: initialHoldings }: Props) {
   const [holdings, setHoldings] = useState<HoldingWithPrice[]>(initialHoldings)
   const [analyses, setAnalyses] = useState<Record<string, DetailedAnalysisResult>>({})
+  // v1.41.48: วันที่ของผลวิเคราะห์ล่าสุดต่อหุ้น และสถานะโหลดไม่สำเร็จ เพื่อไม่ให้ผลเก่าแสดงเงียบๆ
+  const [analysisDates, setAnalysisDates] = useState<Record<string, string>>({})
+  const [analysisLoadFailed, setAnalysisLoadFailed] = useState(false)
+  const [latestDailyAnalysisDate, setLatestDailyAnalysisDate] = useState<string | null>(null)
   const [loadingSymbol, setLoadingSymbol] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [modalHolding, setModalHolding] = useState<HoldingWithPrice | null | undefined>(undefined)
@@ -514,12 +531,25 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
 
   // โหลดผลล่าสุด: Post-close ~08:15 ICT หรือ Pre-market trigger update ที่ใหม่กว่า — โชว์ทันทีไม่ต้องกดเอง
   useEffect(() => {
-    fetch('/api/daily-analyses/today').then(r => r.json()).then(d => {
+    fetch('/api/daily-analyses/today').then(r => {
+      if (!r.ok) throw new Error(`daily analyses ${r.status}`)
+      return r.json()
+    }).then(d => {
+      setAnalysisLoadFailed(false)
+      if (d.analysisDates && typeof d.analysisDates === 'object') setAnalysisDates(prev => ({ ...d.analysisDates, ...prev })) // วันที่ของผลที่กดวิเคราะห์เองระหว่าง session ทับเหมือน analyses
+      if (typeof d.latestDailyAnalysisDate === 'string') setLatestDailyAnalysisDate(d.latestDailyAnalysisDate)
       if (d.analyses && Object.keys(d.analyses).length) {
         setAnalyses(prev => ({ ...d.analyses, ...prev })) // ผลที่กดวิเคราะห์เองระหว่าง session สดกว่า ให้ทับ cron
       }
-    }).catch(() => {})
+    }).catch(() => setAnalysisLoadFailed(true))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // หุ้นที่ผลที่แสดงอยู่เก่ากว่ารอบ cron รายวันล่าสุดที่หุ้นตัวอื่นมี = รอบล่าสุดอาจวิเคราะห์ตัวนั้นไม่สำเร็จ
+  // เกณฑ์ใช้วันที่ของ cron รายวันเท่านั้น (ผล premarket/วิเคราะห์เองที่ใหม่กว่าไม่ทำให้ตัวอื่นถูกเตือน) และไม่ใช้ปฏิทินตลาด จึงไม่เตือนผิดวันหยุด
+  const latestAnalysisDate = latestDailyAnalysisDate
+  const staleAnalysisSymbols = latestAnalysisDate
+    ? Object.entries(analysisDates).filter(([, date]) => date && date < latestAnalysisDate).map(([symbol]) => symbol).sort()
+    : []
 
   // sync cashInput เมื่อเปลี่ยน currency
   useEffect(() => {
@@ -618,6 +648,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       await requireOk(res, 'วิเคราะห์ไม่สำเร็จ')
       const result: DetailedAnalysisResult = await res.json()
       setAnalyses(prev => ({ ...prev, [holding.symbol]: result }))
+      // ผลใหม่ของวันนี้ (เวลาไทย) ต้องไม่ถูกเตือนว่าเป็นของรอบก่อน
+      setAnalysisDates(prev => ({ ...prev, [holding.symbol]: new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10) }))
       setExpandedAnalysisSymbol(holding.symbol)
       setExpandedSymbol(null)
     } catch {
@@ -785,6 +817,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
     // key numbers shown right under the summary; they come from data the panel already has, nothing is generated
     const usedNewsCount = analysis.usedNews?.length ?? 0
     const dataBasisNews = usedNewsCount > 0 ? `ข่าว ${usedNewsCount} ชิ้น` : 'ไม่ได้รับข่าวล่าสุด (อาจดึงไม่สำเร็จ ไม่ได้แปลว่าไม่มีข่าว)'
+    // v1.41.48: แสดงเฉพาะเมื่อ guard เปลี่ยน action จริง (ผลเก่าที่ไม่มี trace ไม่แสดง)
+    const decisionSteps = analysis.decisionTrace?.steps ?? []
     const isPremarketPrice = typeof analysis.priceSource === 'string' && /pre-?market/i.test(analysis.priceSource)
     const keyFacts: Array<{ label: string; value: string }> = [
       typeof analysis.usedPrice === 'number' ? { label: isPremarketPrice ? 'ราคาก่อนตลาดเปิด' : 'ราคาที่ใช้วิเคราะห์', value: `$${analysis.usedPrice.toFixed(2)}` } : null,
@@ -799,6 +833,11 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             <span className={`inline-flex items-center whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-semibold ${SIGNAL_STYLE[action]}`}>
               {SIGNAL_LABEL[action]}
             </span>
+            {analysis.analysedAt && (
+              <span className="text-[11px] text-gray-500" data-testid="analysis-run-meta">
+                {ANALYSIS_MODE_LABEL[analysis.analysisMode ?? 'MANUAL'] ?? 'วิเคราะห์เอง'} · {fmtDateTime(analysis.analysedAt)}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -823,6 +862,11 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
         <p className="mt-1 text-[11px] leading-relaxed text-gray-500" data-testid="analysis-data-basis">
           ข้อมูลที่ AI ได้รับ: ราคา · ตัวชี้วัดเทคนิค · P/E และ 52W (ถ้ามี) · {dataBasisNews} | ไม่ได้รับ: {AI_INPUT_NOT_PROVIDED}
         </p>
+        {decisionSteps.length > 0 && analysis.decisionTrace && (
+          <p className="mt-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-2.5 py-1.5 text-xs text-sky-200" data-testid="analysis-decision-trace">
+            🤖 AI เสนอ: {SIGNAL_LABEL[analysis.decisionTrace.aiProposedAction] ?? analysis.decisionTrace.aiProposedAction} → ระบบสั่งสุทธิ: {SIGNAL_LABEL[action]} เพราะ {decisionSteps.map(step => DECISION_GUARD_LABEL[step.guard] ?? step.guard).join(' แล้ว ')}
+          </p>
+        )}
 
         {analysis.analysisMode === 'PREMARKET_TRIGGER' && (
           <div className="mt-3 rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
@@ -1019,6 +1063,14 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
               ? `อัปเดตล่าสุด ${fmtDateTime(lastUpdate)} · USD/THB ${exchangeRate.toFixed(2)}${exchangeRateSource === 'live' ? '' : ' (ประมาณ)'}`
               : `ราคายังไม่ได้รีเฟรช · USD/THB ${exchangeRate.toFixed(2)}${exchangeRateSource === 'live' ? '' : ' (ประมาณ)'}`}
           </p>
+          {analysisLoadFailed && (
+            <p className="mt-1 text-xs text-amber-300" data-testid="analysis-load-failed">⚠️ โหลดผลวิเคราะห์ล่าสุดไม่สำเร็จ ลองรีเฟรชหน้าอีกครั้ง</p>
+          )}
+          {staleAnalysisSymbols.length > 0 && (
+            <p className="mt-1 text-xs text-amber-300" data-testid="analysis-stale-banner">
+              ⚠️ ผลวิเคราะห์ของ {staleAnalysisSymbols.join(', ')} ยังเป็นของรอบก่อน (รอบวิเคราะห์รายวันล่าสุดคือ {latestAnalysisDate}) อาจเพราะรอบล่าสุดวิเคราะห์ตัวนี้ไม่สำเร็จ
+            </p>
+          )}
         </div>
         <div className="flex gap-2 flex-wrap">
           <button onClick={handleRefresh} disabled={refreshing}

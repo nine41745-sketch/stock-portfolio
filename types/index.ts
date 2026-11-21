@@ -134,6 +134,30 @@ export interface DetailedAnalysisResult {
   triggerReasons?: string[]
   baselineAction?: 'BUY' | 'HOLD' | 'SELL_PARTIAL' | 'SELL_ALL'
   baselineAnalysedAt?: string
+  // v1.41.48 (decision trace): action ที่ AI เสนอก่อนผ่าน guard และ guard แต่ละตัวที่เปลี่ยน action
+  // เพื่อให้ผู้ใช้แยกได้ว่า "AI เสนออะไร" กับ "ระบบอนุญาตอะไร" — optional เพราะผลเก่าไม่มีฟิลด์นี้
+  decisionTrace?: DecisionTrace
+}
+
+export type AnalysisAction = 'BUY' | 'HOLD' | 'SELL_PARTIAL' | 'SELL_ALL'
+
+export type DecisionGuardId =
+  | 'SELL_ALL_EVIDENCE'
+  | 'BUY_CASH'
+  | 'BUY_CAPACITY'
+  | 'EXECUTION_GUARD'
+  | 'SCALE_IN_GUARD'
+
+export interface DecisionTraceStep {
+  guard: DecisionGuardId
+  from: AnalysisAction
+  to: AnalysisAction
+  note: string
+}
+
+export interface DecisionTrace {
+  aiProposedAction: AnalysisAction
+  steps: DecisionTraceStep[]
 }
 
 export interface HoldingFormData {

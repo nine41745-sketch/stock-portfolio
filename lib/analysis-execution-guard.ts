@@ -1,4 +1,25 @@
-import type { DetailedAnalysisResult } from '@/types'
+import type { AnalysisAction, DecisionTraceStep, DetailedAnalysisResult } from '@/types'
+
+// v1.41.48 (decision trace): helper กลางที่ทุก guard ใช้บันทึกว่า AI เสนออะไรและ guard ตัวไหนเปลี่ยน action
+// อยู่ไฟล์นี้เพราะเป็นโมดูลชั้นล่างสุดที่ไม่มี runtime import (เทสต์โหลดไฟล์นี้แบบไม่มี module resolver)
+// ทุกฟังก์ชันคืนออบเจกต์ใหม่ ไม่แก้ผลเดิม (ปุ่มวิเคราะห์เองใช้ผลจากแคชซ้ำได้หลายครั้ง)
+const DECISION_TRACE_NOTE_MAX_CHARS = 280
+
+export function withAiProposedAction<T extends DetailedAnalysisResult>(result: T, aiProposedAction: AnalysisAction): T {
+  return { ...result, decisionTrace: { aiProposedAction, steps: [] } }
+}
+
+export function appendDecisionStep<T extends DetailedAnalysisResult>(result: T, step: DecisionTraceStep): T {
+  if (step.from === step.to) return result
+  const trace = result.decisionTrace ?? { aiProposedAction: step.from, steps: [] }
+  return {
+    ...result,
+    decisionTrace: {
+      aiProposedAction: trace.aiProposedAction,
+      steps: [...trace.steps, { ...step, note: step.note.slice(0, DECISION_TRACE_NOTE_MAX_CHARS) }],
+    },
+  }
+}
 
 export interface RecentSyncedTrade {
   transaction_type: 'BUY' | 'SELL'
@@ -60,8 +81,14 @@ function guardHold(
   side: 'BUY' | 'SELL_PARTIAL'
 ): DetailedAnalysisResult {
   const currentCaution = result.risksAndOpportunities?.caution ?? ''
+  const traced = appendDecisionStep(result, {
+    guard: side === 'BUY' ? 'SCALE_IN_GUARD' : 'EXECUTION_GUARD',
+    from: result.recommendation.action,
+    to: 'HOLD',
+    note,
+  })
   return {
-    ...result,
+    ...traced,
     recommendation: {
       ...result.recommendation,
       action: 'HOLD',

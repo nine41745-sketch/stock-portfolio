@@ -1,5 +1,7 @@
 import { HoldingWithPrice, AnalysisResult, DetailedAnalysisResult, TechnicalSnapshot, EarningsInfo } from '@/types'
 import { getStockMeta } from './stock-meta'
+import { appendDecisionStep, withAiProposedAction } from './analysis-execution-guard'
+import { sanitizeUntrustedText, UNTRUSTED_NEWS_RULE } from './untrusted-text'
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
@@ -284,7 +286,8 @@ export async function analyzeHoldingDetailed(
   const promptNews = recentNews.slice(0, 4)
   const newsSnippet = promptNews
     .map((n, i) => {
-      const headline = n.headlineTh ?? n.headline
+      // v1.41.48: พาดหัว (และคำแปลที่ผ่าน AI มาแล้ว) เป็นข้อมูลไม่น่าเชื่อถือ ล้างก่อนตัดความยาว
+      const headline = sanitizeUntrustedText(n.headlineTh ?? n.headline, 500)
       const truncated = headline.length > NEWS_HEADLINE_MAX_CHARS ? `${headline.slice(0, NEWS_HEADLINE_MAX_CHARS)}…` : headline
       return `${i + 1}. ${truncated}${n.impact ? ` [${n.impact}]` : ''}`
     })
@@ -434,6 +437,7 @@ ${techLines || 'ไม่มีข้อมูลเทคนิค'}
 === ปฏิทินผลประกอบการ (Earnings Calendar) ===
 ${earningsLine}
 
+${UNTRUSTED_NEWS_RULE}
 === ข่าวสารและปัจจัยกระทบล่าสุด ===
 ${newsSnippet}
 
@@ -604,7 +608,7 @@ ${dataAvailability}
 
     const rawCaution = parsed.risksAndOpportunities?.caution ?? ''
 
-    return {
+    const built: DetailedAnalysisResult = {
       symbol,
       disclaimer: parsed.disclaimer ?? fallback.disclaimer,
       technicalSummary,
@@ -632,6 +636,13 @@ ${dataAvailability}
       sellAllEvidenceTypes,
       sellAllEvidence,
     }
+    // v1.41.48 (decision trace): เก็บ action ดิบของ AI และบันทึกถ้า SELL_ALL ถูกลดระดับ
+    return appendDecisionStep(withAiProposedAction(built, action), {
+      guard: 'SELL_ALL_EVIDENCE',
+      from: action,
+      to: finalAction,
+      note: downgradeNote.trim(),
+    })
   } catch (e) {
     console.error(`[groq] analyzeHoldingDetailed parse failed for ${symbol}:`, e)
     return fallback
@@ -643,9 +654,10 @@ export async function translateAndClassifyNews(
 ): Promise<Array<{ headlineTh: string; impact: 'NEGATIVE' | 'POSITIVE' | 'NEUTRAL' | 'LOW' }>> {
   if (!items.length) return []
 
-  const list = items.map((it, i) => `${i + 1}. [${it.symbol}] ${it.headline}`).join('\n')
+  const list = items.map((it, i) => `${i + 1}. [${sanitizeUntrustedText(it.symbol, 12)}] ${sanitizeUntrustedText(it.headline, 200)}`).join('\n')
   const prompt = `แปลหัวข้อข่าวหุ้น US ต่อไปนี้เป็นภาษาไทย และประเมินผลกระทบต่อราคาหุ้น
 NEGATIVE=ข่าวร้าย, POSITIVE=ข่าวดี, NEUTRAL=กลางๆ, LOW=เบา
+${UNTRUSTED_NEWS_RULE}
 
 ข่าว:
 ${list}
