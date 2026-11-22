@@ -53,6 +53,11 @@ const ANALYSIS_MODE_LABEL: Record<string, string> = {
   PREMARKET_TRIGGER: 'รอบก่อนตลาดเปิด',
   MANUAL: 'วิเคราะห์เอง',
 }
+// v1.41.49: วันที่ไทย (YYYY-MM-DD) จาก timestamp ของผล ให้ตรงกับ getThaiDateForTimestamp ใน /api/daily-analyses/today
+function thaiDateFromTimestamp(value: string | undefined): string | null {
+  const ms = value ? Date.parse(value) : NaN
+  return Number.isFinite(ms) ? new Date(ms + 7 * 60 * 60 * 1000).toISOString().slice(0, 10) : null
+}
 const IMPACT_BADGE: Record<string, string> = {
   NEGATIVE: 'bg-red-500/20 text-red-400 border border-red-500/30',
   POSITIVE: 'bg-green-500/20 text-green-400 border border-green-500/30',
@@ -212,6 +217,7 @@ interface TrackRecordData {
   days: number
   overall: { total: number; correct: number; winRatePct: number | null }
   bySymbol: { symbol: string; total: number; correct: number; winRatePct: number }[]
+  guardOverrides?: { traced: number; overridden: number; byGuard: Record<string, number> } | null
 }
 
 // การ์ด Track Record — เทียบสัญญาณ AI ที่เคยแนะนำ vs ราคาจริงที่เกิดขึ้นภายหลัง (win rate %)
@@ -279,6 +285,22 @@ function TrackRecordCard() {
             })}
           </div>
         </>
+      )}
+      {!loading && !loadError && data?.guardOverrides && data.guardOverrides.traced > 0 && (
+        <div className="mt-3 rounded-lg border border-gray-800 bg-gray-950/50 px-3 py-2 text-xs text-gray-400" data-testid="track-record-guard-overrides">
+          <p>
+            🤖 AI เสนอ vs ระบบสั่ง ({days} วัน): ระบบเปลี่ยนคำแนะนำของ AI {data.guardOverrides.overridden} จาก {data.guardOverrides.traced} ผล
+          </p>
+          {Object.entries(data.guardOverrides.byGuard).length > 0 && (
+            <p className="mt-1 text-gray-500">
+              {Object.entries(data.guardOverrides.byGuard)
+                .sort((a, b) => b[1] - a[1])
+                .map(([guard, count]) => `${DECISION_GUARD_LABEL[guard] ?? guard} ${count} ครั้ง`)
+                .join(' · ')}
+            </p>
+          )}
+          <p className="mt-1 text-gray-600">นับเฉพาะผลรอบหลังตลาดปิดตั้งแต่ v1.41.48 ที่บันทึกที่มาของคำแนะนำ</p>
+        </div>
       )}
     </div>
   )
@@ -546,9 +568,14 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
 
   // หุ้นที่ผลที่แสดงอยู่เก่ากว่ารอบ cron รายวันล่าสุดที่หุ้นตัวอื่นมี = รอบล่าสุดอาจวิเคราะห์ตัวนั้นไม่สำเร็จ
   // เกณฑ์ใช้วันที่ของ cron รายวันเท่านั้น (ผล premarket/วิเคราะห์เองที่ใหม่กว่าไม่ทำให้ตัวอื่นถูกเตือน) และไม่ใช้ปฏิทินตลาด จึงไม่เตือนผิดวันหยุด
+  // v1.41.49: นับเฉพาะหุ้นที่ยังถืออยู่ (หุ้นที่ขายระหว่าง session ไม่ค้างในแบนเนอร์) และบอกหุ้นที่ถืออยู่แต่ยังไม่มีผลเลย
   const latestAnalysisDate = latestDailyAnalysisDate
+  const heldAnalysisSymbols = new Set(holdings.map(h => h.symbol.toUpperCase()))
   const staleAnalysisSymbols = latestAnalysisDate
-    ? Object.entries(analysisDates).filter(([, date]) => date && date < latestAnalysisDate).map(([symbol]) => symbol).sort()
+    ? Object.entries(analysisDates).filter(([symbol, date]) => heldAnalysisSymbols.has(symbol.toUpperCase()) && date && date < latestAnalysisDate).map(([symbol]) => symbol).sort()
+    : []
+  const missingAnalysisSymbols = latestAnalysisDate
+    ? [...heldAnalysisSymbols].filter(symbol => !Object.keys(analysisDates).some(s => s.toUpperCase() === symbol)).sort()
     : []
 
   // sync cashInput เมื่อเปลี่ยน currency
@@ -648,8 +675,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       await requireOk(res, 'วิเคราะห์ไม่สำเร็จ')
       const result: DetailedAnalysisResult = await res.json()
       setAnalyses(prev => ({ ...prev, [holding.symbol]: result }))
-      // ผลใหม่ของวันนี้ (เวลาไทย) ต้องไม่ถูกเตือนว่าเป็นของรอบก่อน
-      setAnalysisDates(prev => ({ ...prev, [holding.symbol]: new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10) }))
+      // v1.41.49: วันที่ของผลใหม่มาจาก result.analysedAt (เวลาไทย แบบเดียวกับ server) และไม่ตั้งเมื่อผลเป็น error
+      const analysedDate = thaiDateFromTimestamp(result.analysedAt)
+      if (!result.error && analysedDate) setAnalysisDates(prev => ({ ...prev, [holding.symbol]: analysedDate }))
       setExpandedAnalysisSymbol(holding.symbol)
       setExpandedSymbol(null)
     } catch {
@@ -1069,6 +1097,11 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
           {staleAnalysisSymbols.length > 0 && (
             <p className="mt-1 text-xs text-amber-300" data-testid="analysis-stale-banner">
               ⚠️ ผลวิเคราะห์ของ {staleAnalysisSymbols.join(', ')} ยังเป็นของรอบก่อน (รอบวิเคราะห์รายวันล่าสุดคือ {latestAnalysisDate}) อาจเพราะรอบล่าสุดวิเคราะห์ตัวนี้ไม่สำเร็จ
+            </p>
+          )}
+          {missingAnalysisSymbols.length > 0 && (
+            <p className="mt-1 text-xs text-amber-300" data-testid="analysis-missing-banner">
+              ⚠️ {missingAnalysisSymbols.join(', ')} ยังไม่มีผลวิเคราะห์ (เพิ่งเพิ่มเข้าพอร์ต หรือรอบวิเคราะห์รายวันยังไม่ได้วิเคราะห์ตัวนี้) กดวิเคราะห์เองได้
             </p>
           )}
         </div>

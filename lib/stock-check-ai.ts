@@ -135,7 +135,7 @@ export async function analyzeStockCheckWithAi(snapshot: StockCheckSnapshot): Pro
   const p = snapshot.plan
   const newsText = news.length
     ? news.map((item, index) => `${index + 1}. ${sanitizeUntrustedText(item.headline, 200)} (${sanitizeUntrustedText(item.source, 60) || 'unknown'})`).join('\n')
-    : 'ไม่มีข่าวสำคัญที่ผ่านตัวกรองใน 3 วันล่าสุด'
+    : 'ระบบไม่ได้รับข่าวที่ผ่านตัวกรองใน 3 วันล่าสุด (ไม่ได้แปลว่าบริษัทไม่มีข่าว)'
 
   const prompt = `คุณเป็นนักวิเคราะห์หุ้น US ระดับสถาบัน ช่วยอธิบายผล Stock Check ของ ${snapshot.symbol} เป็นภาษาไทยแบบกระชับ แม่นยำ และตรวจสอบได้
 

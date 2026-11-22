@@ -112,7 +112,8 @@ export async function GET() {
     if (analysisDate && (!latestDailyAnalysisDate || analysisDate > latestDailyAnalysisDate)) latestDailyAnalysisDate = analysisDate
     const timestamp = getResultTimestamp(result, `${analysisDate}T00:00:00+07:00`)
     if (!shouldReplaceAnalysis(latestTimes[symbol], timestamp)) continue
-    analyses[symbol] = result
+    // v1.41.49: แถว daily เก่าก่อนมี analysisMode ให้แสดงเป็นรอบหลังตลาดปิด (ออบเจกต์ใหม่ ไม่แก้ข้อมูลใน DB)
+    analyses[symbol] = result && !result.analysisMode ? { ...result, analysisMode: 'DAILY_POST_CLOSE' } : result
     analysisDates[symbol] = analysisDate
     latestTimes[symbol] = timestamp
   }

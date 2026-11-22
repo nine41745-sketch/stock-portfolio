@@ -309,7 +309,8 @@ export async function POST(request: NextRequest) {
     const cacheKey = `analyze:${user.id}:${portfolioCacheScope}:${symbol}:${fingerprint}`
     const cached = cacheGet<DetailedAnalysisResult>(cacheKey)
     if (cached) {
-      // The cache holds raw AI output; both guards are deterministic and re-run on every request, before persistence.
+      // The cache holds the AI result after the SELL_ALL evidence check and position sizing (`@/lib/groq` resolves to
+      // groq-v114), not raw model output. The execution and claim guards are deterministic and re-run on every request, before persistence.
       const guardedCached = applyPortfolioAiClaimGuard(applyRecentTradeExecutionGuard(cached, recentTrade, executionGuardContext))
       await saveManualLatest(guardedCached)
       return NextResponse.json(guardedCached)
@@ -332,7 +333,7 @@ export async function POST(request: NextRequest) {
       otherHoldingsForPrompt
     )
     if (!rawResult.error && rawResult.technicalSummary && rawResult.summary) {
-      // Cache raw AI output; position/time-aware guard must be re-evaluated on every request.
+      // Cache the evidence-checked, sized result (not raw model output); the position/time-aware guard must be re-evaluated on every request.
       cacheSet(cacheKey, rawResult, ANALYZE_CACHE_TTL_SEC)
     }
 

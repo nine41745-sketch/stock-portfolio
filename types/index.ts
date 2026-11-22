@@ -44,23 +44,6 @@ export interface NewsItem {
   impact: 'NEGATIVE' | 'POSITIVE' | 'NEUTRAL' | 'LOW'
 }
 
-// เก็บไว้เพื่อ backward-compat กับโค้ดเก่า (ไม่ใช้แล้วหลังอัปเกรดเป็น DetailedAnalysisResult)
-export interface AnalysisResult {
-  symbol: string
-  signal: 'BUY' | 'HOLD' | 'SELL_PARTIAL' | 'SELL_ALL'
-  summary: string
-  reasons: string[]
-  detail: string
-  action: string
-  sector?: string
-  business?: string
-  targetCustomers?: string
-  analysedAt?: string
-  usedPrice?: number | null
-  usedPE?: number | null
-  usedNews?: Array<{ headline: string; headlineTh?: string; impact: string }>
-}
-
 export interface TechnicalSnapshot {
   ema50: number | null
   ema100: number | null
