@@ -135,7 +135,7 @@ export async function analyzeStockCheckWithAi(snapshot: StockCheckSnapshot): Pro
   const p = snapshot.plan
   const newsText = news.length
     ? news.map((item, index) => `${index + 1}. ${sanitizeUntrustedText(item.headline, 200)} (${sanitizeUntrustedText(item.source, 60) || 'unknown'})`).join('\n')
-    : 'ไม่มีข่าวสำคัญที่ผ่านตัวกรองใน 3 วันล่าสุด'
+    : 'ระบบไม่ได้รับข่าวที่ผ่านตัวกรองใน 3 วันล่าสุด (ไม่ได้แปลว่าบริษัทไม่มีข่าว)'
 
   const prompt = `คุณเป็นนักวิเคราะห์หุ้น US ระดับสถาบัน ช่วยอธิบายผล Stock Check ของ ${snapshot.symbol} เป็นภาษาไทยแบบกระชับ แม่นยำ และตรวจสอบได้
 
@@ -148,6 +148,7 @@ export async function analyzeStockCheckWithAi(snapshot: StockCheckSnapshot): Pro
 - ห้ามสรุปความสัมพันธ์ของตัวเลขเอง (EMA, ราคากับ 52W High) ให้ใช้ "ข้อเท็จจริงที่คำนวณแล้ว" ด้านล่างตามตัวอักษร
 - ห้ามแนะนำให้ซื้อ ขาย หรือถือสถานะที่มีอยู่ ให้อธิบายเฉพาะผล Decision ของ engine และความเสี่ยง
 - ช่อง action ให้ทวนผล Decision ของ engine เป็นข้อความสั้น (เช่น "รอย่อเข้า Entry Zone", "ยังไม่ใช่จุดซื้อ") ห้ามเพิ่มคำสั่งซื้อหรือขายใหม่
+- ถ้าส่วนข่าวระบุว่าระบบไม่ได้รับข่าว ให้ถือว่า "ไม่ได้รับข่าวในรอบนี้" (ไม่ได้แปลว่าบริษัทไม่มีข่าว) ห้ามเขียนว่า "ไม่มีข่าวสำคัญ" หรือ "ไม่มีข่าวร้าย"
 
 ข้อเท็จจริงที่คำนวณแล้ว:
 ${buildStockCheckFacts(snapshot).map(fact => `- ${fact}`).join('\n')}

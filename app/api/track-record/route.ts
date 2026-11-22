@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { noPortfolioResponse, resolveActivePortfolio } from '@/lib/portfolio-context'
+import { summarizeGuardOverrides, type GuardOverrideSummary } from '@/lib/guard-overrides'
 
 interface TrackRecordRow {
   symbol: string
@@ -51,5 +52,34 @@ export async function GET(request: NextRequest) {
     }))
     .sort((a, b) => b.winRatePct - a.winRatePct)
 
-  return NextResponse.json({ days, overall, bySymbol, rows }, { headers: { 'Cache-Control': 'no-store' } })
+  const guardOverrides = await loadGuardOverrides(supabase, user.id, portfolio.mode === 'portfolio' ? portfolio.portfolioId : null, days)
+
+  return NextResponse.json({ days, overall, bySymbol, rows, guardOverrides }, { headers: { 'Cache-Control': 'no-store' } })
+}
+
+// v1.41.49: "AI เสนอ vs ระบบสั่ง" — นับผลรอบหลังตลาดปิดของ `days` วันล่าสุด (นับวันไทย รวมวันนี้) ที่มี decisionTrace
+// (มีตั้งแต่ v1.41.48) และจำนวนครั้งที่ guard เปลี่ยน action แยกตาม guard. ช่วงนี้เป็นวันที่วิเคราะห์ย้อนหลัง ไม่ใช่ระยะประเมินผล
+// p_days ของ get_track_record (win rate). อ่านด้วย client ของผู้ใช้ (RLS เดิม) และไม่ทำให้ Track Record ล้มถ้าอ่านไม่ได้
+async function loadGuardOverrides(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  portfolioId: string | null,
+  days: number,
+): Promise<GuardOverrideSummary | null> {
+  const since = new Date(Date.now() + 7 * 60 * 60 * 1000 - (days - 1) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  let query = supabase
+    .from('daily_analyses')
+    .select('decisionTrace:result->decisionTrace')
+    .eq('user_id', userId)
+    .is('error', null)
+    .gte('analysis_date', since)
+    .order('analysis_date', { ascending: false })
+    .limit(1000)
+  if (portfolioId) query = query.eq('portfolio_id', portfolioId)
+  const { data, error } = await query
+  if (error) {
+    console.warn('[track-record] guard overrides unavailable:', error.message)
+    return null
+  }
+  return summarizeGuardOverrides((data ?? []).map(row => ({ decisionTrace: (row as { decisionTrace?: unknown }).decisionTrace })))
 }

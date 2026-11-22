@@ -1,4 +1,4 @@
-import { HoldingWithPrice, AnalysisResult, DetailedAnalysisResult, TechnicalSnapshot, EarningsInfo } from '@/types'
+import { HoldingWithPrice, DetailedAnalysisResult, TechnicalSnapshot, EarningsInfo } from '@/types'
 import { getStockMeta } from './stock-meta'
 import { appendDecisionStep, withAiProposedAction } from './analysis-execution-guard'
 import { sanitizeUntrustedText, UNTRUSTED_NEWS_RULE } from './untrusted-text'
@@ -120,72 +120,6 @@ async function callGroq(prompt: string, maxTokens = 1024, interactive = true): P
   }
 
   return primary
-}
-
-export async function analyzeHolding(
-  holding: HoldingWithPrice,
-  cashBalance = 0,
-  totalPortfolioValue = 0,
-  recentNews: Array<{ headline: string }> = []
-): Promise<AnalysisResult> {
-  const { symbol, shares, cost_basis, current_price, pnl_pct, market_value, pe, week52High, week52Low } = holding
-
-  const cashRatioPct = totalPortfolioValue > 0
-    ? ((cashBalance / (totalPortfolioValue + cashBalance)) * 100).toFixed(1)
-    : '0'
-  const canBuyShares = current_price && current_price > 0 ? Math.floor(cashBalance / current_price) : 0
-
-  const metricsInfo = [
-    pe         != null ? `P/E: ${pe.toFixed(1)}` : null,
-    week52High != null ? `52W High: $${week52High.toFixed(2)}` : null,
-    week52Low  != null ? `52W Low: $${week52Low.toFixed(2)}`   : null,
-  ].filter(Boolean).join(', ')
-
-  const newsSnippet = recentNews.slice(0, 3).map((n, i) => `${i + 1}. ${n.headline}`).join('\n') || 'none'
-
-  const prompt = `คุณเป็นนักวิเคราะห์หุ้น US มืออาชีพ วิเคราะห์หุ้น ${symbol}
-
-ข้อมูล:
-- ราคา: $${current_price?.toFixed(2) ?? 'N/A'}, ต้นทุน: ${cost_basis ? `$${cost_basis.toFixed(2)}` : 'N/A'}, จำนวน: ${shares} หุ้น
-- มูลค่า: ${market_value ? `$${market_value.toFixed(2)}` : 'N/A'}, กำไร/ขาดทุน: ${pnl_pct != null ? `${pnl_pct > 0 ? '+' : ''}${pnl_pct.toFixed(1)}%` : 'N/A'}
-- Metrics: ${metricsInfo || 'ไม่มีข้อมูล'}
-- เงินสด: $${cashBalance.toFixed(2)} (ซื้อเพิ่มได้ ~${canBuyShares} หุ้น), สัดส่วนเงินสด: ${cashRatioPct}%
-- ข่าว: ${newsSnippet}
-
-เลือกสัญญาณ: BUY (พื้นฐานดี ราคาน่าซื้อ) / HOLD (สมดุลดี) / SELL_PARTIAL (lock กำไรบางส่วน) / SELL_ALL (cut loss หรือพื้นฐานแย่ลง)
-ฟันธงชัดเจน ห้ามเลี่ยงไป HOLD ถ้าข้อมูลบ่งชี้ว่าควรขาย เช่น กำไรสูงมากควร lock กำไรบางส่วน (SELL_PARTIAL) หรือขาดทุนหนัก/พื้นฐานแย่ลงควร cut loss (SELL_ALL)
-
-ตอบเป็น JSON เท่านั้น ทุกข้อความเป็นภาษาไทย กระชับ:
-{"signal":"BUY|HOLD|SELL_PARTIAL|SELL_ALL","summary":"สรุป 1-2 ประโยค","reasons":["เหตุผล1","เหตุผล2","เหตุผล3"],"detail":"อธิบาย 2-3 ประโยคสั้นๆ","action":"คำแนะนำปฏิบัติชัดเจน","sector":"อุตสาหกรรม","business":"ลักษณะธุรกิจ 1 ประโยค","targetCustomers":"กลุ่มลูกค้าหลัก"}`
-
-  const validSignals = ['BUY', 'HOLD', 'SELL_PARTIAL', 'SELL_ALL']
-
-  // ดึง signal ตรงๆ ด้วย regex ก่อน กันกรณี JSON ถูกตัดกลางคันจาก token limit
-  // ทำให้ยังได้ signal ที่ถูกต้อง แม้ field อื่นจะ parse ไม่ได้ครบ
-  function extractSignal(raw: string): AnalysisResult['signal'] {
-    const m = raw.match(/"signal"\s*:\s*"(BUY|HOLD|SELL_PARTIAL|SELL_ALL)"/)
-    return (m && validSignals.includes(m[1]) ? m[1] : 'HOLD') as AnalysisResult['signal']
-  }
-
-  try {
-    const { text } = await callGroq(prompt, 1500)
-    const fallbackSignal = extractSignal(text)
-    const match = text.match(/\{[\s\S]*\}/)
-    const parsed = JSON.parse(match?.[0] ?? '{}')
-    return {
-      symbol,
-      signal: (validSignals.includes(parsed.signal) ? parsed.signal : fallbackSignal) as AnalysisResult['signal'],
-      summary: parsed.summary ?? '',
-      reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
-      detail: parsed.detail ?? '',
-      action: parsed.action ?? '',
-      sector: parsed.sector ?? '',
-      business: parsed.business ?? '',
-      targetCustomers: parsed.targetCustomers ?? '',
-    }
-  } catch {
-    return { symbol, signal: 'HOLD', summary: '', reasons: [], detail: '', action: '' }
-  }
 }
 
 // v1.12.0 (Portfolio-Aware Decision Framework): สรุปสัดส่วน (%) ของหุ้นตัวอื่นๆ ในพอร์ต (ไม่รวมตัวที่
