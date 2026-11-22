@@ -289,7 +289,7 @@ function TrackRecordCard() {
       {!loading && !loadError && data?.guardOverrides && data.guardOverrides.traced > 0 && (
         <div className="mt-3 rounded-lg border border-gray-800 bg-gray-950/50 px-3 py-2 text-xs text-gray-400" data-testid="track-record-guard-overrides">
           <p>
-            🤖 AI เสนอ vs ระบบสั่ง ({days} วัน): ระบบเปลี่ยนคำแนะนำของ AI {data.guardOverrides.overridden} จาก {data.guardOverrides.traced} ผล
+            🤖 AI เสนอ vs ระบบสั่ง (ผลวิเคราะห์ {days} วันล่าสุด): ระบบเปลี่ยนคำแนะนำของ AI {data.guardOverrides.overridden} จาก {data.guardOverrides.traced} ผล
           </p>
           {Object.entries(data.guardOverrides.byGuard).length > 0 && (
             <p className="mt-1 text-gray-500">
@@ -299,7 +299,7 @@ function TrackRecordCard() {
                 .join(' · ')}
             </p>
           )}
-          <p className="mt-1 text-gray-600">นับเฉพาะผลรอบหลังตลาดปิดตั้งแต่ v1.41.48 ที่บันทึกที่มาของคำแนะนำ</p>
+          <p className="mt-1 text-gray-600">นับเฉพาะผลรอบหลังตลาดปิดตั้งแต่ v1.41.48 ที่บันทึกที่มาของคำแนะนำ · เป็นคนละชุดกับ % ความแม่นยำด้านบน (ซึ่งเทียบราคาหลังวิเคราะห์ {days} วัน)</p>
         </div>
       )}
     </div>
@@ -570,7 +570,8 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
   // เกณฑ์ใช้วันที่ของ cron รายวันเท่านั้น (ผล premarket/วิเคราะห์เองที่ใหม่กว่าไม่ทำให้ตัวอื่นถูกเตือน) และไม่ใช้ปฏิทินตลาด จึงไม่เตือนผิดวันหยุด
   // v1.41.49: นับเฉพาะหุ้นที่ยังถืออยู่ (หุ้นที่ขายระหว่าง session ไม่ค้างในแบนเนอร์) และบอกหุ้นที่ถืออยู่แต่ยังไม่มีผลเลย
   const latestAnalysisDate = latestDailyAnalysisDate
-  const heldAnalysisSymbols = new Set(holdings.map(h => h.symbol.toUpperCase()))
+  // หุ้นที่ shares = 0 ไม่ถูกวิเคราะห์โดย cron/route (กรอง shares > 0) จึงไม่นับ
+  const heldAnalysisSymbols = new Set(holdings.filter(h => Number(h.shares) > 0).map(h => h.symbol.toUpperCase()))
   const staleAnalysisSymbols = latestAnalysisDate
     ? Object.entries(analysisDates).filter(([symbol, date]) => heldAnalysisSymbols.has(symbol.toUpperCase()) && date && date < latestAnalysisDate).map(([symbol]) => symbol).sort()
     : []

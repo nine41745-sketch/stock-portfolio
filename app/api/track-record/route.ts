@@ -57,21 +57,23 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ days, overall, bySymbol, rows, guardOverrides }, { headers: { 'Cache-Control': 'no-store' } })
 }
 
-// v1.41.49: "AI เสนอ vs ระบบสั่ง" — นับผลรอบหลังตลาดปิดในช่วงเดียวกันที่มี decisionTrace (มีตั้งแต่ v1.41.48)
-// และจำนวนครั้งที่ guard เปลี่ยน action แยกตาม guard. อ่านด้วย client ของผู้ใช้ (RLS เดิม) และไม่ทำให้ Track Record ล้มถ้าอ่านไม่ได้
+// v1.41.49: "AI เสนอ vs ระบบสั่ง" — นับผลรอบหลังตลาดปิดของ `days` วันล่าสุด (นับวันไทย รวมวันนี้) ที่มี decisionTrace
+// (มีตั้งแต่ v1.41.48) และจำนวนครั้งที่ guard เปลี่ยน action แยกตาม guard. ช่วงนี้เป็นวันที่วิเคราะห์ย้อนหลัง ไม่ใช่ระยะประเมินผล
+// p_days ของ get_track_record (win rate). อ่านด้วย client ของผู้ใช้ (RLS เดิม) และไม่ทำให้ Track Record ล้มถ้าอ่านไม่ได้
 async function loadGuardOverrides(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   portfolioId: string | null,
   days: number,
 ): Promise<GuardOverrideSummary | null> {
-  const since = new Date(Date.now() + 7 * 60 * 60 * 1000 - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const since = new Date(Date.now() + 7 * 60 * 60 * 1000 - (days - 1) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   let query = supabase
     .from('daily_analyses')
-    .select('result')
+    .select('decisionTrace:result->decisionTrace')
     .eq('user_id', userId)
     .is('error', null)
     .gte('analysis_date', since)
+    .order('analysis_date', { ascending: false })
     .limit(1000)
   if (portfolioId) query = query.eq('portfolio_id', portfolioId)
   const { data, error } = await query
@@ -79,5 +81,5 @@ async function loadGuardOverrides(
     console.warn('[track-record] guard overrides unavailable:', error.message)
     return null
   }
-  return summarizeGuardOverrides((data ?? []).map(row => row.result))
+  return summarizeGuardOverrides((data ?? []).map(row => ({ decisionTrace: (row as { decisionTrace?: unknown }).decisionTrace })))
 }

@@ -24,7 +24,9 @@ assert.deepEqual(summary.byGuard, { SCALE_IN_GUARD: 1, BUY_CASH: 1, EXECUTION_GU
 assert.deepEqual(summarizeGuardOverrides([]), { traced: 0, overridden: 0, byGuard: {} })
 
 const trackRoute = read('app/api/track-record/route.ts')
-assert.match(trackRoute, /from\('daily_analyses'\)\s*\.select\('result'\)\s*\.eq\('user_id', userId\)/, 'the summary reads daily_analyses with the user client and user filter')
+assert.match(trackRoute, /from\('daily_analyses'\)\s*\.select\('decisionTrace:result->decisionTrace'\)\s*\.eq\('user_id', userId\)/, 'the summary reads only the trace from daily_analyses with the user client and user filter')
+assert.match(trackRoute, /\.order\('analysis_date', \{ ascending: false \}\)\s*\.limit\(1000\)/, 'the row cap keeps the newest analyses deterministically')
+assert.ok(trackRoute.includes('(days - 1) * 24 * 60 * 60 * 1000'), 'the window covers exactly `days` Thai calendar days including today')
 assert.match(trackRoute, /if \(portfolioId\) query = query\.eq\('portfolio_id', portfolioId\)/, 'the summary is scoped to the active portfolio')
 assert.match(trackRoute, /if \(error\) \{[\s\S]*?return null/, 'a failed summary query returns null instead of failing Track Record')
 assert.ok(trackRoute.includes('{ days, overall, bySymbol, rows, guardOverrides }'), 'the route returns the summary alongside the existing fields')
@@ -34,9 +36,10 @@ const dashboard = read('components/portfolio/PortfolioDashboard.tsx')
 assert.ok(dashboard.includes('data-testid="track-record-guard-overrides"'), 'Track Record renders the guard summary')
 assert.ok(dashboard.includes('data.guardOverrides.traced > 0'), 'the summary only shows when traced results exist')
 assert.ok(dashboard.includes('DECISION_GUARD_LABEL[guard] ?? guard'), 'the summary reuses the decision trace guard labels')
+assert.ok(dashboard.includes('AI เสนอ vs ระบบสั่ง (ผลวิเคราะห์ {days} วันล่าสุด)'), 'the label says the window is analysis days, not the win-rate evaluation horizon')
 
 // ---------- freshness banner follow-ups ----------
-assert.ok(dashboard.includes('const heldAnalysisSymbols = new Set(holdings.map(h => h.symbol.toUpperCase()))'), 'the banner is limited to current holdings')
+assert.ok(dashboard.includes('const heldAnalysisSymbols = new Set(holdings.filter(h => Number(h.shares) > 0).map(h => h.symbol.toUpperCase()))'), 'the banner is limited to current holdings with shares, matching the cron and route filter')
 assert.match(dashboard, /staleAnalysisSymbols = latestAnalysisDate\s*\?\s*Object\.entries\(analysisDates\)\.filter\(\(\[symbol, date\]\) => heldAnalysisSymbols\.has\(symbol\.toUpperCase\(\)\)/, 'symbols sold during the session do not stay in the stale banner')
 assert.ok(dashboard.includes('data-testid="analysis-missing-banner"'), 'held symbols without any analysis are flagged')
 assert.ok(dashboard.includes('const missingAnalysisSymbols = latestAnalysisDate'), 'missing analyses are only flagged once a daily round exists')
@@ -58,7 +61,9 @@ assert.equal(thaiDateFromTimestamp('not a date'), null)
 
 // ---------- Deep Stock Check wording follows the v1.41.41 data-basis rule ----------
 const stockCheck = read('lib/stock-check-ai.ts')
-assert.ok(!stockCheck.includes('ไม่มีข่าวสำคัญ'), 'Deep Stock Check never tells the model there is no important news')
+assert.ok(!/news\.length\s*\?[\s\S]{0,300}:\s*'[^']*ไม่มีข่าวสำคัญ/.test(stockCheck), 'the no-news fallback never tells the model there is no important news')
+assert.ok(stockCheck.includes('ห้ามเขียนว่า "ไม่มีข่าวสำคัญ" หรือ "ไม่มีข่าวร้าย"'), 'Deep Stock Check carries the same no-news rule as the cron and manual prompts')
+assert.equal(stockCheck.split('ไม่มีข่าวสำคัญ').length - 1, 1, 'the phrase only appears inside the prohibition rule')
 assert.ok(stockCheck.includes('ระบบไม่ได้รับข่าวที่ผ่านตัวกรองใน 3 วันล่าสุด (ไม่ได้แปลว่าบริษัทไม่มีข่าว)'), 'missing news is described as not received')
 
 // ---------- dead code and cache comment ----------
