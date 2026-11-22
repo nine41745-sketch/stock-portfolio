@@ -3,7 +3,7 @@ import type { ChangelogEntry } from './changelog'
 
 const current: ChangelogEntry = {
   version: 'v1.41.49',
-  date: 'Development History — Feature commit (ไม่ใช่ Production)',
+  date: 'Development History — Feature commit 2026-11-22 08:40:32 +07:00 (ไม่ใช่ Production)',
   changes: [
     'Track Record แสดงสรุป "AI เสนอ vs ระบบสั่ง" ว่าในช่วง 7/30 วันระบบเปลี่ยนคำแนะนำของ AI กี่ครั้งและเพราะด่านไหน (นับเฉพาะผลตั้งแต่ v1.41.48)',
     'แบนเนอร์ความสดของผลนับเฉพาะหุ้นที่ยังถืออยู่ บอกหุ้นที่ถืออยู่แต่ยังไม่มีผลวิเคราะห์ และวันที่ของผลที่กดวิเคราะห์เองใช้เวลาของผลจริง (ผลที่ล้มไม่ล้างคำเตือน)',
