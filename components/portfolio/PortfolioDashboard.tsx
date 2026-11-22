@@ -383,6 +383,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
   const [analysisDates, setAnalysisDates] = useState<Record<string, string>>({})
   const [analysisLoadFailed, setAnalysisLoadFailed] = useState(false)
   const [latestDailyAnalysisDate, setLatestDailyAnalysisDate] = useState<string | null>(null)
+  const [latestDailyCronRun, setLatestDailyCronRun] = useState<{ run_date: string; status: string; processed: number; failed: number; rate_limited: number } | null>(null)
   const [loadingSymbol, setLoadingSymbol] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [modalHolding, setModalHolding] = useState<HoldingWithPrice | null | undefined>(undefined)
@@ -560,6 +561,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       setAnalysisLoadFailed(false)
       if (d.analysisDates && typeof d.analysisDates === 'object') setAnalysisDates(prev => ({ ...d.analysisDates, ...prev })) // วันที่ของผลที่กดวิเคราะห์เองระหว่าง session ทับเหมือน analyses
       if (typeof d.latestDailyAnalysisDate === 'string') setLatestDailyAnalysisDate(d.latestDailyAnalysisDate)
+      if (d.latestDailyCronRun && typeof d.latestDailyCronRun === 'object' && typeof d.latestDailyCronRun.status === 'string') setLatestDailyCronRun(d.latestDailyCronRun)
       if (d.analyses && Object.keys(d.analyses).length) {
         setAnalyses(prev => ({ ...d.analyses, ...prev })) // ผลที่กดวิเคราะห์เองระหว่าง session สดกว่า ให้ทับ cron
       }
@@ -1098,6 +1100,12 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
           {staleAnalysisSymbols.length > 0 && (
             <p className="mt-1 text-xs text-amber-300" data-testid="analysis-stale-banner">
               ⚠️ ผลวิเคราะห์ของ {staleAnalysisSymbols.join(', ')} ยังเป็นของรอบก่อน (รอบวิเคราะห์รายวันล่าสุดคือ {latestAnalysisDate}) อาจเพราะรอบล่าสุดวิเคราะห์ตัวนี้ไม่สำเร็จ
+            </p>
+          )}
+          {latestDailyCronRun && ['failed', 'partial', 'rate_limited'].includes(latestDailyCronRun.status) && (
+            <p className="mt-1 text-xs text-amber-300" data-testid="analysis-cron-run-banner">
+              ⚠️ รอบวิเคราะห์รายวัน {latestDailyCronRun.run_date} วิเคราะห์ไม่สำเร็จ {Number(latestDailyCronRun.failed) + Number(latestDailyCronRun.rate_limited)} ตัว (สำเร็จ {Number(latestDailyCronRun.processed)} ตัว)
+              {Number(latestDailyCronRun.rate_limited) > 0 ? ' เพราะโควตา AI เต็มบางส่วน' : ''} ผลของตัวที่ไม่สำเร็จยังเป็นของรอบก่อน กดวิเคราะห์เองได้
             </p>
           )}
           {missingAnalysisSymbols.length > 0 && (

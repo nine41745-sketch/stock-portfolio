@@ -12,6 +12,7 @@ import { applyPortfolioAiClaimGuard } from '@/lib/portfolio-ai-claim-guard'
 import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
 import { getUsMarketClock } from '@/lib/market-status'
 import { resolveBuyingPower } from '@/lib/buying-power'
+import { buildCronRunRow, recordCronRuns } from '@/lib/cron-run-status'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -70,6 +71,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createServiceClient()
   const analysisDate = getThaiDateString()
+  const runStartedAt = new Date().toISOString()
 
   // Code-first rollout compatibility: before v1.27.0 migration, portfolio_id does not exist.
   let portfolioMode = true
@@ -290,6 +292,22 @@ export async function GET(request: NextRequest) {
 
     summary.push({ userId, portfolioId, processed, skipped, failed, rateLimited, errors })
   }
+
+  // v1.41.50: บันทึกสถานะรอบนี้ต่อผู้ใช้/พอร์ตแบบ best-effort (ตารางยังไม่มีก็แค่ log ไม่ทำให้ cron ล้ม)
+  const runFinishedAt = new Date().toISOString()
+  await recordCronRuns(supabase, summary.map(scope => buildCronRunRow({
+    userId: scope.userId,
+    portfolioId: scope.portfolioId,
+    mode: 'DAILY_POST_CLOSE',
+    runDate: analysisDate,
+    startedAt: runStartedAt,
+    finishedAt: runFinishedAt,
+    holdings: null,
+    processed: scope.processed,
+    failed: scope.failed,
+    rateLimited: scope.rateLimited,
+    errors: scope.errors,
+  })))
 
   return NextResponse.json({ analysisDate, portfolioMode, users: summary })
 }

@@ -150,10 +150,27 @@ export async function GET() {
   const latestHoldingChangeMs = Math.max(0, ...holdingUpdatedAtBySymbol.values())
   const latestChangeMs = Math.max(latestContextChangeMs, latestHoldingChangeMs)
 
+  // v1.41.50: สถานะรอบ cron รายวันล่าสุดของพอร์ตนี้ (ตาราง analysis_cron_runs; อ่านด้วย client ของผู้ใช้ตาม RLS)
+  // ยังไม่ได้รัน migration หรืออ่านไม่ได้ = null ไม่ทำให้ผลวิเคราะห์โหลดไม่ขึ้น
+  let cronRunQuery = supabase
+    .from('analysis_cron_runs')
+    .select('run_date, finished_at, status, processed, failed, rate_limited')
+    .eq('user_id', user.id)
+    .eq('mode', 'DAILY_POST_CLOSE')
+    .order('finished_at', { ascending: false })
+    .limit(1)
+  if (portfolio.mode === 'portfolio') cronRunQuery = cronRunQuery.eq('portfolio_id', portfolio.portfolioId)
+  const cronRunResponse = await cronRunQuery.maybeSingle()
+  if (cronRunResponse.error) {
+    console.warn('[daily-analyses] cron run status unavailable:', cronRunResponse.error.message)
+  }
+  const latestDailyCronRun = cronRunResponse.error ? null : cronRunResponse.data ?? null
+
   return NextResponse.json({
     analyses,
     analysisDates,
     latestDailyAnalysisDate,
+    latestDailyCronRun,
     analysisDate: getThaiDateString(),
     staleSymbols,
     latestPortfolioChangeAt: latestChangeMs > 0 ? new Date(latestChangeMs).toISOString() : null,

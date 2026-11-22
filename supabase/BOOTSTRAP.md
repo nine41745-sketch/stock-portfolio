@@ -23,6 +23,8 @@ Use the following order for a new disposable or newly provisioned database. Run 
 19. `migration_portfolio_watchlist_v1.35.0.sql`
 20. `verify_portfolio_watchlist_v1.35.0.sql` (Disposable Local only; RLS/cross-owner/collection/legacy-preservation checks)
 
+`migration_analysis_cron_runs_v1.41.50.sql` (v1.41.50, additive) runs after the steps above on a database that has `public.portfolios`; verify it with `verify_analysis_cron_runs_v1.41.50.sql` and undo it with `rollback_analysis_cron_runs_v1.41.50.sql` (drops only the cron status log table). It is not part of the disposable bootstrap script yet, and the cron routes record status best-effort, so the application keeps working before it is applied. Cloud Apply remains a separately approved operation.
+
 `migration_batch1_notes_and_daily_analyses.sql` is a historical one-off correction for a database that predates the current RPC hardening and daily-analysis migration. It is superseded in a fresh bootstrap by steps 2 and 3, and must not be run before `daily_analyses` exists.
 
 The v1.35.0 migration is additive. It does not alter, copy, or assign rows from legacy `public.watchlist`. `rollback_portfolio_watchlist_v1.35.0.sql` removes only the new empty tables and refuses to proceed if any new table contains rows; a populated deployment requires an owner-reviewed data-preservation/roll-forward plan instead of destructive rollback. Cloud Apply remains a separately approved operation.
