@@ -13,6 +13,7 @@ import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
 import { applyPortfolioAiClaimGuard } from '@/lib/portfolio-ai-claim-guard'
 import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
 import { resolveBuyingPower } from '@/lib/buying-power'
+import { buildCronRunRow, recordCronRuns, thaiDateString } from '@/lib/cron-run-status'
 import { DetailedAnalysisResult, HoldingWithPrice, NewsItem } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -89,14 +90,21 @@ export async function GET(request: NextRequest) {
   console.info('[premarket-cron] active', { marketDate: marketClock.date, etTime, activeWindow: PREMARKET_CRON_WINDOW })
 
   const supabase = await createServiceClient()
+  const runStartedAtMs = Date.now()
   let portfolioMode = true
   let holdingRows: Array<{ user_id: unknown; portfolio_id?: unknown }> = []
   const scopedRows = await supabase.from('holdings').select('user_id, portfolio_id').gt('shares', 0)
   if (scopedRows.error) {
-    if (!isPortfolioFoundationMissing(scopedRows.error)) return NextResponse.json({ error: 'ไม่สามารถโหลดรายชื่อพอร์ตได้' }, { status: 500 })
+    if (!isPortfolioFoundationMissing(scopedRows.error)) {
+      console.error('[premarket-cron] failed to list portfolio scopes:', scopedRows.error)
+      return NextResponse.json({ error: 'ไม่สามารถโหลดรายชื่อพอร์ตได้' }, { status: 500 })
+    }
     portfolioMode = false
     const legacyRows = await supabase.from('holdings').select('user_id').gt('shares', 0)
-    if (legacyRows.error) return NextResponse.json({ error: 'ไม่สามารถโหลดรายชื่อพอร์ตได้' }, { status: 500 })
+    if (legacyRows.error) {
+      console.error('[premarket-cron] failed to list users:', legacyRows.error)
+      return NextResponse.json({ error: 'ไม่สามารถโหลดรายชื่อพอร์ตได้' }, { status: 500 })
+    }
     holdingRows = legacyRows.data ?? []
   } else holdingRows = scopedRows.data ?? []
 
@@ -225,7 +233,11 @@ export async function GET(request: NextRequest) {
         for (const input of inputs) {
           const symbol = input.holding.symbol
           const rawResult = batch.results[symbol]
-          if (!rawResult) { failed++; continue }
+          if (!rawResult) {
+            failed++
+            errors.push(`${symbol}: missing/invalid item in portfolio batch response`)
+            continue
+          }
           const executionGuarded = applyRecentTradeExecutionGuard({
             ...rawResult,
             analysisMode: 'PREMARKET_TRIGGER',
@@ -257,11 +269,28 @@ export async function GET(request: NextRequest) {
       }
       users.push({ userId, portfolioId, holdings: rawHoldings.length, triggered: inputs.length, processed, failed, rateLimited, triggerReasons, errors })
     } catch (error) {
+      console.error(`[premarket-cron] scope ${userId}/${portfolioId ?? 'legacy'} failed:`, error)
       failed++
       errors.push(error instanceof Error ? error.message : String(error))
       users.push({ userId, portfolioId, holdings: 0, triggered: Object.keys(triggerReasons).length, processed, failed, rateLimited, triggerReasons, errors })
     }
   }
+  // v1.41.50: บันทึกสถานะรอบนี้ต่อผู้ใช้/พอร์ตแบบ best-effort (ตารางยังไม่มีก็แค่ log ไม่ทำให้ cron ล้ม)
+  const runFinishedAt = new Date().toISOString()
+  await recordCronRuns(supabase, users.map(scope => buildCronRunRow({
+    userId: scope.userId,
+    portfolioId: scope.portfolioId,
+    mode: 'PREMARKET_TRIGGER',
+    runDate: thaiDateString(runStartedAtMs),
+    startedAt: new Date(runStartedAtMs).toISOString(),
+    finishedAt: runFinishedAt,
+    holdings: scope.holdings,
+    processed: scope.processed,
+    failed: scope.failed,
+    rateLimited: scope.rateLimited,
+    errors: scope.errors,
+  })))
+
   return NextResponse.json({
     marketDate: marketClock.date,
     slot: 'PREMARKET_TRIGGER',
