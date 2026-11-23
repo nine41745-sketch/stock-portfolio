@@ -1,5 +1,13 @@
 # Production Release Status
 
+## Prepared, not merged — v1.41.53
+
+- Scope: แก้บั๊กปุ่ม "🔄 วิเคราะห์ใหม่" บนหน้า `/daily-actions` ที่เจ้าของรายงานว่า "กดแล้วไม่มีอะไรเกิดขึ้น" (เจ้าของเลือกอาการนี้จากตัวเลือก; ผู้เขียนตรวจหน้าจริงแบบอ่านอย่างเดียวแล้วพบว่าปุ่มไม่ถูกปิดและโหลดข้อมูลครบ 8 ตัว) — สาเหตุที่น่าจะเป็นที่สุดคือ `window.confirm` ซึ่งเบราว์เซอร์ฝังในแอปมักปิดเงียบๆ และถือว่ากดยกเลิก (ผู้เขียนยังไม่ได้พิสูจน์ด้วยการกดจริงเพราะกฎห้ามเรียก `/api/analyze` ตอน QA): `components/portfolio/DailyActionsWorkspace.tsx` เปลี่ยนเป็นกล่องยืนยันในหน้า (`daily-actions-confirm` พร้อมปุ่ม "ยืนยัน วิเคราะห์ใหม่" และ "ยกเลิก", ข้อความบอกว่าใช้โควตา AI กี่คำขอ) ปุ่มบนหัวหน้าเปิดกล่องนี้ และเริ่มวิเคราะห์จากปุ่มยืนยันที่เดียว ลอจิกวิเคราะห์ทีละตัว/หยุดเมื่อโควตาเต็ม/401-403/ออกจากหน้า คงเดิม. ไม่เปลี่ยน API, SQL, cron, `vercel.json`, workflow, env, กติกาตัดสิน
+- Release state: ยังไม่ push ยังไม่ merge ยังไม่ Stage ยังไม่ Promote. Production เป็น v1.41.52 (`dpl_DmyJoaEMmt8qBMtc4rRC3Pb2n6nb`). Security Gate และ Production Release Gate remain HOLD for v1.41.53
+- Tests: `scripts/test-daily-actions.mjs` เปลี่ยน assertion `window.confirm(` เป็นชุดตรวจใหม่ (ห้ามมี `window.confirm`, ปุ่มหัวเปิดกล่องยืนยันเท่านั้น, เริ่มวิเคราะห์จากปุ่มยืนยันที่เดียว, ยืนยัน/ยกเลิกได้, ข้อความบอกโควตา, กล่องปิดก่อนเรียก API); mutation 4 แบบถูกจับ
+- Rollback: revert PR (ไม่มี SQL)
+- Not verified: การกดปุ่มจริงบน Production (ไม่ได้กด ใช้โควตา AI และเรียก `/api/analyze`), ว่า `window.confirm` เป็นสาเหตุจริงของอาการ, CI, รีวิวอิสระ
+
 ## Released — v1.41.52 (Production; รวม v1.41.51; migration ยังไม่รัน)
 
 - Scope: ตัดส่วน AI ของแท็บ "🔬 เช็กหุ้น" ในหน้าสแกนหุ้นตามที่เจ้าของเลือก (เมนู "คำแนะนำวันนี้" ใน v1.41.51 แทนแล้ว): `components/portfolio/StockCheckPanel.tsx` ลบ `runAi`, state, ปุ่ม "วิเคราะห์เชิงลึกด้วย AI" และการ์ด "AI Deep Analysis" (คงผลเช็กหุ้นแบบกฎคำนวณ, `StockCommandCenter`, ปุ่ม watchlist, "ส่งเข้า Trade Plan"); ลบ `app/api/stock-check/ai/route.ts` และ `lib/stock-check-ai.ts` (ปิดช่องที่ใช้โควตา Groq จากหน้าสแกนหุ้น); **คง** `lib/stock-check-ai-guard.ts` เพราะ `lib/portfolio-ai-claim-guard.ts` (วิเคราะห์พอร์ต) ใช้ร่วม. ไม่เปลี่ยนกติกาตัดสิน, SQL, cron, `vercel.json`, workflow, env
