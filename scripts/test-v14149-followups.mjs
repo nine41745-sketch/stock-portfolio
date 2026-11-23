@@ -49,12 +49,7 @@ assert.ok(todayRoute.includes("result && !result.analysisMode ? { ...result, ana
 
 // v1.41.51: the dashboard no longer runs manual analyses (moved to /daily-actions), so thaiDateFromTimestamp and the per-holding date update were removed
 
-// ---------- Deep Stock Check wording follows the v1.41.41 data-basis rule ----------
-const stockCheck = read('lib/stock-check-ai.ts')
-assert.ok(!/news\.length\s*\?[\s\S]{0,300}:\s*'[^']*ไม่มีข่าวสำคัญ/.test(stockCheck), 'the no-news fallback never tells the model there is no important news')
-assert.ok(stockCheck.includes('ห้ามเขียนว่า "ไม่มีข่าวสำคัญ" หรือ "ไม่มีข่าวร้าย"'), 'Deep Stock Check carries the same no-news rule as the cron and manual prompts')
-assert.equal(stockCheck.split('ไม่มีข่าวสำคัญ').length - 1, 1, 'the phrase only appears inside the prohibition rule')
-assert.ok(stockCheck.includes('ระบบไม่ได้รับข่าวที่ผ่านตัวกรองใน 3 วันล่าสุด (ไม่ได้แปลว่าบริษัทไม่มีข่าว)'), 'missing news is described as not received')
+// v1.41.52: the Deep Stock Check AI (app/api/stock-check/ai/route.ts, lib/stock-check-ai.ts and its panel UI) was removed from the scanner page; see test-stock-check.mjs
 
 // ---------- dead code and cache comment ----------
 const groq = read('lib/groq.ts')

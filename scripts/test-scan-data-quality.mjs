@@ -57,11 +57,8 @@ assert.match(indicators, /toHistorySymbol\(rawSymbol\)/)
 
 console.log('scan data quality tests passed')
 
-const aiSource = fs.readFileSync(new URL('../lib/stock-check-ai.ts', import.meta.url), 'utf8')
-assert.match(aiSource, /export function buildStockCheckFacts/)
-assert.match(aiSource, /ข้อเท็จจริงที่คำนวณแล้ว/)
-assert.match(aiSource, /ห้ามแนะนำให้ซื้อ ขาย หรือถือสถานะที่มีอยู่/)
-console.log('stock check AI prompt guard tests passed')
+// v1.41.52: the Deep Stock Check AI (app/api/stock-check/ai/route.ts, lib/stock-check-ai.ts and its panel UI) was removed from the scanner page; see test-stock-check.mjs
+assert.ok(!fs.existsSync(new URL('../lib/stock-check-ai.ts', import.meta.url)), 'the Deep Stock Check AI module stays removed')
 
 // Contradictory signals: a broken structural support must not be labelled "Near Support".
 const { scoreScannerCandidate } = await import('../lib/stock-scanner.ts')

@@ -112,8 +112,6 @@ assert.match(batch, /news: news\.slice\(0, 2\)\.map\(n => sanitizeUntrustedText\
 assert.equal(countRule(groq), 2, 'the manual analysis and translation prompts each carry the rule')
 assert.match(groq, /const headline = sanitizeUntrustedText\(n\.headlineTh \?\? n\.headline, 500\)/, 'manual analysis sanitizes headlines and translations')
 assert.match(groq, /sanitizeUntrustedText\(it\.headline, 200\)/, 'translation input is sanitized and capped')
-const stockCheck = read('lib/stock-check-ai.ts')
-assert.equal(countRule(stockCheck), 1, 'the stock check prompt carries the rule once')
-assert.match(stockCheck, /sanitizeUntrustedText\(item\.headline, 200\)/, 'stock check headlines are sanitized and capped')
+// v1.41.52: the Deep Stock Check AI (app/api/stock-check/ai/route.ts, lib/stock-check-ai.ts and its panel UI) was removed from the scanner page; see test-stock-check.mjs (the untrusted-news rule now lives in the cron and manual analysis prompts only)
 
 console.log('✓ Decision trace, analysis freshness and untrusted headline tests passed')

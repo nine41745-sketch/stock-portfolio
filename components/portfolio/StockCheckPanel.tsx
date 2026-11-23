@@ -55,17 +55,6 @@ type StockCheckResult = {
   }
 }
 
-type AiResult = {
-  summary: string
-  reasons: string[]
-  risks: string[]
-  action: string
-  news: Array<{ headline: string; source: string; datetime: number }>
-  usedModel: string | null
-  usedFallbackSummary: boolean
-  removedClaims?: number
-}
-
 function fmtPrice(value: number | null): string {
   return value === null ? '—' : `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
@@ -115,9 +104,6 @@ export default function StockCheckPanel({
   const [result, setResult] = useState<StockCheckResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [aiResult, setAiResult] = useState<AiResult | null>(null)
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
   const [watchlistSaving, setWatchlistSaving] = useState(false)
   const [watchlistSaved, setWatchlistSaved] = useState(false)
 
@@ -127,8 +113,6 @@ export default function StockCheckPanel({
     if (!ticker) return
     setLoading(true)
     setError(null)
-    setAiResult(null)
-    setAiError(null)
     setWatchlistSaved(false)
     try {
       const response = await fetch(`/api/stock-check?symbol=${encodeURIComponent(ticker)}`, { cache: 'no-store' })
@@ -141,28 +125,6 @@ export default function StockCheckPanel({
       setError(err instanceof Error ? err.message : 'เช็กหุ้นไม่สำเร็จ')
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function runAi() {
-    if (!result) return
-    setAiLoading(true)
-    setAiError(null)
-    try {
-      const response = await fetch('/api/stock-check/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: result.symbol }),
-      })
-      if (!response.ok) throw new Error(await errorMessage(response, 'AI วิเคราะห์ไม่สำเร็จ'))
-      const data = await response.json() as { analysis?: AiResult }
-      if (!data.analysis) throw new Error('AI ไม่ได้ส่งผลวิเคราะห์กลับมา')
-      setAiResult(data.analysis)
-    } catch (err) {
-      setAiResult(null)
-      setAiError(err instanceof Error ? err.message : 'AI วิเคราะห์ไม่สำเร็จ')
-    } finally {
-      setAiLoading(false)
     }
   }
 
@@ -354,26 +316,10 @@ export default function StockCheckPanel({
           />
 
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void runAi()} disabled={aiLoading} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-50">{aiLoading ? 'AI กำลังวิเคราะห์...' : 'วิเคราะห์เชิงลึกด้วย AI'}</button>
             <button type="button" onClick={() => void addToWatchlist()} disabled={watchlistSaving || watchlistSaved} className="rounded-lg border border-gray-700 px-4 py-2 text-sm font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-50">{watchlistSaved ? '✓ อยู่ใน Watchlist แล้ว' : watchlistSaving ? 'กำลังบันทึก...' : 'เพิ่มเข้า Watchlist'}</button>
             <Link href={tradePlanHref} className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-300 hover:bg-blue-500/20">🎯 ส่งเข้า Trade Plan</Link>
           </div>
 
-          {aiError && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">⚠️ {aiError}</p>}
-          {aiResult && (
-            <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="font-bold text-purple-300">✨ AI Deep Analysis</p><span className="text-[10px] text-gray-600">{aiResult.usedModel ?? 'model unknown'}</span></div>
-              {aiResult.usedFallbackSummary && <p className="mb-2 text-xs text-amber-300">AI ส่งรูปแบบที่อ่านไม่ได้ จึงใช้สรุปจาก Stock Check แทน</p>}
-              {(aiResult.removedClaims ?? 0) > 0 && <p className="mb-2 text-xs text-amber-300">ตัดข้อความ AI ที่ขัดกับข้อมูลที่ระบบคำนวณแล้ว {aiResult.removedClaims} รายการ</p>}
-              <p className="text-sm leading-relaxed text-gray-300">{aiResult.summary}</p>
-              <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                <div><p className="mb-1 text-xs font-semibold text-gray-400">เหตุผลเพิ่มเติม</p><ul className="space-y-1 text-xs text-gray-400">{aiResult.reasons.map(item => <li key={item}>• {item}</li>)}</ul></div>
-                <div><p className="mb-1 text-xs font-semibold text-gray-400">ความเสี่ยงจากบริบท/ข่าว</p><ul className="space-y-1 text-xs text-orange-300">{aiResult.risks.map(item => <li key={item}>• {item}</li>)}</ul></div>
-              </div>
-              <p className="mt-3 rounded-lg bg-gray-950/50 p-3 text-sm text-gray-300"><span className="font-semibold text-white">Action:</span> {aiResult.action}</p>
-              {aiResult.news.length > 0 && <div className="mt-3"><p className="mb-1 text-xs font-semibold text-gray-400">ข่าวที่ AI ใช้ประกอบ</p><ul className="space-y-1 text-xs text-gray-500">{aiResult.news.map(item => <li key={`${item.datetime}-${item.headline}`}>• {item.headline}{item.source ? ` — ${item.source}` : ''}</li>)}</ul></div>}
-            </div>
-          )}
         </div>
       )}
     </div>
