@@ -510,13 +510,11 @@ assert.equal(scannerAvoid.setup, 'AVOID', 'Scanner must keep AVOID for material 
 
 for (const path of [
   'app/api/stock-check/route.ts',
-  'app/api/stock-check/ai/route.ts',
   'components/portfolio/StockCheckPanel.tsx',
   'components/portfolio/ScannerWorkspace.tsx',
   'components/portfolio/TodayOpportunities.tsx',
   'components/navigation/AppTabs.tsx',
   'lib/stock-check-data.ts',
-  'lib/stock-check-ai.ts',
   'lib/atr.ts',
 ]) assert.equal(fs.existsSync(path), true, `${path} is required`)
 
@@ -539,7 +537,7 @@ const ui = fs.readFileSync('components/portfolio/StockCheckPanel.tsx', 'utf8')
 assert.match(ui, /Entry Zone/, 'Stock Check UI must expose Entry Zone')
 assert.match(ui, /Stop Loss/, 'Stock Check UI must expose Stop Loss')
 assert.match(ui, /ขนาดสถานะจากงบ/, 'Stock Check UI must expose budget-based position sizing')
-assert.match(ui, /วิเคราะห์เชิงลึกด้วย AI/, 'AI analysis must remain an explicit optional action')
+assert.doesNotMatch(ui, /วิเคราะห์เชิงลึกด้วย AI|\/api\/stock-check\/ai|AI Deep Analysis/, 'v1.41.52: the scanner page no longer offers the Deep Stock Check AI')
 assert.match(ui, /\/api\/watchlist/, 'Stock Check must reuse the existing Watchlist API')
 
 const workspace = fs.readFileSync('components/portfolio/ScannerWorkspace.tsx', 'utf8')
@@ -587,10 +585,7 @@ assert.match(globalNav, /\/api\/pin\/change/, 'Change PIN must be available from
 assert.match(globalNav, /\/api\/pin\/lock/, 'Global controls must support immediate PIN lock')
 assert.match(globalNav, /auth\.signOut/, 'Global account menu must support logout')
 
-const ai = fs.readFileSync('lib/stock-check-ai.ts', 'utf8')
-assert.match(ai, /model === PRIMARY_MODEL \? 'high' : 'medium'/, 'Deep Stock Check must use high reasoning on the primary 120B model')
-assert.match(ai, /const PRIMARY_MODEL = 'openai\/gpt-oss-120b'/, 'Deep Stock Check primary model must remain GPT-OSS 120B')
-assert.match(ai, /temperature: 0\.2/, 'Deep Stock Check should keep analysis temperature conservative')
+assert.ok(!fs.existsSync('app/api/stock-check/ai/route.ts') && !fs.existsSync('lib/stock-check-ai.ts'), 'v1.41.52: the Deep Stock Check AI route and module stay removed')
 
 const stockCheckUi = fs.readFileSync('components/portfolio/StockCheckPanel.tsx', 'utf8')
 assert.match(stockCheckUi, /formatStockCheckFreshness\(/, 'Stock Check must label provider quote time separately from check time')
@@ -598,7 +593,6 @@ assert.match(stockCheckUi, /result\.scannerReasons/, 'Stock Check must expose th
 assert.match(stockCheckUi, /เหตุผล\/ข้อสังเกตจาก Stock Scanner/, 'Scanner reasons and warnings must be visually distinguished from plan reasons')
 assert.match(stockCheckUi, /formatTarget2Context\(/, 'Target 2 must explain its reference basis')
 assert.match(stockCheckUi, /R:R คำนวณถึง Target 1/, 'R:R display must say it is measured to Target 1')
-assert.match(stockCheckUi, /AI ส่งรูปแบบที่อ่านไม่ได้ จึงใช้สรุปจาก Stock Check แทน/, 'AI parse fallback must be disclosed to the user')
 
 // AI claim guard: sentences below are the wrong/right wordings seen in real Stock Check AI output on 2026-11-03.
 const aiGuard = await importTsModule('lib/stock-check-ai-guard.ts')
@@ -650,15 +644,5 @@ const bothUnusable = await aiGuard.runModelChain([async () => ({ text: 'ไม�
 assert.deepEqual([bothUnusable.text, bothUnusable.usable], ['{"x":1}', false], 'When no reply is usable the last non-empty one is returned for the engine-summary fallback')
 const bothEmpty = await aiGuard.runModelChain([async () => ({ text: '', truncated: false }), async () => ({ text: '', truncated: false })], usableJson)
 assert.equal(bothEmpty, null, 'No reply from any model must stay an AI-unavailable error')
-
-const aiRunSource = fs.readFileSync('lib/stock-check-ai.ts', 'utf8')
-assert.match(aiRunSource, /const PRIMARY_OUTPUT_LIMIT = 4000/, 'The 120B model needs room for hidden reasoning')
-assert.match(aiRunSource, /AbortSignal\.timeout\(timeoutMs\)/, 'Each model call must time out so both attempts fit inside maxDuration')
-assert.ok(25_000 + 15_000 < 45_000, 'Primary + fallback timeouts must stay under the 45s route limit')
-assert.match(aiRunSource, /finish_reason === 'length'/, 'A reply cut at the token limit must be detected')
-assert.match(aiRunSource, /guardAiClaims\(initial/, 'AI text must pass the claim guard before it is returned')
-assert.match(aiRunSource, /ไม่พบนัดประกาศผลใน 60 วันข้างหน้า/, 'The prompt must state the earnings window looks forward')
-assert.match(aiRunSource, /ตำแหน่งของราคาในช่วง 52W/, 'The prompt facts must include the computed 52W range position')
-assert.match(fs.readFileSync('components/portfolio/StockCheckPanel.tsx', 'utf8'), /ตัดข้อความ AI ที่ขัดกับข้อมูลที่ระบบคำนวณแล้ว/, 'Removed AI claims must be disclosed to the user')
 
 console.log('✓ Stock Check synthetic regression tests passed')
