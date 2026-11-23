@@ -53,11 +53,6 @@ const ANALYSIS_MODE_LABEL: Record<string, string> = {
   PREMARKET_TRIGGER: 'รอบก่อนตลาดเปิด',
   MANUAL: 'วิเคราะห์เอง',
 }
-// v1.41.49: วันที่ไทย (YYYY-MM-DD) จาก timestamp ของผล ให้ตรงกับ getThaiDateForTimestamp ใน /api/daily-analyses/today
-function thaiDateFromTimestamp(value: string | undefined): string | null {
-  const ms = value ? Date.parse(value) : NaN
-  return Number.isFinite(ms) ? new Date(ms + 7 * 60 * 60 * 1000).toISOString().slice(0, 10) : null
-}
 const IMPACT_BADGE: Record<string, string> = {
   NEGATIVE: 'bg-red-500/20 text-red-400 border border-red-500/30',
   POSITIVE: 'bg-green-500/20 text-green-400 border border-green-500/30',
@@ -160,13 +155,13 @@ function DonutChart({ holdings, analyses }: { holdings: HoldingWithPrice[], anal
             <button
               onClick={() => hasSector && setDonutView('sector')}
               className={`text-xs px-2.5 py-1 rounded-md transition-colors ${donutView === 'sector' ? 'bg-gray-700 text-white' : hasSector ? 'text-gray-500 hover:text-gray-300' : 'text-gray-700 cursor-not-allowed'}`}
-              title={hasSector ? '' : 'กด วิเคราะห์ AI ที่หุ้นแต่ละตัวก่อน'}
+              title={hasSector ? '' : 'รอผลวิเคราะห์ของหุ้นแต่ละตัวก่อน (ดูที่หน้า คำแนะนำวันนี้)'}
             >แยกตาม sector{!hasSector && ' 🔒'}</button>
           </div>
         )
       })()}
       {donutView === 'sector' && items.every(i => i.symbol === 'ไม่ระบุ') && (
-        <p className="text-gray-600 text-xs mb-2">กด วิเคราะห์ AI ที่หุ้นแต่ละตัวก่อน เพื่อแสดง sector</p>
+        <p className="text-gray-600 text-xs mb-2">ยังไม่มีผลวิเคราะห์ของหุ้นแต่ละตัว จึงยังไม่แสดง sector (วิเคราะห์ใหม่ได้ที่หน้า คำแนะนำวันนี้)</p>
       )}
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
         {items.map(p => (
@@ -384,7 +379,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
   const [analysisLoadFailed, setAnalysisLoadFailed] = useState(false)
   const [latestDailyAnalysisDate, setLatestDailyAnalysisDate] = useState<string | null>(null)
   const [latestDailyCronRun, setLatestDailyCronRun] = useState<{ run_date: string; status: string; processed: number; failed: number; rate_limited: number } | null>(null)
-  const [loadingSymbol, setLoadingSymbol] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [modalHolding, setModalHolding] = useState<HoldingWithPrice | null | undefined>(undefined)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
@@ -663,33 +657,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
     }
   }
 
-  // Analyze — ส่ง metrics + news + cash info ไปให้ backend คำนวณ technical indicators + เรียก Groq AI
-  // metadata (analysedAt, technical, usedPrice, usedNews, sector) ถูกเติมจาก server แล้ว ไม่ต้อง enrich ฝั่ง client ซ้ำ
-  async function handleAnalyze(holding: HoldingWithPrice) {
-    setLoadingSymbol(holding.symbol)
-    try {
-      // Security fix (v1.10.0 / Batch 2): ส่งแค่ symbol เท่านั้น — current_price/pe/week52High/
-      // week52Low/dayChange/recentNews/totalPortfolioValue ทั้งหมดให้ server ดึง/คำนวณเองล้วนๆ แล้ว
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: holding.symbol }),
-      })
-      await requireOk(res, 'วิเคราะห์ไม่สำเร็จ')
-      const result: DetailedAnalysisResult = await res.json()
-      setAnalyses(prev => ({ ...prev, [holding.symbol]: result }))
-      // v1.41.49: วันที่ของผลใหม่มาจาก result.analysedAt (เวลาไทย แบบเดียวกับ server) และไม่ตั้งเมื่อผลเป็น error
-      const analysedDate = thaiDateFromTimestamp(result.analysedAt)
-      if (!result.error && analysedDate) setAnalysisDates(prev => ({ ...prev, [holding.symbol]: analysedDate }))
-      setExpandedAnalysisSymbol(holding.symbol)
-      setExpandedSymbol(null)
-    } catch {
-      showToast('วิเคราะห์ไม่สำเร็จ', false)
-    } finally {
-      setLoadingSymbol(null)
-    }
-  }
-
   // Save cash — แปลง input → USD ก่อนบันทึก
   async function handleSaveCash() {
     if (!settingsLoaded || !canSaveCurrentCurrency()) return
@@ -812,15 +779,9 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             <button onClick={() => setExpandedAnalysisSymbol(null)} className="text-xs opacity-60 hover:opacity-100">ยุบ</button>
           </div>
           <p className="text-xs leading-relaxed opacity-90">{analysis.summary}</p>
-          <button
-            onClick={() => {
-              const holding = holdings.find(h => h.symbol === analysis.symbol)
-              if (holding) void handleAnalyze(holding)
-            }}
-            className="mt-3 rounded-md bg-amber-500/20 px-3 py-1.5 text-xs font-medium hover:bg-amber-500/30"
-          >
-            🔄 ลองวิเคราะห์อีกครั้ง
-          </button>
+          <a href="/daily-actions" className="mt-3 inline-block rounded-md bg-amber-500/20 px-3 py-1.5 text-xs font-medium hover:bg-amber-500/30">
+            ไปหน้า คำแนะนำวันนี้ เพื่อวิเคราะห์ใหม่
+          </a>
         </div>
       )
     }
@@ -871,15 +832,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             )}
           </div>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => {
-                const holding = holdings.find(h => h.symbol === analysis.symbol)
-                if (holding) void handleAnalyze(holding)
-              }}
-              className="rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-900 hover:text-gray-200"
-            >
-              ↻ วิเคราะห์ใหม่
-            </button>
             <button onClick={() => setExpandedAnalysisSymbol(null)} className="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-900 hover:text-gray-200">ยุบ</button>
           </div>
         </div>
@@ -1105,12 +1057,12 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
           {latestDailyCronRun && ['failed', 'partial', 'rate_limited'].includes(latestDailyCronRun.status) && (
             <p className="mt-1 text-xs text-amber-300" data-testid="analysis-cron-run-banner">
               ⚠️ รอบวิเคราะห์รายวัน {latestDailyCronRun.run_date} วิเคราะห์ไม่สำเร็จ {Number(latestDailyCronRun.failed) + Number(latestDailyCronRun.rate_limited)} ตัว (สำเร็จ {Number(latestDailyCronRun.processed)} ตัว)
-              {Number(latestDailyCronRun.rate_limited) > 0 ? ' เพราะโควตา AI เต็มบางส่วน' : ''} ผลของตัวที่ไม่สำเร็จยังเป็นของรอบก่อน กดวิเคราะห์เองได้
+              {Number(latestDailyCronRun.rate_limited) > 0 ? ' เพราะโควตา AI เต็มบางส่วน' : ''} ผลของตัวที่ไม่สำเร็จยังเป็นของรอบก่อน วิเคราะห์ใหม่ได้ที่หน้า <a href="/daily-actions" className="underline">คำแนะนำวันนี้</a>
             </p>
           )}
           {missingAnalysisSymbols.length > 0 && (
             <p className="mt-1 text-xs text-amber-300" data-testid="analysis-missing-banner">
-              ⚠️ {missingAnalysisSymbols.join(', ')} ยังไม่มีผลวิเคราะห์ (เพิ่งเพิ่มเข้าพอร์ต หรือรอบวิเคราะห์รายวันยังไม่ได้วิเคราะห์ตัวนี้) กดวิเคราะห์เองได้
+              ⚠️ {missingAnalysisSymbols.join(', ')} ยังไม่มีผลวิเคราะห์ (เพิ่งเพิ่มเข้าพอร์ต หรือรอบวิเคราะห์รายวันยังไม่ได้วิเคราะห์ตัวนี้) วิเคราะห์ใหม่ได้ที่หน้า <a href="/daily-actions" className="underline">คำแนะนำวันนี้</a>
             </p>
           )}
         </div>
@@ -1309,7 +1261,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
                 )}
                 {sortedHoldings.map(h => {
                   const analysis = analyses[h.symbol]
-                  const isLoading = loadingSymbol === h.symbol
                   const pnlPos = (h.pnl ?? 0) >= 0
                   const pnlColor = h.pnl === null ? 'text-gray-500' : pnlPos ? 'text-green-400' : 'text-red-400'
                   const athSnapshot = athBySymbol[h.symbol]
@@ -1352,20 +1303,20 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
                           >
                             กราฟ
                           </button>
-                          <button
-                            onClick={() => {
-                              if (analysis) {
+                          {analysis ? (
+                            <button
+                              onClick={() => {
                                 setExpandedAnalysisSymbol(prev => prev === h.symbol ? null : h.symbol)
                                 setExpandedSymbol(null)
-                              } else {
-                                void handleAnalyze(h)
-                              }
-                            }}
-                            disabled={isLoading}
-                            className={`mr-2 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${analysis ? 'border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20' : 'border-purple-500 bg-purple-600 text-white hover:bg-purple-500'}`}
-                          >
-                            {isLoading ? '⏳...' : analysis ? (expandedAnalysisSymbol === h.symbol ? 'ซ่อน AI' : 'ดู AI') : 'วิเคราะห์ AI'}
-                          </button>
+                              }}
+                              className="mr-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-xs font-medium text-purple-300 transition-colors hover:bg-purple-500/20"
+                              data-testid="holding-latest-action"
+                            >
+                              {analysis.error ? '⚠️ วิเคราะห์ไม่สำเร็จ' : SIGNAL_LABEL[analysis.recommendation?.action] ?? 'ผลล่าสุด'}
+                            </button>
+                          ) : (
+                            <span className="mr-2 text-[11px] text-gray-600" data-testid="holding-no-analysis">ยังไม่มีผลวิเคราะห์</span>
+                          )}
                           <button onClick={() => setModalHolding(h)} className="rounded-md p-1 text-xs text-gray-500 transition-colors hover:bg-gray-800 hover:text-white" title="แก้ไขหุ้น">✏️</button>
                         </td>
                       </tr>
@@ -1399,7 +1350,6 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
             const pnlColor = pnlPos ? 'text-green-400' : 'text-red-400'
             const pctBadge = pnlPos ? 'bg-green-500/15 text-green-400 border-green-500/20' : 'bg-red-500/15 text-red-400 border-red-500/20'
             const analysis = analyses[h.symbol]
-            const isLoading = loadingSymbol === h.symbol
             const athSnapshot = athBySymbol[h.symbol]
             const athState = getAthState(h.current_price, athSnapshot?.allTimeHigh)
             const importantSupportSnapshot = importantSupportBySymbol[h.symbol]
@@ -1437,20 +1387,20 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
                   >
                     📊
                   </button>
-                  <button
-                    onClick={() => {
-                      if (analysis) {
+                  {analysis ? (
+                    <button
+                      onClick={() => {
                         setExpandedAnalysisSymbol(prev => prev === h.symbol ? null : h.symbol)
                         setExpandedSymbol(null)
-                      } else {
-                        void handleAnalyze(h)
-                      }
-                    }}
-                    disabled={isLoading}
-                    className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors disabled:opacity-50 ${analysis ? 'border-purple-500/30 bg-purple-500/10 text-purple-300' : 'border-purple-500 bg-purple-600 text-white'}`}
-                  >
-                    {isLoading ? '⏳ กำลังวิเคราะห์...' : analysis ? (expandedAnalysisSymbol === h.symbol ? 'ซ่อน AI' : 'ดู AI') : 'วิเคราะห์ AI'}
-                  </button>
+                      }}
+                      className="flex-1 rounded-lg border border-purple-500/30 bg-purple-500/10 py-2 text-xs font-medium text-purple-300 transition-colors"
+                      data-testid="holding-latest-action"
+                    >
+                      {analysis.error ? '⚠️ วิเคราะห์ไม่สำเร็จ' : SIGNAL_LABEL[analysis.recommendation?.action] ?? 'ผลล่าสุด'}
+                    </button>
+                  ) : (
+                    <span className="flex flex-1 items-center justify-center text-[11px] text-gray-600" data-testid="holding-no-analysis">ยังไม่มีผลวิเคราะห์</span>
+                  )}
                   <button onClick={() => setModalHolding(h)} className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 text-gray-400 text-xs hover:text-white transition-colors">✏️ แก้ไข</button>
                 </div>
                 {expandedSymbol === h.symbol && (

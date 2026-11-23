@@ -43,21 +43,11 @@ assert.ok(dashboard.includes('const heldAnalysisSymbols = new Set(holdings.filte
 assert.match(dashboard, /staleAnalysisSymbols = latestAnalysisDate\s*\?\s*Object\.entries\(analysisDates\)\.filter\(\(\[symbol, date\]\) => heldAnalysisSymbols\.has\(symbol\.toUpperCase\(\)\)/, 'symbols sold during the session do not stay in the stale banner')
 assert.ok(dashboard.includes('data-testid="analysis-missing-banner"'), 'held symbols without any analysis are flagged')
 assert.ok(dashboard.includes('const missingAnalysisSymbols = latestAnalysisDate'), 'missing analyses are only flagged once a daily round exists')
-assert.ok(dashboard.includes('const analysedDate = thaiDateFromTimestamp(result.analysedAt)'), 'a manual analysis date comes from the result timestamp')
-assert.ok(dashboard.includes('if (!result.error && analysedDate) setAnalysisDates'), 'a failed manual analysis does not clear the stale warning')
-assert.ok(!dashboard.includes('new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)'), 'the device clock is no longer used for the manual analysis date')
 
 const todayRoute = read('app/api/daily-analyses/today/route.ts')
 assert.ok(todayRoute.includes("result && !result.analysisMode ? { ...result, analysisMode: 'DAILY_POST_CLOSE' } : result"), 'old daily rows are labelled as the post-close round without touching stored data')
 
-// thaiDateFromTimestamp matches the server conversion
-const helperSource = dashboard.match(/function thaiDateFromTimestamp\([\s\S]*?\n\}/)?.[0]
-assert.ok(helperSource, 'thaiDateFromTimestamp exists')
-const thaiDateFromTimestamp = new Function(`${helperSource.replace(/: string \| undefined\): string \| null/, ')')}; return thaiDateFromTimestamp`)()
-assert.equal(thaiDateFromTimestamp('2026-11-21T16:59:00Z'), '2026-11-21', 'just before Thai midnight')
-assert.equal(thaiDateFromTimestamp('2026-11-21T17:00:00Z'), '2026-11-22', 'Thai midnight rolls the date')
-assert.equal(thaiDateFromTimestamp(undefined), null)
-assert.equal(thaiDateFromTimestamp('not a date'), null)
+// v1.41.51: the dashboard no longer runs manual analyses (moved to /daily-actions), so thaiDateFromTimestamp and the per-holding date update were removed
 
 // ---------- Deep Stock Check wording follows the v1.41.41 data-basis rule ----------
 const stockCheck = read('lib/stock-check-ai.ts')

@@ -89,6 +89,8 @@ function guardHold(
   })
   return {
     ...traced,
+    // v1.41.51: ตัวเลขแผนซื้อ/ขายของ action เดิมไม่มีผลแล้วเมื่อ guard เปลี่ยนเป็น HOLD
+    sizing: undefined,
     recommendation: {
       ...result.recommendation,
       action: 'HOLD',
