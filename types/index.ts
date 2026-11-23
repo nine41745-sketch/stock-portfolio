@@ -120,9 +120,24 @@ export interface DetailedAnalysisResult {
   // v1.41.48 (decision trace): action ที่ AI เสนอก่อนผ่าน guard และ guard แต่ละตัวที่เปลี่ยน action
   // เพื่อให้ผู้ใช้แยกได้ว่า "AI เสนออะไร" กับ "ระบบอนุญาตอะไร" — optional เพราะผลเก่าไม่มีฟิลด์นี้
   decisionTrace?: DecisionTrace
+  // v1.41.51 (daily actions): ตัวเลขแผนซื้อ/ขายที่ position sizing คำนวณแบบ deterministic อยู่แล้ว เก็บเป็นฟิลด์
+  // (เดิมมีแค่ข้อความใน buyConditions/sellConditions) — optional เพราะผลเก่าไม่มี และไม่มีเมื่อ action = HOLD
+  sizing?: ActionSizing
 }
 
 export type AnalysisAction = 'BUY' | 'HOLD' | 'SELL_PARTIAL' | 'SELL_ALL'
+
+export interface ActionSizing {
+  // ต้องตรงกับ recommendation.action ถึงจะใช้ (guard ที่เปลี่ยน action เป็น HOLD ล้างฟิลด์นี้)
+  action: 'BUY' | 'SELL_PARTIAL' | 'SELL_ALL'
+  label: 'ช้อนเพิ่ม' | 'ขายทำกำไร' | 'ลดพอร์ต' | 'ขายทั้งหมด'
+  // % ของจำนวนหุ้นที่ถืออยู่ ณ ตอนวิเคราะห์
+  pct: number
+  shares: number
+  // ราคา ณ ตอนวิเคราะห์ (null = ไม่มีราคา จึงไม่มี usd)
+  price: number | null
+  usd: number | null
+}
 
 export type DecisionGuardId =
   | 'SELL_ALL_EVIDENCE'

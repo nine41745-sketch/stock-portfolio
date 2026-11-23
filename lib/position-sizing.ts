@@ -1,4 +1,4 @@
-import { DetailedAnalysisResult, EarningsInfo, HoldingWithPrice, TechnicalSnapshot } from '@/types'
+import { ActionSizing, DetailedAnalysisResult, EarningsInfo, HoldingWithPrice, TechnicalSnapshot } from '@/types'
 import { MAX_POSITION_WEIGHT_PCT, appendDecisionStep } from '@/lib/analysis-execution-guard'
 
 const PARTIAL_LEVELS = [5, 10, 15, 20, 25, 33, 50] as const
@@ -110,6 +110,24 @@ function fitBuyPctToCash(
   return { pct: 0, sharesToBuy: 0, cashUsed: 0 }
 }
 
+function buildSizing(
+  action: ActionSizing['action'],
+  label: ActionSizing['label'],
+  pct: number,
+  shares: number,
+  price: number | null,
+): ActionSizing {
+  const validPrice = price != null && Number.isFinite(price) && price > 0 ? price : null
+  return {
+    action,
+    label,
+    pct,
+    shares,
+    price: validPrice,
+    usd: validPrice === null ? null : Math.round(shares * validPrice * 100) / 100,
+  }
+}
+
 function prependPlan(prefix: string, existing: string): string {
   const clean = existing.trim()
   return clean && clean !== 'N/A' ? `${prefix} — ${clean}` : prefix
@@ -139,6 +157,8 @@ export function applyPositionSizing(
   let buyCashUsed = 0
   let downgradeGuard: 'BUY_CASH' | 'BUY_CAPACITY' | null = null
   let downgradeNote = ''
+  // v1.41.51: ตัวเลขแผนที่คำนวณอยู่แล้ว เก็บเป็นฟิลด์ให้หน้าคำแนะนำวันนี้ใช้ (ไม่เปลี่ยน action)
+  let sizing: ActionSizing | undefined
   const sizingPortfolioValue = investablePortfolioValue ?? totalPortfolioValue
 
   if (action === 'BUY') {
@@ -188,6 +208,7 @@ export function applyPositionSizing(
         }
       } else {
         buyCashUsed = fitted.cashUsed
+        sizing = buildSizing('BUY', 'ช้อนเพิ่ม', fitted.pct, fitted.sharesToBuy, holding.current_price)
         const cashSuffix = holding.current_price == null || holding.current_price <= 0
           ? ' (ยังตรวจวงเงินซื้อไม่ได้เพราะราคาปัจจุบันไม่พร้อม)'
           : ''
@@ -201,11 +222,13 @@ export function applyPositionSizing(
     const pct = chooseSellPartialPct(holding, technical, sizingPortfolioValue)
     const sharesToSell = shares * pct / 100
     const label = (holding.pnl_pct ?? 0) > 0 ? 'ขายทำกำไร' : 'ลดพอร์ต'
+    sizing = buildSizing('SELL_PARTIAL', label, pct, sharesToSell, holding.current_price)
     recommendation.sellConditions = prependPlan(
       `${label} ${pct}% (~${formatShares(sharesToSell)} หุ้น)`,
       recommendation.sellConditions,
     )
   } else if (action === 'SELL_ALL') {
+    sizing = buildSizing('SELL_ALL', 'ขายทั้งหมด', 100, shares, holding.current_price)
     recommendation.sellConditions = prependPlan(
       `ขายทั้งหมด 100% (~${formatShares(shares)} หุ้น)`,
       recommendation.sellConditions,
@@ -222,6 +245,8 @@ export function applyPositionSizing(
   const sized: DetailedAnalysisResult = {
     ...analysis,
     recommendation: { ...recommendation, action: finalAction },
+    // HOLD (รวมกรณี BUY ถูกลดเป็น HOLD) ไม่มีแผนซื้อ/ขาย จึงไม่มี sizing
+    sizing: finalAction === action ? sizing : undefined,
   }
 
   return {

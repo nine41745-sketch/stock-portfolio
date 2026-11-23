@@ -49,6 +49,7 @@ export async function GET() {
     return NextResponse.json({
       analyses: {},
       analysisDates: {},
+      heldSymbols: [],
       latestDailyAnalysisDate: null,
       analysisDate: getThaiDateString(),
       staleSymbols: [],
@@ -169,6 +170,8 @@ export async function GET() {
   return NextResponse.json({
     analyses,
     analysisDates,
+    // v1.41.51: หุ้นที่ถืออยู่ (shares > 0) ให้หน้าคำแนะนำวันนี้แสดงตัวที่ยังไม่มีผลวิเคราะห์ด้วย
+    heldSymbols: [...activeSymbols].sort(),
     latestDailyAnalysisDate,
     latestDailyCronRun,
     analysisDate: getThaiDateString(),
