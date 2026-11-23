@@ -124,6 +124,23 @@ const fallbackPlan = buildActionPlan({ analyses: { AAA: analysisFor('HOLD') } })
 assert.deepEqual(fallbackPlan.rows.map(row => row.symbol), ['AAA'], 'without a held list the analysed symbols are used')
 assert.deepEqual(buildActionPlan({ analyses: {}, heldSymbols: [] }).rows, [])
 
+// ---------- review fixes (PR #208) ----------
+const recentSell = { transaction_type: 'SELL', shares: 1, price: 10, trade_date: '2026-11-22', created_at: new Date(Date.now() - 60_000).toISOString() }
+const sellGuarded = applyRecentTradeExecutionGuard(profit, recentSell)
+assert.equal(sellGuarded.recommendation.action, 'HOLD', 'a recent sell turns a partial sell into HOLD')
+assert.equal(sellGuarded.sizing, undefined, 'the execution guard clears the sell numbers too')
+const noShares = applyPositionSizing(analysisFor('BUY'), holding({ shares: 0, market_value: 0 }), technical, 100000, 100000).result
+assert.equal(noShares.sizing, undefined, 'a BUY on a zero-share holding has no percentage-based numbers')
+const buyNoPrice = applyPositionSizing(analysisFor('BUY'), holding({ current_price: null, market_value: null }), technical, 100000, 100000).result
+assert.deepEqual([buyNoPrice.sizing?.shares, buyNoPrice.sizing?.price, buyNoPrice.sizing?.usd], [1.5, null, null], 'a BUY without a price keeps the share count but no USD')
+
+const labelMismatch = buildActionRow('TEST', withText('BUY', 'ขายทั้งหมด 100% (~9 หุ้น)', { usedPrice: 10 }), null, false)
+assert.deepEqual([labelMismatch.group, labelMismatch.shares, labelMismatch.usd, labelMismatch.numbersSource], ['BUY', null, null, 'none'], 'plan text whose label belongs to another action is ignored, not added to the totals')
+assert.equal(buildActionRow('TEST', withText('SELL_PARTIAL', 'ลดพอร์ต 10% (~2 หุ้น)', { usedPrice: 10 }), null, false).shares, 2, 'both partial-sell labels are accepted')
+const tinyStructured = buildActionRow('TEST', { ...analysisFor('BUY'), sizing: { ...buy.sizing, shares: 0.00001, usd: 0 } }, null, false)
+assert.equal(tinyStructured.shares, null, 'a share count that rounds to zero is not shown as an order')
+assert.equal(buildActionRow('TEST', analysisFor('BUY'), null, false).mode, null, 'results from /api/analyze carry no analysisMode')
+
 // ---------- wiring ----------
 const todayRoute = read('app/api/daily-analyses/today/route.ts')
 assert.equal(todayRoute.split('heldSymbols').length - 1, 2, 'the route returns the held symbols in both responses')
@@ -140,6 +157,11 @@ const workspace = read('components/portfolio/DailyActionsWorkspace.tsx')
 assert.equal(workspace.split("fetch('/api/analyze'").length - 1, 1, 'only the re-analyse button calls the analysis API')
 assert.ok(workspace.indexOf("fetch('/api/analyze'") > workspace.indexOf('async function reanalyzeAll()'), 'the analysis API is only called from the button handler, never on load')
 assert.ok(workspace.includes('window.confirm('), 'the quota-consuming button asks first')
+assert.ok(workspace.includes("(row.mode === null || row.mode === 'MANUAL')"), 'the shared-cash warning also covers results without an analysisMode (what /api/analyze returns)')
+assert.ok(workspace.includes('data-testid="daily-actions-stale-totals"') && workspace.includes('staleOrderCount'), 'totals say how many rows are stale')
+assert.ok(workspace.includes('if (symbols.length === 0 || runningRef.current) return') && workspace.includes('runningRef.current = false'), 'a ref guards against overlapping runs')
+assert.ok(/for \(let i = 0; i < symbols\.length; i\+\+\) \{\s*\/\/[^\n]*\n\s*if \(!mounted\.current\) return/.test(workspace), 'leaving the page stops the run before the next request')
+assert.ok(workspace.includes('response.status === 401 || response.status === 403') && workspace.includes('sessionExpired = true; break'), 'an expired session stops the run')
 assert.ok(/for \(let i = 0; i < symbols\.length; i\+\+\)/.test(workspace) && workspace.includes("result.error === 'RATE_LIMIT'"), 'holdings are analysed one at a time and stop when the AI quota is full')
 assert.ok(workspace.includes('buildActionPlan({'), 'the page uses the shared plan builder')
 assert.ok(workspace.includes('ไม่ใช่คำสั่งซื้อขาย และไม่ใช่คำแนะนำการลงทุน'), 'the page carries the not-advice notice')

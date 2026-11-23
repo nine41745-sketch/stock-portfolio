@@ -129,6 +129,8 @@ export default function DailyActionsWorkspace() {
   const [running, setRunning] = useState<{ index: number; total: number; symbol: string } | null>(null)
   const [runMessage, setRunMessage] = useState<string | null>(null)
   const mounted = useRef(true)
+  // กันกดซ้ำ/ซ้อนกันได้แน่นกว่า state (state อัปเดตหลัง render)
+  const runningRef = useRef(false)
 
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -164,41 +166,58 @@ export default function DailyActionsWorkspace() {
 
   const heldCount = data?.heldSymbols?.length ?? plan.rows.length
   const cronRun = data?.latestDailyCronRun
-  const hasManualBuy = plan.rows.some(row => row.group === 'BUY' && row.mode === 'MANUAL')
+  // ผลจาก /api/analyze ไม่มี analysisMode (null) หรือเป็น MANUAL — คิดงบซื้อแยกทีละตัว ต่างจาก cron ที่แชร์งบก้อนเดียว
+  const hasManualBuy = plan.rows.some(row => row.group === 'BUY' && (row.mode === null || row.mode === 'MANUAL'))
+  const staleOrderCount = plan.rows.filter(row => row.stale && (row.group === 'BUY' || row.group === 'SELL_PARTIAL' || row.group === 'SELL_ALL')).length
 
   // วิเคราะห์ใหม่ทีละตัวผ่าน /api/analyze เดิม (guard/แคช/การบันทึกผลชุดเดียวกับเดิม) หยุดเมื่อโควตา AI เต็ม
   async function reanalyzeAll() {
     const symbols = [...(data?.heldSymbols ?? [])]
-    if (symbols.length === 0 || running) return
+    if (symbols.length === 0 || runningRef.current) return
     if (!window.confirm(`วิเคราะห์ใหม่ ${symbols.length} ตัว จะใช้โควตา AI ${symbols.length} คำขอ และอาจใช้เวลาหลายนาที ทำต่อไหม?`)) return
+    runningRef.current = true
     setRunMessage(null)
     let failed = 0
     let stoppedForQuota = false
-    for (let i = 0; i < symbols.length; i++) {
-      const symbol = symbols[i]
-      setRunning({ index: i + 1, total: symbols.length, symbol })
-      try {
-        const response = await fetch('/api/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbol }),
-        })
-        if (!response.ok) { failed++; continue }
-        const result = await response.json() as DetailedAnalysisResult
-        if (result.error === 'RATE_LIMIT') { stoppedForQuota = true; break }
-        if (result.error) failed++
-      } catch {
-        failed++
+    let sessionExpired = false
+    try {
+      for (let i = 0; i < symbols.length; i++) {
+        // ออกจากหน้าแล้วต้องหยุดเรียก API ทันที (ไม่ใช้โควตา AI ต่อโดยไม่มีคนดู)
+        if (!mounted.current) return
+        const symbol = symbols[i]
+        setRunning({ index: i + 1, total: symbols.length, symbol })
+        try {
+          const response = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol }),
+          })
+          if (!response.ok) {
+            failed++
+            // 401/403 = ล็อกอิน/PIN หมดอายุ ยิงต่อก็ล้มทุกตัว
+            if (response.status === 401 || response.status === 403) { sessionExpired = true; break }
+            continue
+          }
+          const result = await response.json() as DetailedAnalysisResult
+          if (result.error === 'RATE_LIMIT') { stoppedForQuota = true; break }
+          if (result.error) failed++
+        } catch {
+          failed++
+        }
       }
       if (!mounted.current) return
+      setRunning(null)
+      setRunMessage(sessionExpired
+        ? 'เซสชันหมดอายุหรือยังไม่ได้ปลดล็อก PIN หยุดวิเคราะห์ กรุณาเข้าสู่ระบบ/ปลดล็อกแล้วลองใหม่'
+        : stoppedForQuota
+          ? 'โควตา AI เต็ม หยุดวิเคราะห์ ตัวที่เหลือยังเป็นผลเดิม ลองใหม่ภายหลัง'
+          : failed > 0 ? `วิเคราะห์ไม่สำเร็จ ${failed} ตัว ตัวนั้นยังเป็นผลเดิม` : 'วิเคราะห์ใหม่เสร็จแล้ว')
+      setReloadKey(key => key + 1)
+    } finally {
+      runningRef.current = false
     }
-    if (!mounted.current) return
-    setRunning(null)
-    setRunMessage(stoppedForQuota
-      ? 'โควตา AI เต็ม หยุดวิเคราะห์ ตัวที่เหลือยังเป็นผลเดิม ลองใหม่ภายหลัง'
-      : failed > 0 ? `วิเคราะห์ไม่สำเร็จ ${failed} ตัว ตัวนั้นยังเป็นผลเดิม` : 'วิเคราะห์ใหม่เสร็จแล้ว')
-    setReloadKey(key => key + 1)
   }
+
 
   return (
     <div className="space-y-4" data-testid="daily-actions-workspace">
@@ -258,6 +277,9 @@ export default function DailyActionsWorkspace() {
             )}
             {plan.totals.missingNumbers > 0 && (
               <p className="mt-2 text-xs text-gray-500">มี {plan.totals.missingNumbers} ตัวที่ผลวิเคราะห์ไม่มีตัวเลขจำนวนหุ้น จึงไม่รวมในยอดข้างบน</p>
+            )}
+            {staleOrderCount > 0 && (
+              <p className="mt-2 text-xs text-amber-300" data-testid="daily-actions-stale-totals">ยอดรวมนี้รวม {staleOrderCount} ตัวที่พอร์ตถูกแก้หลังวิเคราะห์ ตัวเลขอาจไม่ตรงกับพอร์ตตอนนี้</p>
             )}
             {hasManualBuy && (
               <p className="mt-2 text-xs text-gray-500">ผลที่วิเคราะห์เองคิดเงินซื้อแยกทีละตัว ยอดซื้อรวมอาจเกินเงินที่พร้อมใช้ โปรดเทียบกับเงินสดก่อนทำจริง</p>

@@ -74,11 +74,20 @@ export function parsePlanText(text: unknown): ParsedPlanText | null {
   if (!match) return null
   const pct = Number(match[2])
   const shares = Number(match[3].replace(/,/g, ''))
-  if (!Number.isFinite(pct) || !Number.isFinite(shares) || shares <= 0) return null
+  if (!Number.isFinite(pct) || !Number.isFinite(shares) || shares < MIN_PLAN_SHARES) return null
   return { label: match[1], pct, shares }
 }
 
 const round2 = (value: number): number => Math.round(value * 100) / 100
+
+// ป้ายที่ยอมรับได้ของแต่ละ action (ข้อความแผนที่ป้ายไม่ตรง action ถือว่าอ่านไม่ได้ ไม่เอามารวมยอด)
+const ALLOWED_PLAN_LABELS: Record<'BUY' | 'SELL_PARTIAL' | 'SELL_ALL', string[]> = {
+  BUY: ['ช้อนเพิ่ม'],
+  SELL_PARTIAL: ['ขายทำกำไร', 'ลดพอร์ต'],
+  SELL_ALL: ['ขายทั้งหมด'],
+}
+// จำนวนหุ้นต่ำกว่านี้ปัดเป็น 0 ในข้อความ (ทศนิยม 4 ตำแหน่ง) จึงไม่ถือเป็นแผน
+const MIN_PLAN_SHARES = 0.0001
 
 function validPrice(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
@@ -145,7 +154,7 @@ export function buildActionRow(
 
   // ตัวเลขเชิงโครงสร้างใช้ได้เมื่อตรงกับ action สุดท้าย (guard ที่เปลี่ยน action จะล้างฟิลด์นี้ แต่ตรวจซ้ำอีกชั้น)
   const sizing = result.sizing
-  if (sizing && sizing.action === action && Number.isFinite(sizing.shares) && sizing.shares > 0) {
+  if (sizing && sizing.action === action && Number.isFinite(sizing.shares) && sizing.shares >= MIN_PLAN_SHARES) {
     const sizingPrice = validPrice(sizing.price) ?? price
     return {
       ...base,
@@ -159,7 +168,8 @@ export function buildActionRow(
   }
 
   // ผลเก่า (ก่อน v1.41.51): อ่านจำนวนหุ้นจากข้อความแผนเดิม และคำนวณ USD จากราคา ณ ตอนวิเคราะห์
-  const parsed = parsePlanText(planText)
+  const parsedText = parsePlanText(planText)
+  const parsed = parsedText && ALLOWED_PLAN_LABELS[action].includes(parsedText.label) ? parsedText : null
   if (parsed) {
     return {
       ...base,
