@@ -128,6 +128,10 @@ export default function DailyActionsWorkspace() {
   const [loadFailed, setLoadFailed] = useState(false)
   const [running, setRunning] = useState<{ index: number; total: number; symbol: string } | null>(null)
   const [runMessage, setRunMessage] = useState<string | null>(null)
+  // v1.41.53: ยืนยันในหน้าแทน window.confirm (เบราว์เซอร์ฝังในแอปปิดกล่อง confirm เงียบๆ และถือว่ากดยกเลิก ทำให้ปุ่มดูเหมือนไม่ทำงาน)
+  const [confirming, setConfirming] = useState(false)
+  const reanalyzeButtonRef = useRef<HTMLButtonElement>(null)
+  const wasConfirming = useRef(false)
   const mounted = useRef(true)
   // กันกดซ้ำ/ซ้อนกันได้แน่นกว่า state (state อัปเดตหลัง render)
   const runningRef = useRef(false)
@@ -138,6 +142,12 @@ export default function DailyActionsWorkspace() {
     mounted.current = true
     return () => { mounted.current = false }
   }, [])
+
+  // คืนโฟกัสคีย์บอร์ดให้ปุ่มหลักเมื่อกล่องยืนยันถูกปิดโดยไม่เริ่มวิเคราะห์ (ปุ่มจะถูกปิดใช้งานระหว่างที่กล่องเปิดและระหว่างวิเคราะห์)
+  useEffect(() => {
+    if (wasConfirming.current && !confirming) reanalyzeButtonRef.current?.focus()
+    wasConfirming.current = confirming
+  }, [confirming])
 
   // โหลดผลวิเคราะห์ที่บันทึกไว้ (โหลดใหม่เมื่อ reloadKey เปลี่ยน เช่นหลังวิเคราะห์ใหม่เสร็จ)
   useEffect(() => {
@@ -170,12 +180,12 @@ export default function DailyActionsWorkspace() {
   const hasManualBuy = plan.rows.some(row => row.group === 'BUY' && (row.mode === null || row.mode === 'MANUAL'))
   const staleOrderCount = plan.rows.filter(row => row.stale && (row.group === 'BUY' || row.group === 'SELL_PARTIAL' || row.group === 'SELL_ALL')).length
 
-  // วิเคราะห์ใหม่ทีละตัวผ่าน /api/analyze เดิม (guard/แคช/การบันทึกผลชุดเดียวกับเดิม) หยุดเมื่อโควตา AI เต็ม
+  // วิเคราะห์ใหม่ทีละตัวผ่าน /api/analyze เดิม — เรียกจากปุ่ม "ยืนยัน" ในกล่องยืนยันเท่านั้น (guard/แคช/การบันทึกผลชุดเดียวกับเดิม) หยุดเมื่อโควตา AI เต็ม
   async function reanalyzeAll() {
     const symbols = [...(data?.heldSymbols ?? [])]
     if (symbols.length === 0 || runningRef.current) return
-    if (!window.confirm(`วิเคราะห์ใหม่ ${symbols.length} ตัว จะใช้โควตา AI ${symbols.length} คำขอ และอาจใช้เวลาหลายนาที ทำต่อไหม?`)) return
     runningRef.current = true
+    setConfirming(false)
     setRunMessage(null)
     let failed = 0
     let stoppedForQuota = false
@@ -229,9 +239,10 @@ export default function DailyActionsWorkspace() {
           </p>
         </div>
         <button
+          ref={reanalyzeButtonRef}
           type="button"
-          onClick={() => void reanalyzeAll()}
-          disabled={loading || running !== null || (data?.heldSymbols?.length ?? 0) === 0}
+          onClick={() => setConfirming(true)}
+          disabled={loading || running !== null || confirming || (data?.heldSymbols?.length ?? 0) === 0}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
           data-testid="daily-actions-reanalyze"
         >
@@ -239,6 +250,17 @@ export default function DailyActionsWorkspace() {
         </button>
       </header>
 
+      {confirming && (
+        <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-3 text-sm text-blue-100" role="alertdialog" aria-label="ยืนยันการวิเคราะห์ใหม่" onKeyDown={event => { if (event.key === 'Escape') setConfirming(false) }} data-testid="daily-actions-confirm">
+          <p>
+            วิเคราะห์ใหม่ {data?.heldSymbols?.length ?? 0} ตัว จะใช้โควตา AI {data?.heldSymbols?.length ?? 0} คำขอ และอาจใช้เวลาหลายนาที ผลใหม่จะแทนที่ผลที่แสดงอยู่ ทำต่อไหม?
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => void reanalyzeAll()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500" data-testid="daily-actions-confirm-yes">ยืนยัน วิเคราะห์ใหม่</button>
+            <button type="button" autoFocus onClick={() => setConfirming(false)} className="rounded-lg border border-gray-600 px-4 py-2 text-sm font-semibold text-gray-200 hover:bg-gray-800" data-testid="daily-actions-confirm-no">ยกเลิก</button>
+          </div>
+        </div>
+      )}
       {loadFailed && (
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300" data-testid="daily-actions-load-failed">
           ⚠️ โหลดผลวิเคราะห์ไม่สำเร็จ ลองรีเฟรชหน้าอีกครั้ง
