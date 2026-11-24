@@ -165,7 +165,12 @@ assert.ok(workspace.indexOf('void reanalyzeAll()') > workspace.indexOf('data-tes
 assert.ok(workspace.includes('data-testid="daily-actions-confirm-yes"') && workspace.includes('data-testid="daily-actions-confirm-no"') && workspace.includes('onClick={() => setConfirming(false)}'), 'the confirmation can be accepted or cancelled')
 assert.ok(workspace.includes('role="alertdialog"') && workspace.includes('จะใช้โควตา AI'), 'the confirmation tells the user it consumes AI quota')
 assert.ok(workspace.includes('autoFocus onClick={() => setConfirming(false)}'), 'keyboard focus starts on the safe button (cancel), not on the quota-consuming one')
-assert.ok(workspace.includes("event.key === 'Escape'") && workspace.includes('reanalyzeButtonRef.current?.focus()'), 'Escape cancels and focus returns to the main button')
+assert.ok(workspace.includes("if (event.key === 'Escape') setConfirming(false)"), 'Escape closes the confirmation without starting the analysis')
+assert.ok(workspace.includes('if (wasConfirming.current && !confirming) {') && workspace.includes('const button = reanalyzeButtonRef.current') && workspace.includes('(button && !button.disabled ? button : workspaceRef.current)?.focus()'), 'when the confirmation closes, focus returns to the main button (or the workspace when that button is disabled)')
+// v1.41.54: the two Low findings of the v1.41.53 round-2 review
+const reanalyzeBody = workspace.slice(workspace.indexOf('async function reanalyzeAll()'))
+assert.ok(reanalyzeBody.indexOf('setConfirming(false)') > -1 && reanalyzeBody.indexOf('setConfirming(false)') < reanalyzeBody.indexOf('runningRef.current) return'), 'the confirmation closes before the early-return guard, so it can never stay open after pressing confirm')
+assert.ok(workspace.includes('ref={workspaceRef}') && workspace.includes('tabIndex={-1}') && workspace.includes('!button.disabled ? button : workspaceRef.current'), 'when the main button is disabled (analysis started) focus moves to the workspace instead of being lost on a disabled button')
 assert.ok(workspace.indexOf('setConfirming(false)') < workspace.indexOf("fetch('/api/analyze'"), 'the panel closes as soon as the run starts')
 assert.ok(workspace.includes("(row.mode === null || row.mode === 'MANUAL')"), 'the shared-cash warning also covers results without an analysisMode (what /api/analyze returns)')
 assert.ok(workspace.includes('data-testid="daily-actions-stale-totals"') && workspace.includes('staleOrderCount'), 'totals say how many rows are stale')
