@@ -1,13 +1,13 @@
 # Production Release Status
 
-## Prepared, not merged — v1.41.54
+## Merged, not staged — v1.41.54
 
 - Scope: แก้ Low 2 ข้อจากรีวิวอิสระรอบ 2 ของ v1.41.53 ใน `components/portfolio/DailyActionsWorkspace.tsx` (เจ้าของสั่งให้แก้): (Low-1) `reanalyzeAll` เรียก `setConfirming(false)` ก่อน early-return guard จึงปิดกล่องยืนยันเสมอ ไม่ค้างเมื่อไม่มีหุ้นหรือกำลังวิเคราะห์อยู่; (Low-2) หลังกด "ยืนยัน" ปุ่มหัวถูก disable ทันที `focus()` จึงไม่ทำงาน — ถ้าปุ่มถูกปิดใช้งานให้ย้ายโฟกัสไปที่พื้นที่ทำงานของหน้า (`workspaceRef`, `tabIndex={-1}`) ส่วนกรณียกเลิก/Esc ยังคืนโฟกัสให้ปุ่มหัวเหมือนเดิม. ไม่เปลี่ยน API, SQL, cron, `vercel.json`, workflow, env, กติกาตัดสิน, ลอจิกวิเคราะห์ทีละตัว
 - Development/Feature History: `Development History — Feature commit 2026-11-24 10:47:59 +07:00 (ไม่ใช่ Production)` (เวลา commit `4ac4fa6`)
-- Release state: ยังไม่ push ยังไม่ merge ยังไม่ Stage ยังไม่ Promote. Production เป็น v1.41.53 (`dpl_2YdDTSR1J85GagezhCuhQ2x2RZCX`). Security Gate และ Production Release Gate remain HOLD for v1.41.54
+- Release state: merge แล้ว (PR #215, squash `5daf9362edafc1b38b5f95597a92ad8158eb1b5a`, head ที่รีวิว `324987930ae4e6ea231911897ea85e69590ce16a`; รีวิวอิสระ 2 รอบ ผล Approve) CI บน main ผ่าน. ยังไม่ Stage ยังไม่ Promote. Production ยังเป็น v1.41.53 (`dpl_2YdDTSR1J85GagezhCuhQ2x2RZCX`). Security Gate และ Production Release Gate remain HOLD for v1.41.54 จนกว่าจะ Stage/Promote
 - Tests: `scripts/test-daily-actions.mjs` เพิ่ม assertion: `setConfirming(false)` อยู่ก่อน guard `runningRef.current) return`; มี `workspaceRef`/`tabIndex={-1}`/เงื่อนไข `!button.disabled ? button : workspaceRef.current`; assertion เรื่อง Escape/คืนโฟกัสเดิมถูกแยกเป็น 2 ข้อที่ตรึงโค้ดจริง: Escape ปิดกล่องโดยไม่เริ่มวิเคราะห์ (`if (event.key === 'Escape') setConfirming(false)`) และตรรกะคืนโฟกัสทั้งสองกรณี. **แก้ไข:** รอบแรกของ PR นี้ผู้เขียนเปลี่ยน assertion เดิมเป็นตรวจแค่สตริง `reanalyzeButtonRef.current` แล้วบันทึกว่า "ไม่ได้ลดความเข้ม" ซึ่งไม่จริง (ผู้ตรวจอิสระที่ head `74f846df` พบว่าสตริงนั้นมีในไฟล์อยู่แล้วจึงผ่านเสมอ); ได้ทำให้เข้มกว่าเดิมแล้ว. การนับ `reanalyzeAll` = 2 ยังคงอยู่
 - Rollback: revert PR (ไม่มี SQL)
-- Not verified: พฤติกรรมโฟกัสในเบราว์เซอร์จริง (ตรวจจากโค้ดและเทสต์ตรึงโค้ดเท่านั้น), CI, รีวิวอิสระ, การกดปุ่มจริงบน Production (ใช้โควตา AI และเรียก `/api/analyze`)
+- Not verified: พฤติกรรมโฟกัสในเบราว์เซอร์จริง (ตรวจจากโค้ดและเทสต์ตรึงโค้ดเท่านั้น), การกดปุ่มจริงบน Production (ใช้โควตา AI และเรียก `/api/analyze`)
 
 ## Released — v1.41.53 (Production; migration `analysis_cron_runs` ยังไม่รัน)
 
