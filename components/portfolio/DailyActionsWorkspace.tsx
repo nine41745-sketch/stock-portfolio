@@ -132,6 +132,7 @@ export default function DailyActionsWorkspace() {
   const [confirming, setConfirming] = useState(false)
   const reanalyzeButtonRef = useRef<HTMLButtonElement>(null)
   const wasConfirming = useRef(false)
+  const workspaceRef = useRef<HTMLDivElement>(null)
   const mounted = useRef(true)
   // กันกดซ้ำ/ซ้อนกันได้แน่นกว่า state (state อัปเดตหลัง render)
   const runningRef = useRef(false)
@@ -145,7 +146,11 @@ export default function DailyActionsWorkspace() {
 
   // คืนโฟกัสคีย์บอร์ดให้ปุ่มหลักเมื่อกล่องยืนยันถูกปิดโดยไม่เริ่มวิเคราะห์ (ปุ่มจะถูกปิดใช้งานระหว่างที่กล่องเปิดและระหว่างวิเคราะห์)
   useEffect(() => {
-    if (wasConfirming.current && !confirming) reanalyzeButtonRef.current?.focus()
+    if (wasConfirming.current && !confirming) {
+      // v1.41.54: หลังกด "ยืนยัน" ปุ่มหัวถูกปิดใช้งานทันที focus() จะไม่ทำงานและโฟกัสหลุดไป body จึงย้ายโฟกัสไปที่พื้นที่ทำงานแทน
+      const button = reanalyzeButtonRef.current
+      ;(button && !button.disabled ? button : workspaceRef.current)?.focus()
+    }
     wasConfirming.current = confirming
   }, [confirming])
 
@@ -183,9 +188,10 @@ export default function DailyActionsWorkspace() {
   // วิเคราะห์ใหม่ทีละตัวผ่าน /api/analyze เดิม — เรียกจากปุ่ม "ยืนยัน" ในกล่องยืนยันเท่านั้น (guard/แคช/การบันทึกผลชุดเดียวกับเดิม) หยุดเมื่อโควตา AI เต็ม
   async function reanalyzeAll() {
     const symbols = [...(data?.heldSymbols ?? [])]
+    // v1.41.54: ปิดกล่องยืนยันก่อนเสมอ แม้ไม่มีหุ้นหรือกำลังวิเคราะห์อยู่ (ไม่ให้กล่องค้างหลังกด "ยืนยัน")
+    setConfirming(false)
     if (symbols.length === 0 || runningRef.current) return
     runningRef.current = true
-    setConfirming(false)
     setRunMessage(null)
     let failed = 0
     let stoppedForQuota = false
@@ -230,7 +236,7 @@ export default function DailyActionsWorkspace() {
 
 
   return (
-    <div className="space-y-4" data-testid="daily-actions-workspace">
+    <div ref={workspaceRef} tabIndex={-1} className="space-y-4 outline-none" data-testid="daily-actions-workspace">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-white md:text-2xl">✅ คำแนะนำวันนี้</h1>

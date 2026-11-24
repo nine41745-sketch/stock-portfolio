@@ -1,5 +1,14 @@
 # Production Release Status
 
+## Prepared, not merged — v1.41.54
+
+- Scope: แก้ Low 2 ข้อจากรีวิวอิสระรอบ 2 ของ v1.41.53 ใน `components/portfolio/DailyActionsWorkspace.tsx` (เจ้าของสั่งให้แก้): (Low-1) `reanalyzeAll` เรียก `setConfirming(false)` ก่อน early-return guard จึงปิดกล่องยืนยันเสมอ ไม่ค้างเมื่อไม่มีหุ้นหรือกำลังวิเคราะห์อยู่; (Low-2) หลังกด "ยืนยัน" ปุ่มหัวถูก disable ทันที `focus()` จึงไม่ทำงาน — ถ้าปุ่มถูกปิดใช้งานให้ย้ายโฟกัสไปที่พื้นที่ทำงานของหน้า (`workspaceRef`, `tabIndex={-1}`) ส่วนกรณียกเลิก/Esc ยังคืนโฟกัสให้ปุ่มหัวเหมือนเดิม. ไม่เปลี่ยน API, SQL, cron, `vercel.json`, workflow, env, กติกาตัดสิน, ลอจิกวิเคราะห์ทีละตัว
+- Development/Feature History: `Development History — Feature commit 2026-11-24 11:00:00 +07:00 (ไม่ใช่ Production)` (เวลาตั้งชั่วคราว จะปรับเป็นเวลา commit จริงใน commit เอกสารถัดไป)
+- Release state: ยังไม่ push ยังไม่ merge ยังไม่ Stage ยังไม่ Promote. Production เป็น v1.41.53 (`dpl_2YdDTSR1J85GagezhCuhQ2x2RZCX`). Security Gate และ Production Release Gate remain HOLD for v1.41.54
+- Tests: `scripts/test-daily-actions.mjs` เพิ่ม assertion: `setConfirming(false)` อยู่ก่อน guard `runningRef.current) return`; มี `workspaceRef`/`tabIndex={-1}`/เงื่อนไข `!button.disabled ? button : workspaceRef.current`; assertion เดิมเรื่อง Escape/คืนโฟกัสยังอยู่ (เปลี่ยนเป็นตรวจ `reanalyzeButtonRef.current` เพราะโค้ดคืนโฟกัสเปลี่ยนรูป ไม่ได้ลดความเข้ม); การนับ `reanalyzeAll` = 2 ยังคงอยู่
+- Rollback: revert PR (ไม่มี SQL)
+- Not verified: พฤติกรรมโฟกัสในเบราว์เซอร์จริง (ตรวจจากโค้ดและเทสต์ตรึงโค้ดเท่านั้น), CI, รีวิวอิสระ, การกดปุ่มจริงบน Production (ใช้โควตา AI และเรียก `/api/analyze`)
+
 ## Released — v1.41.53 (Production; migration `analysis_cron_runs` ยังไม่รัน)
 
 - Scope: แก้บั๊กปุ่ม "🔄 วิเคราะห์ใหม่" บนหน้า `/daily-actions` ที่เจ้าของรายงานว่า "กดแล้วไม่มีอะไรเกิดขึ้น" (เจ้าของเลือกอาการนี้จากตัวเลือก; ผู้เขียนตรวจหน้าจริงแบบอ่านอย่างเดียวแล้วพบว่าปุ่มไม่ถูกปิดและโหลดข้อมูลครบ 8 ตัว) — สาเหตุที่น่าจะเป็นที่สุดคือ `window.confirm` ซึ่งเบราว์เซอร์ฝังในแอปมักปิดเงียบๆ และถือว่ากดยกเลิก (ผู้เขียนยังไม่ได้พิสูจน์ด้วยการกดจริงเพราะกฎห้ามเรียก `/api/analyze` ตอน QA): `components/portfolio/DailyActionsWorkspace.tsx` เปลี่ยนเป็นกล่องยืนยันในหน้า (`daily-actions-confirm` พร้อมปุ่ม "ยืนยัน วิเคราะห์ใหม่" และ "ยกเลิก", ข้อความบอกว่าใช้โควตา AI กี่คำขอ) ปุ่มบนหัวหน้าเปิดกล่องนี้ และเริ่มวิเคราะห์จากปุ่มยืนยันที่เดียว ลอจิกวิเคราะห์ทีละตัว/หยุดเมื่อโควตาเต็ม/401-403/ออกจากหน้า คงเดิม. ไม่เปลี่ยน API, SQL, cron, `vercel.json`, workflow, env, กติกาตัดสิน
