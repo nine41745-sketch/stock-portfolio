@@ -607,7 +607,7 @@ assert.equal(packageLock.packages?.['node_modules/react']?.version, '19.3.1', 'l
 assert.equal(packageLock.packages?.['node_modules/react-dom']?.version, '19.3.1', 'lockfile must resolve ReactDOM 19.3.1')
 assert.equal(packageLock.packages?.['node_modules/@types/react']?.version, '19.3.0', 'lockfile must resolve React types 19.3.0')
 assert.equal(packageLock.packages?.['node_modules/@types/react-dom']?.version, '19.3.0', 'lockfile must resolve ReactDOM types 19.3.0')
-assert.equal(packageLock.packages?.['node_modules/autoprefixer']?.version, '10.6.1', 'lockfile must resolve Autoprefixer 10.6.1')
+assert.equal(packageLock.packages?.['node_modules/autoprefixer']?.version, '10.7.0', 'lockfile must resolve Autoprefixer 10.7.0')
 assert.equal(packageLock.packages?.['']?.devDependencies?.['eslint-config-next'], '16.4.6', 'lockfile root must pin the matching Next.js ESLint config')
 assert.equal(packageLock.packages?.['node_modules/eslint-config-next']?.version, '16.4.6', 'lockfile must resolve eslint-config-next 16.4.6')
 for (const name of ['@next/env', '@next/eslint-plugin-next']) {
@@ -615,7 +615,7 @@ for (const name of ['@next/env', '@next/eslint-plugin-next']) {
 }
 assert.equal(packageLock.packages?.['node_modules/sharp']?.version, '0.35.5', 'Image Optimization must resolve the patched Sharp release')
 assert.equal(packageLock.packages?.['node_modules/@supabase/ssr']?.version, '0.12.7', 'lockfile must resolve audited @supabase/ssr 0.12.7')
-assert.equal(packageLock.packages?.['node_modules/@supabase/supabase-js']?.version, '2.119.0', 'lockfile must resolve compatible @supabase/supabase-js 2.119.0')
+assert.equal(packageLock.packages?.['node_modules/@supabase/supabase-js']?.version, '2.119.2', 'lockfile must resolve compatible @supabase/supabase-js 2.119.2')
 assert.equal(packageJson.devDependencies?.tailwindcss, '^3.4.14', 'Security remediation must preserve Tailwind CSS 3 while compatibility is tested')
 assert.equal(packageJson.overrides?.['postcss-selector-parser'], '7.1.6', 'Force the parser containing the quadratic-selector security fix')
 const selectorParserEntries = Object.entries(packageLock.packages ?? {}).filter(([path]) => path.endsWith('node_modules/postcss-selector-parser'))
