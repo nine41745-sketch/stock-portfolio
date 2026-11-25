@@ -37,12 +37,14 @@ export default function AutoTradeEntry() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [migrationRequired, setMigrationRequired] = useState(false)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     setSaving(true)
     setError(null)
     setMigrationRequired(false)
+    setSuccessMessage(null)
 
     try {
       const response = await fetch('/api/trades', {
@@ -68,8 +70,8 @@ export default function AutoTradeEntry() {
         ? 'ขายหมดและนำหุ้นออกจาก Holdings แล้ว'
         : `หุ้นคงเหลือ ${Number(data.holding_shares ?? 0).toLocaleString('en-US', { maximumFractionDigits: 6 })} หุ้น`
       const dime = Number(data.dime_balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-      window.alert(`${side} ${form.symbol.toUpperCase()} สำเร็จ\n${remaining}\nเงินใน Dime: $${dime}`)
-      window.location.reload()
+      // v1.41.55: แจ้งผลในหน้าแทน window.alert แล้วให้ผู้ใช้กดรีเฟรชเอง (บันทึกสำเร็จแล้ว ฟอร์มยังล็อกอยู่ ไม่ให้ส่งซ้ำ)
+      setSuccessMessage(`${side} ${form.symbol.toUpperCase()} สำเร็จ · ${remaining} · เงินใน Dime: $${dime}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'บันทึกซื้อ/ขายไม่สำเร็จ')
       setSaving(false)
@@ -186,6 +188,12 @@ export default function AutoTradeEntry() {
             <p className="mb-2 text-sm text-yellow-400">Auto Sync ยังไม่เปิดใช้งานในฐานข้อมูล — ต้องติดตั้ง migration v1.27.1 ก่อน</p>
           )}
           {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
+          {successMessage && (
+            <div className="mb-2 flex flex-wrap items-center gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300" role="status" data-testid="auto-trade-success">
+              <p>✅ {successMessage}</p>
+              <button type="button" onClick={() => window.location.reload()} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500">รีเฟรชข้อมูล</button>
+            </div>
+          )}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <button
               type="submit"

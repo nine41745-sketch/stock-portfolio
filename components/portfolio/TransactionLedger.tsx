@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import ConfirmPanel from '@/components/ui/ConfirmPanel'
 import SyncedTradeCorrection from './SyncedTradeCorrection'
 
 type TransactionType = 'BUY' | 'SELL' | 'OPENING_POSITION' | 'DIVIDEND' | 'DEPOSIT' | 'WITHDRAW'
@@ -129,6 +130,7 @@ export default function TransactionLedger() {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [correcting, setCorrecting] = useState<TransactionItem | null>(null)
+  const [pending, setPending] = useState<{ kind: 'edit' | 'delete'; item: TransactionItem } | null>(null)
   const [form, setForm] = useState<FormState>(() => blankForm())
   const [filterType, setFilterType] = useState<'ALL' | TransactionType>('ALL')
   const [filterSymbol, setFilterSymbol] = useState('ALL')
@@ -215,7 +217,6 @@ export default function TransactionLedger() {
 
   function startEdit(item: TransactionItem) {
     if (item.sync_portfolio !== false) return
-    if (!window.confirm('แก้ไขรายการ Ledger นี้หรือไม่? การแก้ไขจะไม่ Sync จำนวนหุ้นใน Holdings อัตโนมัติ กรุณาตรวจเทียบพอร์ตหลังบันทึก')) return
     setEditingId(item.id)
     setForm({
       transaction_type: item.transaction_type,
@@ -260,7 +261,6 @@ export default function TransactionLedger() {
 
   async function remove(item: TransactionItem) {
     if (item.sync_portfolio !== false) return
-    if (!window.confirm(`ลบรายการ ${TYPE_LABELS[item.transaction_type]} ${item.symbol ?? ''} วันที่ ${item.trade_date} ใช่หรือไม่?`)) return
     setError(null)
     try {
       const response = await fetch(`/api/transactions?id=${encodeURIComponent(item.id)}`, { method: 'DELETE' })
@@ -305,6 +305,25 @@ export default function TransactionLedger() {
           {error}
           <button type="button" onClick={() => void load()} className="ml-3 underline">ลองใหม่</button>
         </div>
+      )}
+
+      {pending && (
+        <ConfirmPanel
+          ariaLabel={pending.kind === 'edit' ? 'ยืนยันแก้ไขรายการ Ledger' : 'ยืนยันลบรายการ Ledger'}
+          message={pending.kind === 'edit'
+            ? 'แก้ไขรายการ Ledger นี้หรือไม่? การแก้ไขจะไม่ Sync จำนวนหุ้นใน Holdings อัตโนมัติ กรุณาตรวจเทียบพอร์ตหลังบันทึก'
+            : `ลบรายการ ${TYPE_LABELS[pending.item.transaction_type]} ${pending.item.symbol ?? ''} วันที่ ${pending.item.trade_date} ใช่หรือไม่?`}
+          confirmLabel={pending.kind === 'edit' ? 'ยืนยัน แก้ไข' : 'ยืนยัน ลบรายการ'}
+          tone={pending.kind === 'delete' ? 'danger' : 'info'}
+          onConfirm={() => {
+            const action = pending
+            setPending(null)
+            if (action.kind === 'edit') startEdit(action.item)
+            else void remove(action.item)
+          }}
+          onCancel={() => setPending(null)}
+          testId="ledger-confirm"
+        />
       )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
@@ -506,8 +525,8 @@ export default function TransactionLedger() {
                     <td className="max-w-[260px] truncate px-2 py-3" title={item.note ?? ''}>{item.note ?? '—'}</td>
                     <td className="px-2 py-3 text-right whitespace-nowrap">
                       {item.sync_portfolio === false ? <>
-                      <button type="button" onClick={() => startEdit(item)} className="mr-3 text-blue-400 hover:underline">แก้ไข</button>
-                      <button type="button" onClick={() => void remove(item)} className="text-red-400 hover:underline">ลบ</button>
+                      <button type="button" onClick={() => { if (item.sync_portfolio === false) setPending({ kind: 'edit', item }) }} className="mr-3 text-blue-400 hover:underline">แก้ไข</button>
+                      <button type="button" onClick={() => { if (item.sync_portfolio === false) setPending({ kind: 'delete', item }) }} className="text-red-400 hover:underline">ลบ</button>
                       </> : typeof item.correction_revision === 'number'
                         ? <button type="button" onClick={() => { setShowForm(false); setCorrecting(item) }} className="text-amber-400 hover:underline">แก้ตัวเลขล่าสุด</button>
                         : <span className="text-xs text-gray-400">ซื้อ/ขายจริง · ล็อกแล้ว</span>}

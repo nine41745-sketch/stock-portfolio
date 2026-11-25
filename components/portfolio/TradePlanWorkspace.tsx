@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { calculateTradePlanMetrics, type TradePlanSource, type TradePlanStatus } from '@/lib/trade-plan'
+import ConfirmPanel from '@/components/ui/ConfirmPanel'
 import TradePlanExecutionPanel from './TradePlanExecutionPanel'
 
 export interface TradePlanPrefill {
@@ -161,6 +162,8 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<TradePlanItem | null>(null)
   const [migrationRequired, setMigrationRequired] = useState(false)
   const [migrationFile, setMigrationFile] = useState('supabase/migration_trade_plan_v1.23.0.sql')
 
@@ -273,7 +276,7 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
   }
 
   async function deletePlan(item: TradePlanItem) {
-    if (migrationRequired || !window.confirm(`ลบ Trade Plan ${item.symbol}?`)) return
+    if (migrationRequired) return
     setError(null)
     try {
       const response = await fetch(`/api/trade-plans?id=${encodeURIComponent(item.id)}`, { method: 'DELETE' })
@@ -310,6 +313,23 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
       )}
 
       {error && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">⚠️ {error}</p>}
+      {notice && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300" role="status" data-testid="trade-plan-notice">
+          <p>✅ {notice}</p>
+          <button type="button" onClick={() => setNotice(null)} className="shrink-0 text-xs text-emerald-200 hover:text-white">ปิด</button>
+        </div>
+      )}
+      {deleteTarget && (
+        <ConfirmPanel
+          ariaLabel="ยืนยันการลบ Trade Plan"
+          message={`ลบ Trade Plan ${deleteTarget.symbol}?`}
+          confirmLabel="ยืนยัน ลบแผน"
+          tone="danger"
+          onConfirm={() => { const target = deleteTarget; setDeleteTarget(null); void deletePlan(target) }}
+          onCancel={() => setDeleteTarget(null)}
+          testId="trade-plan-delete-confirm"
+        />
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4"><p className="text-xs text-gray-500">แผนที่กำลังใช้งาน</p><p className="mt-1 text-2xl font-bold text-white">{summary.active}</p></div>
@@ -403,7 +423,7 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
                 <article key={item.id} className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div><div className="flex flex-wrap items-center gap-2"><h3 className="text-xl font-bold text-white">{item.symbol}</h3><span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_STYLE[item.status]}`}>{STATUS_LABEL[item.status]}</span><span className="rounded bg-gray-800 px-2 py-1 text-[10px] text-gray-500">{item.source === 'STOCK_CHECK' ? '🔬 Stock Check' : 'Manual'}</span></div><p className="mt-1 text-[10px] text-gray-600">อัปเดต {new Date(item.updated_at).toLocaleString('th-TH')}</p></div>
-                    <div className="flex gap-1.5"><button type="button" onClick={() => beginEdit(item)} className="rounded border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 hover:bg-gray-800">แก้ไข</button><button type="button" onClick={() => void deletePlan(item)} className="rounded border border-red-500/20 px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/10">ลบ</button></div>
+                    <div className="flex gap-1.5"><button type="button" onClick={() => beginEdit(item)} className="rounded border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 hover:bg-gray-800">แก้ไข</button><button type="button" onClick={() => { if (!migrationRequired) setDeleteTarget(item) }} className="rounded border border-red-500/20 px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/10">ลบ</button></div>
                   </div>
 
                   <div className="mt-3 grid gap-2 grid-cols-2 sm:grid-cols-4">
@@ -418,7 +438,7 @@ export default function TradePlanWorkspace({ initialDraft }: { initialDraft?: Tr
                   </div>
 
                   {item.note && <p className="mt-3 rounded-lg bg-gray-950/60 p-2.5 text-xs leading-relaxed text-gray-400">{item.note}</p>}
-                  <TradePlanExecutionPanel item={item} onExecuted={loadPlans} />
+                  <TradePlanExecutionPanel item={item} onExecuted={async message => { setNotice(message); await loadPlans() }} />
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {item.status === 'WAITING' && <button type="button" onClick={() => void changeStatus(item, 'ENTERED')} className="rounded-lg bg-green-600/20 px-3 py-1.5 text-xs font-semibold text-green-300 hover:bg-green-600/30">✓ เข้าแล้ว</button>}
                     {(item.status === 'WAITING' || item.status === 'ENTERED') && <button type="button" onClick={() => void changeStatus(item, 'CLOSED')} className="rounded-lg bg-blue-600/20 px-3 py-1.5 text-xs font-semibold text-blue-300 hover:bg-blue-600/30">ปิดแผน</button>}

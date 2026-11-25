@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
 interface PortfolioItem {
@@ -33,6 +33,9 @@ export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) 
   const [busy, setBusy] = useState(false)
   const [available, setAvailable] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const addButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -85,11 +88,17 @@ export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) 
     }
   }
 
+  // v1.41.55: ช่องกรอกชื่อพอร์ตในหน้าแทน window.prompt (เบราว์เซอร์แบบฝังอาจบล็อกหน้าต่างระบบ)
+  function closeCreateForm() {
+    setCreating(false)
+    setNewName('')
+    setError(null)
+    addButtonRef.current?.focus()
+  }
+
   async function createPortfolio() {
     if (busy) return
-    const rawName = window.prompt('ชื่อพอร์ตใหม่ เช่น นาย')
-    if (rawName === null) return
-    const name = rawName.trim()
+    const name = newName.trim()
     if (!name) {
       setError('กรุณาใส่ชื่อพอร์ต')
       return
@@ -135,15 +144,38 @@ export default function PortfolioSwitcher({ actions }: { actions?: ReactNode }) 
       </div>
       <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
         <button
+          ref={addButtonRef}
           type="button"
-          onClick={() => void createPortfolio()}
-          disabled={busy || loading}
+          onClick={() => { setError(null); setCreating(true) }}
+          disabled={busy || loading || creating}
           className="min-h-9 rounded-lg border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 hover:bg-gray-800 hover:text-white disabled:text-gray-300 disabled:opacity-100"
         >
           ＋ เพิ่มพอร์ต
         </button>
         {actions}
       </div>
+      {creating && (
+        <form
+          className="flex basis-full flex-wrap items-center gap-2"
+          onSubmit={event => { event.preventDefault(); void createPortfolio() }}
+          onKeyDown={event => { if (event.key === 'Escape' && !busy) { event.preventDefault(); closeCreateForm() } }}
+          data-testid="portfolio-create-form"
+        >
+          <label className="sr-only" htmlFor="new-portfolio-name">ชื่อพอร์ตใหม่</label>
+          <input
+            id="new-portfolio-name"
+            autoFocus
+            value={newName}
+            onChange={event => setNewName(event.target.value)}
+            maxLength={40}
+            disabled={busy}
+            placeholder="ชื่อพอร์ตใหม่ เช่น นาย"
+            className="min-h-9 min-w-0 flex-1 rounded-lg border border-gray-700 bg-gray-950 px-2.5 py-1.5 text-xs text-gray-200 focus:border-blue-500 focus:outline-none sm:max-w-[240px]"
+          />
+          <button type="submit" disabled={busy} className="min-h-9 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50">สร้างพอร์ต</button>
+          <button type="button" onClick={closeCreateForm} disabled={busy} className="min-h-9 rounded-lg border border-gray-700 px-3 py-1.5 text-xs font-semibold text-gray-300 hover:bg-gray-800 disabled:opacity-50">ยกเลิก</button>
+        </form>
+      )}
       {error && <p className="basis-full text-xs text-red-400">⚠️ {error}</p>}
     </div>
   )
