@@ -109,7 +109,9 @@ assert.match(ui, /จะไม่เปลี่ยนจำนวนหุ้�
 assert.match(ui, /migration_transactions_v1\.21\.0\.sql/, 'Missing migration must have a clear recovery path')
 assert.match(ui, /max-h-96 overflow-auto/, 'Long transaction histories must be contained in a scrollable region')
 assert.match(ui, /sticky top-0/, 'Transaction headers stay visible while browsing long histories')
-assert.match(ui, /window\.confirm\([\s\S]*แก้ไขรายการ Ledger[\s\S]*ไม่ Sync จำนวนหุ้น/, 'Editing a ledger row requires acknowledgement that Holdings are not automatically synchronized')
+assert.match(ui, /<ConfirmPanel[\s\S]*แก้ไขรายการ Ledger[\s\S]*ไม่ Sync จำนวนหุ้น/, 'Editing a ledger row requires acknowledgement that Holdings are not automatically synchronized')
+assert.ok(!ui.includes('onClick={() => startEdit(item)}'), 'The edit button must open the confirmation, not edit directly')
+assert.equal(ui.split('startEdit(').length - 1, 2, 'startEdit must have one declaration and one call site (the confirm button)')
 assert.match(ui, /step="0\.000001"/, 'Transaction values accept six decimal places')
 
 const holdingModal = fs.readFileSync('components/portfolio/HoldingModal.tsx', 'utf8')

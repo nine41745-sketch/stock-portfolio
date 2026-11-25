@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { QuickNotesSession } from '@/lib/quick-notes-session'
+import ConfirmPanel from '@/components/ui/ConfirmPanel'
 
 function buildAiPrompt(notes: string): string {
   const body = notes.trim() || '(ยังไม่ได้จดอะไรไว้ — เติมรายละเอียดตรงนี้ก่อน copy ไปสั่งงานจริง)'
@@ -27,6 +28,7 @@ export default function QuickNotesDrawer() {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const [copied, setCopied] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
   const [exported, setExported] = useState(false)
 
   useEffect(() => {
@@ -68,6 +70,7 @@ export default function QuickNotesDrawer() {
     const target = dialog.querySelector<HTMLElement>('textarea:not(:disabled), button')
     target?.focus()
     return () => {
+      setConfirmClear(false)
       dialog.close()
       if (trigger?.isConnected) trigger.focus()
     }
@@ -82,8 +85,17 @@ export default function QuickNotesDrawer() {
       .catch(() => {})
   }
 
+  // v1.41.55: ถามยืนยันในลิ้นชักแทน window.confirm (ถ้าโน้ตว่างอยู่แล้วล้างได้ทันที)
   function handleClear() {
-    if (content.trim() && !window.confirm('ล้างโน้ตทั้งหมด? กู้คืนไม่ได้')) return
+    if (content.trim()) {
+      setConfirmClear(true)
+      return
+    }
+    session.edit('')
+  }
+
+  function confirmClearNotes() {
+    setConfirmClear(false)
     session.edit('')
   }
 
@@ -161,6 +173,17 @@ export default function QuickNotesDrawer() {
         </div>
 
         <div className="flex shrink-0 flex-col gap-2 border-t border-gray-800 px-4 py-2.5">
+          {confirmClear && isOpen && (
+            <ConfirmPanel
+              ariaLabel="ยืนยันล้างโน้ตทั้งหมด"
+              message="ล้างโน้ตทั้งหมด? กู้คืนไม่ได้"
+              confirmLabel="ยืนยัน ล้างโน้ต"
+              tone="danger"
+              onConfirm={confirmClearNotes}
+              onCancel={() => setConfirmClear(false)}
+              testId="quick-notes-clear-confirm"
+            />
+          )}
           <button type="button" onClick={handleExportPrompt} disabled={!loaded} className="w-full rounded border border-purple-500/30 bg-purple-600/20 px-2.5 py-1.5 text-xs font-medium text-purple-800 dark:text-purple-300 transition-colors hover:bg-purple-600/30 disabled:opacity-40">
             {exported ? '✓ คัดลอก Prompt แล้ว — พร้อมนำไปใช้กับ AI' : '📤 คัดลอก Prompt สำหรับ AI'}
           </button>

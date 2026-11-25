@@ -135,7 +135,7 @@ assert.match(executionUi, /บันทึกขายจริง/, 'ENTERED pl
 assert.match(executionUi, /Transaction Ledger \+ Holdings \+ Dime \+ Trade Plan/, 'Confirmation must explain all atomic side effects')
 assert.match(executionUi, /ไม่มี Auto Trading/, 'Real trade execution must require explicit user action')
 assert.match(executionUi, /\/api\/trade-plans\/execute/, 'Execution UI must call the dedicated endpoint')
-assert.match(ui, /<TradePlanExecutionPanel item=\{item\} onExecuted=\{loadPlans\} \/>/, 'Each active Trade Plan must expose the execution control')
+assert.match(ui, /<TradePlanExecutionPanel item=\{item\} onExecuted=\{async message => \{ setNotice\(message\); await loadPlans\(\) \}\} \/>/, 'Each active Trade Plan must expose the execution control and report the result in the page')
 
 const stockCheck = fs.readFileSync('components/portfolio/StockCheckPanel.tsx', 'utf8')
 assert.match(stockCheck, /ส่งเข้า Trade Plan/, 'Stock Check must link its computed plan into Trade Plan')
