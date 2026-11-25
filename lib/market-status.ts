@@ -158,6 +158,11 @@ export function getUsMarketClock(now: Date = new Date()): UsMarketClock {
 // bar ถือว่าสมบูรณ์เมื่อพ้นเวลาปิด (16:00 ET หรือ 13:00 ET วันปิดเร็ว) + 20 นาที ให้ผู้ให้บริการปิด bar
 const BAR_COMPLETE_BUFFER_MIN = 20
 const MAX_SESSION_WALKBACK_DAYS = 14
+// bar ที่เก่าเกินนี้ถือว่าข้อมูลวันที่ผิดปกติ (ไม่ใช่แค่ล่าช้า) ตอบ null แทนการวนนับยาว
+const MAX_LAG_SPAN_DAYS = 3650
+// ปีสุดท้ายที่รายการวันหยุดด้านบนครอบคลุม — หลังจากนี้ lag จะเตือนผิดทุกวันหยุด ต้องอัปเดตปฏิทินก่อน
+export const CALENDAR_FIRST_YEAR = 2026
+export const CALENDAR_LAST_YEAR = 2028
 
 function keyToUtcMs(key: string): number {
   const [year, month, day] = key.split('-').map(Number)
@@ -213,10 +218,51 @@ function barSessionKey(barAt: string): string | null {
 
 // null เมื่อไม่มี/อ่านวันที่ bar ไม่ได้; 0 เมื่อ bar ทันกับ session ที่ควรจบแล้ว; >0 คือช้ากี่วันทำการ
 export function barLagSessions(lastBarAt: string | null | undefined, now: Date = new Date()): number | null {
-  if (!lastBarAt) return null
+  if (!lastBarAt || !Number.isFinite(now.getTime())) return null
   const barKey = barSessionKey(lastBarAt)
   if (!barKey) return null
-  return tradingSessionsAfter(barKey, lastCompletedSessionDate(now))
+  const expected = lastCompletedSessionDate(now)
+  if (keyToUtcMs(expected) - keyToUtcMs(barKey) > MAX_LAG_SPAN_DAYS * 86_400_000) return null
+  return tradingSessionsAfter(barKey, expected)
+}
+
+export interface BarFreshnessItem {
+  symbol: string
+  lastBarAt: string | null | undefined
+  dataSource?: string | null
+  /** วันที่ของแถวล่าสุดที่ผู้ให้บริการส่งมาแต่ถูกทิ้ง (ค่า OHLCV ไม่ครบ) ถ้ามี */
+  droppedLatestBarAt?: string | null
+}
+
+export interface StaleBarSummary {
+  checked: number
+  /** `SYMBOL:sessionsBehind:dataSource[:dropped@เวลา]` ของหุ้นที่ bar ล่าช้า */
+  stale: string[]
+  /** หุ้นที่ไม่มี/อ่านวันที่ bar ไม่ได้ (เช่น ผู้ให้บริการไม่ส่งข้อมูลเลย) */
+  unknown: string[]
+  expectedSession: string
+  /** false เมื่อวันที่ปัจจุบันอยู่นอกช่วงปีที่ปฏิทินวันหยุดครอบคลุม (lag จะเชื่อถือไม่ได้) */
+  calendarCovered: boolean
+}
+
+// สรุปว่าหุ้นไหน bar ช้า/ไม่ทราบ ใช้ร่วมกันทั้ง cron รอบ post-close และ pre-market (ฟังก์ชันบริสุทธิ์ ตรวจด้วยเทสต์ได้)
+export function summarizeStaleBars(items: BarFreshnessItem[], now: Date = new Date()): StaleBarSummary {
+  if (!Number.isFinite(now.getTime())) {
+    return { checked: items.length, stale: [], unknown: items.map(item => item.symbol), expectedSession: 'unknown', calendarCovered: false }
+  }
+  const expectedSession = lastCompletedSessionDate(now)
+  const year = Number(expectedSession.slice(0, 4))
+  const stale: string[] = []
+  const unknown: string[] = []
+  for (const item of items) {
+    const lag = barLagSessions(item.lastBarAt, now)
+    if (lag === null) {
+      unknown.push(item.symbol)
+    } else if (lag > 0) {
+      stale.push(`${item.symbol}:${lag}:${item.dataSource ?? '?'}${item.droppedLatestBarAt ? `:dropped@${item.droppedLatestBarAt}` : ''}`)
+    }
+  }
+  return { checked: items.length, stale, unknown, expectedSession, calendarCovered: year >= CALENDAR_FIRST_YEAR && year <= CALENDAR_LAST_YEAR }
 }
 
 export const PREMARKET_CRON_WINDOW = '08:45-09:44 ET'

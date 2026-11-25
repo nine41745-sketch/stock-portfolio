@@ -68,6 +68,8 @@ export interface TechnicalSnapshot {
   // v1.41.56: newest daily bar time and how many US sessions it was behind when computed (measured only; older rows may lack them).
   lastBarAt?: string | null
   barLagSessions?: number | null
+  dataSource?: string | null
+  droppedLatestBarAt?: string | null
 }
 
 export interface EarningsInfo {
