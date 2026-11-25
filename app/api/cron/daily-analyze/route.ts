@@ -10,7 +10,7 @@ import { HoldingWithPrice, NewsItem } from '@/types'
 import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
 import { applyPortfolioAiClaimGuard } from '@/lib/portfolio-ai-claim-guard'
 import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
-import { getUsMarketClock } from '@/lib/market-status'
+import { getUsMarketClock, lastCompletedSessionDate } from '@/lib/market-status'
 import { resolveBuyingPower } from '@/lib/buying-power'
 import { buildCronRunRow, recordCronRuns } from '@/lib/cron-run-status'
 
@@ -220,6 +220,14 @@ export async function GET(request: NextRequest) {
           }
         })
       )
+
+      // v1.41.56: วัดอย่างเดียว — บันทึกเมื่อ bar รายวันล่าสุดของตัวชี้วัดช้ากว่า session ที่ควรจบแล้ว
+      const staleBars = batchInputs
+        .filter(input => (input.technical.barLagSessions ?? 0) > 0)
+        .map(input => `${input.holding.symbol}:${input.technical.barLagSessions}`)
+      if (staleBars.length > 0) {
+        console.warn('[daily-cron] stale daily bars (sessions behind)', { stale: staleBars, expectedSession: lastCompletedSessionDate(), checked: batchInputs.length })
+      }
 
       const technicalBySymbol = new Map(batchInputs.map(input => [input.holding.symbol, input.technical]))
       const batch = await analyzePortfolioBatch(batchInputs, buyingPower, totalPortfolioValue)

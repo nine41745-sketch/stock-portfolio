@@ -14,6 +14,7 @@ import { discoveryFetch, type DiscoveryProviderContext } from '@/lib/discovery-d
 import { getDiscoveryYahooChart } from '@/lib/discovery-yahoo'
 import { calculateImportantSupport } from '@/lib/important-support'
 import { isPartialUsSessionBar } from '@/lib/market-session'
+import { barLagSessions } from '@/lib/market-status'
 import { toHistorySymbol } from '@/lib/provider-symbol'
 import { createRangeCache, week52FromBars, WEEK52_BARS_TIMEOUT_MS, WEEK52_CACHE_TTL_MS } from '@/lib/week52'
 
@@ -31,6 +32,8 @@ export interface TechnicalIndicators {
   /** Daily OHLCV adapter provenance, not a live quote-source guarantee. */
   dataSource?: 'Yahoo Finance' | 'Stooq' | 'unavailable'
   lastBarAt?: string | null
+  /** v1.41.56: sessions the newest daily bar is behind the last completed US session when this was computed (0 = current; null = unknown). Measured only; indicator values are not adjusted. */
+  barLagSessions?: number | null
   ema50: number | null
   ema100: number | null
   ema200: number | null
@@ -334,7 +337,9 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
 
   const weeklyRsi14 = calcWeeklyRsi(weeklyBars)
 
-  if (bars.length < 15) return { ...EMPTY_INDICATORS, weeklyRsi14, dataSource: source, lastBarAt }
+  const lagSessions = barLagSessions(lastBarAt)
+
+  if (bars.length < 15) return { ...EMPTY_INDICATORS, weeklyRsi14, dataSource: source, lastBarAt, barLagSessions: lagSessions }
 
   const closes = bars.map(b => b.close)
   const lastClose = last(closes)
@@ -383,6 +388,7 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
   return {
     dataSource: source,
     lastBarAt,
+    barLagSessions: lagSessions,
     ema50,
     ema100: round2(last(ema100arr)),
     ema200,

@@ -6,7 +6,7 @@ import { analyzePortfolioBatch, PortfolioBatchHoldingInput } from '@/lib/portfol
 import { getMultipleQuotesWithMetrics, getUpcomingEarningsForSymbols } from '@/lib/finnhub'
 import { getPreMarketSnapshots } from '@/lib/premarket'
 import { evaluatePremarketTriggers } from '@/lib/premarket-trigger'
-import { getUsMarketClock, isPremarketCronWindow, PREMARKET_CRON_WINDOW } from '@/lib/market-status'
+import { barLagSessions, getUsMarketClock, isPremarketCronWindow, lastCompletedSessionDate, PREMARKET_CRON_WINDOW } from '@/lib/market-status'
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { getResultTimestamp } from '@/lib/latest-analysis'
 import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
@@ -218,6 +218,15 @@ export async function GET(request: NextRequest) {
             baselineSummary: baseline.summary, baselineAnalysedAt: baseline.analysedAt, priceSource: sourceMap.get(symbol) ?? 'Finnhub',
           },
         })
+      }
+
+      // v1.41.56: รอบนี้ใช้ technical ของรอบ post-close ซ้ำ — วัดอย่างเดียวว่า bar ของมันช้ากว่า session ที่ควรจบแล้ว ณ ตอนนี้กี่วัน
+      const staleBaselineBars = inputs
+        .map(input => ({ symbol: input.holding.symbol, lag: barLagSessions(input.technical.lastBarAt) }))
+        .filter(item => (item.lag ?? 0) > 0)
+        .map(item => `${item.symbol}:${item.lag}`)
+      if (staleBaselineBars.length > 0) {
+        console.warn('[premarket-cron] baseline daily bars behind (sessions)', { stale: staleBaselineBars, expectedSession: lastCompletedSessionDate(), checked: inputs.length })
       }
 
       if (!inputs.length) {

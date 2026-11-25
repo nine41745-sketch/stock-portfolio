@@ -154,6 +154,71 @@ export function getUsMarketClock(now: Date = new Date()): UsMarketClock {
   }
 }
 
+// v1.41.56: วัดว่า bar รายวันล่าสุดของตัวชี้วัดช้ากว่า session ที่ควรจบแล้ว ณ เวลาคำนวณกี่วันทำการ (วัดอย่างเดียว ไม่แก้ค่าตัวชี้วัด)
+// bar ถือว่าสมบูรณ์เมื่อพ้นเวลาปิด (16:00 ET หรือ 13:00 ET วันปิดเร็ว) + 20 นาที ให้ผู้ให้บริการปิด bar
+const BAR_COMPLETE_BUFFER_MIN = 20
+const MAX_SESSION_WALKBACK_DAYS = 14
+
+function keyToUtcMs(key: string): number {
+  const [year, month, day] = key.split('-').map(Number)
+  return Date.UTC(year, month - 1, day)
+}
+
+function utcMsToKey(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10)
+}
+
+// วันทำการตามวันที่ปฏิทิน (วันในสัปดาห์ของวันที่หนึ่งๆ ไม่ขึ้นกับ timezone)
+function isTradingDayKey(key: string): boolean {
+  const weekdayIdx = new Date(keyToUtcMs(key)).getUTCDay()
+  return weekdayIdx >= 1 && weekdayIdx <= 5 && !FULL_HOLIDAYS.has(key)
+}
+
+// วันที่ (ET) ของ session ล่าสุดที่ปิดและ bar ควรสมบูรณ์แล้ว ณ เวลา now
+export function lastCompletedSessionDate(now: Date = new Date()): string {
+  const et = getETParts(now)
+  const todayKey = dateKey(et)
+  if (isTradingDayKey(todayKey)) {
+    const closeMin = (EARLY_CLOSE_DAYS.has(todayKey) ? EARLY_CLOSE_MIN : MARKET_CLOSE_MIN) + BAR_COMPLETE_BUFFER_MIN
+    if (et.hour * 60 + et.minute >= closeMin) return todayKey
+  }
+  let ms = keyToUtcMs(todayKey)
+  for (let i = 0; i < MAX_SESSION_WALKBACK_DAYS; i += 1) {
+    ms -= 86_400_000
+    const key = utcMsToKey(ms)
+    if (isTradingDayKey(key)) return key
+  }
+  return utcMsToKey(ms)
+}
+
+// จำนวนวันทำการหลัง fromKey จนถึง toKey (นับ toKey ไม่นับ fromKey); 0 เมื่อ toKey <= fromKey
+export function tradingSessionsAfter(fromKey: string, toKey: string): number {
+  const from = keyToUtcMs(fromKey)
+  const to = keyToUtcMs(toKey)
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return 0
+  let count = 0
+  for (let ms = from + 86_400_000; ms <= to; ms += 86_400_000) {
+    if (isTradingDayKey(utcMsToKey(ms))) count += 1
+  }
+  return count
+}
+
+// วันที่ session ของ bar: Yahoo ใส่เวลาเปิด session (UTC) จึงแปลงเป็นวันที่ ET; Stooq เป็นวันที่ล้วนที่ 00:00Z
+function barSessionKey(barAt: string): string | null {
+  const bar = new Date(barAt)
+  if (!Number.isFinite(bar.getTime())) return null
+  const midnightUtc = bar.getUTCHours() === 0 && bar.getUTCMinutes() === 0
+  return midnightUtc ? bar.toISOString().slice(0, 10) : dateKey(getETParts(bar))
+}
+
+// null เมื่อไม่มี/อ่านวันที่ bar ไม่ได้; 0 เมื่อ bar ทันกับ session ที่ควรจบแล้ว; >0 คือช้ากี่วันทำการ
+export function barLagSessions(lastBarAt: string | null | undefined, now: Date = new Date()): number | null {
+  if (!lastBarAt) return null
+  const barKey = barSessionKey(lastBarAt)
+  if (!barKey) return null
+  return tradingSessionsAfter(barKey, lastCompletedSessionDate(now))
+}
+
 export const PREMARKET_CRON_WINDOW = '08:45-09:44 ET'
 
 // Vercel Hobby cron มี per-hour precision (อาจมาช้าสูงสุด ~59 นาที)
