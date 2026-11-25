@@ -70,6 +70,7 @@ export default function QuickNotesDrawer() {
     const target = dialog.querySelector<HTMLElement>('textarea:not(:disabled), button')
     target?.focus()
     return () => {
+      setConfirmClear(false)
       dialog.close()
       if (trigger?.isConnected) trigger.focus()
     }

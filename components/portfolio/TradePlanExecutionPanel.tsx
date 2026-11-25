@@ -136,11 +136,11 @@ export default function TradePlanExecutionPanel({ item, onExecuted }: {
             <p className="text-xs font-semibold text-white">{tradeType === 'BUY' ? 'ซื้อจริง' : 'ขายจริง'} {item.symbol}</p>
             <button type="button" onClick={() => { if (!saving) { setConfirming(false); setTradeType(null) } }} disabled={saving} className="text-xs text-gray-500 hover:text-white disabled:opacity-50">ปิด</button>
           </div>
-          <label className="text-xs text-gray-400">จำนวนหุ้น<input required type="number" min="0.000001" step="0.000001" value={form.shares} onChange={e => setForm(v => ({ ...v, shares: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-2 text-sm text-white" /></label>
-          <label className="text-xs text-gray-400">ราคาจริง/หุ้น<input required type="number" min="0.000001" step="0.000001" value={form.price} onChange={e => setForm(v => ({ ...v, price: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-2 text-sm text-white" /></label>
-          <label className="text-xs text-gray-400">Fee<input type="number" min="0" step="0.000001" value={form.fee} onChange={e => setForm(v => ({ ...v, fee: e.target.value }))} placeholder="0" className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-2 text-sm text-white" /></label>
-          <label className="text-xs text-gray-400">วันที่<input required type="date" value={form.trade_date} onChange={e => setForm(v => ({ ...v, trade_date: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-2 text-sm text-white" /></label>
-          <label className="text-xs text-gray-400">หมายเหตุ<input value={form.note} onChange={e => setForm(v => ({ ...v, note: e.target.value }))} placeholder="ถ้ามี" className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-2 text-sm text-white" /></label>
+          <label className="text-xs text-gray-400">จำนวนหุ้น<input disabled={confirming} required type="number" min="0.000001" step="0.000001" value={form.shares} onChange={e => setForm(v => ({ ...v, shares: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-2 text-sm text-white" /></label>
+          <label className="text-xs text-gray-400">ราคาจริง/หุ้น<input disabled={confirming} required type="number" min="0.000001" step="0.000001" value={form.price} onChange={e => setForm(v => ({ ...v, price: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-2 text-sm text-white" /></label>
+          <label className="text-xs text-gray-400">Fee<input disabled={confirming} type="number" min="0" step="0.000001" value={form.fee} onChange={e => setForm(v => ({ ...v, fee: e.target.value }))} placeholder="0" className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-2 text-sm text-white" /></label>
+          <label className="text-xs text-gray-400">วันที่<input disabled={confirming} required type="date" value={form.trade_date} onChange={e => setForm(v => ({ ...v, trade_date: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-2 text-sm text-white" /></label>
+          <label className="text-xs text-gray-400">หมายเหตุ<input disabled={confirming} value={form.note} onChange={e => setForm(v => ({ ...v, note: e.target.value }))} placeholder="ถ้ามี" className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-2 text-sm text-white" /></label>
           <div className="sm:col-span-2 lg:col-span-5">
             <p className="mb-2 text-[10px] leading-relaxed text-gray-500">BUY → ENTERED · SELL บางส่วน → ENTERED · SELL จน Holdings เหลือ 0 → CLOSED</p>
             {migrationFile && <p className="mb-2 text-xs text-yellow-400">ต้องติดตั้ง Migration ก่อน: <span className="font-mono">{migrationFile}</span></p>}
@@ -149,7 +149,7 @@ export default function TradePlanExecutionPanel({ item, onExecuted }: {
               <div className="mb-2">
                 <ConfirmPanel
                   ariaLabel="ยืนยันบันทึกซื้อขายจริง"
-                  message={'ยืนยันบันทึก' + (tradeType === 'BUY' ? 'ซื้อ' : 'ขาย') + 'จริง ' + item.symbol + '?\nระบบจะอัปเดต Transaction Ledger + Holdings + Dime + Trade Plan พร้อมกันแบบ Atomic'}
+                  message={'ยืนยันบันทึก' + (tradeType === 'BUY' ? 'ซื้อ' : 'ขาย') + 'จริง ' + item.symbol + '?\n' + form.shares + ' หุ้น ราคา $' + form.price + (form.fee ? ' ค่าธรรมเนียม $' + form.fee : '') + ' วันที่ ' + form.trade_date + '\nระบบจะอัปเดต Transaction Ledger + Holdings + Dime + Trade Plan พร้อมกันแบบ Atomic'}
                   confirmLabel="ยืนยันบันทึก"
                   onConfirm={() => void executeTrade()}
                   onCancel={() => setConfirming(false)}
