@@ -65,6 +65,11 @@ export interface TechnicalSnapshot {
   // Stored by the analysis routes together with the rest of the indicators (TechnicalIndicators); older rows may lack them.
   week52High?: number | null
   week52Low?: number | null
+  // v1.41.56: newest daily bar time and how many US sessions it was behind when computed (measured only; older rows may lack them).
+  lastBarAt?: string | null
+  barLagSessions?: number | null
+  dataSource?: string | null
+  droppedLatestBarAt?: string | null
 }
 
 export interface EarningsInfo {

@@ -14,6 +14,7 @@ import { discoveryFetch, type DiscoveryProviderContext } from '@/lib/discovery-d
 import { getDiscoveryYahooChart } from '@/lib/discovery-yahoo'
 import { calculateImportantSupport } from '@/lib/important-support'
 import { isPartialUsSessionBar } from '@/lib/market-session'
+import { barLagSessions, droppedLatestRowAt } from '@/lib/market-status'
 import { toHistorySymbol } from '@/lib/provider-symbol'
 import { createRangeCache, week52FromBars, WEEK52_BARS_TIMEOUT_MS, WEEK52_CACHE_TTL_MS } from '@/lib/week52'
 
@@ -31,6 +32,10 @@ export interface TechnicalIndicators {
   /** Daily OHLCV adapter provenance, not a live quote-source guarantee. */
   dataSource?: 'Yahoo Finance' | 'Stooq' | 'unavailable'
   lastBarAt?: string | null
+  /** v1.41.56: sessions the newest daily bar is behind the last completed US session when this was computed (0 = current; null = unknown). Measured only; indicator values are not adjusted. */
+  barLagSessions?: number | null
+  /** v1.41.56: date of the provider's newest daily row that was dropped because its OHLCV was incomplete (null = none). Diagnostic only. */
+  droppedLatestBarAt?: string | null
   ema50: number | null
   ema100: number | null
   ema200: number | null
@@ -106,7 +111,12 @@ function toBars(raw: Array<{ close: number | null; high: number | null; low: num
     }))
 }
 
-async function fetchFromYahoo(symbol: string, context?: DiscoveryProviderContext, signal?: AbortSignal): Promise<Bar[]> {
+interface YahooBarsFetch {
+  bars: Bar[]
+  droppedLatestAt: string | null
+}
+
+async function fetchFromYahoo(symbol: string, context?: DiscoveryProviderContext, signal?: AbortSignal): Promise<YahooBarsFetch> {
   try {
     const period1 = new Date()
     period1.setFullYear(period1.getFullYear() - 1)
@@ -115,10 +125,14 @@ async function fetchFromYahoo(symbol: string, context?: DiscoveryProviderContext
       ? await getDiscoveryYahooChart(symbol, period1, '1d', context)
       : await yahooFinance.chart(symbol, { period1, interval: '1d' }, { fetchOptions: { signal } })
 
-    return toBars((result.quotes ?? []).map(q => ({ close: q.close, high: q.high, low: q.low, volume: q.volume, date: q.date })))
+    const raw = (result.quotes ?? []).map(q => ({ close: q.close, high: q.high, low: q.low, volume: q.volume, date: q.date }))
+    const bars = toBars(raw)
+    // v1.41.56: diagnosis only — report (never change) whether the provider's newest row was dropped by toBars
+    const droppedLatestAt = droppedLatestRowAt(raw, bars.at(-1)?.date ?? null)
+    return { bars, droppedLatestAt }
   } catch (e) {
     if (!context) console.error(`[indicators] yahoo-finance2 error for ${symbol}:`, e)
-    return []
+    return { bars: [], droppedLatestAt: null }
   }
 }
 
@@ -195,15 +209,17 @@ async function fetchHistoricalBars(symbol: string): Promise<Bar[]> {
   return (await fetchHistoricalBarsWithSource(symbol)).bars
 }
 
-async function fetchHistoricalBarsWithSource(rawSymbol: string, context?: DiscoveryProviderContext, signal?: AbortSignal): Promise<{ bars: Bar[]; source: 'Yahoo Finance' | 'Stooq' | 'unavailable' }> {
+async function fetchHistoricalBarsWithSource(rawSymbol: string, context?: DiscoveryProviderContext, signal?: AbortSignal): Promise<{ bars: Bar[]; source: 'Yahoo Finance' | 'Stooq' | 'unavailable'; droppedLatestAt: string | null }> {
   const symbol = toHistorySymbol(rawSymbol)
-  const yahoo = await fetchFromYahoo(symbol, context, signal)
-  if (yahoo.length >= 200) return { bars: yahoo, source: 'Yahoo Finance' }
+  const yahooFetch = await fetchFromYahoo(symbol, context, signal)
+  const yahoo = yahooFetch.bars
+  const droppedLatestAt = yahooFetch.droppedLatestAt
+  if (yahoo.length >= 200) return { bars: yahoo, source: 'Yahoo Finance', droppedLatestAt }
 
   const stooq = !signal?.aborted && (!context || context.canStart()) ? await fetchFromStooq(symbol, context, signal) : []
-  if (stooq.length > yahoo.length) return { bars: stooq, source: 'Stooq' }
-  if (yahoo.length) return { bars: yahoo, source: 'Yahoo Finance' }
-  return { bars: [], source: 'unavailable' }
+  if (stooq.length > yahoo.length) return { bars: stooq, source: 'Stooq', droppedLatestAt: null }
+  if (yahoo.length) return { bars: yahoo, source: 'Yahoo Finance', droppedLatestAt }
+  return { bars: [], source: 'unavailable', droppedLatestAt: null }
 }
 
 async function fetchHistoricalWeeklyBars(rawSymbol: string, context?: DiscoveryProviderContext): Promise<Bar[]> {
@@ -325,7 +341,7 @@ export async function getWeek52FromBars(rawSymbol: string, signal: AbortSignal =
 }
 
 export async function getTechnicalIndicators(symbol: string, context?: DiscoveryProviderContext): Promise<TechnicalIndicators> {
-  const [{ bars, source }, weeklyBars] = await Promise.all([
+  const [{ bars, source, droppedLatestAt }, weeklyBars] = await Promise.all([
     fetchHistoricalBarsWithSource(symbol, context),
     fetchHistoricalWeeklyBars(symbol, context),
   ])
@@ -334,7 +350,9 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
 
   const weeklyRsi14 = calcWeeklyRsi(weeklyBars)
 
-  if (bars.length < 15) return { ...EMPTY_INDICATORS, weeklyRsi14, dataSource: source, lastBarAt }
+  const lagSessions = barLagSessions(lastBarAt)
+
+  if (bars.length < 15) return { ...EMPTY_INDICATORS, weeklyRsi14, dataSource: source, lastBarAt, barLagSessions: lagSessions, droppedLatestBarAt: droppedLatestAt }
 
   const closes = bars.map(b => b.close)
   const lastClose = last(closes)
@@ -383,6 +401,8 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
   return {
     dataSource: source,
     lastBarAt,
+    barLagSessions: lagSessions,
+    droppedLatestBarAt: droppedLatestAt,
     ema50,
     ema100: round2(last(ema100arr)),
     ema200,

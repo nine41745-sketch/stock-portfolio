@@ -6,7 +6,7 @@ import { analyzePortfolioBatch, PortfolioBatchHoldingInput } from '@/lib/portfol
 import { getMultipleQuotesWithMetrics, getUpcomingEarningsForSymbols } from '@/lib/finnhub'
 import { getPreMarketSnapshots } from '@/lib/premarket'
 import { evaluatePremarketTriggers } from '@/lib/premarket-trigger'
-import { getUsMarketClock, isPremarketCronWindow, PREMARKET_CRON_WINDOW } from '@/lib/market-status'
+import { barFreshnessItem, getUsMarketClock, isPremarketCronWindow, PREMARKET_CRON_WINDOW, summarizeStaleBars } from '@/lib/market-status'
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
 import { getResultTimestamp } from '@/lib/latest-analysis'
 import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
@@ -218,6 +218,17 @@ export async function GET(request: NextRequest) {
             baselineSummary: baseline.summary, baselineAnalysedAt: baseline.analysedAt, priceSource: sourceMap.get(symbol) ?? 'Finnhub',
           },
         })
+      }
+
+      // v1.41.56: รอบนี้ใช้ technical ของรอบ post-close ซ้ำ — วัดอย่างเดียวว่า bar ของมันช้ากว่า session ที่ควรจบแล้ว ณ ตอนนี้กี่วัน
+      // ตรวจทุกหุ้นที่มี baseline (ไม่ใช่เฉพาะตัวที่มีตัวกระตุ้น) เพื่อให้วันสงบก็เห็นความล่าช้า
+      const baselineFreshness = summarizeStaleBars((rawHoldings as any[]).flatMap(raw => {
+        const symbol = String(raw.symbol).toUpperCase()
+        const baseline = baselineBySymbol.get(symbol)
+        return baseline ? [barFreshnessItem(symbol, baseline.technical)] : []
+      }))
+      if (baselineFreshness.stale.length > 0 || baselineFreshness.unknown.length > 0 || !baselineFreshness.calendarCovered) {
+        console.warn('[premarket-cron] baseline daily bars behind (sessions)', baselineFreshness)
       }
 
       if (!inputs.length) {
