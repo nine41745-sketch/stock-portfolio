@@ -14,6 +14,7 @@ import { discoveryFetch, type DiscoveryProviderContext } from '@/lib/discovery-d
 import { getDiscoveryYahooChart } from '@/lib/discovery-yahoo'
 import { calculateImportantSupport } from '@/lib/important-support'
 import { isPartialUsSessionBar } from '@/lib/market-session'
+import { DEFAULT_MIN_FALLBACK_BARS, DEFAULT_RETRY_DELAYS_MS, fetchBarsWithStalenessPolicy } from '@/lib/bar-fetch-policy'
 import { barLagSessions, droppedLatestRowAt } from '@/lib/market-status'
 import { toHistorySymbol } from '@/lib/provider-symbol'
 import { createRangeCache, week52FromBars, WEEK52_BARS_TIMEOUT_MS, WEEK52_CACHE_TTL_MS } from '@/lib/week52'
@@ -36,6 +37,9 @@ export interface TechnicalIndicators {
   barLagSessions?: number | null
   /** v1.41.56: date of the provider's newest daily row that was dropped because its OHLCV was incomplete (null = none). Diagnostic only. */
   droppedLatestBarAt?: string | null
+  /** v1.41.57: set only when the stale-bar policy ran (post-close cron): daily-bar fetches made, and whether the fallback source supplied the bars. */
+  barFetchAttempts?: number
+  barFetchUsedFallback?: boolean
   ema50: number | null
   ema100: number | null
   ema200: number | null
@@ -340,11 +344,37 @@ export async function getWeek52FromBars(rawSymbol: string, signal: AbortSignal =
   return range
 }
 
-export async function getTechnicalIndicators(symbol: string, context?: DiscoveryProviderContext): Promise<TechnicalIndicators> {
-  const [{ bars, source, droppedLatestAt }, weeklyBars] = await Promise.all([
-    fetchHistoricalBarsWithSource(symbol, context),
+export interface TechnicalFetchOptions {
+  /** epoch ms: when set (post-close cron only) a daily bar that is behind the last completed session is re-fetched, then the fallback source tried, never past this time. Unset = unchanged behaviour. */
+  retryDeadlineAt?: number
+}
+
+async function fetchBarsWithRetry(symbol: string, deadlineAt: number) {
+  return fetchBarsWithStalenessPolicy<Bar>(
+    {
+      fetchPrimary: async () => {
+        const result = await fetchHistoricalBarsWithSource(symbol)
+        return { bars: result.bars, source: result.source, droppedLatestAt: result.droppedLatestAt }
+      },
+      fetchFallback: async () => ({ bars: await fetchFromStooq(toHistorySymbol(symbol)), source: 'Stooq', droppedLatestAt: null }),
+      lagOf: lastBarAt => barLagSessions(lastBarAt),
+      sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+      now: () => Date.now(),
+    },
+    { deadlineAt, retryDelaysMs: DEFAULT_RETRY_DELAYS_MS, minFallbackBars: DEFAULT_MIN_FALLBACK_BARS },
+  )
+}
+
+export async function getTechnicalIndicators(symbol: string, context?: DiscoveryProviderContext, options?: TechnicalFetchOptions): Promise<TechnicalIndicators> {
+  const retryDeadlineAt = options?.retryDeadlineAt
+  const [barsFetch, weeklyBars] = await Promise.all([
+    retryDeadlineAt !== undefined && !context ? fetchBarsWithRetry(symbol, retryDeadlineAt) : fetchHistoricalBarsWithSource(symbol, context),
     fetchHistoricalWeeklyBars(symbol, context),
   ])
+  const bars = barsFetch.bars
+  const source = barsFetch.source as 'Yahoo Finance' | 'Stooq' | 'unavailable'
+  const droppedLatestAt = barsFetch.droppedLatestAt
+  const retryMeta = 'attempts' in barsFetch ? { barFetchAttempts: barsFetch.attempts, barFetchUsedFallback: barsFetch.usedFallback } : {}
   const lastBarAt = bars.at(-1)?.date ?? null
   const partialSession = isPartialUsSessionBar(lastBarAt)
 
@@ -352,7 +382,7 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
 
   const lagSessions = barLagSessions(lastBarAt)
 
-  if (bars.length < 15) return { ...EMPTY_INDICATORS, weeklyRsi14, dataSource: source, lastBarAt, barLagSessions: lagSessions, droppedLatestBarAt: droppedLatestAt }
+  if (bars.length < 15) return { ...EMPTY_INDICATORS, weeklyRsi14, dataSource: source, lastBarAt, barLagSessions: lagSessions, droppedLatestBarAt: droppedLatestAt, ...retryMeta }
 
   const closes = bars.map(b => b.close)
   const lastClose = last(closes)
@@ -403,6 +433,7 @@ export async function getTechnicalIndicators(symbol: string, context?: Discovery
     lastBarAt,
     barLagSessions: lagSessions,
     droppedLatestBarAt: droppedLatestAt,
+    ...retryMeta,
     ema50,
     ema100: round2(last(ema100arr)),
     ema200,

@@ -70,6 +70,8 @@ export interface TechnicalSnapshot {
   barLagSessions?: number | null
   dataSource?: string | null
   droppedLatestBarAt?: string | null
+  barFetchAttempts?: number
+  barFetchUsedFallback?: boolean
 }
 
 export interface EarningsInfo {

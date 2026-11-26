@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { isProductionCronRequestAllowed } from '@/lib/supabase/runtime-safety.mjs'
 import { isPortfolioFoundationMissing } from '@/lib/portfolio-context'
 import { analyzePortfolioBatch, PortfolioBatchHoldingInput } from '@/lib/portfolio-batch'
+import { DEFAULT_RETRY_BUDGET_MS, summarizeBarRetries } from '@/lib/bar-fetch-policy'
 import { getTechnicalIndicators } from '@/lib/indicators'
 import { getMultipleQuotesWithMetrics, getUpcomingEarnings } from '@/lib/finnhub'
 import { isNewsRelevantToTarget } from '@/lib/news-relevance'
@@ -206,10 +207,12 @@ export async function GET(request: NextRequest) {
       })
 
       const newsBySymbol = await fetchNewsForSymbols(analyzedSymbols)
+      // v1.41.57: เส้นตายร่วมของทั้งรอบสำหรับการดึง bar ซ้ำเมื่อข้อมูลรายวันล่าช้า (cron มีเวลา 60 วินาที และยังต้องรอ AI)
+      const barRetryDeadlineAt = Date.now() + DEFAULT_RETRY_BUDGET_MS
       const batchInputs: PortfolioBatchHoldingInput[] = await Promise.all(
         holdingsToAnalyze.map(async holding => {
           const [technical, earnings] = await Promise.all([
-            getTechnicalIndicators(holding.symbol),
+            getTechnicalIndicators(holding.symbol, undefined, { retryDeadlineAt: barRetryDeadlineAt }),
             getUpcomingEarnings(holding.symbol),
           ])
           return {
@@ -220,6 +223,16 @@ export async function GET(request: NextRequest) {
           }
         })
       )
+
+      const barRetries = summarizeBarRetries(batchInputs.map(input => ({
+        symbol: input.holding.symbol,
+        attempts: input.technical.barFetchAttempts,
+        usedFallback: input.technical.barFetchUsedFallback,
+        lagSessions: input.technical.barLagSessions,
+      })))
+      if (barRetries.length > 0) {
+        console.info('[daily-cron] stale daily bars re-fetched', { retried: barRetries })
+      }
 
       // v1.41.56: วัดอย่างเดียว — บันทึกเมื่อ bar รายวันล่าสุดของตัวชี้วัดช้ากว่า session ที่ควรจบแล้ว หรือไม่มีข้อมูลเลย
       const barFreshness = summarizeStaleBars(batchInputs.map(input => barFreshnessItem(input.holding.symbol, input.technical)))
