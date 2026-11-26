@@ -245,6 +245,29 @@ export interface StaleBarSummary {
   calendarCovered: boolean
 }
 
+// v1.41.56 (วินิจฉัยอย่างเดียว): ถ้าแถวล่าสุดที่ผู้ให้บริการส่งมาถูกทิ้ง (OHLCV ไม่ครบ) และใหม่กว่า bar ล่าสุดที่เก็บไว้ คืนวันที่ของแถวนั้น ไม่งั้น null
+// ไม่แก้ว่า bar ไหนถูกเก็บ (การกรองอยู่ที่ toBars ใน lib/indicators.ts) ฟังก์ชันนี้แค่รายงาน
+export function droppedLatestRowAt(raw: Array<{ date?: Date | string | null }>, latestKeptAt: string | null): string | null {
+  const latest = raw.at(-1)?.date
+  if (!(latest instanceof Date) || !Number.isFinite(latest.getTime())) return null
+  const iso = latest.toISOString()
+  if (iso === latestKeptAt) return null
+  return latestKeptAt === null || iso > latestKeptAt ? iso : null
+}
+
+// แปลง technical snapshot ที่เก็บไว้เป็นรายการตรวจความล่าช้า (ใช้ร่วมกันทั้งสอง cron; แถวเก่าที่ไม่มีฟิลด์ใหม่ได้ค่า null/undefined ไม่ throw)
+export function barFreshnessItem(
+  symbol: string,
+  technical: { lastBarAt?: string | null; dataSource?: string | null; droppedLatestBarAt?: string | null } | null | undefined,
+): BarFreshnessItem {
+  return {
+    symbol,
+    lastBarAt: technical?.lastBarAt,
+    dataSource: technical?.dataSource ?? null,
+    droppedLatestBarAt: technical?.droppedLatestBarAt ?? null,
+  }
+}
+
 // สรุปว่าหุ้นไหน bar ช้า/ไม่ทราบ ใช้ร่วมกันทั้ง cron รอบ post-close และ pre-market (ฟังก์ชันบริสุทธิ์ ตรวจด้วยเทสต์ได้)
 export function summarizeStaleBars(items: BarFreshnessItem[], now: Date = new Date()): StaleBarSummary {
   if (!Number.isFinite(now.getTime())) {

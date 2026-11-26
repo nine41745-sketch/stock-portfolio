@@ -14,7 +14,7 @@ import { discoveryFetch, type DiscoveryProviderContext } from '@/lib/discovery-d
 import { getDiscoveryYahooChart } from '@/lib/discovery-yahoo'
 import { calculateImportantSupport } from '@/lib/important-support'
 import { isPartialUsSessionBar } from '@/lib/market-session'
-import { barLagSessions } from '@/lib/market-status'
+import { barLagSessions, droppedLatestRowAt } from '@/lib/market-status'
 import { toHistorySymbol } from '@/lib/provider-symbol'
 import { createRangeCache, week52FromBars, WEEK52_BARS_TIMEOUT_MS, WEEK52_CACHE_TTL_MS } from '@/lib/week52'
 
@@ -127,14 +127,8 @@ async function fetchFromYahoo(symbol: string, context?: DiscoveryProviderContext
 
     const raw = (result.quotes ?? []).map(q => ({ close: q.close, high: q.high, low: q.low, volume: q.volume, date: q.date }))
     const bars = toBars(raw)
-    // v1.41.56: if the provider's newest row is newer than the newest kept bar it was dropped (incomplete OHLCV) — record when, for diagnosis only
-    const latestRaw = raw.at(-1)
-    const latestKeptAt = bars.at(-1)?.date ?? null
-    let droppedLatestAt: string | null = null
-    if (latestRaw?.date instanceof Date && Number.isFinite(latestRaw.date.getTime())) {
-      const iso = latestRaw.date.toISOString()
-      if (iso !== latestKeptAt && (latestKeptAt === null || iso > latestKeptAt)) droppedLatestAt = iso
-    }
+    // v1.41.56: diagnosis only — report (never change) whether the provider's newest row was dropped by toBars
+    const droppedLatestAt = droppedLatestRowAt(raw, bars.at(-1)?.date ?? null)
     return { bars, droppedLatestAt }
   } catch (e) {
     if (!context) console.error(`[indicators] yahoo-finance2 error for ${symbol}:`, e)

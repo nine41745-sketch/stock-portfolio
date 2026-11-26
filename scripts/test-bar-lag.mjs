@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { barLagSessions, CALENDAR_LAST_YEAR, lastCompletedSessionDate, summarizeStaleBars, tradingSessionsAfter } from '../lib/market-status.ts'
+import { barFreshnessItem, barLagSessions, CALENDAR_LAST_YEAR, droppedLatestRowAt, lastCompletedSessionDate, summarizeStaleBars, tradingSessionsAfter } from '../lib/market-status.ts'
 
 // v1.41.56: the daily bar behind the indicators must be measured against the last completed US session (ET calendar,
 // NYSE holidays and early closes), never against the Thai calendar day. Measurement only: indicator values are not adjusted.
@@ -87,6 +87,24 @@ assert.equal(summarizeStaleBars([], at('2028-12-29T20:00:00.000Z')).calendarCove
 assert.equal(summarizeStaleBars([], at('2029-01-02T15:00:00.000Z')).calendarCovered, false, 'the year after the calendar ends is flagged')
 assert.equal(summarizeStaleBars([], at('2025-11-28T15:00:00.000Z')).calendarCovered, false, 'before the calendar starts is flagged')
 
+// ---------- dropped latest row (diagnosis of the provider dropping the newest bar) ----------
+const D = iso => new Date(iso)
+assert.equal(droppedLatestRowAt([{ date: D('2026-11-23T14:30:00.000Z') }, { date: D('2026-11-24T14:30:00.000Z') }], '2026-11-24T14:30:00.000Z'), null, 'newest row was kept: nothing dropped')
+assert.equal(droppedLatestRowAt([{ date: D('2026-11-23T14:30:00.000Z') }, { date: D('2026-11-24T14:30:00.000Z') }], '2026-11-23T14:30:00.000Z'), '2026-11-24T14:30:00.000Z', 'newest row newer than the newest kept bar was dropped: report its date')
+assert.equal(droppedLatestRowAt([{ date: D('2026-11-24T14:30:00.000Z') }], null), '2026-11-24T14:30:00.000Z', 'every row dropped: the newest one is reported')
+assert.equal(droppedLatestRowAt([{ date: D('2026-11-20T14:30:00.000Z') }], '2026-11-23T14:30:00.000Z'), null, 'an older dropped row is not reported (kept bar is newer)')
+assert.equal(droppedLatestRowAt([], '2026-11-23T14:30:00.000Z'), null, 'no rows')
+assert.equal(droppedLatestRowAt([{ date: null }], '2026-11-23T14:30:00.000Z'), null, 'a row without a date is not reported')
+assert.equal(droppedLatestRowAt([{ date: '2026-11-24T14:30:00.000Z' }], '2026-11-23T14:30:00.000Z'), null, 'only real Date values are used (string dates are ignored)')
+assert.equal(droppedLatestRowAt([{ date: new Date(NaN) }], null), null, 'an invalid Date does not throw')
+
+// ---------- stored technical snapshot -> freshness item (both crons use it; old rows lack the new fields) ----------
+assert.deepEqual(barFreshnessItem('AAA', { lastBarAt: YAHOO('2026-11-23'), dataSource: 'Yahoo Finance', droppedLatestBarAt: YAHOO('2026-11-24') }), { symbol: 'AAA', lastBarAt: YAHOO('2026-11-23'), dataSource: 'Yahoo Finance', droppedLatestBarAt: YAHOO('2026-11-24') })
+assert.deepEqual(barFreshnessItem('OLD', { lastBarAt: YAHOO('2026-11-23') }), { symbol: 'OLD', lastBarAt: YAHOO('2026-11-23'), dataSource: null, droppedLatestBarAt: null }, 'an old row without the new fields maps to nulls')
+assert.deepEqual(barFreshnessItem('NONE', undefined), { symbol: 'NONE', lastBarAt: undefined, dataSource: null, droppedLatestBarAt: null }, 'a missing technical object does not throw')
+assert.deepEqual(summarizeStaleBars([barFreshnessItem('AAA', { lastBarAt: YAHOO('2026-11-23'), dataSource: 'Yahoo Finance', droppedLatestBarAt: YAHOO('2026-11-24') })], at('2026-11-25T14:16:53.961Z')).stale, ['AAA:1:Yahoo Finance:dropped@2026-11-24T14:30:00.000Z'], 'a stored baseline carries its source and dropped row through to the log entry')
+assert.deepEqual(summarizeStaleBars([barFreshnessItem('OLD', {})], at('2026-11-25T14:16:53.961Z')).unknown, ['OLD'], 'a baseline row from before this release is reported unknown, not current')
+
 // ---------- wiring (measurement only) ----------
 const read = file => fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
 const indicators = read('lib/indicators.ts')
@@ -95,11 +113,16 @@ assert.ok(indicators.includes('    lastBarAt,\n    barLagSessions: lagSessions,'
 assert.ok(indicators.includes('const lagSessions = barLagSessions(lastBarAt)'), 'the lag is computed from the newest bar date')
 assert.ok(indicators.includes('const closes = bars.map(b => b.close)'), 'indicator inputs are still every bar the provider returned (this release does not change values)')
 assert.equal(indicators.split('droppedLatestBarAt: droppedLatestAt').length - 1, 2, 'both returns carry the diagnostic dropped-row date')
+assert.ok(indicators.includes('droppedLatestAt: droppedLatestRowAt(raw, bars.at(-1)?.date ?? null)') || indicators.includes('const droppedLatestAt = droppedLatestRowAt(raw, bars.at(-1)?.date ?? null)'), 'the dropped-row date comes from the pure helper (kept bars are not changed by it)')
+assert.equal(indicators.split("source: 'Yahoo Finance', droppedLatestAt }").length - 1, 2, 'both Yahoo paths pass the dropped-row date through')
+assert.ok(indicators.includes("source: 'Stooq', droppedLatestAt: null }") && indicators.includes("source: 'unavailable', droppedLatestAt: null }"), 'Stooq and no-data paths never claim a dropped row')
+assert.ok(indicators.includes('const bars = toBars(raw)'), 'the kept bars still come straight from toBars')
+assert.ok(indicators.includes('const [{ bars, source, droppedLatestAt }, weeklyBars] = await Promise.all(['), 'getTechnicalIndicators reads the dropped-row date from the fetch result')
 const daily = read('app/api/cron/daily-analyze/route.ts')
-assert.ok(daily.includes('summarizeStaleBars(batchInputs.map(') && daily.includes("console.warn('[daily-cron] stale daily bars (sessions behind)', barFreshness)"), 'daily cron logs the shared summary')
+assert.ok(daily.includes('summarizeStaleBars(batchInputs.map(input => barFreshnessItem(input.holding.symbol, input.technical)))') && daily.includes("console.warn('[daily-cron] stale daily bars (sessions behind)', barFreshness)"), 'daily cron logs the shared summary')
 assert.ok(daily.includes('barFreshness.stale.length > 0 || barFreshness.unknown.length > 0 || !barFreshness.calendarCovered'), 'daily cron warns on stale, unknown and an expired calendar only')
 const premarket = read('app/api/cron/premarket-analyze/route.ts')
-assert.ok(premarket.includes('summarizeStaleBars((rawHoldings as any[]).flatMap(') && premarket.includes('baselineBySymbol.get(symbol)'), 'pre-market cron checks every holding that has a baseline, not only triggered ones')
+assert.ok(premarket.includes('summarizeStaleBars((rawHoldings as any[]).flatMap(') && premarket.includes('baselineBySymbol.get(symbol)') && premarket.includes('barFreshnessItem(symbol, baseline.technical)'), 'pre-market cron checks every holding that has a baseline, not only triggered ones')
 assert.ok(premarket.includes("console.warn('[premarket-cron] baseline daily bars behind (sessions)', baselineFreshness)") && premarket.includes('baselineFreshness.stale.length > 0 || baselineFreshness.unknown.length > 0 || !baselineFreshness.calendarCovered'), 'pre-market cron warns on stale, unknown and an expired calendar only')
 assert.ok(premarket.includes('holding, technical: baseline.technical, earnings:'), 'pre-market still reuses the baseline indicators (unchanged behaviour)')
 const types = read('types/index.ts')
