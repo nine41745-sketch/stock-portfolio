@@ -10,7 +10,7 @@ import { HoldingWithPrice, NewsItem } from '@/types'
 import { applyRecentTradeExecutionGuard } from '@/lib/analysis-execution-guard'
 import { applyPortfolioAiClaimGuard } from '@/lib/portfolio-ai-claim-guard'
 import { loadLatestSyncedTrades } from '@/lib/synced-trade-context'
-import { barFreshnessItem, getUsMarketClock, summarizeStaleBars } from '@/lib/market-status'
+import { barFreshnessItem, hoursSinceLastSessionClose, isPostCloseRunWindow, lastCompletedSessionDate, summarizeStaleBars } from '@/lib/market-status'
 import { resolveBuyingPower } from '@/lib/buying-power'
 import { buildCronRunRow, recordCronRuns } from '@/lib/cron-run-status'
 
@@ -60,12 +60,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const marketClock = getUsMarketClock()
-  if (!marketClock.isTradingDay) {
+  // v1.41.57: รอบนี้รันหลังเที่ยงคืน ET (ให้ข้อมูลรายวันของวันนั้นมาทัน) จึงตัดสินจาก session ล่าสุดที่เพิ่งปิด ไม่ใช่วันที่ ET ปัจจุบัน
+  const runNow = new Date()
+  if (!isPostCloseRunWindow(runNow)) {
     return NextResponse.json({
       skipped: true,
-      reason: 'US market is not a trading day',
-      marketDate: marketClock.date,
+      reason: 'No US session closed recently (market holiday or weekend)',
+      lastSession: lastCompletedSessionDate(runNow),
+      hoursSinceClose: hoursSinceLastSessionClose(runNow),
     })
   }
 

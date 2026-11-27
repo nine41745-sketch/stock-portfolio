@@ -196,6 +196,31 @@ export function lastCompletedSessionDate(now: Date = new Date()): string {
   return utcMsToKey(ms)
 }
 
+// v1.41.57: รอบ post-close ถูกเลื่อนไปรันหลังเที่ยงคืน ET เพื่อให้ผู้ให้บริการข้อมูลส่งแถวรายวันของวันนั้นทัน (พบว่าช้ากว่า 5 ชม. หลังตลาดปิด)
+// จึงตัดสินว่า "ควรรันไหม" จาก session ล่าสุดที่เพิ่งปิด ไม่ใช่วันที่ ET ปัจจุบัน (หลังเที่ยงคืน ET ของวันศุกร์ วันที่ ET เป็นวันเสาร์ ซึ่งเดิมถูกข้าม)
+// ครอบ EST/EDT และวันปิดเร็ว (13:00 ET); วันหยุดเช่นเช้าวันศุกร์หลัง Thanksgiving session ล่าสุดคือวันพุธ ปิดไป ~33 ชม. จึงถูกข้าม
+export const POST_CLOSE_RUN_MAX_HOURS = 18
+
+// เวลา UTC (ms) ที่ session ของวัน key ปิด (16:00 ET หรือ 13:00 ET วันปิดเร็ว) — ใช้ออฟเซ็ต EST/EDT ของวันนั้นจริง
+function sessionCloseUtcMs(key: string): number {
+  const ref = new Date(`${key}T17:00:00Z`) // เที่ยง/บ่ายของวันนั้นในเวลา ET เสมอ จึงได้วันที่ ET เดียวกับ key
+  const closeMin = EARLY_CLOSE_DAYS.has(key) ? EARLY_CLOSE_MIN : MARKET_CLOSE_MIN
+  return etWallClockToUtcMs(ref, getETParts(ref), Math.floor(closeMin / 60), closeMin % 60)
+}
+
+// ชั่วโมงนับจาก session ล่าสุดที่ปิดแล้ว ณ เวลา now; null เมื่อ now ไม่ถูกต้อง
+export function hoursSinceLastSessionClose(now: Date = new Date()): number | null {
+  if (!Number.isFinite(now.getTime())) return null
+  const closeMs = sessionCloseUtcMs(lastCompletedSessionDate(now))
+  return (now.getTime() - closeMs) / 3_600_000
+}
+
+// จริงเมื่อ session ล่าสุดเพิ่งปิดภายใน maxHours (และไม่ใช่เวลาก่อนปิด)
+export function isPostCloseRunWindow(now: Date = new Date(), maxHours: number = POST_CLOSE_RUN_MAX_HOURS): boolean {
+  const hours = hoursSinceLastSessionClose(now)
+  return hours !== null && hours >= 0 && hours <= maxHours
+}
+
 // จำนวนวันทำการหลัง fromKey จนถึง toKey (นับ toKey ไม่นับ fromKey); 0 เมื่อ toKey <= fromKey
 export function tradingSessionsAfter(fromKey: string, toKey: string): number {
   const from = keyToUtcMs(fromKey)

@@ -106,7 +106,7 @@ assert.deepEqual(
   { 'dependabot/**': false, main: false, 'codex/qa-main-readiness': false, 'codex/db-least-privilege': false, 'codex/qa47-pin-completion': false },
   'Vercel must skip automatic main deployments while continuing to skip Dependabot and the approved QA/security branches'
 )
-assert.ok(vercel.crons?.some(c => c.path === '/api/cron/daily-analyze' && c.schedule === '15 1 * * 2-6'), 'Post-close cron must remain ~08:15 ICT for US Mon-Fri sessions')
+assert.ok(vercel.crons?.some(c => c.path === '/api/cron/daily-analyze' && c.schedule === '15 5 * * 2-6'), 'Post-close cron runs after midnight ET (05:15 UTC Tue-Sat, ~12:15 ICT) so the provider has the full daily bar of the Mon-Fri session; the run gate uses the last closed session (v1.41.57)')
 assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 12 * * 1-5'), 'Pre-market cron must include EDT candidate 12:45 UTC')
 assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 13 * * 1-5'), 'Pre-market cron must include EST candidate 13:45 UTC')
 
@@ -155,7 +155,8 @@ assert.match(cronSource, /isProductionCronRequestAllowed\(\{[\s\S]*requestHost: 
 assert.match(cronSource, /const cronSecret = process\.env\.CRON_SECRET/, 'Cron must read CRON_SECRET into an explicit guard')
 assert.match(cronSource, /if \(!cronSecret\)/, 'Cron must fail closed when CRON_SECRET is missing')
 assert.match(cronSource, /settingsResponse\.error/, 'Cron must fail instead of treating a settings DB error as zero cash')
-assert.match(cronSource, /getUsMarketClock/, 'Post-close cron must respect US trading-day calendar')
+assert.match(cronSource, /isPostCloseRunWindow\(runNow\)/, 'Post-close cron must respect the US trading calendar through the last closed session (v1.41.57: it runs after midnight ET, so the current ET date is not the session date)')
+assert.doesNotMatch(cronSource, /isTradingDay/, 'Post-close cron must not gate on the current ET date being a trading day (that would skip every Friday session)')
 
 assert.equal(fs.existsSync('app/api/cron/premarket-analyze/route.ts'), true, 'Pre-market trigger cron route is required')
 const premarketCronSource = fs.readFileSync('app/api/cron/premarket-analyze/route.ts', 'utf8')
@@ -350,15 +351,18 @@ assert.match(lightModeCss, /color-scheme: light/, 'Light mode must render native
 
 // Release metadata must match the verified deployment and the owner's scoped gate approval.
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-assert.equal(packageJson.version, '1.41.56', 'Package version must match the v1.41.56 candidate')
+assert.equal(packageJson.version, '1.41.57', 'Package version must match the v1.41.57 candidate')
 const releasePackageLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
 assert.equal(releasePackageLock.version, packageJson.version, 'Lockfile version must match package.json')
 assert.equal(releasePackageLock.packages?.['']?.version, packageJson.version, 'Lockfile root package version must match package.json')
 const releaseTsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'))
-assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14156'], 'Version badge must resolve to the v1.41.56 changelog')
-const currentVersionChangelog = fs.readFileSync('config/changelog-v14156.ts', 'utf8')
-assert.match(currentVersionChangelog, /version: 'v1\.41\.56'/, 'The changelog must document the current version')
-assert.ok(currentVersionChangelog.includes('ความล่าช้า') && currentVersionChangelog.includes('วัดอย่างเดียว'), 'The changelog must describe the measurement-only bar lag check')
+assert.deepEqual(releaseTsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14157'], 'Version badge must resolve to the v1.41.57 changelog')
+const currentVersionChangelog = fs.readFileSync('config/changelog-v14157.ts', 'utf8')
+assert.match(currentVersionChangelog, /version: 'v1\.41\.57'/, 'The changelog must document the current version')
+assert.ok(currentVersionChangelog.includes('เลื่อนเวลา cron') && currentVersionChangelog.includes('เงื่อนไขข้ามรอบ'), 'The changelog must describe the later post-close cron time and the new run gate')
+const previousVersionChangelog56 = fs.readFileSync('config/changelog-v14156.ts', 'utf8')
+assert.match(previousVersionChangelog56, /version: 'v1\.41\.56'/, 'The previous version entry must remain documented')
+assert.ok(previousVersionChangelog56.includes('ความล่าช้า') && previousVersionChangelog56.includes('วัดอย่างเดียว'), 'The changelog must describe the measurement-only bar lag check')
 const previousVersionChangelog55 = fs.readFileSync('config/changelog-v14155.ts', 'utf8')
 assert.match(previousVersionChangelog55, /version: 'v1\.41\.55'/, 'The previous version entry must remain documented')
 assert.ok(previousVersionChangelog55.includes('window.confirm') && previousVersionChangelog55.includes('กล่องในหน้า') && previousVersionChangelog55.includes('Trading Journal'), 'The changelog must describe the in-page confirmations and the Trading Journal exception')
@@ -709,7 +713,7 @@ for (const [file, expectedTime] of changelogReleaseTimes) {
   assert.ok(source.includes(`date: '${expectedTime}'`), `${file} must include release time in YYYY-MM-DD HH:MM ICT format`)
 }
 
-assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14156'], 'Current candidate must use the v1.41.56 version badge')
+assert.deepEqual(tsconfig.compilerOptions?.paths?.['@/config/changelog'], ['./config/changelog-v14157'], 'Current candidate must use the v1.41.57 version badge')
 assert.match(releaseChangelog, /date: 'เวลาเดิมใน Changelog — 2026-10-14 03:05 ICT \(ยังไม่มีหลักฐานยืนยันว่าเป็นเวลา Production\)'/, 'v1.34.0 must preserve its stored timestamp and disclose that Production timing is unverified')
 assert.match(latestReleaseChangelog, /date: '\d{4}-\d{2}-\d{2} \d{2}:\d{2} ICT'/, 'v1.35.0 changelog must contain a timestamp in the repository format')
 
