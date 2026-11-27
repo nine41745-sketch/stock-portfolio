@@ -259,7 +259,7 @@ function TrackRecordCard() {
         <p className="text-red-400 text-sm">โหลด Track Record ไม่สำเร็จ — ข้อมูลเดิมไม่ได้ถูกลบ กรุณาลองใหม่ภายหลัง</p>
       ) : !data || data.overall.total === 0 ? (
         <p className="text-gray-600 text-sm">
-          ยังไม่มีข้อมูลย้อนหลังพอ ({days} วัน) — Track Record ใช้รอบ Post-close ประมาณ 08:15 น. ของวันทำการตลาดสหรัฐเป็น baseline และเก็บข้อมูลสะสมไปเรื่อยๆ
+          ยังไม่มีข้อมูลย้อนหลังพอ ({days} วัน) — Track Record ใช้รอบ Post-close ราว 13:00–15:00 น. ของวันทำการตลาดสหรัฐ (หลังตลาดปิด) เป็น baseline และเก็บข้อมูลสะสมไปเรื่อยๆ
         </p>
       ) : (
         <>
@@ -546,7 +546,7 @@ export default function PortfolioDashboard({ holdings: initialHoldings }: Props)
       .finally(() => setNewsLoading(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // โหลดผลล่าสุด: Post-close ~08:15 ICT หรือ Pre-market trigger update ที่ใหม่กว่า — โชว์ทันทีไม่ต้องกดเอง
+  // โหลดผลล่าสุด: Post-close ~13:00–15:00 ICT (เลื่อนไปหลังเที่ยงคืน ET ใน v1.41.57) หรือ Pre-market trigger update ที่ใหม่กว่า — โชว์ทันทีไม่ต้องกดเอง
   useEffect(() => {
     fetch('/api/daily-analyses/today').then(r => {
       if (!r.ok) throw new Error(`daily analyses ${r.status}`)
