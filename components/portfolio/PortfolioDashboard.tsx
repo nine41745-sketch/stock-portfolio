@@ -259,7 +259,7 @@ function TrackRecordCard() {
         <p className="text-red-400 text-sm">โหลด Track Record ไม่สำเร็จ — ข้อมูลเดิมไม่ได้ถูกลบ กรุณาลองใหม่ภายหลัง</p>
       ) : !data || data.overall.total === 0 ? (
         <p className="text-gray-600 text-sm">
-          ยังไม่มีข้อมูลย้อนหลังพอ ({days} วัน) — Track Record ใช้รอบ Post-close ราว 13:00–15:00 น. ของวันทำการ (หลังตลาดสหรัฐปิดและข้อมูลรายวันมาครบ)ตลาดสหรัฐเป็น baseline และเก็บข้อมูลสะสมไปเรื่อยๆ
+          ยังไม่มีข้อมูลย้อนหลังพอ ({days} วัน) — Track Record ใช้รอบ Post-close ราว 13:00–15:00 น. ของวันทำการตลาดสหรัฐ (หลังตลาดปิด) เป็น baseline และเก็บข้อมูลสะสมไปเรื่อยๆ
         </p>
       ) : (
         <>
