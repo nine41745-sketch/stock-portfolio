@@ -106,7 +106,7 @@ assert.deepEqual(
   { 'dependabot/**': false, main: false, 'codex/qa-main-readiness': false, 'codex/db-least-privilege': false, 'codex/qa47-pin-completion': false },
   'Vercel must skip automatic main deployments while continuing to skip Dependabot and the approved QA/security branches'
 )
-assert.ok(vercel.crons?.some(c => c.path === '/api/cron/daily-analyze' && c.schedule === '15 5 * * 2-6'), 'Post-close cron runs after midnight ET (05:15 UTC Tue-Sat, ~12:15 ICT) so the provider has the full daily bar of the Mon-Fri session; the run gate uses the last closed session (v1.41.57)')
+assert.ok(vercel.crons?.some(c => c.path === '/api/cron/daily-analyze' && c.schedule === '15 6 * * 2-6'), 'Post-close cron runs after midnight ET (06:15 UTC Tue-Sat, ~13:15 ICT, up to ~1 h later on Hobby) so the provider has the full daily bar of the Mon-Fri session; the run gate uses the last closed session (v1.41.57)')
 assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 12 * * 1-5'), 'Pre-market cron must include EDT candidate 12:45 UTC')
 assert.ok(vercel.crons?.some(c => c.path === '/api/cron/premarket-analyze' && c.schedule === '45 13 * * 1-5'), 'Pre-market cron must include EST candidate 13:45 UTC')
 
@@ -251,7 +251,8 @@ const rootLayoutSource = fs.readFileSync('app/layout.tsx', 'utf8')
 assert.match(rootLayoutSource, /localStorage\.getItem\('stock-portfolio-theme'\)/, 'Root layout must restore the saved theme before page interaction')
 assert.match(rootLayoutSource, /beforeInteractive/, 'Saved theme must be restored before hydration to avoid dark-mode reset/flash')
 assert.match(dashboardSource, /Asia\/Bangkok/, 'Dashboard timestamps must force Asia/Bangkok')
-assert.match(dashboardSource, /08:15/, 'Track Record/Cron UI must show the real ~08:15 ICT schedule')
+assert.match(dashboardSource, /13:00–15:00/, 'Track Record/Cron UI must show the real post-close schedule (~13:00-15:00 ICT since v1.41.57)')
+assert.doesNotMatch(dashboardSource, /08:15/, 'The old ~08:15 ICT post-close time must not remain in the UI')
 assert.doesNotMatch(dashboardSource, /รันทุกวัน 06:00 น\./, 'Old 06:00 Track Record label must not return')
 assert.match(dashboardSource, /exchangeRateSource/, 'Dashboard must distinguish live FX from fallback FX')
 assert.match(dashboardSource, /ยังไม่มีอัตรา USD\/THB แบบสด/, 'THB persistence must be blocked while only fallback FX is available')
