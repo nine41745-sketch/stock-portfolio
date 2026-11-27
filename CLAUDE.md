@@ -33,4 +33,4 @@ npm run ci   # lint + typecheck + build (build รัน test:critical)
 
 ## Release/Deploy
 อ่าน `AGENTS.md` เฉพาะ "Effective release workflow" (อนุมัติ 1 = merge+Stage, 2 = Promote ระบุ ID/SHA/โดเมน), "Elevated-risk changes", "Production Release Reporting" (+ อัปเดต `docs/RELEASE_STATUS.md`).
-ห้าม Stage/Promote ในชั่วโมง cron ของ `vercel.json` (Hobby รันได้ทุกนาทีในชั่วโมงนั้น): 01 UTC อังคาร–เสาร์ (เคยรันจริง ~02 UTC จึงเว้น 01–02), 12 และ 13 UTC จันทร์–ศุกร์.
+ห้าม Stage/Promote ในชั่วโมง cron ของ `vercel.json` (Hobby รันได้ทุกนาทีในชั่วโมงนั้น): 06 UTC อังคาร–เสาร์ (เคยเห็น Hobby รันช้าเข้าชั่วโมงถัดไป จึงเว้น 06–07), 12 และ 13 UTC จันทร์–ศุกร์.
